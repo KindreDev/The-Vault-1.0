@@ -1,0 +1,1082 @@
+import React, { useState, useMemo, useRef } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Loader, Sparkles, BarChart2 } from 'lucide-react'
+import { cardsApi, economyApi, gamiApi } from '../lib/api'
+import VaultCard, { RARITY_ORDER, RARITY_CONFIG } from '../components/VaultCard'
+import CardViewer from '../components/CardViewer'
+import PackOpening from '../components/PackOpening'
+import ShopTab from '../components/ShopTab'
+import DismantleEffect from '../components/DismantleEffect'
+import toast from 'react-hot-toast'
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 50]
+
+const CARD_WIDTH_FOR_PAGE_SIZE = { 10: 370, 20: 300, 30: 250, 50: 200 }
+
+const TABS = [
+  { id: 'collection', label: 'My Cards', icon: Layers },
+  { id: 'shop',       label: 'The Shop', icon: ShoppingBag },
+  { id: 'forge',      label: 'The Forge', icon: Hammer },
+]
+
+const RARITY_LABELS = ['All', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Relic', 'Celestial']
+const TYPE_LABELS   = ['All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant']
+const TYPE_API_MAP  = { 'Photo': 'image' }
+const SORT_OPTIONS  = [
+  { value: 'rarity_desc', label: 'Rarity ↓' },
+  { value: 'rarity_asc',  label: 'Rarity ↑' },
+  { value: 'recent',      label: 'Newest' },
+  { value: 'cxp',         label: 'CXP' },
+]
+
+// ── Rarity color dots ─────────────────────────────────────────────────────────
+const RARITY_COLORS = {
+  common: '#888', uncommon: '#1D9E75', rare: '#4682DC',
+  epic: '#7F77DD', legendary: '#ff8800', relic: '#FFD700', celestial: '#E8E8FF',
+}
+
+export default function Collection() {
+  const [tab, setTab]                   = useState('collection')
+  const [rarityFilter, setRarityFilter] = useState('All')
+  const [typeFilter, setTypeFilter]     = useState('All')
+  const [sort, setSort]                 = useState('rarity_desc')
+  const [selected, setSelected]         = useState([])
+  const [viewCard, setViewCard]         = useState(null)  // { card, inventoryId, sourceRect }
+  const [packBatches, setPackBatches]   = useState(null)  // array of 5-card arrays
+  const [pageSize, setPageSize]         = useState(() => Number(localStorage.getItem('vault-collection-page-size')) || 50)
+  const [page, setPage]                 = useState(1)
+  const [forgePage, setForgePage]       = useState(1)
+  const [showCxpBar, setShowCxpBar]     = useState(() => localStorage.getItem('vault-show-cxp') === 'true')
+  const [showEffects, setShowEffects]   = useState(() => localStorage.getItem('vault-show-effects') === 'true')
+  const [dismantleAnim, setDismantleAnim]     = useState(null)
+  const [shardsFlash, setShardsFlash]         = useState(false)
+  const [animShards, setAnimShards]           = useState(null)
+  const [confirmDismantleAll, setConfirmDismantleAll] = useState(false)
+  const [isSelectAll, setIsSelectAll]         = useState(false)
+  const cardEls     = useRef(new Map())
+  const forgeCardEls = useRef(new Map())
+  const shardsRef   = useRef(null)
+  const qc = useQueryClient()
+
+  const FORGE_PAGE_SIZE = 30
+
+  // ── Queries ────────────────────────────────────────────────────────────────
+  const { data: invData, isLoading: invLoading } = useQuery({
+    queryKey: ['card-inventory', rarityFilter, typeFilter, sort],
+    queryFn: () => cardsApi.inventory({
+      rarity:    rarityFilter !== 'All' ? rarityFilter.toLowerCase() : undefined,
+      card_type: typeFilter   !== 'All' ? (TYPE_API_MAP[typeFilter] ?? typeFilter.toLowerCase()) : undefined,
+      sort,
+    }).then(r => r.data),
+    enabled: tab === 'collection' || tab === 'forge',
+  })
+
+  const { data: balance } = useQuery({
+    queryKey: ['economy-balance'],
+    queryFn: () => economyApi.balance().then(r => r.data),
+    refetchInterval: 30000,
+  })
+
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => gamiApi.profile().then(r => r.data),
+    staleTime: 10000,
+  })
+
+  const { data: materials } = useQuery({
+    queryKey: ['forge-materials'],
+    queryFn: () => cardsApi.materials().then(r => r.data),
+  })
+
+  const handlePackSuccess = (data) => {
+    const allCards = data.cards ?? []
+    const batches = []
+    for (let i = 0; i < allCards.length; i += 5) batches.push(allCards.slice(i, i + 5))
+    setPackBatches(batches.length ? batches : null)
+    qc.invalidateQueries({ queryKey: ['economy-balance'] })
+    qc.invalidateQueries({ queryKey: ['profile'] })
+  }
+
+  const openPackMutation = useMutation({
+    mutationFn: (data) => cardsApi.openPack(data).then(r => r.data),
+    onSuccess: handlePackSuccess,
+    onError: (e) => toast.error(e.response?.data?.detail || 'Not enough credits'),
+  })
+
+  const openFromInventoryMutation = useMutation({
+    mutationFn: (data) => cardsApi.openPackFromInventory(data).then(r => r.data),
+    onSuccess: handlePackSuccess,
+    onError: (e) => toast.error(e.response?.data?.detail || 'No packs available'),
+  })
+
+  const dismantleBatchMutation = useMutation({
+    mutationFn: (ids) => cardsApi.dismantleBatch(ids).then(r => r.data),
+    onSuccess: (data) => {
+      toast.success(`Dismantled ${data.dismantled}  +${data.shards_earned} shards`)
+      setAnimShards(s => s ? { ...s, gained: data.shards_earned } : null)
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+    },
+    onError: () => toast.error('Dismantle failed'),
+  })
+
+  const dismantleDuplicatesMutation = useMutation({
+    mutationFn: () => cardsApi.dismantleDuplicates().then(r => r.data),
+    onSuccess: (data) => {
+      if (data.dismantled === 0) { toast('No duplicates found'); return }
+      toast.success(`Dismantled ${data.dismantled} dupes · +${data.shards_earned} shards`)
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+    },
+    onError: () => toast.error('Failed to dismantle duplicates'),
+  })
+
+const feedDuplicateMutation = useMutation({
+    mutationFn: (invId) => cardsApi.feedDuplicate(invId).then(r => r.data),
+    onSuccess: (data) => {
+      toast.success(`+${data.cxp_gained} CXP (×${data.quantity} remaining)`)
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Feed failed'),
+  })
+
+  const craftMutation = useMutation({
+    mutationFn: () => cardsApi.craftCatalyst().then(r => r.data),
+    onSuccess: () => {
+      toast.success('⚗️ Catalyst Token crafted!')
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Need 150 shards'),
+  })
+
+  // ── Forge Variant ─────────────────────────────────────────────────────────
+  const { data: variantPairs, refetch: refetchVariantPairs } = useQuery({
+    queryKey: ['variant-pairs'],
+    queryFn: () => cardsApi.variantPairs().then(r => r.data),
+    enabled: tab === 'forge',
+    staleTime: 0,
+  })
+
+  const forgeVariantMutation = useMutation({
+    mutationFn: ({ creator_id, character_id }) =>
+      cardsApi.forgeVariant(creator_id, character_id).then(r => r.data),
+    onSuccess: (data) => {
+      toast.success(`✦ ${data.card.creator_name} × ${data.card.character_name} variant forged! +${data.xp_earned} XP`)
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+      refetchVariantPairs()
+      if (data.card) {
+        setViewCard({ card: data.card, inventoryId: null, sourceRect: null })
+      }
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Forge failed'),
+  })
+
+  const [exchangeAmount, setExchangeAmount] = useState(25)
+  const exchangeMutation = useMutation({
+    mutationFn: () => cardsApi.shardsToCredits(exchangeAmount).then(r => r.data),
+    onSuccess: (data) => {
+      toast.success(`🔷 ${data.shards_spent} shards → 💰 ${data.credits_earned} credits`)
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+      qc.invalidateQueries({ queryKey: ['economy-balance'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Exchange failed'),
+  })
+
+  // ── Forge: multi-select dismantle ─────────────────────────────────────────
+  const toggleSelect = (invId) => {
+    setIsSelectAll(false)
+    setSelected(s => s.includes(invId) ? s.filter(x => x !== invId) : [...s, invId])
+  }
+
+  const executeDismantleSelected = () => {
+    const cardRects = selected
+      .map(id => forgeCardEls.current.get(id)?.getBoundingClientRect())
+      .filter(Boolean)
+    const targetRect = shardsRef.current?.getBoundingClientRect() ?? null
+
+    if (cardRects.length && targetRect) {
+      setDismantleAnim({ cardRects, targetRect })
+      setAnimShards({ base: materials?.shards ?? 0, gained: 0, progress: 0 })
+    }
+
+    dismantleBatchMutation.mutate(selected)
+    setSelected([])
+    setIsSelectAll(false)
+    setConfirmDismantleAll(false)
+  }
+
+  const dismantleSelected = () => {
+    if (isSelectAll) {
+      setConfirmDismantleAll(true)
+    } else {
+      executeDismantleSelected()
+    }
+  }
+
+  const selectAll = () => {
+    setSelected(items.map(inv => inv.inventory_id))
+    setIsSelectAll(true)
+  }
+
+  const selectRareOrBelow = () => {
+    // Only selects cards visible on the current forge page
+    const threshold = RARITY_ORDER.indexOf('rare')
+    setIsSelectAll(false)
+    setSelected(forgePagedItems
+      .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
+      .map(inv => inv.inventory_id))
+  }
+
+  const selectUncommonOrBelow = () => {
+    // Only selects cards visible on the current forge page
+    const threshold = RARITY_ORDER.indexOf('uncommon')
+    setIsSelectAll(false)
+    setSelected(forgePagedItems
+      .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
+      .map(inv => inv.inventory_id))
+  }
+
+  // ── Pack opening ─────────────────────────────────────────────────────────
+  const handleCollect = () => {
+    setPackBatches(null)
+    qc.invalidateQueries({ queryKey: ['card-inventory'] })
+    toast.success('Cards added to collection!')
+  }
+  const handleSkip = () => {
+    setPackBatches(null)
+    qc.invalidateQueries({ queryKey: ['card-inventory'] })
+  }
+
+  const items = invData?.items ?? []
+  const total = invData?.total ?? 0
+  const totalPages       = Math.max(1, Math.ceil(items.length / pageSize))
+  const pagedItems       = items.slice((page - 1) * pageSize, page * pageSize)
+  const cardWidth        = CARD_WIDTH_FOR_PAGE_SIZE[pageSize] ?? 200
+  const forgeTotalPages  = Math.max(1, Math.ceil(items.length / FORGE_PAGE_SIZE))
+  const forgePagedItems  = items.slice((forgePage - 1) * FORGE_PAGE_SIZE, forgePage * FORGE_PAGE_SIZE)
+  const gridStyle   = {
+    display: 'grid',
+    gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)`,
+    justifyContent: 'center',
+    gap: 14,
+  }
+
+  // ── Credit display ─────────────────────────────────────────────────────────
+  const credits = balance?.vault_credits ?? 0
+  const displayedShards = animShards
+    ? animShards.base + Math.round(animShards.progress * animShards.gained)
+    : (materials?.shards ?? 0)
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#080810', padding: '24px 28px' }}>
+      {/* Pack opening overlay */}
+      {packBatches && (
+        <PackOpening
+          packs={packBatches}
+          onCollect={handleCollect}
+          onSkip={handleSkip}
+        />
+      )}
+
+      {/* Dismantle particle effect */}
+      {dismantleAnim && (
+        <DismantleEffect
+          cardRects={dismantleAnim.cardRects}
+          targetRect={dismantleAnim.targetRect}
+          onProgress={(fraction) =>
+            setAnimShards(s => s ? { ...s, progress: fraction } : null)
+          }
+          onComplete={() => {
+            setDismantleAnim(null)
+            setAnimShards(null)
+            setShardsFlash(true)
+            setTimeout(() => setShardsFlash(false), 800)
+          }}
+        />
+      )}
+
+      {/* Dismantle-all confirmation */}
+      {confirmDismantleAll && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1500,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setConfirmDismantleAll(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#141420', border: '1px solid rgba(212,83,126,0.35)',
+              borderRadius: 16, padding: '32px 36px', maxWidth: 400, width: '90%',
+              boxShadow: '0 0 40px rgba(212,83,126,0.15)',
+            }}
+          >
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: 8 }}>
+              Dismantle ALL Cards?
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}>
+              You are about to dismantle all <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{selected.length}</strong> cards
+              in your collection. This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setConfirmDismantleAll(false)}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10, fontSize: 12,
+                  cursor: 'pointer', fontWeight: 600,
+                  background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
+                  border: '0.5px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDismantleSelected}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10, fontSize: 12,
+                  cursor: 'pointer', fontWeight: 700,
+                  background: 'rgba(212,83,126,0.3)', color: '#F4C0D1',
+                  border: '1px solid rgba(212,83,126,0.5)',
+                  boxShadow: '0 0 16px rgba(212,83,126,0.2)',
+                }}
+              >
+                Yes, Dismantle All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card viewer overlay */}
+      {viewCard && (
+        <CardViewer
+          card={viewCard.card}
+          inventoryId={viewCard.inventoryId}
+          sourceRect={viewCard.sourceRect}
+          onClose={() => setViewCard(null)}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Card Collection</h1>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
+            {total} card{total !== 1 ? 's' : ''} owned
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 16px', borderRadius: 20,
+            background: 'rgba(186,117,23,0.15)',
+            border: '0.5px solid rgba(186,117,23,0.4)',
+            color: '#FAC775', fontSize: 13, fontWeight: 600,
+          }}>
+            💰 {credits.toLocaleString()} Credits
+          </div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 18px', borderRadius: 20, fontSize: 12,
+              fontWeight: tab === t.id ? 600 : 400, cursor: 'pointer',
+              background: tab === t.id ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
+              color: tab === t.id ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+              border: tab === t.id ? '1px solid rgba(127,119,221,0.45)' : '0.5px solid rgba(255,255,255,0.08)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <t.icon size={13} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── COLLECTION TAB ──────────────────────────────────────────────────── */}
+      {tab === 'collection' && (
+        <div>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Filter size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
+            {/* Rarity filter */}
+            <select value={rarityFilter} onChange={e => { setRarityFilter(e.target.value); setPage(1); setForgePage(1) }}
+              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
+              {RARITY_LABELS.map(r => <option key={r}>{r}</option>)}
+            </select>
+            {/* Type filter */}
+            <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); setForgePage(1) }}
+              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
+              {TYPE_LABELS.map(t => <option key={t}>{t}</option>)}
+            </select>
+            {/* Sort */}
+            <select value={sort} onChange={e => setSort(e.target.value)}
+              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
+              {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
+
+            {/* Per-page */}
+            <select value={pageSize} onChange={e => { const n = Number(e.target.value); setPageSize(n); localStorage.setItem('vault-collection-page-size', n); setPage(1) }}
+              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} per page</option>)}
+            </select>
+
+            {/* Effects toggle */}
+            <button onClick={() => setShowEffects(v => { const n = !v; localStorage.setItem('vault-show-effects', n); return n })} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+              background: showEffects ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
+              color: showEffects ? '#CECBF6' : 'rgba(255,255,255,0.35)',
+              border: showEffects ? '0.5px solid rgba(127,119,221,0.4)' : '0.5px solid rgba(255,255,255,0.08)',
+            }}>
+              <Sparkles size={11} /> Effects
+            </button>
+
+            {/* CXP bar toggle */}
+            <button onClick={() => setShowCxpBar(v => { const n = !v; localStorage.setItem('vault-show-cxp', n); return n })} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+              background: showCxpBar ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
+              color: showCxpBar ? '#CECBF6' : 'rgba(255,255,255,0.35)',
+              border: showCxpBar ? '0.5px solid rgba(127,119,221,0.4)' : '0.5px solid rgba(255,255,255,0.08)',
+            }}>
+              <BarChart2 size={11} /> CXP
+            </button>
+          </div>
+
+          {invLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+              <Loader size={24} style={{ color: 'rgba(255,255,255,0.2)', animation: 'spin 1s linear infinite' }} />
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 80, color: 'rgba(255,255,255,0.2)' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🃏</div>
+              <div style={{ fontSize: 14 }}>No cards yet — open a pack in The Shop!</div>
+            </div>
+          ) : (
+            <>
+              <div key={invLoading ? 0 : 1} className="grid-stagger" style={gridStyle}>
+                {pagedItems.map(inv => {
+                  const cfg = RARITY_CONFIG[inv.rarity] || RARITY_CONFIG.common
+                  return (
+                    <div
+                      key={inv.inventory_id}
+                      ref={(el) => { if (el) cardEls.current.set(inv.inventory_id, el) }}
+                      style={{ position: 'relative' }}
+                    >
+                      <VaultCard
+                        card={inv}
+                        width={cardWidth}
+                        forceEffects={showEffects}
+                        onClick={() => {
+                          const el = cardEls.current.get(inv.inventory_id)
+                          setViewCard({ card: inv, inventoryId: inv.inventory_id, sourceRect: el?.getBoundingClientRect() ?? null })
+                        }}
+                      />
+                      {inv.quantity > 1 && (
+                        <div style={{
+                          position: 'absolute', top: 6, right: 6,
+                          background: 'rgba(0,0,0,0.75)', borderRadius: 10,
+                          padding: '2px 6px', fontSize: 10, color: '#FAC775', fontWeight: 700,
+                        }}>
+                          ×{inv.quantity}
+                        </div>
+                      )}
+                      {showCxpBar && (() => {
+                        const CXP_THRESHOLDS = { common: 100, uncommon: 300, rare: 800, epic: 2000, legendary: 5000, relic: 12000 }
+                        const cxp       = inv.cxp ?? 0
+                        const threshold = CXP_THRESHOLDS[inv.rarity]
+                        const pct       = threshold ? Math.min(100, (cxp / threshold) * 100) : 100
+                        const isFull    = threshold ? cxp >= threshold : false
+                        return (
+                          <div style={{ marginTop: 5, padding: '0 4px' }}>
+                            <div style={{ height: 7, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%', borderRadius: 4,
+                                width: `${isFull ? 100 : pct}%`,
+                                background: isFull
+                                  ? `linear-gradient(90deg, ${cfg.badge}, #fff, ${cfg.badge})`
+                                  : cfg.badge,
+                                backgroundSize: isFull ? '200% 100%' : 'auto',
+                                boxShadow: isFull
+                                  ? `0 0 10px ${cfg.badge}, 0 0 20px ${cfg.badge}88`
+                                  : `0 0 6px ${cfg.badge}88`,
+                                transition: 'width 0.4s ease',
+                                animation: isFull ? 'cxp-bar-shine 1.4s ease-in-out infinite' : 'none',
+                              }} />
+                            </div>
+                            <div style={{ fontSize: 9, color: isFull ? cfg.badge : 'rgba(255,255,255,0.2)', textAlign: 'right', marginTop: 2 }}>
+                              {isFull ? '✨ READY' : `${cxp} / ${threshold ?? '—'}`}
+                            </div>
+                            <style>{`
+                              @keyframes cxp-bar-shine {
+                                0%,100% { background-position: 0% 0%; }
+                                50%      { background-position: 100% 0%; }
+                              }
+                            `}</style>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, marginTop: 32, paddingBottom: 16,
+                }}>
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: page === 1 ? 'not-allowed' : 'pointer',
+                      background: 'rgba(255,255,255,0.04)', color: page === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                      border: '0.5px solid rgba(255,255,255,0.08)',
+                    }}
+                  >‹ Prev</button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                    .reduce((acc, p, i, arr) => {
+                      if (i > 0 && p - arr[i - 1] > 1) acc.push('…')
+                      acc.push(p)
+                      return acc
+                    }, [])
+                    .map((p, i) => p === '…' ? (
+                      <span key={`ellipsis-${i}`} style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, padding: '0 4px' }}>…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        style={{
+                          padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', minWidth: 36,
+                          background: p === page ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.04)',
+                          color: p === page ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+                          border: p === page ? '0.5px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.08)',
+                          fontWeight: p === page ? 700 : 400,
+                        }}
+                      >{p}</button>
+                    ))
+                  }
+
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: page === totalPages ? 'not-allowed' : 'pointer',
+                      background: 'rgba(255,255,255,0.04)', color: page === totalPages ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                      border: '0.5px solid rgba(255,255,255,0.08)',
+                    }}
+                  >Next ›</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── SHOP TAB ────────────────────────────────────────────────────────── */}
+      {tab === 'shop' && (
+        <ShopTab
+          credits={credits}
+          openPackMutation={openPackMutation}
+          openFromInventoryMutation={openFromInventoryMutation}
+          standardPacks={profile?.standard_packs ?? 0}
+          premiumPacks={profile?.premium_packs ?? 0}
+        />
+      )}
+
+
+      {/* ── FORGE TAB ───────────────────────────────────────────────────────── */}
+      {tab === 'forge' && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Dismantle panel */}
+          <div style={{ flex: '1 1 400px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Hammer size={14} style={{ color: '#FAC775' }} /> Dismantle Cards
+              </div>
+              <button
+                onClick={() => dismantleDuplicatesMutation.mutate()}
+                disabled={dismantleDuplicatesMutation.isPending}
+                style={{
+                  marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, fontSize: 11,
+                  cursor: 'pointer', fontWeight: 600,
+                  background: 'rgba(186,117,23,0.12)', color: '#FAC775',
+                  border: '0.5px solid rgba(186,117,23,0.3)',
+                  opacity: dismantleDuplicatesMutation.isPending ? 0.5 : 1,
+                }}
+              >
+                Dismantle Dupes
+              </button>
+            </div>
+
+            {/* Selection helpers */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button
+                onClick={selectUncommonOrBelow}
+                style={{
+                  padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
+                  border: '0.5px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                Select Uncommon &amp; Below
+              </button>
+              <button
+                onClick={selectRareOrBelow}
+                style={{
+                  padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+                  background: 'rgba(70,130,220,0.1)', color: '#7AB8E8',
+                  border: '0.5px solid rgba(70,130,220,0.3)',
+                }}
+              >
+                Select Rare &amp; Below
+              </button>
+              <button
+                onClick={selectAll}
+                style={{
+                  padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)',
+                  border: '0.5px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                Select All
+              </button>
+              {selected.length > 0 && (
+                <button
+                  onClick={() => { setSelected([]); setIsSelectAll(false) }}
+                  style={{
+                    padding: '5px 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+                    background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)',
+                    border: 'none',
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Action bar — shown when cards are selected */}
+            {selected.length > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,
+                padding: '10px 16px', borderRadius: 10,
+                background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.25)',
+              }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                  {selected.length} card{selected.length > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  onClick={dismantleSelected}
+                  style={{
+                    marginLeft: 'auto', padding: '6px 14px', borderRadius: 8,
+                    fontSize: 11, cursor: 'pointer', fontWeight: 600,
+                    background: 'rgba(212,83,126,0.3)', color: '#F4C0D1',
+                    border: '0.5px solid rgba(212,83,126,0.5)',
+                  }}
+                >
+                  Dismantle Selected
+                </button>
+              </div>
+            )}
+
+            {invLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>Loading cards…</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {forgePagedItems.map(inv => {
+                    const isSel = selected.includes(inv.inventory_id)
+                    return (
+                      <div
+                        key={inv.inventory_id}
+                        ref={el => { if (el) forgeCardEls.current.set(inv.inventory_id, el); else forgeCardEls.current.delete(inv.inventory_id) }}
+                        onClick={() => toggleSelect(inv.inventory_id)}
+                        style={{
+                          position: 'relative', cursor: 'pointer',
+                          outline: isSel ? '2px solid #F4C0D1' : '2px solid transparent',
+                          borderRadius: 14, transition: 'outline 0.15s',
+                          opacity: isSel ? 0.75 : 1,
+                        }}
+                      >
+                        <VaultCard card={inv} width={140} forceEffects={false} />
+                        {/* Feed-duplicate button — only on cards with extras */}
+                        {inv.quantity > 1 && !isSel && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); feedDuplicateMutation.mutate(inv.inventory_id) }}
+                            disabled={feedDuplicateMutation.isPending}
+                            title={`Feed 1 duplicate for CXP`}
+                            style={{
+                              position: 'absolute', bottom: 6, right: 6, zIndex: 10,
+                              padding: '3px 7px', borderRadius: 8, fontSize: 9, cursor: 'pointer',
+                              background: 'rgba(29,158,117,0.3)', color: '#6EE7C3',
+                              border: '0.5px solid rgba(29,158,117,0.5)',
+                            }}
+                          >
+                            +CXP
+                          </button>
+                        )}
+                        {isSel && (
+                          <div style={{
+                            position: 'absolute', inset: 0, borderRadius: 14,
+                            background: 'rgba(212,83,126,0.25)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 22, zIndex: 10, pointerEvents: 'none',
+                          }}>✓</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {items.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', padding: 20 }}>
+                      No cards to dismantle. Open packs first!
+                    </div>
+                  )}
+                </div>
+
+                {/* Forge pagination */}
+                {forgeTotalPages > 1 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, marginTop: 20, flexWrap: 'wrap',
+                  }}>
+                    <button
+                      onClick={() => setForgePage(p => Math.max(1, p - 1))}
+                      disabled={forgePage === 1}
+                      style={{
+                        padding: '5px 12px', borderRadius: 8, fontSize: 11,
+                        cursor: forgePage === 1 ? 'not-allowed' : 'pointer',
+                        background: 'rgba(255,255,255,0.04)',
+                        color: forgePage === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                        border: '0.5px solid rgba(255,255,255,0.08)',
+                      }}
+                    >‹ Prev</button>
+
+                    {Array.from({ length: forgeTotalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === forgeTotalPages || Math.abs(p - forgePage) <= 2)
+                      .reduce((acc, p, i, arr) => {
+                        if (i > 0 && p - arr[i - 1] > 1) acc.push('…')
+                        acc.push(p)
+                        return acc
+                      }, [])
+                      .map((p, i) => p === '…' ? (
+                        <span key={`fe-${i}`} style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, padding: '0 2px' }}>…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setForgePage(p)}
+                          style={{
+                            padding: '5px 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', minWidth: 32,
+                            background: p === forgePage ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.04)',
+                            color: p === forgePage ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+                            border: p === forgePage ? '0.5px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.08)',
+                            fontWeight: p === forgePage ? 700 : 400,
+                          }}
+                        >{p}</button>
+                      ))
+                    }
+
+                    <button
+                      onClick={() => setForgePage(p => Math.min(forgeTotalPages, p + 1))}
+                      disabled={forgePage === forgeTotalPages}
+                      style={{
+                        padding: '5px 12px', borderRadius: 8, fontSize: 11,
+                        cursor: forgePage === forgeTotalPages ? 'not-allowed' : 'pointer',
+                        background: 'rgba(255,255,255,0.04)',
+                        color: forgePage === forgeTotalPages ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                        border: '0.5px solid rgba(255,255,255,0.08)',
+                      }}
+                    >Next ›</button>
+
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginLeft: 4 }}>
+                      {items.length} total
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Craft panel */}
+          <div style={{ flex: '0 0 240px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}>
+              ⚗️ Craft Materials
+            </div>
+            <div style={{
+              borderRadius: 12,
+              background: 'rgba(255,255,255,0.02)',
+              border: '0.5px solid rgba(255,255,255,0.06)',
+              padding: 20, marginBottom: 16,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 13 }}>
+                <span style={{ color: 'rgba(255,255,255,0.45)' }}>🔷 Shards</span>
+                <span
+                  ref={shardsRef}
+                  style={{
+                    color: '#CECBF6', fontWeight: 700,
+                    transition: 'text-shadow 0.15s',
+                    textShadow: shardsFlash ? '0 0 12px #CECBF6, 0 0 24px #7F77DD' : 'none',
+                    animation: shardsFlash ? 'shards-pop 0.6s ease-out' : 'none',
+                  }}
+                >
+                  {displayedShards}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: 'rgba(255,255,255,0.45)' }}>⚗️ Catalyst Tokens</span>
+                <span style={{ color: '#FAC775', fontWeight: 700 }}>{materials?.catalyst_tokens ?? 0}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => craftMutation.mutate()}
+              disabled={craftMutation.isPending || (materials?.shards ?? 0) < 150}
+              style={{
+                width: '100%', padding: '11px', borderRadius: 10, fontSize: 12,
+                fontWeight: 600, cursor: (materials?.shards ?? 0) >= 150 ? 'pointer' : 'not-allowed',
+                background: (materials?.shards ?? 0) >= 150
+                  ? 'rgba(186,117,23,0.25)' : 'rgba(255,255,255,0.04)',
+                color: (materials?.shards ?? 0) >= 150 ? '#FAC775' : 'rgba(255,255,255,0.2)',
+                border: (materials?.shards ?? 0) >= 150
+                  ? '0.5px solid rgba(186,117,23,0.4)' : '0.5px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {craftMutation.isPending ? 'Crafting…' : '⚗️ Craft Token (150 shards)'}
+            </button>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 10, lineHeight: 1.5 }}>
+              Use Catalyst Tokens on any card to instantly evolve it one rarity tier up.
+              Tokens are also deposited when you level up.
+            </div>
+
+            {/* ── Shards → Credits exchange ─────────────────────────── */}
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>
+                💱 Exchange Shards
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                fontSize: 11, color: 'rgba(255,255,255,0.3)',
+              }}>
+                <span>🔷 1 shard</span>
+                <span style={{ color: 'rgba(255,255,255,0.15)' }}>→</span>
+                <span style={{ color: '#9FE1CB' }}>💰 3 credits</span>
+              </div>
+
+              {/* Amount picker */}
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
+                {[25, 50, 100, 250].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setExchangeAmount(n)}
+                    style={{
+                      padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer',
+                      background: exchangeAmount === n ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
+                      color: exchangeAmount === n ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+                      border: exchangeAmount === n ? '0.5px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.08)',
+                      fontWeight: exchangeAmount === n ? 700 : 400,
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+
+              {/* Preview */}
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+                {exchangeAmount} shards → <span style={{ color: '#9FE1CB', fontWeight: 700 }}>{exchangeAmount * 3} credits</span>
+              </div>
+
+              <button
+                onClick={() => !exchangeMutation.isPending && exchangeMutation.mutate()}
+                disabled={exchangeMutation.isPending || (materials?.shards ?? 0) < exchangeAmount}
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 10, fontSize: 12,
+                  fontWeight: 600,
+                  cursor: (materials?.shards ?? 0) >= exchangeAmount ? 'pointer' : 'not-allowed',
+                  background: (materials?.shards ?? 0) >= exchangeAmount
+                    ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.04)',
+                  color: (materials?.shards ?? 0) >= exchangeAmount ? '#9FE1CB' : 'rgba(255,255,255,0.2)',
+                  border: (materials?.shards ?? 0) >= exchangeAmount
+                    ? '0.5px solid rgba(29,158,117,0.35)' : '0.5px solid rgba(255,255,255,0.06)',
+                  opacity: exchangeMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                {exchangeMutation.isPending ? 'Converting…' : `Convert ${exchangeAmount} shards`}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Forge Variant panel ─────────────────────────────────────── */}
+          <div style={{ width: '100%', marginTop: 8 }}>
+            <div style={{
+              borderTop: '0.5px solid rgba(127,119,221,0.15)',
+              paddingTop: 20,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
+                  ✦ Forge a Variant Card
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '3px 10px', borderRadius: 20, fontSize: 11,
+                  background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.25)',
+                  color: '#CECBF6',
+                }}>
+                  500 🔷 + 1 ⚗️
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>
+                  Legendary baseline · max 3 per pair
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 16, lineHeight: 1.5 }}>
+                Pairs shown below are backed by real galleries where both the creator and character are linked.
+                Link a gallery to a creator <em>and</em> set its character to unlock new pairs.
+              </div>
+
+              {!Array.isArray(variantPairs) || variantPairs.length === 0 ? (
+                <div style={{
+                  padding: '20px 24px', borderRadius: 12, fontSize: 12,
+                  background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)',
+                  color: 'rgba(255,255,255,0.25)', textAlign: 'center',
+                }}>
+                  No eligible pairs yet. Open a gallery, assign it to a creator, and set a linked character.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {variantPairs.map(pair => {
+                    const canAfford = (materials?.shards ?? 0) >= 500 && (materials?.catalyst_tokens ?? 0) >= 1
+                    const disabled  = pair.at_cap || !canAfford || forgeVariantMutation.isPending
+                    return (
+                      <div
+                        key={`${pair.creator_id}-${pair.character_id}`}
+                        style={{
+                          borderRadius: 12,
+                          border: pair.at_cap
+                            ? '0.5px solid rgba(255,255,255,0.07)'
+                            : '0.5px solid rgba(127,119,221,0.3)',
+                          background: pair.at_cap
+                            ? 'rgba(255,255,255,0.02)'
+                            : 'rgba(127,119,221,0.06)',
+                          padding: '14px 16px',
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          minWidth: 300, flex: '1 1 300px', maxWidth: 480,
+                          opacity: pair.at_cap ? 0.5 : 1,
+                        }}
+                      >
+                        {/* Creator avatar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                          {pair.creator_avatar ? (
+                            <img src={pair.creator_avatar} alt={pair.creator_name}
+                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
+                                border: '1.5px solid rgba(127,119,221,0.4)', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                              background: 'rgba(127,119,221,0.2)', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', fontSize: 14 }}>
+                              {pair.creator_name[0]}
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {pair.creator_name}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'capitalize' }}>
+                              {pair.creator_type}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* "as" divider */}
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', flexShrink: 0 }}>
+                          as
+                        </div>
+
+                        {/* Character avatar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                          {pair.character_avatar ? (
+                            <img src={pair.character_avatar} alt={pair.character_name}
+                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
+                                border: '1.5px solid rgba(212,83,126,0.4)', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                              background: 'rgba(212,83,126,0.2)', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', fontSize: 14 }}>
+                              {pair.character_name[0]}
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {pair.character_name}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                              {pair.existing_variants} / {pair.cap} forged
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Forge button */}
+                        <button
+                          onClick={() => forgeVariantMutation.mutate({
+                            creator_id: pair.creator_id,
+                            character_id: pair.character_id,
+                          })}
+                          disabled={disabled}
+                          style={{
+                            flexShrink: 0,
+                            padding: '8px 14px', borderRadius: 9, fontSize: 11, cursor: disabled ? 'not-allowed' : 'pointer',
+                            fontWeight: 600,
+                            background: pair.at_cap
+                              ? 'rgba(255,255,255,0.04)'
+                              : canAfford
+                              ? 'rgba(127,119,221,0.3)'
+                              : 'rgba(255,255,255,0.05)',
+                            color: pair.at_cap
+                              ? 'rgba(255,255,255,0.2)'
+                              : canAfford
+                              ? '#CECBF6'
+                              : 'rgba(255,255,255,0.2)',
+                            border: pair.at_cap
+                              ? '0.5px solid rgba(255,255,255,0.06)'
+                              : canAfford
+                              ? '0.5px solid rgba(127,119,221,0.5)'
+                              : '0.5px solid rgba(255,255,255,0.08)',
+                          }}
+                        >
+                          {pair.at_cap ? 'Capped' : forgeVariantMutation.isPending ? '…' : 'Forge ✦'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes shards-pop {
+          0%   { transform: scale(1); }
+          30%  { transform: scale(1.4); color: #fff; }
+          60%  { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  )
+}

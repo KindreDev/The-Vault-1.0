@@ -1,0 +1,699 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock } from 'lucide-react'
+import { galleriesApi, creatorsApi } from '../lib/api'
+
+// ── Color maps ────────────────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  cosplayer: { bg: 'rgba(29,158,117,0.25)',  text: '#9FE1CB' },
+  ethot:     { bg: 'rgba(212,83,126,0.25)',  text: '#ED93B1' },
+  artist:    { bg: 'rgba(127,119,221,0.25)', text: '#CECBF6' },
+  character: { bg: 'rgba(186,117,23,0.25)',  text: '#FAC775' },
+  actress:   { bg: 'rgba(212,83,126,0.25)',  text: '#ED93B1' },
+  custom:    { bg: 'rgba(136,135,128,0.25)', text: '#D3D1C7' },
+}
+
+const RARITY_COLORS = {
+  common:    '#888780',
+  uncommon:  '#1D9E75',
+  rare:      '#378ADD',
+  epic:      '#7F77DD',
+  legendary: '#D4537E',
+  relic:     '#BA7517',
+  celestial: '#EDD87A',
+}
+
+const RARITY_LABELS = {
+  common:    'Discovered',
+  uncommon:  'Favored',
+  rare:      'Devoted',
+  epic:      'Obsessed',
+  legendary: 'Vault Favorite',
+  relic:     'Waifu',
+  celestial: 'My Queen',
+}
+
+const PODIUM_META = [
+  { rank: 2, label: 'Silver', color: '#B8C4CC', height: 442, scale: 1 },
+  { rank: 1, label: 'Gold',   color: '#FAC775', height: 572, scale: 1.04 },
+  { rank: 3, label: 'Bronze', color: '#BA7517', height: 390, scale: 1 },
+]
+
+// Cache-busting avatar URL — avatar_path stores a UUID filename that changes on each upload
+function creatorAvatarUrl(creator) {
+  if (!creator.avatar_path) return null
+  const bust = encodeURIComponent(creator.avatar_path.split(/[\\/]/).pop() || '')
+  return `/api/creators/${creator.id}/avatar?v=${bust}`
+}
+
+// ── Shared stat row ───────────────────────────────────────────────────────────
+function StatRow({ views, cum, size = 12 }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex items-center gap-1" style={{ fontSize: size, color: 'rgba(255,255,255,0.45)' }}>
+        <Eye size={size - 2} /> {(views ?? 0).toLocaleString()}
+      </span>
+      {(cum ?? 0) > 0 && (
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#D4537E' }}>
+          <Droplets size={size - 2} /> {cum.toLocaleString()}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Tier divider ──────────────────────────────────────────────────────────────
+function TierLabel({ label, color = 'rgba(255,255,255,0.15)' }) {
+  return (
+    <div className="flex items-center gap-3 mt-8 mb-4">
+      <div className="h-px flex-1" style={{ background: color }} />
+      <span className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color }}>{label}</span>
+      <div className="h-px flex-1" style={{ background: color }} />
+    </div>
+  )
+}
+
+// ── Rarity pill ───────────────────────────────────────────────────────────────
+function RarityPill({ rarity }) {
+  if (!rarity || rarity === 'common') return null
+  const rc = RARITY_COLORS[rarity] || RARITY_COLORS.common
+  const label = RARITY_LABELS[rarity] || rarity
+  return (
+    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0"
+          style={{ background: `${rc}22`, color: rc, border: `0.5px solid ${rc}66` }}>
+      {label}
+    </span>
+  )
+}
+
+// ── Premium podium rank badge ─────────────────────────────────────────────────
+// #1 gold shimmer + heavy glow, #2 silver + moderate glow, #3 bronze + light glow
+const PODIUM_BADGE_STYLES = {
+  1: {
+    gradient:    'linear-gradient(145deg, #FFF4A0 0%, #FAC775 30%, #D48A10 60%, #FFE580 85%, #FAC775 100%)',
+    shadow:      '0 0 0 2.5px #FAC77590, 0 0 20px 6px #FAC77558, 0 0 48px 18px #FAC77530',
+    color:       '#3A2200',
+    size: 58, fontSize: 24,
+    // Bright, fast sweep — very premium
+    shineColor:  'rgba(255,255,255,0.55)',
+    shineDur:    '2.2s',
+  },
+  2: {
+    gradient:    'linear-gradient(145deg, #F4F8FA 0%, #C8D8E8 30%, #8AAABF 60%, #E8F2F8 85%, #B8C4CC 100%)',
+    shadow:      '0 0 0 1.5px #B8C4CC70, 0 0 14px 4px #B8C4CC40',
+    color:       '#0E1E2A',
+    size: 58, fontSize: 24,
+    // Softer, slower sweep
+    shineColor:  'rgba(255,255,255,0.32)',
+    shineDur:    '3.8s',
+  },
+  3: {
+    gradient:    'linear-gradient(145deg, #E8A85A 0%, #BA7517 30%, #7A4A10 60%, #D08A40 85%, #BA7517 100%)',
+    shadow:      '0 0 0 1px #BA751750, 0 0 8px 2px #BA751728',
+    color:       '#FFF4E8',
+    size: 58, fontSize: 24,
+    // Very subtle, slow sweep
+    shineColor:  'rgba(255,255,255,0.18)',
+    shineDur:    '5.5s',
+  },
+}
+
+function PodiumBadge({ rank }) {
+  const b = PODIUM_BADGE_STYLES[rank]
+  if (!b) return null
+  // Gold uses Tailwind class (forces keyframe into CSS output); silver/bronze reference same keyframe via inline style
+  const shineClass = rank === 1 ? 'animate-badge-shine' : ''
+  const shineStyle = rank !== 1 ? { animation: `badge-shine ${b.shineDur} ease-in-out infinite` } : {}
+  return (
+    <div style={{
+      position: 'relative', overflow: 'hidden',
+      width: b.size, height: b.size, borderRadius: '50%',
+      background: b.gradient, boxShadow: b.shadow,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: b.fontSize, fontWeight: 900, color: b.color,
+      flexShrink: 0, letterSpacing: '-0.02em',
+    }}>
+      {rank}
+      {/* Animated shine sweep — clipped to circle by overflow:hidden */}
+      <div className={shineClass}
+           style={{
+             position: 'absolute', top: 0, bottom: 0, width: '35%',
+             background: `linear-gradient(90deg, transparent, ${b.shineColor}, transparent)`,
+             pointerEvents: 'none',
+             ...shineStyle,
+           }} />
+    </div>
+  )
+}
+
+function formatViewTime(secs) {
+  if (!secs || secs < 60) return null
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+// Always returns a string — shows seconds for small values
+function formatViewTimeFull(secs) {
+  if (!secs || secs <= 0) return '0s'
+  if (secs < 60) return `${secs}s`
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
+// ── Rank badge for media/gallery cards ────────────────────────────────────────
+const RANK_BADGE_STYLES = {
+  1: { bg: 'linear-gradient(145deg, #FFF4A0, #FAC775, #D48A10)', color: '#3A2200', border: 'none', size: 30, fs: 13 },
+  2: { bg: 'linear-gradient(145deg, #F4F8FA, #C8D8E8, #8AAABF)',  color: '#0E1E2A', border: 'none', size: 30, fs: 13 },
+  3: { bg: 'linear-gradient(145deg, #E8A85A, #BA7517, #7A4A10)',  color: '#FFF4E8', border: 'none', size: 30, fs: 13 },
+}
+
+function RankBadge({ rank }) {
+  const s = RANK_BADGE_STYLES[rank] ?? {
+    bg: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.65)',
+    border: '0.5px solid rgba(255,255,255,0.18)', size: 22, fs: 10,
+  }
+  return (
+    <div style={{
+      width: s.size, height: s.size, borderRadius: '50%',
+      background: s.bg, color: s.color, border: s.border,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: s.fs, fontWeight: 800, flexShrink: 0,
+    }}>
+      {rank}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CREATOR SECTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+function CreatorHero({ creator, onClick }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
+  const rc  = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
+  const url = creatorAvatarUrl(creator)
+  const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  return (
+    <div onClick={onClick}
+         className="relative overflow-hidden rounded-[16px] cursor-pointer group"
+         style={{ height: 460, boxShadow: `0 0 60px 12px ${rc}28` }}>
+
+      {/* Blurred bg — face anchored to top */}
+      {url && !imgFailed
+        ? <img src={url} alt="" onError={() => setImgFailed(true)}
+               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
+                        objectFit: 'cover', objectPosition: 'top center',
+                        filter: 'blur(22px)', transform: 'scale(1.12)', opacity: 0.45 }} />
+        : <div style={{ position: 'absolute', inset: 0, background: tc.bg }} />
+      }
+
+      {/* Gradient overlays */}
+      <div style={{ position: 'absolute', inset: 0,
+                    background: 'linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.1) 100%)' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100,
+                    background: 'linear-gradient(to top, rgba(14,14,14,0.9), transparent)' }} />
+
+      {/* Decorative "#1" fills the right void */}
+      <div style={{
+        position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)',
+        fontSize: 240, fontWeight: 900, lineHeight: 1,
+        color: rc, opacity: 0.07, userSelect: 'none', letterSpacing: '-0.05em',
+      }}>
+        #1
+      </div>
+      {/* Crown watermark */}
+      <div style={{ position: 'absolute', top: 24, right: 28, opacity: 0.11 }}>
+        <Crown size={88} style={{ color: '#FAC775' }} />
+      </div>
+
+      {/* Content */}
+      <div className="relative h-full flex items-center gap-10 px-10">
+
+        {/* Portrait — tall, face anchored to top so heads are never clipped */}
+        <div className="flex-shrink-0 rounded-[14px] overflow-hidden group-hover:scale-[1.02] transition-transform duration-300"
+             style={{ width: 230, height: 400,
+                      border: `1.5px solid ${rc}99`,
+                      boxShadow: `0 0 30px 6px ${rc}44` }}>
+          {url && !imgFailed
+            ? <img src={url} alt={creator.name} onError={() => setImgFailed(true)}
+                   style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+            : <div style={{ width: '100%', height: '100%', background: tc.bg,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 72, fontWeight: 700, color: tc.text, opacity: 0.7 }}>{initials}</span>
+              </div>
+          }
+        </div>
+
+        {/* Text block */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Crown size={16} style={{ color: '#FAC775' }} />
+            <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                           letterSpacing: '0.14em', color: '#FAC775' }}>
+              #1 · Most Visited Creator
+            </span>
+          </div>
+          <h2 style={{ fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.95)',
+                       lineHeight: 1.05, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>
+            {creator.name}
+          </h2>
+          <div className="flex items-center gap-3">
+            <RarityPill rarity={creator.card_rarity} />
+            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', textTransform: 'capitalize' }}>
+              {creator.creator_type}
+            </span>
+          </div>
+          <StatRow views={creator.total_views} cum={creator.total_cum} size={15} />
+          {(creator.total_view_seconds ?? 0) > 0 ? (
+            <div className="flex flex-col gap-1 mt-2"
+                 style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)',
+                          borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                            letterSpacing: '0.1em', color: 'rgba(127,119,221,0.6)' }}>
+                Time spent with {creator.name}
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock size={14} style={{ color: '#9F99E8' }} />
+                <span style={{ fontSize: 22, fontWeight: 700, color: '#CECBF6' }}>
+                  {formatViewTimeFull(creator.total_view_seconds)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-1"
+                 style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>
+              <Clock size={11} />
+              <span>No viewing time tracked yet</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PodiumCard({ creator, rank, meta, onClick }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
+  const url = creatorAvatarUrl(creator)
+  const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  return (
+    <div onClick={onClick} className="flex flex-col cursor-pointer group"
+         style={{ transform: `scale(${meta.scale})`, transformOrigin: 'bottom center' }}>
+
+      {/* Premium rank badge */}
+      <div className="flex items-center justify-center mb-3">
+        <PodiumBadge rank={rank} />
+      </div>
+
+      {/* Card */}
+      <div className="rounded-[12px] overflow-hidden"
+           style={{ background: 'rgba(255,255,255,0.04)',
+                    border: `0.5px solid ${meta.color}66`,
+                    boxShadow: `0 0 32px 6px ${meta.color}1A` }}>
+        <div className="overflow-hidden flex items-center justify-center"
+             style={{ height: meta.height, background: url && !imgFailed ? '#111' : tc.bg }}>
+          {url && !imgFailed
+            ? <img src={url} alt={creator.name} onError={() => setImgFailed(true)}
+                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                   style={{ objectPosition: 'top center' }} />
+            : <span style={{ fontSize: 64, fontWeight: 700, color: tc.text, opacity: 0.6, userSelect: 'none' }}>
+                {initials}
+              </span>
+          }
+        </div>
+        <div className="p-3" style={{ borderTop: `0.5px solid ${meta.color}33` }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[14px] font-semibold text-[rgba(255,255,255,0.85)] truncate flex-1">
+              {creator.name}
+            </span>
+            <RarityPill rarity={creator.card_rarity} />
+          </div>
+          <StatRow views={creator.total_views} cum={creator.total_cum} />
+        </div>
+      </div>
+
+      {/* Podium base */}
+      <div className="mt-2 mx-2 rounded-[4px]"
+           style={{ height: rank === 1 ? 28 : rank === 2 ? 20 : 12,
+                    background: `linear-gradient(to bottom, ${meta.color}33, ${meta.color}11)`,
+                    border: `0.5px solid ${meta.color}44` }} />
+    </div>
+  )
+}
+
+function CreatorGridCard({ creator, rank, onClick }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
+  const rc  = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
+  const url = creatorAvatarUrl(creator)
+  const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  return (
+    <div onClick={onClick}
+         className="rounded-[10px] overflow-hidden cursor-pointer group transition-shadow duration-300"
+         style={{ background: 'rgba(255,255,255,0.03)',
+                  border: `0.5px solid ${rc}44`,
+                  boxShadow: `0 0 18px 2px ${rc}15` }}>
+      <div className="relative overflow-hidden flex items-center justify-center"
+           style={{ height: 200, background: url && !imgFailed ? '#111' : tc.bg }}>
+        {url && !imgFailed
+          ? <img src={url} alt={creator.name} onError={() => setImgFailed(true)}
+                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                 style={{ objectPosition: 'top center' }} />
+          : <span style={{ fontSize: 52, fontWeight: 700, color: tc.text, opacity: 0.5, userSelect: 'none' }}>
+              {initials}
+            </span>
+        }
+        <div className="absolute top-2 left-2 z-[3]">
+          <RankBadge rank={rank} />
+        </div>
+      </div>
+      <div className="p-2.5">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-[13px] font-medium text-[rgba(255,255,255,0.75)] truncate flex-1">{creator.name}</span>
+          <RarityPill rarity={creator.card_rarity} />
+        </div>
+        <StatRow views={creator.total_views} cum={creator.total_cum} />
+      </div>
+    </div>
+  )
+}
+
+function CreatorSection({ creators, onNavigate }) {
+  if (!creators || creators.length === 0) return null
+  const top3 = creators.slice(0, 3)
+  const rest = creators.slice(3)
+
+  return (
+    <section className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-9 h-9 rounded-[10px]"
+             style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)' }}>
+          <Trophy size={17} style={{ color: '#FAC775' }} />
+        </div>
+        <div>
+          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">Creator Hall of Fame</div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)]">
+            Ranked by total views across all galleries belonging to this creator.
+            Cum count (💧) and assigned rarity shown beneath each entry.
+          </div>
+        </div>
+      </div>
+
+      <CreatorHero creator={top3[0]} onClick={() => onNavigate(`/creators/${top3[0].id}`)} />
+
+      {top3.length > 1 && (
+        <div className="grid gap-6 mt-4"
+             style={{ gridTemplateColumns: top3.length >= 3 ? '1fr 1.15fr 1fr' : '1fr 1.15fr', alignItems: 'end' }}>
+          {[top3[1], top3[0], top3[2]].map((c, i) => {
+            if (!c) return null
+            const rankMap = [2, 1, 3]
+            const meta = PODIUM_META.find(m => m.rank === rankMap[i])
+            return (
+              <PodiumCard key={c.id} creator={c} rank={rankMap[i]} meta={meta}
+                          onClick={() => onNavigate(`/creators/${c.id}`)} />
+            )
+          })}
+        </div>
+      )}
+
+      {rest.length > 0 && (
+        <>
+          <TierLabel label="Honourable Mentions" color="rgba(186,117,23,0.35)" />
+          <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            {rest.map((c, i) => (
+              <CreatorGridCard key={c.id} creator={c} rank={i + 4}
+                               onClick={() => onNavigate(`/creators/${c.id}`)} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MEDIA CARD — photo or video with hover preview from middle of video
+// ══════════════════════════════════════════════════════════════════════════════
+function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
+  const [hoverVideo, setHoverVideo] = useState(false)
+  const videoRef = useRef(null)
+  const timerRef = useRef(null)
+
+  const handleMouseEnter = useCallback(() => {
+    if (!item.is_video) return
+    setHoverVideo(true)
+    timerRef.current = setTimeout(() => setHoverVideo(false), 15000)
+  }, [item.is_video])
+
+  const handleMouseLeave = useCallback(() => {
+    if (!item.is_video) return
+    clearTimeout(timerRef.current)
+    setHoverVideo(false)
+  }, [item.is_video])
+
+  useEffect(() => {
+    return () => {
+      const vid = videoRef.current
+      if (!vid) return
+      vid.pause()
+      vid.removeAttribute('src')
+      vid.load()
+    }
+  }, [])
+
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid) return
+    if (hoverVideo) {
+      vid.src = `/api/images/${item.id}/file`
+      const seekAndPlay = () => {
+        if (vid.duration && !isNaN(vid.duration)) {
+          vid.currentTime = vid.duration * 0.5
+        }
+        vid.play().catch(() => {})
+      }
+      if (vid.readyState >= 1) {
+        seekAndPlay()
+      } else {
+        vid.load()
+        vid.addEventListener('loadedmetadata', seekAndPlay, { once: true })
+      }
+    } else {
+      vid.pause()
+      vid.removeAttribute('src')
+      vid.load()
+    }
+    return () => clearTimeout(timerRef.current)
+  }, [hoverVideo, item.id])
+
+  return (
+    <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={onClick}
+      className="rounded-[10px] overflow-hidden cursor-pointer group"
+      style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}
+    >
+      <div className="relative overflow-hidden" style={{ height: imgHeight, background: 'rgba(255,255,255,0.03)' }}>
+        <img
+          src={`/api/images/${item.id}/thumb`} alt=""
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          style={{ transform: hoverVideo ? 'scale(1)' : undefined }}
+          onError={e => { e.target.style.display = 'none' }}
+        />
+        {item.is_video && (
+          <video
+            ref={videoRef}
+            muted playsInline preload="none"
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
+            style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
+          />
+        )}
+        {item.is_video && !hoverVideo && (
+          <div className="absolute top-1.5 right-1.5 z-[3] flex items-center gap-1 px-1.5 py-0.5 rounded-full"
+               style={{ background: 'rgba(0,0,0,0.65)', color: 'rgba(255,255,255,0.85)' }}>
+            <Play size={9} fill="currentColor" />
+            <Film size={9} />
+          </div>
+        )}
+        {showRank && (
+          <div className="absolute top-2 left-2 z-[3]">
+            <RankBadge rank={rank} />
+          </div>
+        )}
+      </div>
+      <div className="p-2.5">
+        <div className="text-[12px] font-medium text-[rgba(255,255,255,0.6)] truncate mb-0.5">{item.filename}</div>
+        <StatRow views={item.view_count} cum={item.cum_count} />
+      </div>
+    </div>
+  )
+}
+
+// ── Gallery card ──────────────────────────────────────────────────────────────
+function GalleryCard({ gallery, rank, imgHeight = 220, showRank = false, onClick }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <div onClick={onClick}
+         className="rounded-[10px] overflow-hidden cursor-pointer group"
+         style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+      <div className="relative overflow-hidden" style={{ height: imgHeight, background: 'rgba(255,255,255,0.03)' }}>
+        {gallery.cover_thumb && !failed
+          ? <img src={gallery.cover_thumb} alt={gallery.name}
+                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                 style={{ objectPosition: 'top center' }}
+                 onError={() => setFailed(true)} />
+          : <div className="w-full h-full flex items-center justify-center opacity-10"><Images size={48} /></div>
+        }
+        {showRank && (
+          <div className="absolute top-2 left-2 z-[3]">
+            <RankBadge rank={rank} />
+          </div>
+        )}
+      </div>
+      <div className="p-2.5">
+        <div className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] truncate mb-0.5">{gallery.name}</div>
+        {gallery.creator_name && (
+          <div className="text-[11px] text-[rgba(255,255,255,0.3)] truncate mb-0.5">{gallery.creator_name}</div>
+        )}
+        <StatRow views={gallery.view_count} cum={gallery.cum_count} />
+      </div>
+    </div>
+  )
+}
+
+// ── Tiered section ────────────────────────────────────────────────────────────
+function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg, renderCard }) {
+  if (!items) return null
+
+  const inner    = items.slice(0, 3)
+  const devoted  = items.slice(3, 10)
+  const mentions = items.slice(10)
+
+  return (
+    <section className="flex flex-col">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center justify-center w-9 h-9 rounded-[10px]"
+             style={{ background: `${iconColor}18`, border: `0.5px solid ${iconColor}44` }}>
+          <Icon size={17} style={{ color: iconColor }} />
+        </div>
+        <div>
+          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">{title}</div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)]">{subtitle}</div>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-[12px] p-10 text-center text-[15px] text-[rgba(255,255,255,0.2)]"
+             style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.05)' }}>
+          {emptyMsg}
+        </div>
+      ) : (
+        <>
+          {inner.length > 0 && (
+            <>
+              <TierLabel label="Inner Circle" color={`${iconColor}80`} />
+              <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {inner.map((item, i) => renderCard(item, i + 1, 390, true))}
+              </div>
+            </>
+          )}
+          {devoted.length > 0 && (
+            <>
+              <TierLabel label="The Devoted" color="rgba(255,255,255,0.2)" />
+              <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                {devoted.map((item, i) => renderCard(item, i + 4, 200, true))}
+              </div>
+            </>
+          )}
+          {mentions.length > 0 && (
+            <>
+              <TierLabel label="Honourable Mentions" color="rgba(255,255,255,0.12)" />
+              <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                {mentions.map((item, i) => renderCard(item, i + 11, 160, false))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+export default function HallOfFame() {
+  const navigate = useNavigate()
+
+  const { data: imageHof }   = useQuery({ queryKey: ['hof',         30], queryFn: () => galleriesApi.hof(30).then(r => r.data),   staleTime: 0 })
+  const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30], queryFn: () => galleriesApi.galleryHof(30).then(r => r.data), staleTime: 0 })
+  const { data: creatorHof } = useQuery({ queryKey: ['creator-hof', 30], queryFn: () => creatorsApi.hof(30).then(r => r.data),   staleTime: 0, refetchInterval: 15000 })
+
+  return (
+    <div className="flex-1 overflow-y-auto" style={{ background: '#0e0e0e' }}>
+      <div className="max-w-[1400px] mx-auto px-8 py-10">
+
+        <div className="flex items-center gap-4 mb-14">
+          <div className="flex items-center justify-center w-14 h-14 rounded-[14px]"
+               style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)',
+                        boxShadow: '0 0 30px 4px rgba(186,117,23,0.12)' }}>
+            <Trophy size={26} style={{ color: '#FAC775' }} />
+          </div>
+          <div>
+            <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">Hall of Fame</h1>
+            <p className="text-[14px] text-[rgba(255,255,255,0.35)] mt-0.5">
+              Your most visited content — ranked by views, cum count shown alongside
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-20">
+
+          <CreatorSection creators={creatorHof} onNavigate={navigate} />
+
+          <TieredSection
+            icon={Film}
+            iconColor="#D4537E"
+            title="Media Hall of Fame"
+            subtitle="Individual photos and videos ranked by view count. High-view images with many cum taps earn their place here."
+            items={imageHof}
+            emptyMsg="Open images and videos in galleries to start building this list"
+            renderCard={(item, rank, h, showRank) => (
+              <MediaCard key={item.id} item={item} rank={rank} imgHeight={h} showRank={showRank}
+                         onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)} />
+            )}
+          />
+
+          {(galleryHof ?? []).length > 0 && (
+            <TieredSection
+              icon={Images}
+              iconColor="#7F77DD"
+              title="Gallery Hall of Fame"
+              subtitle="Full galleries ranked by total view count. Reflects which collections you return to most — not just opened once."
+              items={galleryHof}
+              emptyMsg="Browse galleries to build this list"
+              renderCard={(g, rank, h, showRank) => (
+                <GalleryCard key={g.id} gallery={g} rank={rank} imgHeight={h} showRank={showRank}
+                             onClick={() => navigate(`/galleries/${g.id}`)} />
+              )}
+            />
+          )}
+
+        </div>
+      </div>
+    </div>
+  )
+}

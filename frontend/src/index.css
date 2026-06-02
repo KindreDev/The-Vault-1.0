@@ -1,0 +1,457 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+html { zoom: 1.0; }
+:root {
+  /* Legacy accent — kept for back-compat */
+  --accent: #7F77DD;
+
+  /* Palette-driven vars — set by JS, these are just the defaults */
+  --c-accent:  #7F77DD;
+  --c-pink:    #D4537E;
+  --c-amber:   #BA7517;
+  --c-green:   #1D9E75;
+  --c-bg:      #0e0e0e;
+  --c-surface: #141414;
+  --c-card:    #1e1e1e;
+
+  /* Font — set by JS via applyFont(); default is Inter */
+  --vault-font: 'Inter', system-ui, sans-serif;
+
+  /* Session border glow — overridable by user */
+  --session-glow: var(--c-pink);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--c-bg);
+  color: rgba(255,255,255,0.85);
+  font-family: var(--vault-font);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Scrollbars — ultra-thin, near-invisible */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; transition: background 0.2s; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+
+/* Gallery masonry */
+.masonry-grid { display: flex; gap: 8px; width: 100%; }
+.masonry-col { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+/* XP toast animation */
+@keyframes xp-float {
+  0%   { opacity: 0; transform: translateY(8px); }
+  20%  { opacity: 1; transform: translateY(0); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+.xp-toast { animation: xp-float 1.8s ease forwards; }
+
+/* Card hover — depth lift */
+.vault-card {
+  background: var(--c-card);
+  border: 0.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  transition: border-color 0.18s, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease;
+}
+.vault-card:hover {
+  border-color: rgba(255,255,255,0.18);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 36px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* ── Global button hover ─────────────────────────────────────────────────── */
+button {
+  transition: filter 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease !important;
+}
+button:not(:disabled):hover {
+  filter: brightness(1.18) !important;
+  transform: translateY(-1px) !important;
+}
+button:not(:disabled):active {
+  filter: brightness(0.9) !important;
+  transform: translateY(0) scale(0.98) !important;
+}
+
+/* ── Cause font for card elements ───────────────────────────────────────── */
+.card-font {
+  font-family: 'Cause', 'Inter', system-ui, sans-serif;
+}
+
+/* ── Card open/close animation ──────────────────────────────────────────── */
+@keyframes card-viewer-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes card-viewer-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Image thumb */
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Sidebar nav active */
+.nav-active {
+  background: color-mix(in srgb, var(--c-accent) 15%, transparent) !important;
+  color: color-mix(in srgb, var(--c-accent) 85%, white) !important;
+}
+.nav-active svg { color: var(--c-accent) !important; }
+
+/* Goon border — pulsing neon edge around the entire viewport */
+@keyframes goon-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 25px 4px color-mix(in srgb, var(--session-glow) 50%, transparent),
+      inset 0 0 60px 12px color-mix(in srgb, var(--session-glow) 25%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 45px 8px color-mix(in srgb, var(--session-glow) 70%, transparent),
+      inset 0 0 100px 20px color-mix(in srgb, var(--session-glow) 40%, transparent);
+  }
+}
+.goon-border {
+  animation: goon-pulse 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Slideshow / viewer fade transition */
+@keyframes media-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.media-fade-in { animation: media-fade-in 0.45s ease forwards; }
+
+/* ── Global image fade-in ────────────────────────────────────────────────── */
+/* All images start invisible and fade in when loaded.                        */
+/* [data-no-fade] opts out (e.g. LQIP blur placeholders, icon images).       */
+img:not([data-no-fade]) {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+img.img-loaded:not([data-no-fade]) { opacity: 1; }
+
+/* ── Skeleton shimmer ────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.09) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Multi-panel slideshow progress bar */
+@keyframes panel-progress {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+/* UI Animations */
+@keyframes menu-pop {
+  0%   { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  70%  { opacity: 1; transform: scale(1.01) translateY(1px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-menu-pop {
+  animation: menu-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes modal-pop {
+  0%   { opacity: 0; transform: scale(0.94) translateY(8px); }
+  60%  { opacity: 1; transform: scale(1.02) translateY(-1px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-pop {
+  animation: modal-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out forwards;
+}
+
+@keyframes scale-fade-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);  }
+}
+
+/* Staggered entrance — add to any grid/flex container */
+.grid-stagger > * {
+  animation: scale-fade-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.grid-stagger > *:nth-child(1)  { animation-delay:   0ms; }
+.grid-stagger > *:nth-child(2)  { animation-delay:  40ms; }
+.grid-stagger > *:nth-child(3)  { animation-delay:  80ms; }
+.grid-stagger > *:nth-child(4)  { animation-delay: 120ms; }
+.grid-stagger > *:nth-child(5)  { animation-delay: 160ms; }
+.grid-stagger > *:nth-child(6)  { animation-delay: 200ms; }
+.grid-stagger > *:nth-child(7)  { animation-delay: 240ms; }
+.grid-stagger > *:nth-child(8)  { animation-delay: 280ms; }
+.grid-stagger > *:nth-child(9)  { animation-delay: 320ms; }
+.grid-stagger > *:nth-child(10) { animation-delay: 360ms; }
+.grid-stagger > *:nth-child(11) { animation-delay: 400ms; }
+.grid-stagger > *:nth-child(12) { animation-delay: 430ms; }
+/* items 13+ appear without stagger (they're below the fold anyway) */
+
+@keyframes slide-up-fade {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Flame animation (streak icon in sidebar) ────────────────────────────── */
+@keyframes flame-flicker {
+  0%,100% { transform: scaleY(1)    scaleX(1)    rotate(-2deg); filter: brightness(1);    }
+  20%     { transform: scaleY(1.12) scaleX(0.93) rotate(2deg);  filter: brightness(1.25); }
+  40%     { transform: scaleY(0.95) scaleX(1.06) rotate(-3deg); filter: brightness(0.9);  }
+  60%     { transform: scaleY(1.08) scaleX(0.96) rotate(1deg);  filter: brightness(1.15); }
+  80%     { transform: scaleY(1.02) scaleX(1.02) rotate(-1deg); filter: brightness(1.05); }
+}
+.streak-flame {
+  display: inline-block;
+  animation: flame-flicker 0.9s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+/* ── Cyberpunk themes ────────────────────────────────────────────────────── */
+@keyframes cyber-border-pulse {
+  0%,100% { opacity: 0.55; }
+  50%     { opacity: 1; }
+}
+
+/* shared setup for both cyber variants */
+[data-theme="cyberpunk"],
+[data-theme="cyber-gold"] {
+  --cyber-primary: #FF00CC;
+  --cyber-secondary: #00FFFF;
+}
+[data-theme="cyber-gold"] {
+  --cyber-primary: #FFE600;
+  --cyber-secondary: #00FFCC;
+}
+
+/* vault-card: always-on ambient glow + crisp neon border */
+[data-theme="cyberpunk"] .vault-card,
+[data-theme="cyber-gold"] .vault-card {
+  border-color: color-mix(in srgb, var(--cyber-primary) 35%, transparent) !important;
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--cyber-primary) 14%, transparent),
+    0 0 40px color-mix(in srgb, var(--cyber-primary) 06%, transparent),
+    inset 0 0 18px color-mix(in srgb, var(--cyber-primary) 04%, transparent),
+    0 4px 24px rgba(0,0,0,0.7);
+  animation: cyber-border-pulse 3s ease-in-out infinite;
+}
+[data-theme="cyberpunk"] .vault-card:hover,
+[data-theme="cyber-gold"] .vault-card:hover {
+  border-color: color-mix(in srgb, var(--cyber-primary) 75%, transparent) !important;
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--cyber-primary) 40%, transparent),
+    0 0 60px color-mix(in srgb, var(--cyber-primary) 18%, transparent),
+    0 0 100px color-mix(in srgb, var(--cyber-primary) 08%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--cyber-primary) 08%, transparent),
+    0 6px 32px rgba(0,0,0,0.8) !important;
+  animation: none;
+}
+
+/* image/video thumbnail cards — scoped to card thumbs only, NOT the viewer */
+[data-theme="cyberpunk"] .vault-card img,
+[data-theme="cyber-gold"] .vault-card img {
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+[data-theme="cyberpunk"] .vault-card img:hover,
+[data-theme="cyber-gold"] .vault-card img:hover {
+  filter: saturate(1.4) brightness(1.1) !important;
+  box-shadow: 0 0 20px color-mix(in srgb, var(--cyber-primary) 50%, transparent);
+}
+
+/* tags — neon pill glow */
+[data-theme="cyberpunk"] span[style*="#7F77DD"],
+[data-theme="cyberpunk"] span[style*="#CECBF6"],
+[data-theme="cyber-gold"] span[style*="#7F77DD"],
+[data-theme="cyber-gold"] span[style*="#CECBF6"] {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--cyber-primary) 60%, transparent) !important;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--cyber-primary) 80%, transparent);
+}
+
+/* sidebar nav active item */
+[data-theme="cyberpunk"] .nav-active,
+[data-theme="cyber-gold"] .nav-active {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--cyber-primary) 40%, transparent),
+              inset 0 0 12px color-mix(in srgb, var(--cyber-primary) 10%, transparent) !important;
+  border-left: 2px solid var(--cyber-primary) !important;
+}
+
+/* scrollbar goes neon */
+[data-theme="cyberpunk"] ::-webkit-scrollbar-thumb,
+[data-theme="cyber-gold"] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--cyber-primary) 60%, transparent);
+  box-shadow: 0 0 6px var(--cyber-primary);
+}
+
+/* page headings text glow */
+[data-theme="cyberpunk"] h1, [data-theme="cyberpunk"] h2,
+[data-theme="cyber-gold"] h1, [data-theme="cyber-gold"] h2 {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--cyber-primary) 70%, transparent),
+               0 0 40px color-mix(in srgb, var(--cyber-primary) 30%, transparent);
+}
+
+/* buttons pulse */
+[data-theme="cyberpunk"] button:not(:disabled):hover,
+[data-theme="cyber-gold"] button:not(:disabled):hover {
+  box-shadow: 0 0 16px color-mix(in srgb, var(--cyber-primary) 55%, transparent) !important;
+  filter: brightness(1.25) saturate(1.3) !important;
+}
+
+/* ── Cyberpunk sidebar ───────────────────────────────────────────────────── */
+[data-theme="cyberpunk"] aside,
+[data-theme="cyber-gold"] aside {
+  background: color-mix(in srgb, var(--cyber-primary) 6%, #030005) !important;
+  border-right: 1px solid color-mix(in srgb, var(--cyber-primary) 40%, transparent) !important;
+  box-shadow:
+    4px 0 30px color-mix(in srgb, var(--cyber-primary) 18%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--cyber-primary) 25%, transparent);
+}
+
+/* section labels — target the SectionLabel div directly */
+[data-theme="cyberpunk"] aside nav > div[class*="text-"],
+[data-theme="cyber-gold"] aside nav > div[class*="text-"] {
+  color: color-mix(in srgb, var(--cyber-primary) 65%, white) !important;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--cyber-primary) 80%, transparent);
+}
+
+/* nav item active — NavLink sets aria-current="page" on active links */
+[data-theme="cyberpunk"] aside a[aria-current="page"],
+[data-theme="cyber-gold"] aside a[aria-current="page"] {
+  background: color-mix(in srgb, var(--cyber-primary) 18%, transparent) !important;
+  color: color-mix(in srgb, var(--cyber-primary) 90%, white) !important;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--cyber-primary) 25%, transparent),
+              inset 0 0 10px color-mix(in srgb, var(--cyber-primary) 8%, transparent);
+}
+
+/* nav item hover */
+[data-theme="cyberpunk"] aside a:not(.nav-active):hover,
+[data-theme="cyber-gold"] aside a:not(.nav-active):hover,
+[data-theme="cyberpunk"] aside button:hover,
+[data-theme="cyber-gold"] aside button:hover {
+  background: color-mix(in srgb, var(--cyber-primary) 10%, transparent) !important;
+  color: color-mix(in srgb, var(--cyber-primary) 80%, white) !important;
+}
+
+
+/* XP bar glow — target the filled progress div inside the 3px bar */
+[data-theme="cyberpunk"] aside div[style*="height"] > div[style*="background"],
+[data-theme="cyber-gold"] aside div[style*="height"] > div[style*="background"] {
+  box-shadow: 0 0 8px var(--cyber-primary), 0 0 16px color-mix(in srgb, var(--cyber-primary) 50%, transparent);
+}
+
+/* ── Cyberpunk sliders & inputs ──────────────────────────────────────────── */
+[data-theme="cyberpunk"] input[type="range"],
+[data-theme="cyber-gold"] input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+[data-theme="cyberpunk"] input[type="range"]::-webkit-slider-runnable-track,
+[data-theme="cyber-gold"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: color-mix(in srgb, var(--cyber-primary) 30%, rgba(255,255,255,0.08));
+  border-radius: 2px;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--cyber-primary) 40%, transparent);
+}
+[data-theme="cyberpunk"] input[type="range"]::-webkit-slider-thumb,
+[data-theme="cyber-gold"] input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cyber-primary);
+  margin-top: -6px;
+  box-shadow:
+    0 0 8px var(--cyber-primary),
+    0 0 20px color-mix(in srgb, var(--cyber-primary) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--cyber-primary) 30%, transparent);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+[data-theme="cyberpunk"] input[type="range"]::-webkit-slider-thumb:hover,
+[data-theme="cyber-gold"] input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow:
+    0 0 14px var(--cyber-primary),
+    0 0 35px color-mix(in srgb, var(--cyber-primary) 80%, transparent),
+    0 0 60px color-mix(in srgb, var(--cyber-primary) 40%, transparent);
+}
+
+/* input focus glow */
+[data-theme="cyberpunk"] input:focus,
+[data-theme="cyber-gold"] input:focus,
+[data-theme="cyberpunk"] textarea:focus,
+[data-theme="cyber-gold"] textarea:focus,
+[data-theme="cyberpunk"] select:focus,
+[data-theme="cyber-gold"] select:focus {
+  outline: none !important;
+  border-color: color-mix(in srgb, var(--cyber-primary) 70%, transparent) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--cyber-primary) 20%, transparent),
+    0 0 12px color-mix(in srgb, var(--cyber-primary) 30%, transparent) !important;
+}
+
+/* nav bars / toolbar strips */
+[data-theme="cyberpunk"] nav,
+[data-theme="cyber-gold"] nav {
+  border-color: color-mix(in srgb, var(--cyber-primary) 20%, transparent) !important;
+}
+
+/* ── Glass theme ─────────────────────────────────────────────────────────── */
+/* Glass — text shadow so text is readable over any background image */
+[data-theme="glass"] * {
+  text-shadow: 0 1px 4px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6);
+}
+
+/* Glass — frosted panels over the background (body bg set by JS in vault.js) */
+[data-theme="glass"] .vault-card {
+  background: rgba(0,0,0,0.45) !important;
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25),
+              inset 0 1px 0 rgba(255,255,255,0.07);
+}
+[data-theme="glass"] .vault-card:hover {
+  background: rgba(0,0,0,0.58) !important;
+  border-color: rgba(255,255,255,0.20) !important;
+}
+
+/* Sidebar */
+[data-theme="glass"] aside {
+  background: rgba(0,0,0,0.55) !important;
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border-right: 1px solid rgba(255,255,255,0.08) !important;
+}
+

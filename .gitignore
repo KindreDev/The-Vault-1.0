@@ -1,0 +1,63 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+backend/venv/
+backend/venv_old/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Personal data — NEVER commit these ───────────────────────────────────────
+backend/vault.db
+backend/vault.db-wal
+backend/vault.db-shm
+backend/vault.db.pre_restore_*
+backend/thumbs/
+backend/vault_config.json
+backend/dedup_ignored.json
+
+# ── AI model files (downloaded at runtime via huggingface_hub, not stored in repo) ──
+backend/models/
+
+# ── Frontend build artefacts ──────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+
+# ── PyInstaller build output ──────────────────────────────────────────────────
+dist/
+build/
+*.spec.bak
+
+# ── Downloaded tools (binaries) ───────────────────────────────────────────────
+tools/
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Claude Code session memory ────────────────────────────────────────────────
+.claude/
+MEMORY.md
+CLAUDE.md
+
+# ── Private documents ─────────────────────────────────────────────────────────
+*.pdf
+
+# ── Dev/cheat helper scripts (local only) ─────────────────────────────────────
+*_cheat.bat
+*_overlay_test.bat
+*_fix_goon_stacks.bat
+backend/fix_sort_order.py
+
+# ── Editor noise ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+*.key
+*.pem
