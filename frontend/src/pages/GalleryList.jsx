@@ -736,13 +736,62 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
 }
 
 
+function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
+  const busy = activeOp !== null
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center"
+         style={{ background: 'rgba(0,0,0,0.75)' }}>
+      <div className="rounded-[14px] p-6 flex flex-col gap-4 w-[360px]"
+           style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+        <div>
+          <div className="text-[15px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            Delete {count} {count === 1 ? 'gallery' : 'galleries'}
+          </div>
+          <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            Choose how you want to remove the selected galleries.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button onClick={onVault} disabled={busy}
+            className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
+            style={{ background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)' }}>
+            <div className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
+              {activeOp === 'vault' ? 'Removing…' : 'Remove from vault'}
+            </div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Files stay on disk — only removed from The Vault</div>
+          </button>
+
+          <button onClick={onDisk} disabled={busy}
+            className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
+            style={{ background: 'rgba(212,83,126,0.12)', border: '1px solid rgba(212,83,126,0.3)' }}>
+            <div className="text-[13px] font-medium" style={{ color: '#F4C0D1' }}>
+              {activeOp === 'disk' ? 'Deleting…' : 'Delete from drive'}
+            </div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Permanently removes files from your disk — cannot be undone</div>
+          </button>
+
+          <button onClick={onCancel} disabled={busy}
+            className="w-full py-2 rounded-[10px] text-[13px] cursor-pointer disabled:opacity-40 transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+            style={{ color: 'rgba(255,255,255,0.35)' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+
 function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
-  const [creatorId, setCreatorId]           = useState(null)
+  const [creatorId, setCreatorId]             = useState(null)
   const [removeCreatorId, setRemoveCreatorId] = useState(null)
-  const [confirmDelete, setConfirmDelete]   = useState(false)
-  const [assigning, setAssigning]           = useState(false)
-  const [removing, setRemoving]             = useState(false)
-  const [showMergeModal, setShowMergeModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteOp, setDeleteOp]               = useState(null) // null | 'vault' | 'disk'
+  const [assigning, setAssigning]             = useState(false)
+  const [removing, setRemoving]               = useState(false)
+  const [showMergeModal, setShowMergeModal]   = useState(false)
   const qc = useQueryClient()
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
@@ -801,18 +850,52 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     onDone()
   }
 
-  const handleHardDelete = async () => {
-    setAssigning(true)
+  const handleVaultDelete = async () => {
+    setDeleteOp('vault')
     let errs = 0
     for (const id of selectedIds) {
-      try { await galleriesApi.delete(id, true) } catch { errs++ }
+      try { await galleriesApi.delete(id, false) } catch { errs++ }
     }
-    setAssigning(false)
-    if (errs > 0) toast.error(`Finished with ${errs} errors`)
-    else toast.success(`Deleted ${selectedIds.length} galleries`)
+    setDeleteOp(null)
+    setShowDeleteModal(false)
     qc.invalidateQueries({ queryKey: ['galleries'] })
-    setConfirmDelete(false)
+    if (errs > 0) toast.error(`Finished with ${errs} errors`)
+    else toast.success(`Removed ${selectedIds.length} ${selectedIds.length === 1 ? 'gallery' : 'galleries'} from vault`)
     onDone()
+  }
+
+  const handleDiskDelete = async () => {
+    setDeleteOp('disk')
+    let deleted = 0
+    let errs = 0
+    const blocked = []
+
+    for (const g of selectedGalleries) {
+      try {
+        await galleriesApi.delete(g.id, true)
+        deleted++
+      } catch (e) {
+        const detail = e.response?.data?.detail
+        if (detail?.code === 'has_children') {
+          blocked.push({ gallery: g, children: detail.children })
+        } else {
+          errs++
+        }
+      }
+    }
+
+    setDeleteOp(null)
+    setShowDeleteModal(false)
+    qc.invalidateQueries({ queryKey: ['galleries'] })
+
+    if (deleted > 0) toast.success(`Deleted ${deleted} ${deleted === 1 ? 'gallery' : 'galleries'} from disk`)
+    blocked.forEach(({ gallery, children }) => {
+      const names = children.slice(0, 3).map(c => `"${c.name}"`).join(', ')
+      const more = children.length > 3 ? ` +${children.length - 3} more` : ''
+      toast.error(`"${gallery.name}" has child galleries inside it (${names}${more}) — delete those first`, { duration: 8000 })
+    })
+    if (errs > 0) toast.error(`${errs} deletion(s) failed`)
+    if (deleted > 0) onDone()
   }
 
   return (
@@ -875,18 +958,20 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
       {/* Action: Delete */}
-      {confirmDelete ? (
-        <button onMouseDown={handleHardDelete} disabled={assigning}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer animate-pulse disabled:opacity-40"
-                style={{ background: 'rgba(212,83,126,0.3)', color: '#F4C0D1' }}>
-          <Trash2 size={12} /> Confirm Delete
-        </button>
-      ) : (
-        <button onMouseDown={() => setConfirmDelete(true)} disabled={assigning}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-          <Trash2 size={12} /> Delete
-        </button>
+      <button onMouseDown={() => setShowDeleteModal(true)} disabled={assigning || removing || deleteOp !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+              style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+        <Trash2 size={12} /> Delete
+      </button>
+
+      {showDeleteModal && (
+        <DeleteModal
+          count={selectedIds.length}
+          activeOp={deleteOp}
+          onVault={handleVaultDelete}
+          onDisk={handleDiskDelete}
+          onCancel={() => setShowDeleteModal(false)}
+        />
       )}
 
       <button type="button" onMouseDown={onCancel}

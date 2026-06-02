@@ -462,17 +462,42 @@ def update_gallery(gallery_id: int, data: GalleryUpdate, db: Session = Depends(g
 
 @router.delete("/{gallery_id}")
 def delete_gallery(gallery_id: int, delete_files: bool = False, db: Session = Depends(get_db)):
+    import os, shutil
     g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
     if not g:
         raise HTTPException(404, "Gallery not found")
-    import os, shutil
-    
-    if delete_files and g.folder_path and os.path.exists(g.folder_path):
-        try:
-            shutil.rmtree(g.folder_path)
-        except Exception:
-            pass
-            
+
+    if delete_files and g.folder_path:
+        # Block deletion if any registered gallery lives inside this folder.
+        # Escape LIKE wildcards in the path so folder names with % or _ don't cause false matches.
+        prefix = g.folder_path.rstrip('/\\') + os.sep
+        safe_prefix = prefix.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        children = db.query(Gallery).filter(
+            Gallery.folder_path.like(safe_prefix + '%', escape='\\'),
+            Gallery.id != gallery_id,
+        ).all()
+        if children:
+            raise HTTPException(400, detail={
+                "code": "has_children",
+                "children": [{"id": c.id, "name": c.name, "path": c.folder_path} for c in children],
+            })
+
+        # Delete thumbnails for every image in this gallery
+        images = db.query(Image).filter(Image.gallery_id == gallery_id).all()
+        for img in images:
+            if img.thumb_path:
+                try:
+                    os.remove(img.thumb_path)
+                except Exception:
+                    pass
+
+        # Delete the folder from disk
+        if os.path.exists(g.folder_path):
+            try:
+                shutil.rmtree(g.folder_path)
+            except Exception as e:
+                raise HTTPException(500, detail=f"Failed to delete folder: {e}")
+
     db.delete(g)
     db.commit()
     return {"deleted": gallery_id}
