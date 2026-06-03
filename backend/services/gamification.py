@@ -786,7 +786,9 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         # override_amount is the image count (minimum 1).
         # Award half that as credits, also floored to 1.
         image_count = override_amount or 1
-        _award_credits_direct(db, max(1, image_count // 2), source="gallery_assigned")
+        credit_amount = max(1, image_count // 2)
+        _award_credits_direct(db, credit_amount, source="gallery_assigned")
+        xp.credits_earned = credit_amount
 
     # Night owl / early bird based on current hour
     hour = now.hour

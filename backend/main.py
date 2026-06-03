@@ -677,7 +677,9 @@ if __name__ == "__main__":
                     "});"
                 )
 
-            webview.start(_on_loaded, debug=False)
+            _wv_storage = os.path.join(DATA_DIR, "webview_data")
+            os.makedirs(_wv_storage, exist_ok=True)
+            webview.start(_on_loaded, debug=False, private_mode=False, storage_path=_wv_storage)
             # webview.start() blocks until the window is closed.
             # os._exit() is a hard exit — it kills all threads (including uvicorn's
             # asyncio ThreadPoolExecutor non-daemon threads) instead of waiting for

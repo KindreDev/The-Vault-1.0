@@ -466,6 +466,7 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
     """
     profile = _get_or_create_profile(db)
 
+    total_cost = 0
     if not free:
         cost_per_pack = PACK_COST if pack_type == "standard" else 500
         total_cost = cost_per_pack * quantity

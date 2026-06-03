@@ -574,7 +574,7 @@ class DeviceService {
     const durSec   = Math.max(0.05, durationMs / 1000)
     const velocity = clamp(Math.round(distMm / durSec), 10, 400)
     this._handyCurrentPos = limited
-    this._handyRequest('PUT', '/hdsp/nextXAVa', { position: newPos, velocity, stopOnTarget: true })
+    this._handyRequest('PUT', '/hdsp/nextXAVa', { xa: newPos, va: velocity, stopOnTarget: true })
       .catch(() => {})
   }
 

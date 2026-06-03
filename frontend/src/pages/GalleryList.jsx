@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -739,46 +740,63 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
 function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
   const busy = activeOp !== null
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center"
-         style={{ background: 'rgba(0,0,0,0.75)' }}>
-      <div className="rounded-[14px] p-6 flex flex-col gap-4 w-[360px]"
-           style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
-        <div>
-          <div className="text-[15px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.9)' }}>
-            Delete {count} {count === 1 ? 'gallery' : 'galleries'}
+    <>
+      {/* Backdrop */}
+      <motion.div
+        className="fixed inset-0 z-[200]"
+        style={{ background: 'rgba(0,0,0,0.75)' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18 }}
+      />
+      {/* Card */}
+      <motion.div
+        className="fixed inset-0 z-[201] flex items-center justify-center pointer-events-none"
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+      >
+        <div className="rounded-[14px] p-6 flex flex-col gap-4 w-[360px] pointer-events-auto"
+             style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+          <div>
+            <div className="text-[17px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              Delete {count} {count === 1 ? 'gallery' : 'galleries'}
+            </div>
+            <div className="text-[15px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              Choose how you want to remove the selected galleries.
+            </div>
           </div>
-          <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            Choose how you want to remove the selected galleries.
+
+          <div className="flex flex-col gap-2">
+            <button onClick={onVault} disabled={busy}
+              className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
+              style={{ background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)' }}>
+              <div className="text-[15px] font-medium" style={{ color: '#CECBF6' }}>
+                {activeOp === 'vault' ? 'Removing…' : 'Remove from vault'}
+              </div>
+              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Files stay on disk — only removed from The Vault</div>
+            </button>
+
+            <button onClick={onDisk} disabled={busy}
+              className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
+              style={{ background: 'rgba(212,83,126,0.12)', border: '1px solid rgba(212,83,126,0.3)' }}>
+              <div className="text-[15px] font-medium" style={{ color: '#F4C0D1' }}>
+                {activeOp === 'disk' ? 'Deleting…' : 'Delete from drive'}
+              </div>
+              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Permanently removes files from your disk — cannot be undone</div>
+            </button>
+
+            <button onClick={onCancel} disabled={busy}
+              className="w-full py-2 rounded-[10px] text-[15px] cursor-pointer disabled:opacity-40 transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+              style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Cancel
+            </button>
           </div>
         </div>
-
-        <div className="flex flex-col gap-2">
-          <button onClick={onVault} disabled={busy}
-            className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
-            style={{ background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)' }}>
-            <div className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
-              {activeOp === 'vault' ? 'Removing…' : 'Remove from vault'}
-            </div>
-            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Files stay on disk — only removed from The Vault</div>
-          </button>
-
-          <button onClick={onDisk} disabled={busy}
-            className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
-            style={{ background: 'rgba(212,83,126,0.12)', border: '1px solid rgba(212,83,126,0.3)' }}>
-            <div className="text-[13px] font-medium" style={{ color: '#F4C0D1' }}>
-              {activeOp === 'disk' ? 'Deleting…' : 'Delete from drive'}
-            </div>
-            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Permanently removes files from your disk — cannot be undone</div>
-          </button>
-
-          <button onClick={onCancel} disabled={busy}
-            className="w-full py-2 rounded-[10px] text-[13px] cursor-pointer disabled:opacity-40 transition-colors hover:bg-[rgba(255,255,255,0.04)]"
-            style={{ color: 'rgba(255,255,255,0.35)' }}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>,
+      </motion.div>
+    </>,
     document.body
   )
 }
@@ -964,15 +982,17 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         <Trash2 size={12} /> Delete
       </button>
 
-      {showDeleteModal && (
-        <DeleteModal
-          count={selectedIds.length}
-          activeOp={deleteOp}
-          onVault={handleVaultDelete}
-          onDisk={handleDiskDelete}
-          onCancel={() => setShowDeleteModal(false)}
-        />
-      )}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <DeleteModal
+            count={selectedIds.length}
+            activeOp={deleteOp}
+            onVault={handleVaultDelete}
+            onDisk={handleDiskDelete}
+            onCancel={() => setShowDeleteModal(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <button type="button" onMouseDown={onCancel}
               className="text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer ml-auto">

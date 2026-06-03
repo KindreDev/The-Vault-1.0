@@ -41,14 +41,14 @@ def _get_data_dir() -> str:
     Uses the path stored in vault_config.json if set, otherwise falls
     back to CONFIG_DIR (AppData on exe, backend/ in dev).
     """
-    config   = _read_config()
-    custom   = config.get('data_dir', '').strip()
+    config = _read_config()
+    custom = config.get('data_dir', '').strip()
     if custom:
         try:
             os.makedirs(custom, exist_ok=True)
-            return custom
         except Exception:
-            pass  # bad path — fall through to default
+            pass  # drive may not be mounted yet — still honour the configured path
+        return custom
     return CONFIG_DIR
 
 

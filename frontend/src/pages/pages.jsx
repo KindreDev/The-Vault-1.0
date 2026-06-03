@@ -1,4 +1,5 @@
 import React from 'react'
+import ReactDOM from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge } from 'lucide-react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi } from '../lib/api'
@@ -594,6 +595,190 @@ function getLevelColor(lvl) {
   return '#888780'
 }
 
+// ── Sessions history modal ────────────────────────────────────────────────────
+function SessionsModal({ onClose }) {
+  const { data: allSessions } = useQuery({
+    queryKey: ['all-sessions'],
+    queryFn: () => sessionsApi.list({ limit: 500 }).then(r => r.data),
+  })
+
+  // Entrance animation — mount with scale/opacity then transition in
+  const [visible, setVisible] = React.useState(false)
+  React.useEffect(() => { const id = requestAnimationFrame(() => setVisible(true)); return () => cancelAnimationFrame(id) }, [])
+
+  const groups = React.useMemo(() => {
+    if (!allSessions?.length) return []
+    const result = []
+    let cur = null
+    for (const s of allSessions) {
+      const t = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
+      if (!cur || Math.abs(t - cur.refTime) > 5000) {
+        cur = { refTime: t, logged_at: s.logged_at, creators: s.creator_name ? [s.creator_name] : [], gallery_name: s.gallery_name, duration_sec: s.duration_sec }
+        result.push(cur)
+      } else {
+        if (s.creator_name && !cur.creators.includes(s.creator_name)) cur.creators.push(s.creator_name)
+        if (!cur.duration_sec && s.duration_sec) cur.duration_sec = s.duration_sec
+      }
+    }
+    return result
+  }, [allSessions])
+
+  const [expanded,    setExpanded]    = React.useState(new Set())
+  const [hoveredRow,  setHoveredRow]  = React.useState(null)
+  const [hoveredMore, setHoveredMore] = React.useState(null)
+
+  const toggle = (i) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
+
+  const relTime = (ts) => {
+    const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+    const d = Math.floor((Date.now() - t.getTime()) / 86400000)
+    if (d === 0) return 'Today'
+    if (d === 1) return 'Yesterday'
+    if (d < 7) return t.toLocaleDateString('en-US', { weekday: 'long' })
+    if (d < 30) return `${d} days ago`
+    return t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  const fullDate = (ts) => {
+    const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+    return t.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+      ' at ' + t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+
+  const fmtDur = (sec) => {
+    if (!sec) return null
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60)
+    if (h > 0) return `${h}h ${m}m`
+    return m > 0 ? `${m} minute${m !== 1 ? 's' : ''}` : 'less than a minute'
+  }
+
+  const creatorSentence = (creators, idx) => {
+    if (creators.length === 0) return <span style={{ color: 'rgba(255,255,255,0.4)' }}>an unknown session</span>
+    const wrap = (name) => <span style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>{name}</span>
+    if (creators.length === 1) return wrap(creators[0])
+    if (creators.length === 2) return <>{wrap(creators[0])} and {wrap(creators[1])}</>
+    if (creators.length === 3) return <>{wrap(creators[0])}, {wrap(creators[1])} and {wrap(creators[2])}</>
+    const extra = creators.slice(2)
+    return (
+      <>{wrap(creators[0])}, {wrap(creators[1])} and{' '}
+        <span style={{ position: 'relative', display: 'inline-block' }}>
+          <span
+            style={{
+              color: '#D4537E', fontWeight: 700, cursor: 'default',
+              borderBottom: '1px dotted rgba(212,83,126,0.5)',
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={() => setHoveredMore(idx)}
+            onMouseLeave={() => setHoveredMore(null)}
+          >{extra.length} more</span>
+          <div style={{
+            position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+            transform: `translateX(-50%) scale(${hoveredMore === idx ? 1 : 0.95})`,
+            background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)',
+            borderRadius: 8, padding: '8px 14px', zIndex: 200,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)', pointerEvents: 'none',
+            opacity: hoveredMore === idx ? 1 : 0,
+            transition: 'opacity 0.15s ease, transform 0.15s ease',
+            whiteSpace: 'nowrap',
+          }}>
+            {extra.map((n, j) => <div key={j} style={{ fontSize: 16, color: 'rgba(255,255,255,0.85)', lineHeight: 1.7 }}>{n}</div>)}
+          </div>
+        </span>
+      </>
+    )
+  }
+
+  return ReactDOM.createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.75)', padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#161616',
+          border: '0.5px solid rgba(255,255,255,0.1)',
+          borderRadius: 16,
+          width: '100%', maxWidth: 640, maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+          // Box entrance: slide up + fade
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
+          transition: 'opacity 0.22s ease, transform 0.22s ease',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>Session History</div>
+          <button
+            onClick={onClose}
+            style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s, background 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; e.currentTarget.style.background = 'transparent' }}
+          ><X size={16} /></button>
+        </div>
+
+        {/* Scrollable list */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {!allSessions
+            ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>Loading…</div>
+            : groups.length === 0
+              ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>No sessions logged yet.</div>
+              : groups.map((g, i) => {
+                  const isOpen    = expanded.has(i)
+                  const isHovered = hoveredRow === i
+                  const label = g.creators.length > 0
+                    ? g.creators.slice(0, 3).join(', ') + (g.creators.length > 3 ? ` +${g.creators.length - 3}` : '')
+                    : (g.gallery_name || 'Unknown')
+                  const dur = fmtDur(g.duration_sec)
+                  return (
+                    <div key={i} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+                      {/* Collapsed row */}
+                      <div
+                        onClick={() => toggle(i)}
+                        onMouseEnter={() => setHoveredRow(i)}
+                        onMouseLeave={() => setHoveredRow(null)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '13px 24px', cursor: 'pointer',
+                          background: isOpen
+                            ? 'rgba(255,255,255,0.03)'
+                            : isHovered ? 'rgba(255,255,255,0.02)' : 'transparent',
+                          transition: 'background 0.15s',
+                        }}
+                      >
+                        <span style={{ fontSize: 14, flexShrink: 0, opacity: isHovered ? 0.65 : 0.35, transition: 'opacity 0.15s' }}>💧</span>
+                        <div style={{ flex: 1, fontSize: 16, fontWeight: 600, color: isHovered ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 0.15s' }}>{label}</div>
+                        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{relTime(g.logged_at)}</div>
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', flexShrink: 0, transition: 'transform 0.2s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>▾</div>
+                      </div>
+
+                      {/* Expanded detail */}
+                      <div style={{
+                        overflow: 'hidden',
+                        maxHeight: isOpen ? 120 : 0,
+                        opacity: isOpen ? 1 : 0,
+                        transition: 'max-height 0.25s ease, opacity 0.2s ease',
+                      }}>
+                        <div style={{ padding: '2px 24px 14px 52px', fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>
+                          You gooned to {creatorSentence(g.creators, i)} on{' '}
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{fullDate(g.logged_at)}</span>
+                          {dur && <>{' '}for <span style={{ color: '#D4537E' }}>{dur}</span></>}.
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+          }
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export function Stats() {
   const addXpToast     = useVaultStore(s => s.addXpToast)
   const sessionActive  = useVaultStore(s => s.sessionActive)
@@ -633,7 +818,14 @@ export function Stats() {
     staleTime: 300000,
   })
 
+  const { data: recentSessions } = useQuery({
+    queryKey: ['recent-sessions'],
+    queryFn: () => sessionsApi.list({ limit: 20 }).then(r => r.data),
+    staleTime: 30000,
+  })
+
   const [showMapModal, setShowMapModal] = React.useState(false)
+  const [showSessionsModal, setShowSessionsModal] = React.useState(false)
 
   const logMutation = useMutation({
     mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
@@ -796,11 +988,85 @@ export function Stats() {
               )}
               {stats?.top_creator_name && (
                 <div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Favourite creator</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Goon Queen</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#CECBF6' }}>{stats.top_creator_name}</div>
                 </div>
               )}
             </div>
+
+            {/* Recent sessions — fills the empty space below the stat row */}
+            {(recentSessions?.length ?? 0) > 0 && (() => {
+              const groups = []
+              let cur = null
+              for (const s of recentSessions) {
+                const t = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
+                if (!cur || Math.abs(t - cur.refTime) > 5000) {
+                  cur = {
+                    refTime: t, logged_at: s.logged_at,
+                    creators: s.creator_name ? [s.creator_name] : [],
+                    gallery_name: s.gallery_name,
+                    duration_sec: s.duration_sec,
+                    xp_earned: s.xp_earned || 0,
+                  }
+                  groups.push(cur)
+                } else {
+                  if (s.creator_name && !cur.creators.includes(s.creator_name)) cur.creators.push(s.creator_name)
+                  cur.xp_earned += (s.xp_earned || 0)
+                  if (!cur.duration_sec && s.duration_sec) cur.duration_sec = s.duration_sec
+                }
+              }
+              const relTime = (ts) => {
+                const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+                const d = Math.floor((Date.now() - t.getTime()) / 86400000)
+                if (d === 0) return 'Today'
+                if (d === 1) return 'Yesterday'
+                if (d < 7) return t.toLocaleDateString('en-US', { weekday: 'short' })
+                if (d < 30) return `${d}d ago`
+                return t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              }
+              const visible = groups.slice(0, 6)
+              return (
+                <div style={{ marginTop: 22, borderTop: '0.5px solid rgba(255,255,255,0.07)', paddingTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Recent sessions</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {visible.map((g, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '7px 0',
+                        borderBottom: i < visible.length - 1 ? '0.5px solid rgba(255,255,255,0.05)' : 'none',
+                      }}>
+                        <span style={{ fontSize: 14, flexShrink: 0, opacity: 0.5 }}>💧</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {g.creators.length > 0 ? g.creators.join(' · ') : (g.gallery_name || 'Unknown')}
+                          </div>
+                          {g.gallery_name && g.creators.length > 0 && (
+                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {g.gallery_name}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          {g.duration_sec > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{fmtDuration(g.duration_sec)}</span>}
+                          {g.xp_earned > 0 && <span style={{ fontSize: 16, fontWeight: 700, color: '#7F77DD' }}>+{g.xp_earned} XP</span>}
+                          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', minWidth: 52, textAlign: 'right' }}>{relTime(g.logged_at)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {(groups.length >= 6 || totalCount > (recentSessions?.length ?? 0)) && (
+                    <button
+                      onClick={() => setShowSessionsModal(true)}
+                      style={{ marginTop: 12, fontSize: 16, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500, opacity: 0.7, transition: 'opacity 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.7' }}
+                    >
+                      See more →
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 
@@ -832,6 +1098,9 @@ export function Stats() {
 
       {showMapModal && (
         <WorldMapModal byCountry={byCountry || []} onClose={() => setShowMapModal(false)} />
+      )}
+      {showSessionsModal && (
+        <SessionsModal onClose={() => setShowSessionsModal(false)} />
       )}
 
       {/* Stats grid */}
@@ -1434,54 +1703,95 @@ function GpuStatusPanel() {
 }
 
 
-// ── Custom root picker (native select causes OS-rendered dropdown outside card) ─
+// ── Custom root picker ────────────────────────────────────────────────────────
+// Portals the list to document.body so backdrop-filter stacking contexts on
+// glass/cyberpunk themes can't clip or z-bury the dropdown.
+// A capture-phase scroll listener re-measures on every scroll event so the
+// list stays anchored to the button even when <main> or any parent scrolls.
 function RootDropdown({ roots, value, onChange }) {
   const [open, setOpen] = React.useState(false)
-  const ref = React.useRef(null)
+  const [pos, setPos]   = React.useState(null) // plain { top, left, width }
+  const btnRef  = React.useRef(null)
+  const listRef = React.useRef(null)
+
+  const measure = React.useCallback(() => {
+    if (!btnRef.current) return
+    const r = btnRef.current.getBoundingClientRect()
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+  }, [])
 
   React.useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
+    if (!open) return
+    measure()
+    window.addEventListener('scroll', measure, true) // capture catches all scroll containers
+    window.addEventListener('resize', measure)
+    const close = e => {
+      if (btnRef.current?.contains(e.target)) return
+      if (listRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+      document.removeEventListener('mousedown', close)
+    }
+  }, [open, measure])
 
   const selected = roots.find(r => String(r.id) === String(value))
   const label = selected
     ? (selected.label ? `${selected.label} — ${selected.path}` : selected.path)
     : '— Select a library root —'
 
-  return (
-    <div ref={ref} className="relative">
+  const list = open && pos && ReactDOM.createPortal(
+    <div
+      ref={listRef}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 9999,
+        background: 'var(--c-card, #1e1e1e)',
+        border: '0.5px solid rgba(255,255,255,0.14)',
+        borderRadius: 8,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+        maxHeight: 220,
+        overflowY: 'auto',
+      }}>
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { onChange(''); setOpen(false) }}
+        className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
+        style={{ color: 'rgba(255,255,255,0.35)' }}>
+        — Select a library root —
+      </button>
+      {roots.map(r => (
+        <button
+          key={r.id}
+          type="button"
+          onClick={() => { onChange(String(r.id)); setOpen(false) }}
+          className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
+          style={{ color: String(r.id) === String(value) ? '#CECBF6' : 'rgba(255,255,255,0.75)', background: String(r.id) === String(value) ? 'rgba(127,119,221,0.12)' : 'transparent' }}>
+          {r.label ? <><span style={{ color: '#CECBF6' }}>{r.label}</span> <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {r.path}</span></> : r.path}
+        </button>
+      ))}
+    </div>,
+    document.body
+  )
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => { if (open) { setOpen(false) } else { measure(); setOpen(true) } }}
         className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-[12px] text-left cursor-pointer"
         style={{ background: 'rgba(255,255,255,0.06)', color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
         <span className="truncate">{label}</span>
         <ChevronDown size={12} style={{ flexShrink: 0, color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
-      {open && (
-        <div className="absolute left-0 right-0 mt-1 rounded-[8px] z-20 overflow-hidden shadow-xl animate-menu-pop"
-             style={{ background: '#2a2a2a', border: '0.5px solid rgba(255,255,255,0.14)' }}>
-          <button
-            type="button"
-            onClick={() => { onChange(''); setOpen(false) }}
-            className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-            style={{ color: 'rgba(255,255,255,0.35)' }}>
-            — Select a library root —
-          </button>
-          {roots.map(r => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => { onChange(String(r.id)); setOpen(false) }}
-              className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-              style={{ color: String(r.id) === String(value) ? '#CECBF6' : 'rgba(255,255,255,0.75)', background: String(r.id) === String(value) ? 'rgba(127,119,221,0.12)' : 'transparent' }}>
-              {r.label ? <><span style={{ color: '#CECBF6' }}>{r.label}</span> <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {r.path}</span></> : r.path}
-            </button>
-          ))}
-        </div>
-      )}
+      {list}
     </div>
   )
 }
@@ -1549,7 +1859,7 @@ export function Settings() {
   const { data: configData } = useQuery({
     queryKey: ['system-config'],
     queryFn:  () => systemApi.getConfig().then(r => r.data),
-    onSuccess: (d) => { if (!storageInput) setStorageInput(d.effective_data_dir) },
+    onSuccess: (d) => { if (!storageInput) setStorageInput(d.data_dir || d.effective_data_dir) },
   })
 
   const gpuMutation = useMutation({
@@ -1569,7 +1879,7 @@ export function Settings() {
 
   // Populate input once config loads
   React.useEffect(() => {
-    if (configData && !storageInput) setStorageInput(configData.effective_data_dir)
+    if (configData && !storageInput) setStorageInput(configData.data_dir || configData.effective_data_dir)
   }, [configData])
 
   const handleStorageSave = async () => {
@@ -2694,7 +3004,12 @@ export function Settings() {
             </div>
             {configData && (
               <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                Current: <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span>
+                Active: <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span>
+              </div>
+            )}
+            {configData && configData.data_dir && configData.data_dir !== configData.effective_data_dir && (
+              <div className="text-[11px]" style={{ color: '#BA7517' }}>
+                ⚠ Configured path <span className="font-mono">{configData.data_dir}</span> was not available at startup — drive may not have been mounted. Restart the server once the drive is ready.
               </div>
             )}
             <div className="flex gap-2">

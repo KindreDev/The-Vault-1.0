@@ -206,6 +206,7 @@ class SessionCreate(BaseModel):
     creator_id: Optional[int] = None
     duration_sec: Optional[int] = None
     notes: Optional[str] = None
+    skip_xp: bool = False  # True for secondary sessions (multi-panel multi-creator)
 
 class SessionOut(BaseModel):
     id: int

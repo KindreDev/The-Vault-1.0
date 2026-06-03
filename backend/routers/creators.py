@@ -603,6 +603,7 @@ def assign_folder(creator_id: int, data: _FolderAssignRequest, db: Session = Dep
     c.source_folder = data.folder_path.strip() if data.folder_path else None
 
     assigned_count = 0
+    total_images = 0
     if c.source_folder:
         norm_prefix = os.path.normcase(os.path.normpath(c.source_folder))
         galleries = db.query(Gallery).all()
@@ -612,11 +613,15 @@ def assign_folder(creator_id: int, data: _FolderAssignRequest, db: Session = Dep
                 if c not in g.creators:
                     g.creators.append(c)
                     g.is_tagged = True
+                    total_images += max(1, g.image_count or 0)
                 if g.creator_id is None:
                     g.creator_id = creator_id
                 assigned_count += 1
 
     db.commit()
+    if total_images > 0:
+        gami.notify_action(db, "gallery_assigned", override_amount=total_images)
+        db.commit()
     db.refresh(c)
     return {"assigned_count": assigned_count, "creator": _enrich(c, db)}
 

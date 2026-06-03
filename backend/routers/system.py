@@ -160,8 +160,12 @@ def _read_config() -> dict:
 
 
 def _write_config(config: dict):
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+    tmp = CONFIG_FILE + ".tmp"
+    with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, CONFIG_FILE)
 
 
 @router.get("/config")

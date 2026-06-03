@@ -493,7 +493,8 @@ export default function MultiPanel() {
 
   const sessionMutation = useMutation({
     mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
-    onSuccess: (data) => { addXpToast(`+${data.xp_earned} XP`); toast.success('Session logged ❤️') },
+    // Only show XP toast for the primary session (skip_xp=false ones have xp_earned=0)
+    onSuccess: (data) => { if (data.xp_earned > 0) addXpToast(`+${data.xp_earned} XP`) },
   })
 
   const wrapperClass = isFullscreen
@@ -584,8 +585,47 @@ export default function MultiPanel() {
           <button onMouseDown={() => {
             if (sessionActive) {
               const elapsed = endSession()
-              sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-              toast.success('Session stopped')
+              const dur = Math.floor(elapsed / 1000)
+
+              // Build a gallery_id → creator_id map from queue metadata
+              const galleryCreatorMap = {}
+              queue.forEach(item => {
+                if (item.type === 'gallery' && item.media?.id != null) {
+                  galleryCreatorMap[item.media.id] = item.media.creator_id ?? null
+                } else if (item.type === 'image' && item.media?.gallery_id != null) {
+                  if (!(item.media.gallery_id in galleryCreatorMap))
+                    galleryCreatorMap[item.media.gallery_id] = null
+                }
+              })
+
+              // Collect one entry per unique creator from panels that are ACTIVELY SHOWING content
+              // (panelItems, not the full queue — queued-but-not-displayed creators don't count)
+              const seenKeys = new Set()
+              const sessionsToLog = []
+              panelItems.forEach(panel => {
+                panel.forEach(img => {
+                  const gid = img?.gallery_id
+                  if (!gid) return
+                  const cid = galleryCreatorMap[gid] ?? null
+                  const key = cid != null ? `c-${cid}` : `g-${gid}`
+                  if (!seenKeys.has(key)) {
+                    seenKeys.add(key)
+                    const entry = { gallery_id: gid }
+                    if (cid != null) entry.creator_id = cid
+                    sessionsToLog.push(entry)
+                  }
+                })
+              })
+
+              if (sessionsToLog.length === 0) {
+                sessionMutation.mutate({ duration_sec: dur })
+              } else {
+                // First entry gets XP; the rest are logged silently with skip_xp
+                sessionsToLog.forEach((s, i) => {
+                  sessionMutation.mutate({ duration_sec: dur, ...s, skip_xp: i > 0 })
+                })
+              }
+              toast.success('Session logged ❤️')
             } else {
               startSession()
               toast.success('Session started ❤️')

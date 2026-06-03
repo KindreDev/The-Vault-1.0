@@ -647,6 +647,7 @@ def bulk_assign(
     db.commit()
     if updated > 0:
         gami.notify_action(db, "gallery_assigned", override_amount=total_images)
+        db.commit()
     return {"updated": updated}
 
 

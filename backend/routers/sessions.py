@@ -21,13 +21,19 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
             elif g.creators:
                 data = data.model_copy(update={"creator_id": g.creators[0].id})
 
-    session = SessionLog(**data.model_dump())
+    # skip_xp is a transport-only flag — strip it before writing to the DB
+    session = SessionLog(**data.model_dump(exclude={'skip_xp'}))
     db.add(session)
     db.flush()
-    xp = gami.notify_action(db, "session_logged", extra={"duration_sec": data.duration_sec or 0})
-    session.xp_earned = xp.amount
+
+    if not data.skip_xp:
+        xp = gami.notify_action(db, "session_logged", extra={"duration_sec": data.duration_sec or 0})
+        session.xp_earned = xp.amount
+    else:
+        session.xp_earned = 0
 
     # Award CXP to cards related to this session's creator or gallery.
+    # Always fires — every creator in a multi-panel session deserves card XP.
     # Amount scales with session duration — longer sessions = more CXP, capped at 200.
     from models import Card, CardInventory
     duration = data.duration_sec or 0
@@ -54,6 +60,8 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(session)
+
+    # Achievements are idempotent — safe to call for every session row
     gami.unlock_achievement(db, "first_session")
     # Night owl check — uses the server's local time so "after midnight" means
     # actual midnight for the (single) user, not UTC.
@@ -113,10 +121,10 @@ def session_stats(db: Session = Depends(get_db)):
 
     # Top creator
     top_row = (
-        db.query(SessionLog.creator_id, func.count(SessionLog.id).label("cnt"))
+        db.query(SessionLog.creator_id, func.sum(SessionLog.duration_sec).label("total_sec"))
           .filter(SessionLog.creator_id != None)
           .group_by(SessionLog.creator_id)
-          .order_by(func.count(SessionLog.id).desc())
+          .order_by(func.sum(SessionLog.duration_sec).desc())
           .first()
     )
     top_creator_name = None
