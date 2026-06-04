@@ -1221,22 +1221,30 @@ export function Stats() {
       {(stats?.xp_by_day ?? []).some(d => d.xp > 0) && (
         <div className="flex gap-4" style={{ alignItems: 'stretch' }}>
 
-          {/* XP bar chart — fixed width so it doesn't hog the row */}
-          <div className="vault-card p-5" style={{ width: '42%', flexShrink: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>XP earned · last 7 days</div>
+          {/* XP bar chart — flex-col so bars fill the full card height */}
+          <div className="vault-card p-5 flex flex-col" style={{ width: '42%', flexShrink: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em', flexShrink: 0 }}>XP earned · last 7 days</div>
             {(() => {
               const xpDays = stats.xp_by_day
               const maxXp  = Math.max(1, ...xpDays.map(d => d.xp))
               return (
-                <div className="flex items-end gap-3" style={{ height: 160 }}>
+                <div className="flex gap-3 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
                   {xpDays.map(d => {
                     const pct = d.xp / maxXp
                     return (
                       <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                        <div style={{ fontSize: 16, fontWeight: 700, color: d.xp > 0 ? '#7F77DD' : 'transparent' }}>{d.xp > 0 ? d.xp.toLocaleString() : ''}</div>
-                        <div className="w-full rounded-t-[4px] transition-all"
-                             style={{ height: `${Math.max(4, pct * 110)}px`, background: d.xp > 0 ? 'linear-gradient(to top, #7F77DD, #CECBF6)' : 'rgba(255,255,255,0.07)' }} />
-                        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</div>
+                        {/* value label — always reserve space so bars align */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, #7F77DD)' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
+                          {d.xp > 0 ? d.xp.toLocaleString() : '0'}
+                        </div>
+                        {/* bar area — grows to fill; bar rises from the bottom */}
+                        <div className="flex-1 w-full flex flex-col justify-end min-h-0">
+                          <div className="w-full rounded-t-[4px] transition-all"
+                               style={{ height: d.xp > 0 ? `${Math.max(2, pct * 100)}%` : '2px',
+                                        background: d.xp > 0 ? 'linear-gradient(to top, var(--accent, #7F77DD), #CECBF6)' : 'rgba(255,255,255,0.07)' }} />
+                        </div>
+                        {/* date label */}
+                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>{d.date.slice(5)}</div>
                       </div>
                     )
                   })}

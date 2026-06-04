@@ -694,6 +694,74 @@ function ImageViewer({ images, startIdx, onClose }) {
 
 
 
+// ── Creator type filter dropdown ──────────────────────────────────────────────
+const CREATOR_TYPE_OPTIONS = [
+  { value: '',           label: 'All types' },
+  { value: 'cosplayer',  label: 'Cosplayer' },
+  { value: 'ethot',      label: 'E-girl' },
+  { value: 'artist',     label: 'Artist' },
+  { value: 'character',  label: 'Character' },
+  { value: 'actress',    label: 'Actress' },
+  { value: 'custom',     label: 'Model / Other' },
+]
+
+function CreatorTypeDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const selected = CREATOR_TYPE_OPTIONS.find(o => o.value === value) || CREATOR_TYPE_OPTIONS[0]
+  const active = !!value
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer"
+        style={{
+          background: active ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
+          color: active ? '#CECBF6' : 'rgba(255,255,255,0.5)',
+          border: `0.5px solid ${active ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.1)'}`,
+        }}>
+        {active
+          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
+          : null}
+        {selected.label}
+        {active
+          ? <X size={11} onMouseDown={e => { e.stopPropagation(); onChange('') }} className="cursor-pointer" />
+          : <ChevronDown size={11} />}
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 rounded-[8px] shadow-2xl animate-menu-pop overflow-hidden"
+             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)', minWidth: 160 }}>
+          {CREATOR_TYPE_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onMouseDown={() => { onChange(opt.value); setOpen(false) }}
+              className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
+              style={{
+                background: value === opt.value ? 'rgba(127,119,221,0.15)' : 'transparent',
+                color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+              }}>
+              {opt.value
+                ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
+                : <span className="w-1.5 h-1.5 flex-shrink-0" />}
+              {opt.label}
+              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Creator filter dropdown ────────────────────────────────────────────────────
 function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
   const [open, setOpen] = useState(false)
@@ -903,6 +971,7 @@ export default function ImageList({ onlyVideos = false }) {
   const [sortBy, setSortBy] = useState('date_added')
   const [randomSeed, setRandomSeed] = useState(0)
   const [creatorId, setCreatorId] = useState(null)
+  const [creatorType, setCreatorType] = useState('')
   const [favOnly, setFavOnly] = useState(false)
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
   const [activeTags, setActiveTags] = useState(() => {
@@ -932,15 +1001,16 @@ export default function ImageList({ onlyVideos = false }) {
   const [page, setPage] = useState(1)
 
   // Reset to page 1 whenever any filter or page-size changes
-  const filterKey = `${search}|${sortBy}|${creatorId}|${favOnly}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${creatorId}|${creatorType}|${favOnly}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
   useEffect(() => { setPage(1) }, [filterKey])
 
   const { data: images, isLoading, isError } = useQuery({
-    queryKey: ['images-list', search, sortBy, creatorId, favOnly, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
+    queryKey: ['images-list', search, sortBy, creatorId, creatorType, favOnly, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
     queryFn: () => imagesApi.list({
       search: search || undefined,
       sort_by: sortBy,
       creator_id: creatorId || undefined,
+      creator_type: creatorType || undefined,
       favorite: favOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
       tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1018,6 +1088,8 @@ export default function ImageList({ onlyVideos = false }) {
         <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
 
         <CreatorFilter value={creatorId} onChange={setCreatorId} />
+
+        <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput

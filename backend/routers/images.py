@@ -10,7 +10,7 @@ from sqlalchemy import func
 from typing import Optional, List
 
 from database import get_db
-from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images
+from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator
 from schemas import ImageOut, ImageUpdate, CumCountUpdate
 import services.gamification as gami
 from services import dedup as dedup_svc
@@ -57,6 +57,7 @@ def list_images(
     search: Optional[str] = None,
     tag: Optional[str] = None,
     creator_id: Optional[int] = None,
+    creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
@@ -75,10 +76,14 @@ def list_images(
     tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
     for tag_name in tag_list:
         q = q.filter(Image.tags.any(Tag.name == tag_name))
-    if creator_id:
+    if creator_id or creator_type:
         q = q.join(Gallery, Gallery.id == Image.gallery_id)\
-             .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)\
-             .filter(gallery_creators.c.creator_id == creator_id)
+             .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        if creator_id:
+            q = q.filter(gallery_creators.c.creator_id == creator_id)
+        if creator_type:
+            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)\
+                 .filter(Creator.creator_type == creator_type)
     if gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == gallery_id).first()
         if gallery and gallery.is_mix:

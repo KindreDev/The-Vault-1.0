@@ -334,10 +334,15 @@ def creator_distribution(db: Session = Depends(get_db)):
 
 @router.get("/hall-of-fame")
 def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5):
-    """Creators ranked by total view_count across all their galleries (primary).
-    total_cum is also returned as a secondary stat."""
+    """Creators ranked by composite engagement score:
+       view_seconds + (cum_count × 120) + (session_count × 300) + (view_count × 5)
+    This reflects genuine time spent, not just page-open frequency.
+    """
     from sqlalchemy import func as sqlfunc
-    result = (
+
+    # Fetch ALL creators that have at least one assigned gallery — no limit yet,
+    # because we need to score everything before taking the top N.
+    rows = (
         db.query(
             Creator,
             sqlfunc.sum(Gallery.view_count).label("total_views"),
@@ -346,13 +351,14 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5):
           .join(gallery_creators, gallery_creators.c.creator_id == Creator.id)
           .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
           .group_by(Creator.id)
-          .order_by(sqlfunc.sum(Gallery.view_count).desc(), sqlfunc.sum(Gallery.cum_count).desc())
-          .limit(limit)
           .all()
     )
-    creator_ids = [c.id for c, _, _ in result]
+    if not rows:
+        return []
 
-    # Batch: sum view_seconds per creator across all their galleries' images
+    creator_ids = [c.id for c, _, _ in rows]
+
+    # Batch: sum image view_seconds per creator
     view_secs_rows = (
         db.query(gallery_creators.c.creator_id, sqlfunc.sum(Image.view_seconds))
           .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
@@ -362,12 +368,42 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5):
     )
     view_secs_map = {cid: int(secs or 0) for cid, secs in view_secs_rows}
 
+    # Batch: count logged sessions per creator
+    session_rows = (
+        db.query(SessionLog.creator_id, sqlfunc.count(SessionLog.id))
+          .filter(SessionLog.creator_id.in_(creator_ids))
+          .group_by(SessionLog.creator_id)
+          .all()
+    )
+    session_map = {cid: int(cnt or 0) for cid, cnt in session_rows}
+
+    # Score, sort in Python, take top N
+    def _score(total_views, total_cum, view_secs, sessions):
+        return (
+            view_secs
+            + int(total_cum or 0) * 120
+            + sessions * 300
+            + int(total_views or 0) * 5
+        )
+
+    scored = sorted(
+        rows,
+        key=lambda r: _score(r[1], r[2],
+                              view_secs_map.get(r[0].id, 0),
+                              session_map.get(r[0].id, 0)),
+        reverse=True,
+    )[:limit]
+
     out = []
-    for creator, total_views, total_cum in result:
+    for creator, total_views, total_cum in scored:
+        view_secs = view_secs_map.get(creator.id, 0)
+        sessions  = session_map.get(creator.id, 0)
         d = _enrich(creator, db)
         d["total_views"]        = int(total_views or 0)
         d["total_cum"]          = int(total_cum or 0)
-        d["total_view_seconds"] = view_secs_map.get(creator.id, 0)
+        d["total_view_seconds"] = view_secs
+        d["session_count"]      = sessions
+        d["hof_score"]          = _score(total_views, total_cum, view_secs, sessions)
         out.append(d)
     return out
 

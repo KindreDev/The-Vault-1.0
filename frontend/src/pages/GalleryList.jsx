@@ -493,6 +493,74 @@ function CreatorDropdown({ value, onChange, placeholder }) {
   )
 }
 
+// ── Creator type filter dropdown ──────────────────────────────────────────────
+const CREATOR_TYPE_OPTIONS = [
+  { value: '',           label: 'All types' },
+  { value: 'cosplayer',  label: 'Cosplayer' },
+  { value: 'ethot',      label: 'E-girl' },
+  { value: 'artist',     label: 'Artist' },
+  { value: 'character',  label: 'Character' },
+  { value: 'actress',    label: 'Actress' },
+  { value: 'custom',     label: 'Model / Other' },
+]
+
+function CreatorTypeDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const selected = CREATOR_TYPE_OPTIONS.find(o => o.value === value) || CREATOR_TYPE_OPTIONS[0]
+  const active = !!value
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
+        style={{
+          background: active ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
+          color: active ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${active ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+        }}>
+        {active
+          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
+          : null}
+        {selected.label}
+        {active
+          ? <X size={11} onMouseDown={e => { e.stopPropagation(); onChange('') }} className="cursor-pointer" />
+          : <ChevronDown size={11} />}
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 rounded-[10px] shadow-2xl animate-menu-pop overflow-hidden"
+             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 160 }}>
+          {CREATOR_TYPE_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onMouseDown={() => { onChange(opt.value); setOpen(false) }}
+              className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
+              style={{
+                background: value === opt.value ? 'rgba(127,119,221,0.15)' : 'transparent',
+                color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+              }}>
+              {opt.value
+                ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
+                : <span className="w-1.5 h-1.5 flex-shrink-0" />}
+              {opt.label}
+              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Bulk action panel ─────────────────────────────────────────────────────────
 // ── Bulk Merge Modal ──────────────────────────────────────────────────────────
 function BulkMergeModal({ galleries, onClose, onMerged }) {
@@ -1028,6 +1096,7 @@ export default function GalleryList() {
   }, [searchParams])
   const unassignedOnly = searchParams.get('unassigned') === '1'
   const favOnly        = searchParams.get('fav') === '1'
+  const creatorType    = searchParams.get('ctype') || ''
   const activeTags     = useMemo(() => {
     const raw = searchParams.get('tags') || searchParams.get('tag') || ''
     return raw ? raw.split(',').filter(Boolean) : []
@@ -1095,21 +1164,23 @@ export default function GalleryList() {
     const arr = Array.isArray(newVal) ? newVal : []
     setParams({ creators: arr.length > 0 ? arr.join(',') : null, creator_id: null, unassigned: null, page: null })
   }, [setParams, creatorFilter])
+  const setCreatorType = useCallback((v) => setParams({ ctype: v || null, page: null }), [setParams])
 
   // ── Detect active filters & reset ───────────────────────────────────────────
-  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0
+  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType
   const resetFilters = useCallback(() => {
     setSearchParams({}, { replace: true })
   }, [setSearchParams])
 
   // Reset pagination when filters change
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}`
 
   const params = {
     search: search || undefined,
     sort_by: sortBy,
     sort_dir: sortBy !== 'random' ? sortDir : undefined,
     creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
+    creator_type: creatorType || undefined,
     unassigned: unassignedOnly || undefined,
     favorite: favOnly || undefined,
     tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1194,6 +1265,8 @@ export default function GalleryList() {
         </div>
 
         <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder="All creators" />
+
+        <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput

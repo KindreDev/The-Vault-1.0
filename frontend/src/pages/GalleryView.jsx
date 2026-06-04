@@ -14,6 +14,7 @@ const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
+import DeviceControls from '../components/DeviceControls'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import { SortDropdown } from '../components/SortDropdown'
 
@@ -918,6 +919,9 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
             <Heart size={12} /> {sessionActive ? 'Stop Session' : 'Start Session'}
           </button>
         </div>
+
+        {/* Device controls — only shown when a device is connected */}
+        <DeviceControls className="mx-2 mb-3" />
       </div>}
     </div>
   )

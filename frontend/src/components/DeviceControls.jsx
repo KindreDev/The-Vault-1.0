@@ -180,6 +180,7 @@ export default function DeviceControls({ className = '' }) {
   const activeId      = useDeviceStore(s => s.activePresetId)
   const intensity     = useDeviceStore(s => s.intensity)
   const glansShift    = useDeviceStore(s => s.glansShift)
+  const variance      = useDeviceStore(s => s.variance)
   const floor         = useDeviceStore(s => s.strokeFloor)
   const ceiling       = useDeviceStore(s => s.strokeCeiling)
   const savedPatterns = useDeviceStore(s => s.savedPatterns)
@@ -187,6 +188,7 @@ export default function DeviceControls({ className = '' }) {
   const setCustom     = useDeviceStore(s => s.setCustomPattern)
   const setIntensity  = useDeviceStore(s => s.setIntensity)
   const setGlansShift = useDeviceStore(s => s.setGlansShift)
+  const setVariance   = useDeviceStore(s => s.setVariance)
   const setFloor      = useDeviceStore(s => s.setStrokeFloor)
   const setCeiling    = useDeviceStore(s => s.setStrokeCeiling)
 
@@ -262,7 +264,21 @@ export default function DeviceControls({ className = '' }) {
         </span>
       </div>
 
-      {/* Row 4: stroke range limiter */}
+      {/* Row 4: stroke variance */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Vary</span>
+        <input
+          type="range" min={0} max={100} step={5}
+          value={variance}
+          onChange={e => setVariance(Number(e.target.value))}
+          className="flex-1 h-1 cursor-pointer accent-[var(--c-accent)]"
+        />
+        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
+          {variance}%
+        </span>
+      </div>
+
+      {/* Row 5: stroke range limiter */}
       <StrokeLimiter
         floor={floor}
         ceiling={ceiling}

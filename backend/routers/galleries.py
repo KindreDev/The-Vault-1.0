@@ -108,6 +108,7 @@ def create_random_mix(data: dict, db: Session = Depends(get_db)):
 def list_galleries(
     db: Session = Depends(get_db),
     creator_id: Optional[str] = None,  # single id or comma-separated ids
+    creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,  # comma-separated, AND logic
@@ -124,15 +125,18 @@ def list_galleries(
         selectinload(Gallery.creators),
     )
 
-    # Filter by creator via M2M — supports comma-separated IDs for multi-select
-    if creator_id:
-        cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
-        if len(cid_list) == 1:
-            q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)\
-                 .filter(gallery_creators.c.creator_id == cid_list[0])
-        elif len(cid_list) > 1:
-            q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)\
-                 .filter(gallery_creators.c.creator_id.in_(cid_list))
+    # Filter by creator via M2M — supports comma-separated IDs and/or creator_type
+    if creator_id or creator_type:
+        q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        if creator_id:
+            cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
+            if len(cid_list) == 1:
+                q = q.filter(gallery_creators.c.creator_id == cid_list[0])
+            elif len(cid_list) > 1:
+                q = q.filter(gallery_creators.c.creator_id.in_(cid_list))
+        if creator_type:
+            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)\
+                 .filter(Creator.creator_type == creator_type)
 
     # Unassigned: galleries with no entries in gallery_creators
     if unassigned:
@@ -333,25 +337,72 @@ def track_gallery_view(gallery_id: int, db: Session = Depends(get_db)):
 
 @router.get("/hall-of-fame")
 def hall_of_fame(db: Session = Depends(get_db), limit: int = 10):
-    """Images ranked by view_count (primary). cum_count returned as secondary stat."""
-    images = db.query(Image).order_by(Image.view_count.desc(), Image.cum_count.desc()).limit(limit).all()
+    """Images ranked by composite engagement score (all columns on Image — pure SQL sort):
+       view_seconds + (cum_count × 120) + (view_count × 5)
+    """
+    score_expr = (
+        func.coalesce(Image.view_seconds, 0)
+        + func.coalesce(Image.cum_count, 0) * 120
+        + func.coalesce(Image.view_count, 0) * 5
+    )
+    images = (
+        db.query(Image)
+          .filter(score_expr > 0)
+          .order_by(score_expr.desc())
+          .limit(limit)
+          .all()
+    )
     return [{"id": i.id, "filename": i.filename, "thumb_path": i.thumb_path,
              "view_count": i.view_count, "cum_count": i.cum_count,
+             "view_seconds": i.view_seconds or 0,
              "gallery_id": i.gallery_id, "is_video": i.is_video} for i in images]
 
 
 @router.get("/gallery-hof")
 def gallery_hof(db: Session = Depends(get_db), limit: int = 5):
-    """Galleries ranked by view_count (primary). cum_count returned as secondary stat."""
+    """Galleries ranked by composite engagement score:
+       image_view_seconds + (cum_count × 120) + (session_count × 300) + (view_count × 5)
+    """
+    # Load all galleries with any engagement signal
     galleries = (
         db.query(Gallery)
           .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
-          .filter(Gallery.view_count > 0)
-          .order_by(Gallery.view_count.desc(), Gallery.cum_count.desc())
-          .limit(limit)
+          .filter(or_(Gallery.view_count > 0, Gallery.cum_count > 0))
           .all()
     )
-    return [_enrich(g) for g in galleries]
+    if not galleries:
+        return []
+
+    gallery_ids = [g.id for g in galleries]
+
+    # Batch: sum image view_seconds per gallery
+    view_secs_rows = (
+        db.query(Image.gallery_id, func.sum(Image.view_seconds))
+          .filter(Image.gallery_id.in_(gallery_ids))
+          .group_by(Image.gallery_id)
+          .all()
+    )
+    view_secs_map = {gid: int(secs or 0) for gid, secs in view_secs_rows}
+
+    # Batch: count logged sessions per gallery
+    session_rows = (
+        db.query(SessionLog.gallery_id, func.count(SessionLog.id))
+          .filter(SessionLog.gallery_id.in_(gallery_ids))
+          .group_by(SessionLog.gallery_id)
+          .all()
+    )
+    session_map = {gid: int(cnt or 0) for gid, cnt in session_rows}
+
+    def _score(g):
+        return (
+            view_secs_map.get(g.id, 0)
+            + (g.cum_count or 0) * 120
+            + session_map.get(g.id, 0) * 300
+            + (g.view_count or 0) * 5
+        )
+
+    ranked = sorted(galleries, key=_score, reverse=True)[:limit]
+    return [_enrich(g) for g in ranked]
 
 
 @router.get("/recent")
