@@ -118,7 +118,7 @@ export const creatorsApi = {
   jikanSearch:       (q)     => api.get('/creators/jikan-search', { params: { q, limit: 8 } }),
   jikanCharacter:    (malId) => api.get(`/creators/jikan-character/${malId}`),
   assignFolder:      (id, folderPath) => api.post(`/creators/${id}/assign-folder`, { folder_path: folderPath }),
-  toggleQueen:       (id)            => api.post(`/creators/${id}/toggle-queen`),
+  giftHeart:         (id)            => api.post(`/creators/${id}/gift-heart`),
   avatarUrl:         (id) => `/api/creators/${id}/avatar`,
   avatarThumbUrl:    (id, size = 480) => `/api/creators/${id}/avatar-thumb?size=${size}`,
 }

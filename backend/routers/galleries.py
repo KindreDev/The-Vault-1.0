@@ -62,19 +62,24 @@ def create_random_mix(data: dict, db: Session = Depends(get_db)):
     from datetime import datetime
     from sqlalchemy import insert
 
-    count       = max(1, min(500, int(data.get("count", 50))))
-    creator_ids = [int(c) for c in (data.get("creator_ids") or []) if c]
-    photos_only = bool(data.get("photos_only", False))
-    videos_only = bool(data.get("videos_only", False))
-    tag_ids     = [int(t) for t in (data.get("tag_ids") or []) if t]
-    name        = (data.get("name") or "").strip() or f"Mix · {datetime.now().strftime('%b %d, %Y')}"
+    count         = max(1, min(500, int(data.get("count", 50))))
+    creator_ids   = [int(c) for c in (data.get("creator_ids") or []) if c]
+    creator_types = [str(t) for t in (data.get("creator_types") or []) if t]
+    photos_only   = bool(data.get("photos_only", False))
+    videos_only   = bool(data.get("videos_only", False))
+    tag_ids       = [int(t) for t in (data.get("tag_ids") or []) if t]
+    name          = (data.get("name") or "").strip() or f"Mix · {datetime.now().strftime('%b %d, %Y')}"
 
     q = db.query(Image).filter(Image.file_path.isnot(None))
-    if creator_ids:
+    if creator_ids or creator_types:
         from models import gallery_creators as _gc
         q = (q.join(Gallery, Image.gallery_id == Gallery.id)
-               .join(_gc, _gc.c.gallery_id == Gallery.id)
-               .filter(_gc.c.creator_id.in_(creator_ids)))
+               .join(_gc, _gc.c.gallery_id == Gallery.id))
+        if creator_ids:
+            q = q.filter(_gc.c.creator_id.in_(creator_ids))
+        if creator_types:
+            q = (q.join(Creator, Creator.id == _gc.c.creator_id)
+                   .filter(Creator.creator_type.in_(creator_types)))
     if photos_only:
         q = q.filter(Image.is_video == False)
     elif videos_only:
@@ -590,10 +595,40 @@ def gallery_images(
     sort_by: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
+    gallery = db.query(Gallery).filter(Gallery.id == gallery_id).first()
+    if not gallery:
+        raise HTTPException(404, "Gallery not found")
+
     q = db.query(Image).options(
         selectinload(Image.tags),
         selectinload(Image.gallery).selectinload(Gallery.creators),
-    ).filter(Image.gallery_id == gallery_id)
+    )
+
+    if gallery.is_mix:
+        # Mix galleries: images are stored in mix_images join table, not by gallery_id
+        mix_rows = db.execute(
+            mix_images.select()
+            .where(mix_images.c.gallery_id == gallery_id)
+            .order_by(mix_images.c.sort_order)
+        ).fetchall()
+        ids_in_order = [row.image_id for row in mix_rows]
+        if not ids_in_order:
+            return []
+        # Preserve sort_order for default; allow overrides for other sort modes
+        if sort_by and sort_by != "sort_order":
+            q = q.filter(Image.id.in_(ids_in_order))
+        else:
+            # Preserve the original mix order using CASE ... WHEN
+            from sqlalchemy import case
+            order_map = case(
+                {img_id: idx for idx, img_id in enumerate(ids_in_order)},
+                value=Image.id,
+            )
+            q = q.filter(Image.id.in_(ids_in_order)).order_by(order_map)
+            images = q.all()
+            return [_enrich_image(img) for img in images]
+    else:
+        q = q.filter(Image.gallery_id == gallery_id)
 
     if sort_by == "random":
         q = q.order_by(func.random())

@@ -60,6 +60,20 @@ SHARD_YIELD = {
     "celestial": 5000,
 }
 
+# ── Hearts earned per dismantle (rare and above only) ────────────────────────
+HEART_YIELD = {
+    "common":    0,
+    "uncommon":  0,
+    "rare":      1,
+    "epic":      2,
+    "legendary": 3,
+    "relic":     5,
+    "celestial": 5,
+}
+
+# ── Bond score boost per gifted heart ────────────────────────────────────────
+HEART_BOND_BOOST = 500   # one heart = +500 bond score
+
 # ── XP per dismantle (flat, regardless of rarity) ────────────────────────────
 DISMANTLE_XP = 30
 

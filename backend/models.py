@@ -61,7 +61,7 @@ class Creator(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     name          = Column(String, nullable=False)
-    display_name  = Column(String)
+    title         = Column(String)          # user-assigned title shown after "—" in header
     aliases       = Column(Text, default="")          # JSON array string
     creator_type  = Column(Enum(CreatorType), default=CreatorType.cosplayer)
     custom_type   = Column(String, nullable=True)     # if type == custom
@@ -106,8 +106,9 @@ class Creator(Base):
     banner_zoom      = Column(Float, default=1.0)       # zoom multiplier 1.0-2.0
     rating        = Column(Float, default=0.0)         # user rating 0-10
     is_favorite   = Column(Boolean, default=False)
-    card_rarity   = Column(String, default="common")  # common/rare/epic/legendary/mythic
+    card_rarity   = Column(String, default="common")
     card_level    = Column(Integer, default=1)
+    bond_gifts    = Column(Integer, default=0)         # hearts gifted by user → boosts bond score
 
     # 100% collection completion reward tracking — reset to None when completion drops
     completion_rewarded_at = Column(DateTime, nullable=True)
@@ -318,6 +319,7 @@ class UserProfile(Base):
     last_spin      = Column(DateTime, nullable=True)
     theme_accent   = Column(String, default="#7F77DD")
     vault_credits  = Column(Integer, default=0)    # TCG spendable currency
+    hearts         = Column(Integer, default=0)    # giftable hearts earned from dismantling rare+ cards
     avatar_path    = Column(String, nullable=True)
     avatar_focal_x = Column(Float, default=0.5)
     avatar_focal_y = Column(Float, default=0.5)

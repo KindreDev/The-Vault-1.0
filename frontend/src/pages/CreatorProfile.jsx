@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Star, Globe, Droplets, Images, Columns3, Shuffle,
   Upload, Camera, X, Image as ImageIcon, Play, Video, MoreHorizontal,
-  Pencil, Trash2, Sparkles, FolderOpen, Crown,
+  Pencil, Trash2, Sparkles, FolderOpen,
 } from 'lucide-react'
-import { creatorsApi, galleriesApi, imagesApi, taggerApi } from '../lib/api'
+import BondHearts from '../components/BondHearts'
+import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
@@ -76,23 +77,19 @@ const RARITY_COLORS = {
   uncommon:  '#1D9E75',
   rare:      '#378ADD',
   epic:      '#7F77DD',
-  legendary: '#D4537E',
-  relic:     '#BA7517',
-  celestial: '#EDD87A',
+  legendary: '#BA7517',
 }
 
 const RARITY_LABELS = {
-  common:    'Discovered',
-  uncommon:  'Favored',
-  rare:      'Devoted',
-  epic:      'Obsessed',
-  legendary: 'Vault Favorite',
-  relic:     'Waifu',
-  celestial: 'My Queen',
+  common:    'Snapshot',
+  uncommon:  'Album · 500+',
+  rare:      'Big Portfolio · 2.5K+',
+  epic:      'Library · 6K+',
+  legendary: 'Grand Collection · 15K+',
 }
 
 const TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
-const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'relic', 'celestial']
+const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 
 function thumbSrc(path) {
   if (!path) return null
@@ -256,7 +253,7 @@ function EditCreatorModal({ creator, onClose }) {
   } catch {}
 
   const [form, setForm] = useState({
-    name: creator.name || '', display_name: creator.display_name || '', real_name: creator.real_name || '',
+    name: creator.name || '', title: creator.title || '', real_name: creator.real_name || '',
     creator_type: creator.creator_type || 'cosplayer', gender: creator.gender || '',
     eye_color: creator.eye_color || '',
     fake_boobs: creator.fake_boobs === true ? 'yes' : creator.fake_boobs === false ? 'no' : '',
@@ -327,7 +324,7 @@ function EditCreatorModal({ creator, onClose }) {
           <div className="flex flex-col gap-4">
             {[
               { label: 'Name *', key: 'name', placeholder: 'Name' },
-              { label: 'Display name', key: 'display_name', placeholder: 'Optional display name' },
+              { label: 'Title', key: 'title', placeholder: 'Optional — shown after name' },
               { label: 'Real name', key: 'real_name', placeholder: 'Real name' },
             ].map(f => (
               <div key={f.key}>
@@ -529,7 +526,7 @@ export default function CreatorProfile() {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const { data: creator } = useQuery({
+  const { data: creator, isError: creatorError } = useQuery({
     queryKey: ['creator', id],
     queryFn: () => creatorsApi.get(id).then(r => r.data),
   })
@@ -619,14 +616,22 @@ export default function CreatorProfile() {
     mutationFn: () => creatorsApi.update(id, { is_favorite: !creator?.is_favorite }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['creator', id] }); qc.invalidateQueries({ queryKey: ['favorites'] }) }
   })
-  const queenMutation = useMutation({
-    mutationFn: () => creatorsApi.toggleQueen(id),
-    onSuccess: (r) => {
-      const isNow = r.data.card_rarity === 'celestial'
-      toast.success(isNow ? `👑 ${r.data.name} is your My Queen` : `Crown removed from ${r.data.name}`)
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => gamiApi.profile().then(r => r.data),
+    staleTime: 30000,
+  })
+  const heartsAvailable = profileData?.hearts ?? 0
+
+  const giftMutation = useMutation({
+    mutationFn: () => creatorsApi.giftHeart(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['creator', id] })
       qc.invalidateQueries({ queryKey: ['creators'] })
-    }
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      toast.success('❤️ Heart gifted!')
+    },
+    onError: (e) => toast.error(e?.response?.data?.detail || 'No hearts available'),
   })
   const ratingMutation = useMutation({
     mutationFn: (r) => creatorsApi.update(id, { rating: r }),
@@ -662,6 +667,12 @@ export default function CreatorProfile() {
     onError: () => toast.error('Failed to set source folder')
   })
 
+  if (creatorError) return (
+    <div className="p-8 flex flex-col gap-3">
+      <div className="text-[rgba(255,255,255,0.5)]">Failed to load creator.</div>
+      <button onClick={() => navigate('/creators')} className="text-[rgba(255,255,255,0.4)] text-sm underline cursor-pointer w-fit">← Back to Creators</button>
+    </div>
+  )
   if (!creator) return <div className="p-8 text-[rgba(255,255,255,0.3)]">Loading...</div>
 
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
@@ -809,7 +820,14 @@ export default function CreatorProfile() {
               {/* Name & Tags */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-3 group/name">
-                  <div className="text-[28px] font-semibold text-[rgba(255,255,255,0.95)] truncate">{creator.name}</div>
+                  <div className="text-[28px] font-semibold text-[rgba(255,255,255,0.95)]">
+                    {creator.name}
+                    {creator.title && (
+                      <span className="ml-2 font-light text-[20px]" style={{ color: 'rgba(255,255,255,0.38)' }}>
+                        — {creator.title}
+                      </span>
+                    )}
+                  </div>
                   <button onClick={() => setShowEditModal(true)}
                           className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1.5 rounded-full cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]"
                           title="Edit creator details">
@@ -858,6 +876,33 @@ export default function CreatorProfile() {
                 <div className="mt-2">
                   <RatingInput value={rating ?? creator.rating ?? 0} onChange={handleRating} />
                 </div>
+                {!creator.bond_excluded && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <BondHearts
+                      level={creator.bond_level ?? 0}
+                      size="lg"
+                      bondScore={creator.bond_score ?? 0}
+                      showProgress
+                    />
+                    <button
+                      onClick={() => giftMutation.mutate()}
+                      disabled={giftMutation.isPending || heartsAvailable < 1}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '5px 12px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                        cursor: heartsAvailable >= 1 ? 'pointer' : 'not-allowed',
+                        background: heartsAvailable >= 1 ? 'rgba(255,45,117,0.18)' : 'rgba(255,255,255,0.04)',
+                        border: heartsAvailable >= 1 ? '0.5px solid rgba(255,45,117,0.5)' : '0.5px solid rgba(255,255,255,0.07)',
+                        color: heartsAvailable >= 1 ? '#FF2D75' : 'rgba(255,255,255,0.2)',
+                        transition: 'all 0.15s',
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      ❤️ Gift Heart
+                      <span style={{ fontSize: 12, opacity: 0.6 }}>({heartsAvailable} available)</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Creator Description */}
@@ -928,14 +973,6 @@ export default function CreatorProfile() {
                              border: '0.5px solid rgba(255,255,255,0.1)' }}>
               <Star size={12} fill={creator.is_favorite ? '#FAC775' : 'none'} />
               {creator.is_favorite ? 'Favorited' : 'Favorite'}
-            </button>
-            <button onClick={() => queenMutation.mutate()} disabled={queenMutation.isPending}
-                    title={creator.card_rarity === 'celestial' ? 'Remove My Queen crown' : 'Crown as My Queen'}
-                    className="w-9 h-9 flex items-center justify-center rounded-full cursor-pointer disabled:opacity-40 transition-all"
-                    style={{ background: creator.card_rarity === 'celestial' ? 'rgba(237,216,122,0.2)' : 'rgba(255,255,255,0.05)',
-                             color: creator.card_rarity === 'celestial' ? '#EDD87A' : 'rgba(255,255,255,0.25)',
-                             border: `0.5px solid ${creator.card_rarity === 'celestial' ? 'rgba(237,216,122,0.4)' : 'rgba(255,255,255,0.1)'}` }}>
-              <Crown size={20} fill={creator.card_rarity === 'celestial' ? '#EDD87A' : 'none'} />
             </button>
           </div>
         </div>

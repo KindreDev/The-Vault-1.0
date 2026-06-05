@@ -46,7 +46,7 @@ class ImageTagOut(TagBase):
 # ── Creator ────────────────────────────────────────────────────────────────────
 class CreatorBase(BaseModel):
     name: str
-    display_name: Optional[str] = None
+    title: Optional[str] = None
     creator_type: CreatorType = CreatorType.cosplayer
     custom_type: Optional[str] = None
     description: Optional[str] = ""
@@ -104,6 +104,10 @@ class CreatorOut(CreatorBase):
     months_covered_recent: Optional[int] = 0
     total_months_expected: Optional[int] = 0
     completion_pct: Optional[float] = 0.0
+    bond_level: Optional[int] = 0
+    bond_score: Optional[float] = 0.0
+    bond_excluded: Optional[bool] = False
+    bond_gifts: int = 0
     class Config:
         from_attributes = True
 
@@ -252,6 +256,7 @@ class UserProfileOut(BaseModel):
     xp_to_next: int
     standard_packs: int = 0
     premium_packs: int = 0
+    hearts: int = 0
     class Config:
         from_attributes = True
 

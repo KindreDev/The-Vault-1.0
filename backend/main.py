@@ -279,6 +279,13 @@ def _migrate_add_columns():
         # Completion rewards — claimable flags (packs are awarded on explicit claim, not auto)
         "ALTER TABLE user_profile ADD COLUMN daily_bonus_claimable INTEGER DEFAULT 0",
         "ALTER TABLE user_profile ADD COLUMN weekly_bonus_claimable INTEGER DEFAULT 0",
+        # Creator title (replaces display_name; shown as "Name — Title" in header)
+        "ALTER TABLE creators ADD COLUMN title VARCHAR",
+        # Bond system — organic accumulation; bond_gifts boosted by gifting hearts
+        "ALTER TABLE creators ADD COLUMN bond_override INTEGER",   # kept for safe migration; no longer used
+        "ALTER TABLE creators ADD COLUMN bond_gifts INTEGER DEFAULT 0",
+        # Hearts — earned by dismantling rare+ cards; gifted to creators to boost bond
+        "ALTER TABLE user_profile ADD COLUMN hearts INTEGER DEFAULT 0",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -375,11 +382,22 @@ _migrate_creator_id_to_m2m()
 
 
 def _migrate_creator_rarity():
-    """Rename legacy 'mythic' creator rarity → 'relic' to match the canonical 7-tier system."""
+    """Rename legacy tier values to match the canonical system."""
     import sqlalchemy
     db = SessionLocal()
     try:
-        db.execute(sqlalchemy.text("UPDATE creators SET card_rarity='relic' WHERE card_rarity='mythic'"))
+        db.execute(sqlalchemy.text("UPDATE creators SET card_rarity='legendary' WHERE card_rarity='mythic'"))
+        # celestial (My Queen) retired — merge into Grand Collection tier
+        db.execute(sqlalchemy.text("UPDATE creators SET card_rarity='legendary' WHERE card_rarity='celestial'"))
+        # relic tier retired — merge into Grand Collection (legendary)
+        db.execute(sqlalchemy.text("UPDATE creators SET card_rarity='legendary' WHERE card_rarity='relic'"))
+        # Copy display_name → title for existing records (column may not exist on fresh DBs)
+        try:
+            db.execute(sqlalchemy.text(
+                "UPDATE creators SET title = display_name WHERE title IS NULL AND display_name IS NOT NULL"
+            ))
+        except Exception:
+            pass
         db.commit()
     finally:
         db.close()

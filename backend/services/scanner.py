@@ -11,6 +11,7 @@ from PIL import Image as PILImage
 
 from models import Gallery, Image, LibraryRoot, Tag, TagSource
 from database import DATA_DIR
+import services.gamification as gami
 
 def _natural_sort_key(s: str):
     """Windows-style natural sort: F1, F2 ... F9, F10, F11."""
@@ -391,6 +392,7 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
     if not media_files:
         return
 
+    is_new_gallery = False
     if not gallery:
         full_paths = [os.path.join(dirpath, f) for f in media_files]
         p_month, p_year = detect_period_from_path(dirpath, full_paths)
@@ -405,6 +407,7 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
         db.add(gallery)
         db.flush()
         _scan_state["new_galleries"] += 1
+        is_new_gallery = True
 
     new_image_count = 0
     cover_set = False
@@ -511,3 +514,7 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
     gallery.image_count = db.query(Image).filter(Image.gallery_id == gallery.id).count()
     gallery.scanned_at = datetime.utcnow()
     db.flush()
+
+    # Fire gamification after images are flushed so image-count milestones are accurate.
+    if is_new_gallery:
+        gami.notify_action(db, "gallery_imported")

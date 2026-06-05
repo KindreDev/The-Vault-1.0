@@ -82,7 +82,7 @@ function FavCreatorCard({ creator, onClick, avatarBust }) {
         }
       </div>
       <div className="text-[17px] font-semibold text-[rgba(255,255,255,0.92)] text-center w-full truncate px-1">
-        {creator.display_name || creator.name}
+        {creator.title || creator.name}
       </div>
       <div className="text-[14px] px-2.5 py-0.5 rounded-full capitalize -mt-1" style={{ background: tc.bg, color: tc.text }}>
         {creator.creator_type}
@@ -156,19 +156,15 @@ const RARITY_COLORS = {
   uncommon:  '#1D9E75',
   rare:      '#378ADD',
   epic:      '#7F77DD',
-  legendary: '#D4537E',
-  relic:     '#BA7517',
-  celestial: '#EDD87A',
+  legendary: '#BA7517',
 }
 
 const RARITY_LABELS = {
-  common:    'Discovered',
-  uncommon:  'Favored',
-  rare:      'Devoted',
-  epic:      'Obsessed',
-  legendary: 'Vault Favorite',
-  relic:     'Waifu',
-  celestial: 'My Queen',
+  common:    'Snapshot',
+  uncommon:  'Album · 500+',
+  rare:      'Big Portfolio · 2.5K+',
+  epic:      'Library · 6K+',
+  legendary: 'Grand Collection · 15K+',
 }
 
 // ── Creator HOF card ──────────────────────────────────────────────────────────
@@ -1220,7 +1216,7 @@ export default function Dashboard() {
                     return (
                       <PortraitCard key={c.id}
                         imgSrc={c.avatar_path ? `/api/creators/${c.id}/avatar` : null}
-                        title={c.display_name || c.name}
+                        title={c.title || c.name}
                         sub={c.creator_type}
                         onClick={() => navigate(`/creators/${c.id}`)}
                         fallbackIcon={

@@ -49,15 +49,23 @@ def _enrich(c: Creator, db: Session) -> dict:
           .filter(gallery_creators.c.creator_id == c.id)
           .scalar() or 0
     )
-    # Recompute rarity live — but preserve manually pinned celestial (My Queen)
-    if c.card_rarity == 'celestial':
-        d["card_rarity"] = 'celestial'
-    else:
-        d["card_rarity"] = _compute_rarity(
-            image_count=d["image_count"],
-            rating=float(c.rating or 0),
-            session_count=d["session_count"],
-        )
+    d["card_rarity"] = _compute_rarity(
+        image_count=d["image_count"],
+        rating=float(c.rating or 0),
+        session_count=d["session_count"],
+    )
+    # Bond level — organic accumulation + gifted hearts; excluded for male/unknown artists
+    view_secs  = int(d["total_view_seconds"] or 0)
+    sess_count = int(d["session_count"] or 0)
+    bond_gifts = int(c.bond_gifts or 0)
+    bond_score = view_secs * 0.1 + sess_count * 50 + bond_gifts * 500
+    thresholds = [100, 500, 1500, 3000, 6000]
+    computed_bond = sum(1 for t in thresholds if bond_score >= t)
+    is_excluded = (c.creator_type == 'artist' and c.gender not in ('Female', 'Other'))
+    d["bond_score"]    = round(bond_score, 1)
+    d["bond_excluded"] = is_excluded
+    d["bond_level"]    = 0 if is_excluded else computed_bond
+    d["bond_gifts"]    = bond_gifts
     # Collection value & completion stats
     stats = gami.calc_creator_stats(db, c.id)
     d["collection_value"] = stats.get("total_value", 0.0)
@@ -71,35 +79,12 @@ def _enrich(c: Creator, db: Session) -> dict:
 
 
 def _compute_rarity(image_count: int, rating: float = 0.0, session_count: int = 0) -> str:
-    # Quality multiplier
-    if rating >= 8.0:   quality = 1.8
-    elif rating >= 6.0: quality = 1.3
-    elif rating > 0:    quality = 1.0
-    else:               quality = 0.85  # never rated → slight penalty
-
-    # Engagement multiplier
-    if session_count >= 20:  engagement = 1.5
-    elif session_count >= 5: engagement = 1.2
-    elif session_count == 0: engagement = 0.9
-    else:                    engagement = 1.0
-
-    score = image_count * quality * engagement
-
-    # Score thresholds (base) + engagement/rating gates at top two tiers
-    if score >= 2500:
-        # Relic gate: sessions ≥ 30 AND rating ≥ 7
-        if session_count >= 30 and rating >= 7:
-            return "relic"
-        return "legendary"
-    if score >= 1200:
-        # Legendary gate: sessions ≥ 10 OR rating ≥ 8
-        if session_count >= 10 or rating >= 8:
-            return "legendary"
-        return "epic"
-    if score >= 600:  return "epic"
-    if score >= 300:  return "rare"
-    if score >= 100:  return "uncommon"
-    return "common"
+    """Tier is purely based on file count. 5 tiers, calibrated for large collections."""
+    if image_count >= 15000: return "legendary"   # Grand Collection
+    if image_count >= 6000:  return "epic"         # Library
+    if image_count >= 2500:  return "rare"         # Big Portfolio
+    if image_count >= 500:   return "uncommon"     # Album
+    return "common"                                # Snapshot
 
 
 @router.get("/", response_model=List[CreatorOut])
@@ -114,14 +99,12 @@ def list_creators(
     limit: int = 200,
 ):
     _RARITY_RANK = case(
-        (Creator.card_rarity == 'celestial', 0),
-        (Creator.card_rarity == 'relic',     1),
-        (Creator.card_rarity == 'legendary', 2),
-        (Creator.card_rarity == 'epic',      3),
-        (Creator.card_rarity == 'rare',      4),
-        (Creator.card_rarity == 'uncommon',  5),
-        (Creator.card_rarity == 'common',    6),
-        else_=7,
+        (Creator.card_rarity == 'legendary', 0),
+        (Creator.card_rarity == 'epic',      1),
+        (Creator.card_rarity == 'rare',      2),
+        (Creator.card_rarity == 'uncommon',  3),
+        (Creator.card_rarity == 'common',    4),
+        else_=5,
     )
     q = db.query(Creator)
     if creator_type:
@@ -268,6 +251,17 @@ def list_creators(
         else:
             d["card_rarity"] = _compute_rarity(ic, float(c.rating or 0), sc)
 
+        # Bond — organic accumulation + gifted hearts; excluded for male/unknown artists
+        bg = int(c.bond_gifts or 0)
+        bs = vs * 0.1 + sc * 50 + bg * 500
+        _thresholds = [100, 500, 1500, 3000, 6000]
+        computed_bond = sum(1 for t in _thresholds if bs >= t)
+        is_excl = (c.creator_type == 'artist' and c.gender not in ('Female', 'Other'))
+        d["bond_score"]    = round(bs, 1)
+        d["bond_excluded"] = is_excl
+        d["bond_level"]    = 0 if is_excl else computed_bond
+        d["bond_gifts"]    = bg
+
         # Collection stats are not shown on list cards — the profile page fetches
         # the full single-creator endpoint which uses _enrich() with all stats.
         d["collection_value"]       = 0.0
@@ -300,7 +294,8 @@ def creators_by_country(db: Session = Depends(get_db)):
     rows = db.execute(sqlt("""
         SELECT country, COUNT(*) as cnt,
                GROUP_CONCAT(id, ',') as ids,
-               GROUP_CONCAT(name, '||') as names
+               GROUP_CONCAT(name, '||') as names,
+               GROUP_CONCAT(COALESCE(avatar_path, ''), '||') as avatars
         FROM creators
         WHERE country IS NOT NULL AND country != ''
         GROUP BY country
@@ -308,12 +303,19 @@ def creators_by_country(db: Session = Depends(get_db)):
     """)).fetchall()
     result = []
     for r in rows:
-        ids = [int(x) for x in r[2].split(",") if x]
-        names = [x for x in r[3].split("||") if x]
+        ids     = [int(x) for x in r[2].split(",") if x]
+        names   = [x for x in r[3].split("||") if x]
+        avatars = r[4].split("||") if r[4] else [""] * len(ids)
+        # Pad avatars list if shorter than ids
+        while len(avatars) < len(ids):
+            avatars.append("")
         result.append({
             "country": r[0],
-            "count": r[1],
-            "creators": [{"id": ids[i], "name": names[i]} for i in range(len(ids))]
+            "count":   r[1],
+            "creators": [
+                {"id": ids[i], "name": names[i], "avatar_path": avatars[i] or None}
+                for i in range(len(ids))
+            ]
         })
     return result
 
@@ -662,26 +664,18 @@ def assign_folder(creator_id: int, data: _FolderAssignRequest, db: Session = Dep
     return {"assigned_count": assigned_count, "creator": _enrich(c, db)}
 
 
-@router.post("/{creator_id}/toggle-queen", response_model=CreatorOut)
-def toggle_queen(creator_id: int, db: Session = Depends(get_db)):
-    """Toggle My Queen (celestial) status. Sets it if not celestial, reverts to computed rarity if already celestial."""
+@router.post("/{creator_id}/gift-heart", response_model=CreatorOut)
+def gift_heart(creator_id: int, db: Session = Depends(get_db)):
+    """Spend 1 heart from the user's inventory to boost a creator's bond."""
+    from models import UserProfile
     c = db.query(Creator).filter(Creator.id == creator_id).first()
     if not c:
         raise HTTPException(404, "Creator not found")
-
-    if c.card_rarity == 'celestial':
-        # Revert to computed rarity
-        image_count = (
-            db.query(func.sum(Gallery.image_count))
-              .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-              .filter(gallery_creators.c.creator_id == c.id)
-              .scalar() or 0
-        )
-        session_count = db.query(SessionLog).filter(SessionLog.creator_id == c.id).count()
-        c.card_rarity = _compute_rarity(image_count, rating=float(c.rating or 0), session_count=session_count)
-    else:
-        c.card_rarity = 'celestial'
-
+    profile = db.query(UserProfile).first()
+    if not profile or (profile.hearts or 0) < 1:
+        raise HTTPException(400, "No hearts available")
+    profile.hearts = (profile.hearts or 0) - 1
+    c.bond_gifts   = (c.bond_gifts or 0) + 1
     db.commit()
     db.refresh(c)
     return _enrich(c, db)

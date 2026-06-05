@@ -5,6 +5,7 @@ and dismantle/regeneration logic.
 """
 import json
 import math
+import os
 import random
 from datetime import datetime
 from typing import Optional
@@ -18,7 +19,7 @@ from models import (
 )
 from config import (
     BASELINE_RARITY, DROP_WEIGHTS, GOON_THRESHOLD, PACK_COST, PACK_SIZE,
-    RARITY_ORDER, SHARD_YIELD, UPGRADE_EPIC_CHANCE, UPGRADE_LEGENDARY_CHANCE,
+    RARITY_ORDER, SHARD_YIELD, HEART_YIELD, UPGRADE_EPIC_CHANCE, UPGRADE_LEGENDARY_CHANCE,
     UPGRADE_RELIC_CHANCE, UPGRADE_CELESTIAL_CHANCE, VARIANT_CAP, ECONOMY, CATALYST_SHARD_COST,
     DISMANTLE_XP, CXP_THRESHOLDS, CXP_EVOLVE_SHARD_COST, CXP_FEED_YIELD,
     FORGE_VARIANT_SHARD_COST, FORGE_VARIANT_CATALYST_COST,
@@ -561,6 +562,7 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
     card = inv.card
     rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
     shards = SHARD_YIELD.get(rarity_str, 5)
+    hearts = HEART_YIELD.get(rarity_str, 0)
 
     # Unique cards: regenerate a new card for the pool
     if card.is_unique:
@@ -569,6 +571,11 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
     # Award shards
     materials = _get_or_create_materials(db)
     materials.shards += shards
+
+    # Award hearts (rare and above)
+    if hearts > 0:
+        profile = _get_or_create_profile(db)
+        profile.hearts = (profile.hearts or 0) + hearts
 
     # Award XP — notify_action fires quest + achievement hooks
     from services.gamification import notify_action
@@ -581,7 +588,7 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
         db.delete(inv)
 
     db.commit()
-    return {"shards_earned": shards, "xp_earned": xp.amount}
+    return {"shards_earned": shards, "xp_earned": xp.amount, "hearts_earned": hearts}
 
 
 def _regenerate_unique(db: Session, old_card: Card):
@@ -803,9 +810,10 @@ def dismantle_duplicates(db: Session) -> dict:
     """Dismantle all extra copies of every card, keeping exactly 1 of each."""
     dupes = db.query(CardInventory).filter(CardInventory.quantity > 1).all()
     if not dupes:
-        return {"dismantled": 0, "shards_earned": 0, "xp_earned": 0}
+        return {"dismantled": 0, "shards_earned": 0, "hearts_earned": 0, "xp_earned": 0}
 
     total_shards = 0
+    total_hearts = 0
     total_count  = 0
 
     for inv in dupes:
@@ -813,17 +821,22 @@ def dismantle_duplicates(db: Session) -> dict:
         card = inv.card
         rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
         total_shards += SHARD_YIELD.get(rarity_str, 5) * extras
+        total_hearts += HEART_YIELD.get(rarity_str, 0) * extras
         total_count  += extras
         inv.quantity  = 1
 
     materials = _get_or_create_materials(db)
     materials.shards += total_shards
 
+    if total_hearts:
+        profile = _get_or_create_profile(db)
+        profile.hearts = (profile.hearts or 0) + total_hearts
+
     from services.gamification import notify_action
     xp = notify_action(db, "card_dismantled", count=total_count, override_amount=DISMANTLE_XP * total_count)
 
     db.commit()
-    return {"dismantled": total_count, "shards_earned": total_shards, "xp_earned": xp.amount}
+    return {"dismantled": total_count, "shards_earned": total_shards, "hearts_earned": total_hearts, "xp_earned": xp.amount}
 
 
 # ── Fuse: get fuseable cards for a target inventory entry ─────────────────────
@@ -964,6 +977,7 @@ def fuse_all(db: Session, inventory_id: int) -> dict:
 def dismantle_batch(db: Session, inventory_ids: list) -> dict:
     """Dismantle multiple inventory items in one transaction."""
     total_shards = 0
+    total_hearts = 0
     total_xp     = 0
     processed    = 0
 
@@ -974,8 +988,8 @@ def dismantle_batch(db: Session, inventory_ids: list) -> dict:
 
         card = inv.card
         rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-        shards = SHARD_YIELD.get(rarity_str, 5)
-        total_shards += shards
+        total_shards += SHARD_YIELD.get(rarity_str, 5)
+        total_hearts += HEART_YIELD.get(rarity_str, 0)
         total_xp     += DISMANTLE_XP
         processed    += 1
 
@@ -988,12 +1002,16 @@ def dismantle_batch(db: Session, inventory_ids: list) -> dict:
         materials = _get_or_create_materials(db)
         materials.shards += total_shards
 
+    if total_hearts:
+        profile = _get_or_create_profile(db)
+        profile.hearts = (profile.hearts or 0) + total_hearts
+
     if total_xp:
         from services.gamification import notify_action
-        xp = notify_action(db, "card_dismantled", count=processed, override_amount=total_xp)
+        notify_action(db, "card_dismantled", count=processed, override_amount=total_xp)
 
     db.commit()
-    return {"dismantled": processed, "shards_earned": total_shards, "xp_earned": total_xp}
+    return {"dismantled": processed, "shards_earned": total_shards, "hearts_earned": total_hearts, "xp_earned": total_xp}
 
 
 # ── Craft catalyst from shards ────────────────────────────────────────────────
@@ -1213,7 +1231,7 @@ def _card_to_dict(db: Session, card: Card) -> dict:
     # Resolve image URL (full quality)
     image_id = card.source_image_id
     image_url = f"/api/images/{image_id}/file" if image_id else None
-    thumb_url = f"/api/images/{image_id}/thumb" if image_id else None
+    thumb_url = f"/api/images/{image_id}/thumb" if image_id else None  # fallback; overridden below if thumb_path known
 
     # Creator info
     creator_name = None
@@ -1276,13 +1294,17 @@ def _card_to_dict(db: Session, card: Card) -> dict:
         if ch:
             character_name = ch.name
 
-    # Focal point (from source image)
+    # Focal point (from source image) + resolve static thumb URL to skip per-request DB hits
     focal_x, focal_y = 0.5, 0.0
     if card.source_image_id:
         src_img = db.query(Image).filter(Image.id == card.source_image_id).first()
         if src_img:
             focal_x = src_img.focal_x if src_img.focal_x is not None else 0.5
             focal_y = src_img.focal_y if src_img.focal_y is not None else 0.0
+            # Resolve thumb URL to a direct static path so VaultCard skips the
+            # /api/images/{id}/thumb route (which hits the DB for every card).
+            if src_img.thumb_path and os.path.exists(src_img.thumb_path):
+                thumb_url = f"/thumbs/{os.path.basename(src_img.thumb_path)}"
 
     # Collab metadata
     collab_info = None

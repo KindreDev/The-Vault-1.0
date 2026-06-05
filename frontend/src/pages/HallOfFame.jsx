@@ -19,19 +19,15 @@ const RARITY_COLORS = {
   uncommon:  '#1D9E75',
   rare:      '#378ADD',
   epic:      '#7F77DD',
-  legendary: '#D4537E',
-  relic:     '#BA7517',
-  celestial: '#EDD87A',
+  legendary: '#BA7517',
 }
 
 const RARITY_LABELS = {
-  common:    'Discovered',
-  uncommon:  'Favored',
-  rare:      'Devoted',
-  epic:      'Obsessed',
-  legendary: 'Vault Favorite',
-  relic:     'Waifu',
-  celestial: 'My Queen',
+  common:    'Snapshot',
+  uncommon:  'Album · 500+',
+  rare:      'Big Portfolio · 2.5K+',
+  epic:      'Library · 6K+',
+  legendary: 'Grand Collection · 15K+',
 }
 
 const PODIUM_META = [

@@ -874,27 +874,114 @@ def _upsert_image_tag(db, image_id: int, tag_id: int, confidence: float, model_n
 def _tagger_for_image(img, model_override: Optional[str] = None) -> Optional[object]:
     """Select WD14 or JoyTag.
     model_override: 'wd14' | 'joytag' | None (auto from creator type)
+
+    Auto-selection priority when a gallery has multiple creators of mixed types:
+      any real-person type (cosplayer/ethot/actress/custom) → JoyTag
+      artist/character only                                  → WD14
+      no creator assigned                                    → JoyTag (safe default)
     """
     if model_override == "wd14":
         return _get_wd14()
     if model_override == "joytag":
         tagger = _get_joytag()
         if tagger is None:
-            tagger = _get_wd14()   # fallback if JoyTag not downloaded
+            tagger = _get_wd14()
         return tagger
 
-    # Auto: route by creator type
-    creator_type = None
+    # Auto: check ALL assigned creators — real-person types always win
     if img.gallery and img.gallery.creators:
-        creator_type = str(img.gallery.creators[0].creator_type).lower()
+        creator_types = {str(c.creator_type).lower() for c in img.gallery.creators}
+        if creator_types & JOYTAG_CREATOR_TYPES:
+            tagger = _get_joytag()
+            if tagger is None:
+                tagger = _get_wd14()
+            return tagger
+        if creator_types & WD14_CREATOR_TYPES:
+            return _get_wd14()
 
-    if creator_type in WD14_CREATOR_TYPES:
-        return _get_wd14()
-    # cosplayer / ethot / actress / custom / unknown → JoyTag if available, else WD14
+    # No creator assigned or unrecognised type → JoyTag, fallback WD14
     tagger = _get_joytag()
     if tagger is None:
         tagger = _get_wd14()
     return tagger
+
+
+# ── Video frame extraction ────────────────────────────────────────────────────
+VIDEO_FRAME_COUNT = 4   # evenly-spaced frames sampled per video
+
+
+def _get_ffmpeg_exe() -> str:
+    import sys
+    exe = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    if getattr(sys, "frozen", False):
+        bundled = os.path.join(sys._MEIPASS, exe)
+        if os.path.isfile(bundled):
+            return bundled
+    return exe
+
+
+def _video_duration(video_path: str) -> Optional[float]:
+    """Return video duration in seconds via ffprobe, or None on failure."""
+    import subprocess, sys
+    exe = _get_ffmpeg_exe().replace("ffmpeg", "ffprobe")
+    no_win = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    try:
+        r = subprocess.run(
+            [exe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", video_path],
+            capture_output=True, text=True, timeout=15, creationflags=no_win,
+        )
+        return float(r.stdout.strip())
+    except Exception:
+        return None
+
+
+def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tuple[list[str], str]:
+    """Extract `count` evenly-spaced frames from a video to temp PNG files.
+    Returns (frame_paths, tmpdir). Caller must shutil.rmtree(tmpdir)."""
+    import subprocess, sys, tempfile
+    ffmpeg = _get_ffmpeg_exe()
+    no_win = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    tmpdir = tempfile.mkdtemp(prefix="vault_vtag_")
+    frames: list[str] = []
+
+    duration = _video_duration(video_path)
+    if duration and duration > 0:
+        timestamps = [duration * (i + 1) / (count + 1) for i in range(count)]
+    else:
+        # Fixed fallback offsets — degrade gracefully for very short clips
+        timestamps = [5.0, 15.0, 30.0, 90.0][:count]
+
+    for i, t in enumerate(timestamps):
+        out = os.path.join(tmpdir, f"frame_{i:02d}.png")
+        try:
+            r = subprocess.run(
+                [ffmpeg, "-y", "-ss", str(t), "-i", video_path,
+                 "-vframes", "1", "-vf", "scale=448:448:force_original_aspect_ratio=decrease",
+                 "-q:v", "2", out],
+                capture_output=True, timeout=30, creationflags=no_win,
+            )
+            if r.returncode == 0 and os.path.exists(out):
+                frames.append(out)
+        except Exception:
+            pass
+
+    # Last-resort: extract frame 0 if all seeks failed (very short or damaged video)
+    if not frames:
+        out0 = os.path.join(tmpdir, "frame_00.png")
+        try:
+            r = subprocess.run(
+                [ffmpeg, "-y", "-i", video_path,
+                 "-vframes", "1", "-vf", "scale=448:448:force_original_aspect_ratio=decrease",
+                 "-q:v", "2", out0],
+                capture_output=True, timeout=30, creationflags=no_win,
+            )
+            if r.returncode == 0 and os.path.exists(out0):
+                frames.append(out0)
+        except Exception:
+            pass
+
+    return frames, tmpdir
 
 
 def _apply_nudity_heuristic(best: dict[str, tuple[str, float]]) -> dict[str, tuple[str, float]]:
@@ -985,6 +1072,64 @@ def tag_single_image(
     return True
 
 
+def tag_single_video(
+    img,
+    db,
+    threshold: float = 0.35,
+    model_override: Optional[str] = None,
+    clear_existing: bool = False,
+) -> bool:
+    """Tag a video Image ORM object by sampling frames.
+    Extracts VIDEO_FRAME_COUNT evenly-spaced frames, runs the appropriate tagger
+    on each, and unions results keeping the highest confidence per tag name.
+    Returns True if at least one tag was written."""
+    import shutil
+
+    tagger = _tagger_for_image(img, model_override)
+    if tagger is None:
+        raise RuntimeError("No tagger model is loaded — download WD14 or JoyTag first")
+
+    frames, tmpdir = _extract_video_frames(img.file_path)
+    if not frames:
+        logger.debug("No frames extracted from %s", img.file_path)
+        return False
+
+    try:
+        if clear_existing:
+            _clear_ai_tags(db, img.id)
+
+        # Aggregate across all frames — keep highest confidence per tag name
+        best: dict[str, tuple[str, float]] = {}
+        person_count: Optional[int] = None
+
+        for frame_path in frames:
+            raw_results, pc = tagger.tag(frame_path, threshold)
+            if pc is not None and (person_count is None or pc > person_count):
+                person_count = pc
+            for name, cat, conf in raw_results:
+                if name not in best or conf > best[name][1]:
+                    best[name] = (cat, conf)
+
+        if not best:
+            return False
+
+        best = _apply_nudity_heuristic(best)
+
+        for name, (cat, conf) in best.items():
+            tag = _get_or_create_tag(db, name, cat)
+            _upsert_image_tag(db, img.id, tag.id, conf, tagger.MODEL_NAME)
+            tag.use_count = (tag.use_count or 0) + 1
+
+        img.ai_tagged    = True
+        img.ai_tag_model = tagger.MODEL_NAME
+        if person_count is not None:
+            img.person_count = person_count
+
+        return True
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 # ── Bulk tagging worker (runs in background thread) ───────────────────────────
 def bulk_tag_images(
     db,
@@ -1034,10 +1179,9 @@ def bulk_tag_images(
                    .filter(gallery_creators.c.creator_id == creator_id))
         if not retag:
             q = q.filter(Image.ai_tagged == False)   # noqa: E712
-        q = q.filter(Image.is_video == False)        # noqa: E712  — skip videos
 
         images = q.all()
-        _set(total=len(images), message=f"Found {len(images)} images to tag…")
+        _set(total=len(images), message=f"Found {len(images)} to tag…")
 
         if not images:
             _set(message="No untagged images found.", running=False, active_model=None)
@@ -1066,7 +1210,8 @@ def bulk_tag_images(
                 continue
 
             try:
-                ok = tag_single_image(img, db, threshold, model_override, clear_existing=retag)
+                fn = tag_single_video if img.is_video else tag_single_image
+                ok = fn(img, db, threshold, model_override, clear_existing=retag)
                 if ok:
                     tagged += 1
                 else:

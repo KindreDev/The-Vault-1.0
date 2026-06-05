@@ -89,10 +89,20 @@ export default function RandomMixModal({ onClose }) {
     queryFn: () => tagsApi.list().then(r => r.data),
   })
 
-  const [count,        setCount]        = useState(50)
-  const [contentType,  setContentType]  = useState('all')
-  const [name,         setName]         = useState('')
-  const [busy,         setBusy]         = useState(false)
+  const CREATOR_TYPES = [
+    { value: 'cosplayer', label: 'Cosplayer' },
+    { value: 'ethot',     label: 'E-Thot'    },
+    { value: 'artist',    label: 'Artist'    },
+    { value: 'character', label: 'Character' },
+    { value: 'actress',   label: 'Actress'   },
+    { value: 'custom',    label: 'Custom'    },
+  ]
+
+  const [count,         setCount]         = useState(50)
+  const [contentType,   setContentType]   = useState('all')
+  const [selectedTypes, setSelectedTypes] = useState([])   // [] = any
+  const [name,          setName]          = useState('')
+  const [busy,          setBusy]          = useState(false)
 
   // Creator multi-select state
   const [selectedCreators, setSelectedCreators] = useState([])  // [{ id, name }]
@@ -159,11 +169,12 @@ export default function RandomMixModal({ onClose }) {
     try {
       const res = await galleriesApi.randomMix({
         count,
-        creator_ids: selectedCreators.map(c => c.id),
-        photos_only: contentType === 'photos',
-        videos_only: contentType === 'videos',
-        tag_ids:     selectedTags.map(t => t.id),
-        name:        name.trim() || undefined,
+        creator_ids:   selectedCreators.map(c => c.id),
+        creator_types: selectedTypes,
+        photos_only:   contentType === 'photos',
+        videos_only:   contentType === 'videos',
+        tag_ids:       selectedTags.map(t => t.id),
+        name:          name.trim() || undefined,
       })
       toast.success(`"${res.data.name}" created — ${res.data.image_count} items`)
       onClose()
@@ -279,6 +290,32 @@ export default function RandomMixModal({ onClose }) {
                 No creators match "{creatorSearch}"
               </div>
             )}
+          </div>
+
+          {/* Creator type multi-toggle */}
+          <div>
+            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-2">
+              Creator type <span className="opacity-50">(blank = any)</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {CREATOR_TYPES.map(({ value, label }) => {
+                const active = selectedTypes.includes(value)
+                return (
+                  <button key={value}
+                          onMouseDown={() => setSelectedTypes(prev =>
+                            active ? prev.filter(t => t !== value) : [...prev, value]
+                          )}
+                          className="px-3 py-1 rounded-full text-[11px] cursor-pointer transition-all"
+                          style={{
+                            background: active ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
+                            color:      active ? '#CECBF6'                : 'rgba(255,255,255,0.45)',
+                            border:     `0.5px solid ${active ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                          }}>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Tags */}

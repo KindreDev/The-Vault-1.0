@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
 import { COUNTRIES } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
+import BondHearts from '../components/BondHearts'
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
@@ -57,19 +58,15 @@ const RARITY_COLORS = {
   uncommon:  '#1D9E75',
   rare:      '#378ADD',
   epic:      '#7F77DD',
-  legendary: '#D4537E',
-  relic:     '#BA7517',
-  celestial: '#EDD87A',
+  legendary: '#BA7517',
 }
 
 const RARITY_LABELS = {
-  common:    'Discovered',
-  uncommon:  'Favored',
-  rare:      'Devoted',
-  epic:      'Obsessed',
-  legendary: 'Vault Favorite',
-  relic:     'Waifu',
-  celestial: 'My Queen',
+  common:    'Snapshot',
+  uncommon:  'Album · 500+',
+  rare:      'Big Portfolio · 2.5K+',
+  epic:      'Library · 6K+',
+  legendary: 'Grand Collection · 15K+',
 }
 
 const TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
@@ -119,7 +116,7 @@ const SORTS = [
   { value: 'image_count', label: 'Most Photos' },
   { value: 'cum_count',   label: 'Most Cummed' },
   { value: 'rating',      label: 'Highest Rated' },
-  { value: 'rarity',      label: 'Quality' },
+  { value: 'rarity',      label: 'Collection Size' },
   { value: 'random',      label: 'Random' },
 ]
 
@@ -187,7 +184,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, avatarBu
         <div className="flex items-end gap-2">
           <div className="text-[19px] font-semibold leading-tight flex-1 truncate"
                style={{ color: 'rgba(255,255,255,0.95)' }}>
-            {creator.display_name || creator.name}
+            {creator.title || creator.name}
           </div>
           {iso && (
             <span className={`fi fi-${iso} flex-shrink-0`}
@@ -226,6 +223,9 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, avatarBu
               <span style={{ color: 'rgba(212,83,126,0.6)' }}>♥ {creator.session_count} sessions</span>
             )}
           </div>
+        )}
+        {!creator.bond_excluded && (
+          <BondHearts level={creator.bond_level ?? 0} size="sm" />
         )}
       </div>
     </div>
@@ -371,7 +371,7 @@ function JikanSearch({ onSelect }) {
 // ── Add creator modal ──────────────────────────────────────────────────────────
 function AddCreatorModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
-    name: '', display_name: '', real_name: '', creator_type: 'cosplayer',
+    name: '', title: '', real_name: '', creator_type: 'cosplayer',
     gender: '', eye_color: '', fake_boobs: '', fake_ass: '',
     date_of_birth: '', height: '', body_measurements: '', country: '',
     series: '', origin: '', description: '', wiki_url: '', platform_links: '', patreon_price: '',
@@ -480,7 +480,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
           <div className="flex flex-col gap-4">
             {[
               { label: 'Name *', key: 'name', placeholder: 'Queen Marika' },
-              { label: 'Display name', key: 'display_name', placeholder: 'Optional shorter name' },
+              { label: 'Title', key: 'title', placeholder: 'Optional title shown after name' },
               { label: 'Real name', key: 'real_name', placeholder: 'Real identity if known' },
             ].map(f => (
               <div key={f.key}>

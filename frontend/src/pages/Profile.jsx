@@ -230,6 +230,7 @@ export default function Profile() {
   const credits       = balance?.vault_credits ?? 0
   const shards        = materials?.shards ?? 0
   const tokens        = materials?.catalyst_tokens ?? 0
+  const hearts        = profile?.hearts ?? 0
   const recentXP      = xpHistory?.slice(0, 20) ?? []
   const recentCredit  = balance?.recent_events ?? []
 
@@ -543,6 +544,7 @@ export default function Profile() {
           { icon: '💰', label: 'Vault Credits', value: credits.toLocaleString(), color: '#FAC775' },
           { icon: '🔷', label: 'Shards', value: shards.toLocaleString(), color: '#CECBF6' },
           { icon: '⚗️', label: 'Catalyst Tokens', value: tokens, color: '#1D9E75' },
+          { icon: '❤️', label: 'Hearts', value: hearts.toLocaleString(), color: '#FF2D75' },
           { icon: '⚡', label: 'Total XP', value: profile.total_xp.toLocaleString(), color: '#7F77DD' },
         ].map(s => (
           <div key={s.label} style={{

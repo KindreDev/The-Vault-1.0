@@ -93,11 +93,62 @@ const COUNTRY_COORDS = {
   'Greece': [22, 39],
 }
 
+// ── Country geographic spreads [lon, lat] for scattering creator avatars ──────
+const COUNTRY_SPREAD = {
+  'United States of America': [24, 12],
+  'Russia':                   [40, 15],
+  'Canada':                   [28, 12],
+  'China':                    [20, 10],
+  'Australia':                [22, 12],
+  'Brazil':                   [16, 14],
+  'India':                    [12, 12],
+  'Argentina':                [8,  14],
+  'Mexico':                   [12,  8],
+  'Indonesia':                [18,  8],
+  'Saudi Arabia':             [10,  8],
+  'Japan':                    [8,  10],
+  'South Korea':              [4,   5],
+  'United Kingdom':           [5,   5],
+  'France':                   [7,   6],
+  'Germany':                  [7,   5],
+  'Italy':                    [5,   9],
+  'Spain':                    [8,   6],
+  'Ukraine':                  [9,   6],
+  'Poland':                   [6,   5],
+  'Sweden':                   [6,   9],
+  'Norway':                   [5,   9],
+  'Finland':                  [6,   8],
+  'Turkey':                   [10,  5],
+  'Iran':                     [10,  7],
+  'Egypt':                    [8,   7],
+  'South Africa':             [10,  8],
+  'Nigeria':                  [6,   6],
+  'Philippines':              [6,  10],
+  'Vietnam':                  [3,  10],
+  'Thailand':                 [5,   8],
+  'Malaysia':                 [8,   5],
+  'New Zealand':              [6,   8],
+}
+const _SPREAD_DEFAULT = [8, 5]
+
+// Deterministic LCG random — stable scatter positions keyed to creator ID
+const _seededRand = seed => {
+  let s = (seed * 1664525 + 1013904223) >>> 0
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 }
+}
+
 // ── World Map component ───────────────────────────────────────────────────────
 function WorldMap({ byCountry, compact = false, onCountryClick }) {
-  const [tooltip, setTooltip] = React.useState(null)
-  const [zoom, setZoom] = React.useState(1)
-  const [center, setCenter] = React.useState([0, 20])
+  const [tooltip,       setTooltip]       = React.useState(null)
+  const [zoom,          setZoom]          = React.useState(1)
+  const [center,        setCenter]        = React.useState([0, 20])
+  const [failedAvatars, setFailedAvatars] = React.useState(() => new Set())
+  const accent = useVaultStore(s => s.accent)
+
+  const accentRgb = React.useMemo(() => {
+    const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '127,119,221'
+  }, [accent])
 
   const countryMap = React.useMemo(() => {
     const m = {}
@@ -112,34 +163,79 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
     Math.max(1, ...Object.values(countryMap).map(v => v.count)),
   [countryMap])
 
-  const fillColor = (name, count) => {
-    if (!count) return 'rgba(255,255,255,0.06)'
-    const intensity = Math.min(1, count / maxCount)
-    if (intensity < 0.25) return 'rgba(127,119,221,0.35)'
-    if (intensity < 0.5)  return 'rgba(127,119,221,0.55)'
-    if (intensity < 0.75) return 'rgba(127,119,221,0.75)'
-    return '#7F77DD'
+  const fillColor = count => {
+    if (!count) return 'rgba(255,255,255,0.1)'
+    const t = Math.min(1, count / maxCount)
+    if (t < 0.25) return `rgba(${accentRgb},0.3)`
+    if (t < 0.5)  return `rgba(${accentRgb},0.5)`
+    if (t < 0.75) return `rgba(${accentRgb},0.7)`
+    return accent
   }
 
-  const markers = React.useMemo(() =>
-    Object.entries(countryMap).map(([name, item]) => {
-      const norm = normalizeCountry(name) || name
-      const coords = COUNTRY_COORDS[norm]
-      if (!coords) return null
-      return { name: norm, coords, count: item.count, creators: item.creators }
-    }).filter(Boolean),
-  [countryMap])
+  // Max creators visible per country based on zoom level
+  const maxPerCountry = compact ? 1
+    : zoom < 1.5 ? 2
+    : zoom < 2.5 ? 5
+    : zoom < 4   ? 12
+    : zoom < 6   ? 25 : 9999
+
+  // Build all creator markers with stable deterministic scatter positions
+  const allMarkers = React.useMemo(() => {
+    const out = []
+    for (const [name, item] of Object.entries(countryMap)) {
+      const coords = COUNTRY_COORDS[name]
+      if (!coords) continue
+      const [lon, lat] = coords
+      const [sLon, sLat] = COUNTRY_SPREAD[name] || _SPREAD_DEFAULT
+      item.creators.forEach((c, idx) => {
+        const rng = _seededRand(c.id * 31 + idx * 7)
+        const dx = compact ? 0 : (rng() - 0.5) * sLon
+        const dy = compact ? 0 : (rng() - 0.5) * sLat
+        out.push({
+          key:  `${name}-${c.id}`,
+          id:   c.id,
+          name: c.name,
+          avatar_path: c.avatar_path,
+          country: name,
+          coords:  [lon + dx, lat + dy],
+          idx,
+          initial: c.name?.charAt(0)?.toUpperCase() ?? '?',
+        })
+      })
+    }
+    return out
+  }, [countryMap, compact])
+
+  const visible = React.useMemo(
+    () => allMarkers.filter(m => m.idx < maxPerCountry),
+    [allMarkers, maxPerCountry]
+  )
+
+  const R = compact ? 4 : 9   // marker radius in map-space units (no scale transform)
+
+  const onImgError = React.useCallback((id) => {
+    setFailedAvatars(prev => { const s = new Set(prev); s.add(id); return s })
+  }, [])
 
   return (
     <div className="relative w-full h-full" style={{ minHeight: compact ? 180 : 400 }}>
       <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: compact ? 80 : 130 }}
+        projection="geoNaturalEarth1"
+        projectionConfig={{ scale: compact ? 145 : 165 }}
         style={{ width: '100%', height: '100%', background: 'transparent' }}>
+
+        {/* Single shared clipPath using objectBoundingBox — works at any scale/zoom,
+            no coordinate-system mismatch, safe to place outside ZoomableGroup. */}
+        <defs>
+          <clipPath id="vmap-avatar-clip" clipPathUnits="objectBoundingBox">
+            <circle cx="0.5" cy="0.5" r="0.5" />
+          </clipPath>
+        </defs>
+
         <ZoomableGroup
           zoom={zoom}
           center={center}
-          filterZoomEvent={compact ? () => false : (evt) => evt.type !== 'dblclick'}
+          filterZoomEvent={compact ? () => false : evt => evt.type !== 'dblclick'}
           onMoveEnd={({ zoom: z, coordinates }) => {
             if (compact) return
             setCenter(coordinates)
@@ -154,9 +250,9 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
                 return (
                   <Geography key={geo.rsmKey} geography={geo}
                     style={{
-                      default: { fill: fillColor(name, item?.count), stroke: 'rgba(255,255,255,0.08)', strokeWidth: 0.5, outline: 'none' },
-                      hover:   { fill: item ? '#CECBF6' : 'rgba(255,255,255,0.12)', stroke: 'rgba(255,255,255,0.2)', strokeWidth: 0.5, outline: 'none', cursor: item ? 'pointer' : 'default' },
-                      pressed: { fill: '#7F77DD', outline: 'none' },
+                      default: { fill: fillColor(item?.count), stroke: 'rgba(255,255,255,0.07)', strokeWidth: 0.5, outline: 'none' },
+                      hover:   { fill: item ? `rgba(${accentRgb},0.85)` : 'rgba(255,255,255,0.15)', stroke: 'rgba(255,255,255,0.18)', strokeWidth: 0.5, outline: 'none', cursor: item ? 'pointer' : 'default' },
+                      pressed: { fill: accent, outline: 'none' },
                     }}
                     onMouseEnter={() => item && setTooltip({ name, count: item.count, creators: item.creators })}
                     onMouseLeave={() => setTooltip(null)}
@@ -167,24 +263,55 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
             }
           </Geographies>
 
-          {!compact && markers.map(m => (
-            <Marker key={m.name} coordinates={m.coords}>
-              <circle r={Math.min(8, 3 + m.count * 1.5)} fill="#7F77DD" fillOpacity={0.7}
-                      stroke="#CECBF6" strokeWidth={1}
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={() => setTooltip({ name: m.name, count: m.count, creators: m.creators })}
-                      onMouseLeave={() => setTooltip(null)}
-                      onClick={() => onCountryClick?.(m.name, { count: m.count, creators: m.creators })} />
-            </Marker>
-          ))}
+          {visible.map(m => {
+            const showAvatar = !!m.avatar_path && !failedAvatars.has(m.id)
+            return (
+              <Marker key={m.key} coordinates={m.coords}>
+                <g
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => {
+                    const item = countryMap[m.country]
+                    setTooltip({ name: m.country, count: item?.count ?? 1, creators: item?.creators ?? [m] })
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                  onClick={() => onCountryClick?.(m.country, countryMap[m.country])}
+                >
+                  {/* Accent base circle — always visible, acts as fallback */}
+                  <circle cx="0" cy="0" r={R} fill={accent} opacity={0.85} />
+                  {/* Avatar image — use the API avatar-thumb endpoint which handles
+                      full file paths correctly regardless of where the file lives */}
+                  {showAvatar && (
+                    <image
+                      href={`/api/creators/${m.id}/avatar-thumb?size=120`}
+                      x={-R} y={-R} width={R * 2} height={R * 2}
+                      clipPath="url(#vmap-avatar-clip)"
+                      preserveAspectRatio="xMidYMid slice"
+                      onError={() => onImgError(m.id)}
+                    />
+                  )}
+                  {/* Initial letter when no avatar or avatar failed */}
+                  {!showAvatar && (
+                    <text x="0" y="0" dominantBaseline="central" textAnchor="middle"
+                      fontSize={R * 0.9} fontWeight="700" fill="rgba(255,255,255,0.95)"
+                      style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                      {m.initial}
+                    </text>
+                  )}
+                  {/* Border ring */}
+                  <circle cx="0" cy="0" r={R} fill="none"
+                    stroke="rgba(255,255,255,0.7)" strokeWidth={compact ? 0.6 : 0.8} />
+                </g>
+              </Marker>
+            )
+          })}
         </ZoomableGroup>
       </ComposableMap>
 
       {tooltip && (
         <div className="absolute top-2 left-2 px-3 py-2 rounded-[8px] pointer-events-none"
-             style={{ background: 'rgba(22,22,22,0.95)', border: '0.5px solid rgba(127,119,221,0.4)', zIndex: 10 }}>
+             style={{ background: 'rgba(22,22,22,0.95)', border: `0.5px solid rgba(${accentRgb},0.4)`, zIndex: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 3 }}>{tooltip.name}</div>
-          <div style={{ fontSize: 14, color: '#CECBF6' }}>{tooltip.count} creator{tooltip.count !== 1 ? 's' : ''}</div>
+          <div style={{ fontSize: 14, color: accent }}>{tooltip.count} creator{tooltip.count !== 1 ? 's' : ''}</div>
           {tooltip.creators?.slice(0, 4).map(c => (
             <div key={c.id} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{c.name}</div>
           ))}
@@ -214,17 +341,22 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
 // ── World Map modal ───────────────────────────────────────────────────────────
 function WorldMapModal({ byCountry, onClose }) {
   const [selected, setSelected] = React.useState(null)
+  const accent = useVaultStore(s => s.accent)
+  const accentRgb = React.useMemo(() => {
+    const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '127,119,221'
+  }, [accent])
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.85)' }}
          onClick={onClose}>
       <div className="rounded-[16px] flex flex-col shadow-2xl"
-           style={{ width: '72vw', height: '78vh', background: '#141414', border: '0.5px solid rgba(127,119,221,0.35)' }}
+           style={{ width: '72vw', height: '78vh', background: '#141414', border: `0.5px solid rgba(${accentRgb},0.35)` }}
            onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 flex-shrink-0"
              style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center gap-2 text-[17px] font-medium" style={{ color: 'rgba(255,255,255,0.85)' }}>
-            <Globe size={16} style={{ color: '#7F77DD' }} /> Creator World Map
+            <Globe size={16} style={{ color: accent }} /> Creator World Map
             <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
               · {(byCountry || []).reduce((s, c) => s + c.count, 0)} creators across {(byCountry || []).length} countries
             </span>
@@ -243,7 +375,7 @@ function WorldMapModal({ byCountry, onClose }) {
                 <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{selected.name}</div>
                 <button onClick={() => setSelected(null)} style={{ color: 'rgba(255,255,255,0.3)', cursor: 'pointer' }}><X size={12} /></button>
               </div>
-              <div style={{ fontSize: 14, color: '#7F77DD', marginBottom: 8 }}>{selected.count} creator{selected.count !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 14, color: accent, marginBottom: 8 }}>{selected.count} creator{selected.count !== 1 ? 's' : ''}</div>
               {(selected.creators || []).map(c => (
                 <div key={c.id} style={{ fontSize: 15, color: 'rgba(255,255,255,0.65)', padding: '4px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
                   {c.name}
@@ -786,6 +918,11 @@ export function Stats() {
   const endSession     = useVaultStore(s => s.endSession)
   const sessionTotalMs = useVaultStore(s => s.sessionTotalMs)
   const profile        = useVaultStore(s => s.profile)
+  const accent         = useVaultStore(s => s.accent)
+  const accentRgb      = React.useMemo(() => {
+    const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '127,119,221'
+  }, [accent])
   const qc = useQueryClient()
 
   const { data: stats } = useQuery({
@@ -955,9 +1092,9 @@ export function Stats() {
         {/* Left: session stats */}
         {totalCount > 0 && (
           <div className="flex-1 rounded-[14px] relative overflow-hidden"
-               style={{ background: 'linear-gradient(135deg, #1a1030 0%, #0e0e1a 55%, #1a0e18 100%)', border: '0.5px solid rgba(127,119,221,0.25)', padding: '28px 32px' }}>
+               style={{ background: `linear-gradient(135deg, rgba(${accentRgb},0.14) 0%, #0e0e0e 55%, rgba(${accentRgb},0.07) 100%)`, border: `0.5px solid rgba(${accentRgb},0.25)`, padding: '28px 32px' }}>
             {/* Decorative glow */}
-            <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: 320, background: 'radial-gradient(circle, rgba(127,119,221,0.12) 0%, transparent 65%)', transform: 'translate(25%, -25%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: 320, background: `radial-gradient(circle, rgba(${accentRgb},0.12) 0%, transparent 65%)`, transform: 'translate(25%, -25%)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: 0, left: '30%', width: 200, height: 200, background: 'radial-gradient(circle, rgba(212,83,126,0.08) 0%, transparent 65%)', pointerEvents: 'none' }} />
 
             <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Your vault · all time</div>
@@ -977,7 +1114,7 @@ export function Stats() {
               {totalViewFmt && (
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Time spent viewing</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#7F77DD' }}>{totalViewFmt}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: accent }}>{totalViewFmt}</div>
                 </div>
               )}
               {stats?.total_cum_count > 0 && (
@@ -989,7 +1126,7 @@ export function Stats() {
               {stats?.top_creator_name && (
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Goon Queen</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#CECBF6' }}>{stats.top_creator_name}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: accent }}>{stats.top_creator_name}</div>
                 </div>
               )}
             </div>
@@ -1048,7 +1185,7 @@ export function Stats() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                           {g.duration_sec > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{fmtDuration(g.duration_sec)}</span>}
-                          {g.xp_earned > 0 && <span style={{ fontSize: 16, fontWeight: 700, color: '#7F77DD' }}>+{g.xp_earned} XP</span>}
+                          {g.xp_earned > 0 && <span style={{ fontSize: 16, fontWeight: 700, color: accent }}>+{g.xp_earned} XP</span>}
                           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', minWidth: 52, textAlign: 'right' }}>{relTime(g.logged_at)}</span>
                         </div>
                       </div>
@@ -1072,11 +1209,11 @@ export function Stats() {
 
         {/* Right: world map */}
         <div className="rounded-[14px] flex flex-col overflow-hidden cursor-pointer"
-             style={{ width: totalCount > 0 ? '42%' : '100%', flexShrink: 0, background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(127,119,221,0.2)', minHeight: 220 }}
+             style={{ width: totalCount > 0 ? '42%' : '100%', flexShrink: 0, background: 'rgba(255,255,255,0.03)', border: `0.5px solid rgba(${accentRgb},0.2)`, minHeight: 220 }}
              onClick={() => setShowMapModal(true)}>
           <div className="flex items-center justify-between px-4 pt-3 flex-shrink-0">
             <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-              <Globe size={14} style={{ color: '#7F77DD' }} /> Creator Origins
+              <Globe size={14} style={{ color: accent }} /> Creator Origins
             </div>
             {(byCountry || []).length > 0 && (
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>
@@ -1373,15 +1510,13 @@ export function Stats() {
               const dist = creatorDist?.by_rarity ?? {}
               const total = creatorDist?.total || 1
               const RARITY_META = [
-                { key: 'celestial', label: 'Celestial', color: '#EDD87A' },
-                { key: 'relic',     label: 'Relic',     color: '#BA7517' },
-                { key: 'legendary', label: 'Legendary', color: '#D4537E' },
-                { key: 'epic',      label: 'Epic',      color: '#7F77DD' },
-                { key: 'rare',      label: 'Rare',      color: '#378ADD' },
-                { key: 'uncommon',  label: 'Uncommon',  color: '#1D9E75' },
-                { key: 'common',    label: 'Common',    color: '#888780' },
+                { key: 'legendary', label: 'Grand Collection', color: '#BA7517' },
+                { key: 'epic',      label: 'Library',          color: '#7F77DD' },
+                { key: 'rare',      label: 'Big Portfolio',    color: '#378ADD' },
+                { key: 'uncommon',  label: 'Album',            color: '#1D9E75' },
+                { key: 'common',    label: 'Snapshot',         color: '#888780' },
               ]
-              const rareAndAbove = ['celestial','relic','legendary','epic'].reduce((s, k) => s + (dist[k] || 0), 0)
+              const rareAndAbove = ['legendary','epic','rare'].reduce((s, k) => s + (dist[k] || 0), 0)
               const rareAbovePct = Math.round((rareAndAbove / total) * 100)
               return (
                 <div className="vault-card p-4 flex flex-col">
@@ -1393,7 +1528,7 @@ export function Stats() {
                     ))}
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>
-                    <span style={{ color: '#7F77DD', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> epic or above
+                    <span style={{ color: '#378ADD', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> Big Portfolio or above
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
                     {RARITY_META.filter(r => (dist[r.key] || 0) > 0).map(r => (
