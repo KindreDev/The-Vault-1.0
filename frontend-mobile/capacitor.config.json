@@ -1,0 +1,12 @@
+{
+  "appId": "com.thevault.mobile",
+  "appName": "The Vault",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

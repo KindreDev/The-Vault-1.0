@@ -4,12 +4,14 @@ import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Star, X, User, Loader, LayoutGrid } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { creatorsApi } from '../lib/api'
+import CreatorContextMenu from '../components/CreatorContextMenu'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
 import { COUNTRIES } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
 import BondHearts from '../components/BondHearts'
+import FranchiseFilter from '../components/FranchiseFilter'
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
@@ -125,8 +127,26 @@ const PER_PAGE_OPTIONS = [25, 50, 100, 250]
 // ── Creator card — vertical portrait ─────────────────────────────────────────
 // React.memo: prevents grid from re-rendering all 50 cards when parent state
 // changes (search input, sort, modal open, etc.)
-const CreatorCard = React.memo(function CreatorCard({ creator, onClick, avatarBust, cardSize = 345 }) {
-  const [failed, setFailed] = useState(false)
+const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContextMenu, avatarBust, cardSize = 345 }) {
+  const [failed, setFailed]       = useState(false)
+  const [ratingOpen, setRatingOpen] = useState(false)
+  const [hoverStar, setHoverStar] = useState(0)
+  const ratingRef                 = useRef(null)
+  const qc                        = useQueryClient()
+
+  useEffect(() => {
+    if (!ratingOpen) return
+    const h = e => { if (ratingRef.current && !ratingRef.current.contains(e.target)) setRatingOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [ratingOpen])
+
+  const rateMutation = useMutation({
+    mutationFn: (rating) => creatorsApi.update(creator.id, { rating }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators'] }); setRatingOpen(false) },
+    onError:   () => toast.error('Could not update rating'),
+  })
+
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
   const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -140,6 +160,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, avatarBu
 
   return (
     <div onClick={onClick}
+         onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(creator, e) }}
          className="rounded-[12px] overflow-hidden cursor-pointer group relative"
          style={{ background: tc.bg, border: `0.5px solid ${rc}44`, aspectRatio: '2/3' }}>
 
@@ -171,12 +192,52 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, avatarBu
           <Star size={13} style={{ color: '#EF9F27' }} fill="#EF9F27" />
         </div>
       )}
-      {creator.rating > 0 && (
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2 py-1 rounded-full text-[13px] font-semibold"
-             style={{ background: 'rgba(0,0,0,0.7)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.4)', zIndex: 2 }}>
-          ★ {creator.rating % 1 === 0 ? creator.rating.toFixed(0) : creator.rating.toFixed(1)}
-        </div>
-      )}
+      {/* Rating badge — click to rate inline; fades in on card hover when unrated */}
+      <div ref={ratingRef} className="absolute top-2.5 left-2.5" style={{ zIndex: 10 }}>
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); setRatingOpen(o => !o) }}
+          className={`flex items-center gap-1 px-2 py-1 rounded-full text-[13px] font-semibold cursor-pointer transition-opacity ${creator.rating > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`}
+          style={{
+            background: creator.rating > 0 ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)',
+            color: '#EF9F27',
+            border: `0.5px solid ${creator.rating > 0 ? 'rgba(239,159,39,0.4)' : 'rgba(239,159,39,0.2)'}`,
+          }}>
+          {creator.rating > 0
+            ? `★ ${creator.rating % 1 === 0 ? creator.rating.toFixed(0) : creator.rating.toFixed(1)}`
+            : '☆'}
+        </button>
+
+        {ratingOpen && (
+          <div className="absolute top-full mt-1 left-0 rounded-[10px] p-3 shadow-2xl"
+               style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', zIndex: 50, minWidth: 220 }}>
+            <div className="text-[11px] mb-2 uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.35)' }}>Rate</div>
+            <div className="flex gap-0.5">
+              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onMouseEnter={() => setHoverStar(n)}
+                  onMouseLeave={() => setHoverStar(0)}
+                  onClick={e => { e.stopPropagation(); rateMutation.mutate(n) }}
+                  className="cursor-pointer text-[20px] leading-none transition-colors"
+                  style={{ color: n <= (hoverStar || creator.rating) ? '#EF9F27' : 'rgba(255,255,255,0.15)' }}>
+                  ★
+                </button>
+              ))}
+            </div>
+            {creator.rating > 0 && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); rateMutation.mutate(0) }}
+                className="mt-2 text-[11px] w-full text-center cursor-pointer"
+                style={{ color: 'rgba(255,255,255,0.3)' }}>
+                Clear rating
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Info overlay — pinned to bottom, sits inside the gradient */}
       <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 flex flex-col gap-2" style={{ zIndex: 2 }}>
@@ -240,18 +301,23 @@ function JikanSearch({ onSelect }) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState([])
   const [loading, setLoading]   = useState(false)
+  const [apiError, setApiError] = useState(false)
   const [picked, setPicked]     = useState(null)
   const debounceRef             = useRef(null)
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    if (query.trim().length < 2) { setResults([]); return }
+    if (query.trim().length < 2) { setResults([]); setApiError(false); return }
     setLoading(true)
+    setApiError(false)
     debounceRef.current = setTimeout(async () => {
       try {
         const r = await creatorsApi.jikanSearch(query.trim())
         setResults(r.data ?? [])
-      } catch { setResults([]) }
+      } catch {
+        setResults([])
+        setApiError(true)
+      }
       finally { setLoading(false) }
     }, 450)
     return () => clearTimeout(debounceRef.current)
@@ -329,6 +395,13 @@ function JikanSearch({ onSelect }) {
               </div>
             )}
           </div>
+
+          {apiError && (
+            <div className="mt-2 text-[14px] px-3 py-2 rounded-[8px]"
+                 style={{ background: 'rgba(186,117,23,0.1)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
+              MyAnimeList API is currently unavailable — try again in a moment.
+            </div>
+          )}
 
           {results.length > 0 && (
             <div className="mt-2.5 flex flex-col gap-1.5 max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
@@ -564,7 +637,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
               <div className="grid grid-cols-2 gap-4">
                 {[
                   { label: 'Origin/Universe', key: 'origin', placeholder: 'Lands Between' },
-                  { label: 'Series / Game', key: 'series', placeholder: 'Elden Ring' },
+                  { label: 'Franchise', key: 'series', placeholder: 'Elden Ring' },
                 ].map(f => (
                   <div key={f.key}>
                     <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
@@ -657,8 +730,12 @@ export default function CreatorList() {
   const [sortDir, setSortDir]     = useState(_saved?.sortDir    ?? 'asc')
   const [perPage, setPerPage]     = useState(_saved?.perPage    ?? 50)
   const [page, setPage]           = useState(_saved?.page       ?? 1)
+  const [franchise, setFranchise] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [cardSize, setCardSize]   = useState(_saved?.cardSize   ?? 345)
+  const [creatorCtxMenu, setCreatorCtxMenu] = useState(null) // { creator, x, y }
+
+  const qc = useQueryClient()
   // Skip the first mount so that filter-change resets don't clobber the
   // page restored from sessionStorage when navigating back to the list.
   const _filterMountRef           = useRef(true)
@@ -682,13 +759,14 @@ export default function CreatorList() {
   const skip = (page - 1) * perPage
 
   const { data: creators, isLoading } = useQuery({
-    queryKey: ['creators', search, typeFilter, sortBy, sortDir, perPage, page],
+    queryKey: ['creators', search, typeFilter, sortBy, sortDir, perPage, page, franchise],
     // avatarBust intentionally excluded — avatar images have their own cache-busting
     // in the URL (v=${updated_at}_${avatarBust}). Including it here caused the ENTIRE
     // creators list to re-fetch from the server whenever any avatar changed.
     queryFn: () => creatorsApi.list({
       search: search || undefined,
       creator_type: typeFilter !== 'all' ? typeFilter : undefined,
+      series: franchise || undefined,
       sort_by: sortBy,
       sort_dir: sortBy !== 'random' ? sortDir : undefined,
       skip,
@@ -727,6 +805,8 @@ export default function CreatorList() {
           sortDir={sortDir}
           onSortDirChange={setSortDir}
         />
+
+        <FranchiseFilter value={franchise} onChange={v => { setFranchise(v || ''); setPage(1) }} />
 
         <button onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 text-[12px] font-medium px-4 py-2 rounded-full ml-auto cursor-pointer"
@@ -805,7 +885,9 @@ export default function CreatorList() {
             </div>
           : <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
               {creators.map(c => (
-                <CreatorCard key={c.id} creator={c} avatarBust={avatarBust} cardSize={cardSize} onClick={() => navigate(`/creators/${c.id}`)} />
+                <CreatorCard key={c.id} creator={c} avatarBust={avatarBust} cardSize={cardSize}
+                             onClick={() => navigate(`/creators/${c.id}`)}
+                             onContextMenu={(cr, e) => setCreatorCtxMenu({ creator: cr, x: e.clientX, y: e.clientY })} />
               ))}
             </div>
       }
@@ -835,6 +917,29 @@ export default function CreatorList() {
           />
         )}
       </AnimatePresence>
+
+      {/* Creator right-click context menu */}
+      {creatorCtxMenu && (
+        <CreatorContextMenu
+          creator={creatorCtxMenu.creator}
+          position={{ x: creatorCtxMenu.x, y: creatorCtxMenu.y }}
+          onClose={() => setCreatorCtxMenu(null)}
+          onOpen={() => navigate(`/creators/${creatorCtxMenu.creator.id}`)}
+          onToggleFav={async () => {
+            try {
+              await creatorsApi.update(creatorCtxMenu.creator.id, { is_favorite: !creatorCtxMenu.creator.is_favorite })
+              qc.invalidateQueries({ queryKey: ['creators'] })
+            } catch { toast.error('Could not update favourite') }
+          }}
+          onDelete={async () => {
+            try {
+              await creatorsApi.delete(creatorCtxMenu.creator.id)
+              toast.success(`${creatorCtxMenu.creator.name} deleted`)
+              qc.invalidateQueries({ queryKey: ['creators'] })
+            } catch { toast.error('Delete failed') }
+          }}
+        />
+      )}
     </div>
   )
 }

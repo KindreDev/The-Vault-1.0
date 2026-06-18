@@ -256,6 +256,109 @@ def restart_server():
     return {"message": "Restarting…"}
 
 
+# ── App version & auto-update ─────────────────────────────────────────────────
+APP_VERSION = "1.1.0"
+
+# URL of the version manifest hosted on your website.
+# The file must be valid JSON:
+#   { "version": "1.1.0", "download_url": "https://…/VaultSetup.exe", "changelog": "- …" }
+# Set this before building the installer.
+UPDATE_MANIFEST_URL = "https://downloads.vault-app.site/version.json"
+
+def _parse_version(v: str):
+    try:
+        return tuple(int(x) for x in v.strip().split('.'))
+    except Exception:
+        return (0, 0, 0)
+
+
+@router.get("/version")
+def get_version():
+    return {"version": APP_VERSION, "is_installed": getattr(sys, "frozen", False)}
+
+
+@router.get("/update/check")
+def check_for_updates():
+    if not UPDATE_MANIFEST_URL or "your-website" in UPDATE_MANIFEST_URL:
+        raise HTTPException(400, "Update manifest URL is not configured. Edit UPDATE_MANIFEST_URL in routers/system.py.")
+    try:
+        import httpx as _httpx
+        r = _httpx.get(UPDATE_MANIFEST_URL, timeout=10, follow_redirects=True)
+        r.raise_for_status()
+        manifest = r.json()
+    except Exception as e:
+        raise HTTPException(502, detail=f"Could not reach update server: {e}")
+
+    remote_version = manifest.get("version", "")
+    download_url   = manifest.get("download_url", "")
+    changelog      = manifest.get("changelog", "")
+
+    current = _parse_version(APP_VERSION)
+    remote  = _parse_version(remote_version)
+
+    return {
+        "current_version":  APP_VERSION,
+        "latest_version":   remote_version,
+        "update_available": remote > current,
+        "download_url":     download_url,
+        "changelog":        changelog,
+    }
+
+
+_update_state: dict = {"status": "idle", "progress": 0, "error": None}
+
+
+@router.post("/update/install")
+def install_update(body: dict):
+    """Download the new installer and launch it silently. The app exits so the installer can replace it."""
+    download_url = body.get("download_url", "").strip()
+    if not download_url:
+        raise HTTPException(400, "download_url is required.")
+    if not getattr(sys, "frozen", False):
+        raise HTTPException(400, "Auto-update is only available in the installed version, not in dev mode.")
+
+    def _do_update():
+        global _update_state
+        import tempfile, time
+        import httpx as _httpx
+        _update_state = {"status": "downloading", "progress": 0, "error": None}
+        try:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".exe", prefix="VaultUpdate_")
+            tmp_path = tmp.name
+            tmp.close()
+
+            with _httpx.stream("GET", download_url, timeout=300, follow_redirects=True) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+                with open(tmp_path, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            _update_state["progress"] = int(downloaded / total * 100)
+
+            _update_state = {"status": "installing", "progress": 100, "error": None}
+            time.sleep(0.5)
+
+            subprocess.Popen(
+                [tmp_path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                creationflags=subprocess.DETACHED_PROCESS | _NO_WINDOW,
+            )
+            time.sleep(2)
+            os._exit(0)
+        except Exception as e:
+            _update_state = {"status": "error", "progress": 0, "error": str(e)}
+
+    threading.Thread(target=_do_update, daemon=False).start()
+    return {"status": "started"}
+
+
+@router.get("/update/status")
+def get_update_status():
+    return _update_state
+
+
 @router.post("/reset")
 def reset_collection():
     """

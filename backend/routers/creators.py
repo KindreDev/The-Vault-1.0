@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
@@ -21,9 +21,6 @@ THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 AVATAR_MAX_BYTES = 50 * 1024 * 1024  # 50 MB
 AVATAR_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "GIF"}
 AVATAR_FORMAT_EXT = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}
-
-# Wiki subdomain — letters, digits, hyphens only; prevents SSRF via crafted series names
-_WIKI_BASE_RE = re.compile(r"^[a-z0-9-]{1,50}$")
 
 router = APIRouter()
 
@@ -93,6 +90,7 @@ def list_creators(
     creator_type: Optional[str] = None,
     favorite: Optional[bool] = None,
     search: Optional[str] = None,
+    series: Optional[str] = None,  # franchise / series filter (partial match)
     sort_by: Optional[str] = "name",  # name | rating | image_count | cum_count | date_added | rarity | random
     sort_dir: Optional[str] = None,  # asc | desc
     skip: int = 0,
@@ -113,6 +111,8 @@ def list_creators(
         q = q.filter(Creator.is_favorite == favorite)
     if search:
         q = q.filter(Creator.name.ilike(f"%{search}%"))
+    if series:
+        q = q.filter(Creator.series.ilike(f"%{series}%"))
 
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
@@ -130,14 +130,14 @@ def list_creators(
         asc_dir = use_asc if use_asc is not None else False
         q = q.order_by(col.asc() if asc_dir else col.desc())
     elif sort_by == "image_count":
-        # Sum of Gallery.image_count per creator_id
+        # Sum of Gallery.image_count per creator_id (via direct FK, not join table)
         img_subq = (
             db.query(
-                gallery_creators.c.creator_id,
+                Gallery.creator_id.label("creator_id"),
                 func.sum(Gallery.image_count).label("total_images")
             )
-            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-            .group_by(gallery_creators.c.creator_id)
+            .filter(Gallery.creator_id.isnot(None))
+            .group_by(Gallery.creator_id)
             .subquery()
         )
         q = q.outerjoin(img_subq, Creator.id == img_subq.c.creator_id)
@@ -154,14 +154,14 @@ def list_creators(
             Creator.name
         )
     elif sort_by == "cum_count":
-        # Sum of Gallery.cum_count per creator_id
+        # Sum of Gallery.cum_count per creator_id (via direct FK, not join table)
         cum_subq = (
             db.query(
-                gallery_creators.c.creator_id,
+                Gallery.creator_id.label("creator_id"),
                 func.sum(Gallery.cum_count).label("total_cums")
             )
-            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-            .group_by(gallery_creators.c.creator_id)
+            .filter(Gallery.creator_id.isnot(None))
+            .group_by(Gallery.creator_id)
             .subquery()
         )
         q = q.outerjoin(cum_subq, Creator.id == cum_subq.c.creator_id)
@@ -588,6 +588,19 @@ def list_favorites(db: Session = Depends(get_db)):
     return [_enrich(c, db) for c in creators]
 
 
+@router.get("/franchises")
+def list_franchises(db: Session = Depends(get_db)):
+    """Distinct non-empty franchise (series) values, alphabetically sorted."""
+    rows = (
+        db.query(Creator.series)
+        .filter(Creator.series.isnot(None), Creator.series != '')
+        .distinct()
+        .order_by(Creator.series)
+        .all()
+    )
+    return [r.series for r in rows]
+
+
 @router.get("/{creator_id}", response_model=CreatorOut)
 def get_creator(creator_id: int, db: Session = Depends(get_db)):
     c = db.query(Creator).filter(Creator.id == creator_id).first()
@@ -629,6 +642,38 @@ def delete_creator(creator_id: int, db: Session = Depends(get_db)):
 
 class _FolderAssignRequest(BaseModel):
     folder_path: Optional[str] = None
+
+
+@router.post("/sync-source-folders")
+def sync_source_folders(db: Session = Depends(get_db)):
+    """
+    Re-run source_folder assignment for every creator that has one set.
+    Newly matched galleries get the creator appended; already-assigned ones are skipped.
+    Returns counts so the UI can give feedback.
+    """
+    creators = db.query(Creator).filter(Creator.source_folder.isnot(None)).all()
+    if not creators:
+        return {"synced_creators": 0, "newly_assigned": 0}
+
+    galleries = db.query(Gallery).all()
+    newly_assigned = 0
+
+    for c in creators:
+        norm_src = os.path.normcase(os.path.normpath(c.source_folder))
+        for g in galleries:
+            if not g.folder_path:
+                continue
+            norm_g = os.path.normcase(os.path.normpath(g.folder_path))
+            if norm_g == norm_src or norm_g.startswith(norm_src + os.sep):
+                if c not in g.creators:
+                    g.creators.append(c)
+                    g.is_tagged = True
+                    newly_assigned += 1
+                if g.creator_id is None:
+                    g.creator_id = c.id
+
+    db.commit()
+    return {"synced_creators": len(creators), "newly_assigned": newly_assigned}
 
 
 @router.post("/{creator_id}/assign-folder")
@@ -681,67 +726,32 @@ def gift_heart(creator_id: int, db: Session = Depends(get_db)):
     return _enrich(c, db)
 
 
-@router.post("/{creator_id}/wiki-import")
-async def wiki_import(creator_id: int, db: Session = Depends(get_db)):
-    """
-    Attempt to pull character data from Fandom wiki using the MediaWiki API.
-    Searches by creator name and fills in lore, series, description fields.
-    """
-    c = db.query(Creator).filter(Creator.id == creator_id).first()
-    if not c:
-        raise HTTPException(404, "Creator not found")
-
-    if not c.wiki_url:
-        # Auto-detect: query the Fandom wiki for this character's series
-        wiki_base = (c.series or "eldenring").lower()
-        wiki_base = re.sub(r"[^a-z0-9-]", "", wiki_base)
-        if not _WIKI_BASE_RE.match(wiki_base):
-            raise HTTPException(400, "Series contains no valid characters for a wiki subdomain")
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                api_url = (
-                    f"https://{wiki_base}.fandom.com/api.php"
-                    f"?action=query&titles={c.name.replace(' ', '_')}"
-                    f"&prop=extracts&exintro=1&explaintext=1&format=json&origin=*"
-                )
-                resp = await client.get(api_url)
-                data = resp.json()
-                pages = data.get("query", {}).get("pages", {})
-                page = next(iter(pages.values()), {})
-                extract = page.get("extract", "")
-                if extract:
-                    c.lore = extract[:1500]
-                    c.wiki_source = f"{wiki_base}.fandom.com"
-                    from datetime import datetime
-                    c.wiki_synced = datetime.utcnow()
-                    db.commit()
-                    gami.notify_action(db, "wiki_import")
-                    return {"success": True, "lore": c.lore, "source": c.wiki_source}
-        except Exception as e:
-            raise HTTPException(500, f"Wiki fetch failed: {str(e)}")
-
-    return {"success": False, "message": "Could not auto-detect wiki. Set wiki_url manually."}
-
-
 @router.post("/{creator_id}/set-avatar-random")
-def set_avatar_random(creator_id: int, db: Session = Depends(get_db)):
-    """Pick a random thumbnail from the creator's galleries and use it as avatar."""
+def set_avatar_random(creator_id: int, data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Pick a random thumbnail from the creator's galleries and use it as avatar.
+    Pass { exclude_path: <current_avatar_path> } to avoid picking the same image twice."""
     c = db.query(Creator).filter(Creator.id == creator_id).first()
     if not c:
         raise HTTPException(404, "Creator not found")
-    random_img = (
+
+    base_q = (
         db.query(Image)
           .join(Gallery, Gallery.id == Image.gallery_id)
           .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
           .filter(gallery_creators.c.creator_id == creator_id)
           .filter(Image.thumb_path.isnot(None))
-          .order_by(func.random())
-          .first()
     )
-    if not random_img:
-        raise HTTPException(404, "No images found for this creator")
-    # Use full-res file path for maximum quality
-    c.avatar_path = random_img.file_path if random_img.file_path and os.path.exists(random_img.file_path) else random_img.thumb_path
+
+    exclude_path = data.get("exclude_path")
+    if exclude_path and base_q.count() > 1:
+        candidate = base_q.filter(Image.file_path != exclude_path).order_by(func.random()).first()
+    else:
+        candidate = base_q.order_by(func.random()).first()
+
+    if not candidate:
+        raise HTTPException(404, "No images found for this creator — assign some galleries first")
+
+    c.avatar_path = candidate.file_path if candidate.file_path and os.path.exists(candidate.file_path) else candidate.thumb_path
     db.commit()
     return {"avatar_path": c.avatar_path}
 
@@ -843,6 +853,23 @@ def set_avatar_from_image(creator_id: int, image_id: int, db: Session = Depends(
     return {"avatar_path": c.avatar_path}
 
 
+@router.post("/{creator_id}/set-banner-image/{image_id}")
+def set_banner_from_image(creator_id: int, image_id: int, db: Session = Depends(get_db)):
+    """Set creator banner to a specific gallery image (by image_id)."""
+    c = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not c:
+        raise HTTPException(404, "Creator not found")
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    if img.is_video:
+        raise HTTPException(400, "Videos cannot be used as banners")
+    c.banner_image_id = img.id
+    c.banner_path = None   # clear any uploaded banner so image takes precedence
+    db.commit()
+    return {"banner_image_id": c.banner_image_id}
+
+
 _AVATAR_SERVE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 @router.get("/{creator_id}/avatar")
@@ -889,24 +916,32 @@ def serve_creator_avatar_thumb(creator_id: int, size: int = 480, db: Session = D
 
 
 @router.post("/{creator_id}/set-banner-random")
-def set_banner_random(creator_id: int, db: Session = Depends(get_db)):
-    """Pick a random image from the creator's galleries and use it as the banner."""
+def set_banner_random(creator_id: int, data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Pick a random image from the creator's galleries and use it as the banner.
+    Pass { exclude_id: <current_banner_image_id> } to avoid picking the same image twice."""
     c = db.query(Creator).filter(Creator.id == creator_id).first()
     if not c:
         raise HTTPException(404, "Creator not found")
-    random_img = (
+
+    base_q = (
         db.query(Image)
           .join(Gallery, Gallery.id == Image.gallery_id)
           .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
           .filter(gallery_creators.c.creator_id == creator_id)
           .filter(Image.is_video == False)
           .filter(Image.file_path.isnot(None))
-          .order_by(func.random())
-          .first()
     )
-    if not random_img:
-        raise HTTPException(404, "No images found for this creator")
-    c.banner_image_id = random_img.id
+
+    exclude_id = data.get("exclude_id")
+    if exclude_id and base_q.count() > 1:
+        candidate = base_q.filter(Image.id != exclude_id).order_by(func.random()).first()
+    else:
+        candidate = base_q.order_by(func.random()).first()
+
+    if not candidate:
+        raise HTTPException(404, "No images found for this creator — assign some galleries first")
+
+    c.banner_image_id = candidate.id
     db.commit()
     return {"banner_image_id": c.banner_image_id}
 

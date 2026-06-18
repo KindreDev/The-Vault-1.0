@@ -5,12 +5,14 @@ import Sidebar from './Sidebar'
 import XPToastLayer from '../gamification/XPToastLayer'
 import LevelUpOverlay from '../LevelUpOverlay'
 import ErrorBoundary from '../ErrorBoundary'
+import CompanionBubble from '../companion/CompanionBubble'
 import { useVaultStore, loadGlassBackground } from '../../store/vault'
 
 export default function Layout() {
-  const sessionActive   = useVaultStore(s => s.sessionActive)
-  const showGoonBorder  = useVaultStore(s => s.showGoonBorder)
-  const applyStoredPalette = useVaultStore(s => s.applyStoredPalette)
+  const sessionActive          = useVaultStore(s => s.sessionActive)
+  const showGoonBorder         = useVaultStore(s => s.showGoonBorder)
+  const applyStoredPalette     = useVaultStore(s => s.applyStoredPalette)
+  const multiPanelFullscreen   = useVaultStore(s => s.multiPanelFullscreen)
   const location = useLocation()
 
   // Apply saved palette on first mount so colors are correct immediately
@@ -73,7 +75,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-bg)' }}>
-      <Sidebar />
+      {!multiPanelFullscreen && <Sidebar />}
       <main className={`flex-1 min-w-0 bg-[var(--c-bg)] ${isMultiPanel ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -103,6 +105,7 @@ export default function Layout() {
       </main>
       <XPToastLayer />
       <LevelUpOverlay />
+      <CompanionBubble />
 
       {/* Neon goon-mode border — fixed overlay, pointer-events none */}
       {sessionActive && showGoonBorder && (

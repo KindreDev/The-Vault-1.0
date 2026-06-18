@@ -1,8 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge } from 'lucide-react'
-import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi } from '../lib/api'
+import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal } from 'lucide-react'
+import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
@@ -1939,6 +1940,50 @@ function RootDropdown({ roots, value, onChange }) {
   )
 }
 
+// ── SettingsSection (accordion — mirrors Help.jsx Section) ───────────────────
+function SettingsSection({ title, icon: Icon, accentColor = 'var(--c-accent)', children, defaultOpen = true }) {
+  const [open, setOpen] = React.useState(defaultOpen)
+  return (
+    <div className="mb-3 rounded-[10px] overflow-hidden"
+         style={{ background: 'var(--c-card)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+      <button onClick={() => setOpen(v => !v)}
+              className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+              style={{ background: 'transparent' }}>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+             style={{ background: `${accentColor}20` }}>
+          <Icon size={15} style={{ color: accentColor }} />
+        </div>
+        <span className="flex-1 text-[19px] font-semibold text-white/85">{title}</span>
+        <ChevronDown size={16} className="text-white/25 transition-transform duration-200"
+                     style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}>
+            <div className="px-5 pb-5 pt-4"
+                 style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+const SETTINGS_TABS = [
+  { id: 'library',    label: 'Library',    icon: FolderOpen     },
+  { id: 'scanner',    label: 'Scanner',    icon: ScanLine       },
+  { id: 'tagging',    label: 'AI Tagging', icon: Cpu            },
+  { id: 'appearance', label: 'Appearance', icon: Sparkles       },
+  { id: 'backup',     label: 'Backup',     icon: Archive        },
+  { id: 'system',     label: 'System',     icon: ShieldCheck    },
+]
+
 export function Settings() {
   const showGoonBorder    = useVaultStore(s => s.showGoonBorder)
   const setShowGoonBorder = useVaultStore(s => s.setShowGoonBorder)
@@ -1966,7 +2011,13 @@ export function Settings() {
   const [selectedRootId, setSelectedRootId] = React.useState('')
   const [folderScanning, setFolderScanning] = React.useState(false)
   const [regenning, setRegenning]           = React.useState(false)
+  const [syncing, setSyncing]               = React.useState(false)
   const [restartState, setRestartState]     = React.useState('idle') // idle | restarting | done
+  const [updateState, setUpdateState]       = React.useState('idle') // idle | checking | up_to_date | available | downloading | installing | error
+  const [updateInfo, setUpdateInfo]         = React.useState(null)
+  const [updateProgress, setUpdateProgress] = React.useState(0)
+  const [updateError, setUpdateError]       = React.useState('')
+  const updatePollRef = React.useRef(null)
   // AI Tagging
   const [tagScope, setTagScope]             = React.useState('library')  // 'library' | 'folder' | 'creator'
   const [tagRootId, setTagRootId]           = React.useState('')
@@ -1986,6 +2037,16 @@ export function Settings() {
   const [storageInput, setStorageInput]     = React.useState('')
   const [storageState, setStorageState]     = React.useState('idle') // idle | saving | saved
   const qc = useQueryClient()
+  const [settingsTab, setSettingsTab] = React.useState('library')
+
+  const { data: compConfig, refetch: refetchComp } = useQuery({
+    queryKey: ['companion-config'],
+    queryFn:  () => companionApi.getConfig().then(r => r?.data ?? null),
+  })
+  const toggleCompanion = async () => {
+    await companionApi.updateConfig({ enabled: !compConfig?.enabled })
+    refetchComp()
+  }
 
   const restorePollRef = React.useRef(null)
   const resetPollRef   = React.useRef(null)
@@ -1996,6 +2057,7 @@ export function Settings() {
       if (restorePollRef.current) clearInterval(restorePollRef.current)
       if (resetPollRef.current) clearInterval(resetPollRef.current)
       if (restartPollRef.current) clearInterval(restartPollRef.current)
+      if (updatePollRef.current) clearInterval(updatePollRef.current)
     }
   }, [])
 
@@ -2013,6 +2075,11 @@ export function Settings() {
   const { data: startupData } = useQuery({
     queryKey: ['system-startup'],
     queryFn:  () => systemApi.getStartup().then(r => r.data),
+  })
+
+  const { data: versionData } = useQuery({
+    queryKey: ['system-version'],
+    queryFn:  () => systemApi.getVersion().then(r => r.data),
   })
   const startupMutation = useMutation({
     mutationFn: (enabled) => systemApi.setStartup(enabled).then(r => r.data),
@@ -2111,6 +2178,68 @@ export function Settings() {
       }
       setResetState('idle')
     }, 30000)
+  }
+
+  const handleSyncFolders = async () => {
+    setSyncing(true)
+    try {
+      const res = await creatorsApi.syncSourceFolders()
+      const { synced_creators, newly_assigned } = res.data
+      if (newly_assigned > 0) {
+        toast.success(`Synced ${synced_creators} creator${synced_creators !== 1 ? 's' : ''} — ${newly_assigned} new gallery assignment${newly_assigned !== 1 ? 's' : ''}`)
+      } else {
+        toast.success(`All up to date — ${synced_creators} creator folder${synced_creators !== 1 ? 's' : ''} checked, nothing new to assign`)
+      }
+    } catch {
+      toast.error('Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleCheckUpdate = async () => {
+    setUpdateState('checking')
+    setUpdateInfo(null)
+    setUpdateError('')
+    try {
+      const r = await systemApi.checkUpdate()
+      if (r.data.update_available) {
+        setUpdateInfo(r.data)
+        setUpdateState('available')
+      } else {
+        setUpdateState('up_to_date')
+      }
+    } catch (e) {
+      setUpdateError(e?.response?.data?.detail || 'Could not reach update server.')
+      setUpdateState('error')
+    }
+  }
+
+  const handleInstallUpdate = async () => {
+    if (!updateInfo?.download_url) return
+    setUpdateState('downloading')
+    setUpdateProgress(0)
+    try {
+      await systemApi.installUpdate(updateInfo.download_url)
+      if (updatePollRef.current) clearInterval(updatePollRef.current)
+      updatePollRef.current = setInterval(async () => {
+        try {
+          const r = await systemApi.updateStatus()
+          const s = r.data
+          if (s.status === 'downloading') setUpdateProgress(s.progress || 0)
+          if (s.status === 'installing') { setUpdateState('installing'); setUpdateProgress(100) }
+          if (s.status === 'error') {
+            setUpdateError(s.error || 'Installation failed.')
+            setUpdateState('error')
+            clearInterval(updatePollRef.current)
+            updatePollRef.current = null
+          }
+        } catch {}
+      }, 500)
+    } catch (e) {
+      setUpdateError(e?.response?.data?.detail || 'Update failed.')
+      setUpdateState('error')
+    }
   }
 
   const handleRestart = async () => {
@@ -2299,966 +2428,803 @@ export function Settings() {
   }
 
   return (
-    <div className="p-5 flex flex-col gap-6 max-w-2xl" style={{ fontSize: '115%' }}>
-      <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">Settings</div>
+    <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Library roots */}
-      <div className="vault-card p-5">
-        <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)] mb-4">Library folders</div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.4)] mb-4">
-          Add folders to scan. Each subfolder becomes a gallery. Works like Stash.
-        </div>
-
-        {(() => {
-          const allRoots = roots ?? []
-          const COLLAPSE_AT = 5
-          const visible = (!showAllRoots && allRoots.length > COLLAPSE_AT)
-            ? allRoots.slice(0, COLLAPSE_AT)
-            : allRoots
-          const hidden = allRoots.length - COLLAPSE_AT
-          return (
-            <>
-              {visible.map(r => (
-                <div key={r.id} className="flex items-center gap-3 py-2.5 border-b border-[rgba(255,255,255,0.06)]">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] text-[rgba(255,255,255,0.75)] truncate">{r.path}</div>
-                    {r.label && <div className="text-[10px] text-[rgba(255,255,255,0.35)]">{r.label}</div>}
-                  </div>
-                  {r.last_scan && (
-                    <div className="text-[10px] text-[rgba(255,255,255,0.3)] shrink-0">
-                      scanned {new Date(r.last_scan).toLocaleDateString()}
-                    </div>
-                  )}
-                  <button onClick={async () => {
-                    await fetch(`/api/scanner/roots/${r.id}`, { method: 'DELETE' })
-                    qc.invalidateQueries({ queryKey: ['library-roots'] })
-                  }} className="text-[10px] px-2 py-1 rounded cursor-pointer shrink-0"
-                          style={{ color: 'rgba(212,83,126,0.7)', background: 'rgba(212,83,126,0.1)' }}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-              {allRoots.length > COLLAPSE_AT && (
-                <button onClick={() => setShowAllRoots(v => !v)}
-                        className="mt-1 text-[11px] cursor-pointer"
-                        style={{ color: 'rgba(127,119,221,0.7)' }}>
-                  {showAllRoots ? '▲ Show less' : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
-                </button>
-              )}
-            </>
-          )
-        })()}
-
-        <div className="flex flex-col gap-2 mt-4">
-          {/* Path row with Browse button */}
-          <div className="flex gap-2">
-            <input value={newPath} onChange={e => setNewPath(e.target.value)}
-                   placeholder="C:\Users\You\Pictures\Collection"
-                   className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[12px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.2)]"
-                   style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
-                   onKeyDown={e => e.key === 'Enter' && addRoot()} />
-            <button onClick={browseForFolder}
-                    className="px-3 py-2 rounded-[8px] text-[12px] cursor-pointer whitespace-nowrap"
-                    style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-              📁 Browse
-            </button>
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 px-8 pt-8 pb-5"
+           style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: 'var(--c-surface)' }}>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+               style={{ background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+            <SlidersHorizontal size={18} style={{ color: 'var(--c-accent)' }} />
           </div>
-          {/* Optional label + Add button */}
-          <div className="flex gap-2">
-            <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
-                   placeholder="Label (optional, e.g. Cosplayers)"
-                   className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[12px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.2)]"
-                   style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
-                   onKeyDown={e => e.key === 'Enter' && addRoot()} />
-            <button onClick={addRoot} disabled={!newPath.trim()}
-                    className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-40"
-                    style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              Add
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Scanner */}
-      <div className="vault-card p-5">
-        <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)] mb-2">Library scanner</div>
-        {scanStatus?.running ? (
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[12px] text-[rgba(255,255,255,0.6)]">{scanStatus.message}</div>
-              <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] cursor-pointer ml-2 flex-shrink-0"
-                      style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-                <X size={10} /> Cancel
+            <h1 className="text-[27px] font-bold text-white/90">Settings</h1>
+            <p className="text-[18px] text-white/40">Configure your Vault experience.</p>
+          </div>
+        </div>
+        <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {SETTINGS_TABS.map(({ id, label, icon: Icon }) => {
+            const active = settingsTab === id
+            return (
+              <button key={id} onClick={() => setSettingsTab(id)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-[17px] font-medium whitespace-nowrap transition-all flex-shrink-0"
+                      style={active
+                        ? { background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }
+                        : { background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '0.5px solid transparent' }
+                      }>
+                <Icon size={14} />
+                {label}
               </button>
-            </div>
-            <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
-              <div className="h-full rounded-full bg-[#7F77DD] transition-all"
-                   style={{ width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
-            </div>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] mt-1">
-              {scanStatus.progress} / {scanStatus.total} folders · {scanStatus.new_galleries} new galleries · {scanStatus.new_images} new images
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {scanStatus?.message && scanStatus.message !== 'Idle' && (
-              <div className="text-[13px] text-[rgba(255,255,255,0.45)]">{scanStatus.message}</div>
-            )}
-            <button onClick={startScan}
-                    className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[12px] cursor-pointer w-fit"
-                    style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-              Scan entire library
-            </button>
-
-            {/* Scan specific root */}
-            <div className="pt-3 border-t border-[rgba(255,255,255,0.06)]">
-              <div className="text-[11px] text-[rgba(255,255,255,0.5)] mb-2">
-                Or rescan a single library root
-              </div>
-              {(roots ?? []).length === 0 ? (
-                <div className="text-[13px] text-[rgba(255,255,255,0.25)]">No library folders added yet.</div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {/* Custom dropdown — stays inside card on all platforms */}
-                  <RootDropdown
-                    roots={roots ?? []}
-                    value={selectedRootId}
-                    onChange={setSelectedRootId}
-                  />
-                  <button onClick={startFolderScan}
-                          disabled={!selectedRootId || folderScanning}
-                          className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-40 w-fit"
-                          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                    {folderScanning ? 'Starting…' : 'Scan selected root'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+            )
+          })}
+        </div>
       </div>
 
-      {/* ── Regenerate thumbnails ───────────────────────────────── */}
-      <div className="vault-card p-5">
-        <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)] mb-1">Regenerate thumbnails</div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.35)] mb-4">
-          Rebuilds any missing or broken thumbnails across your entire library. Runs in the background.
-        </div>
-        <button
-          disabled={regenning}
-          onClick={async () => {
-            setRegenning(true)
-            try {
-              await scannerApi.regenThumbs()
-              toast.success('Thumbnail regeneration started!')
-            } catch {
-              toast.error('Failed to start regeneration')
-            } finally {
-              setTimeout(() => setRegenning(false), 3000)
-            }
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[12px] cursor-pointer w-fit disabled:opacity-40"
-          style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-          {regenning ? 'Starting…' : '🖼️ Regenerate missing thumbnails'}
-        </button>
-      </div>
+      {/* ── Tab content ────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={settingsTab}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="px-8 py-6 max-w-4xl"
+          >
 
-      {/* ── AI Auto-Tagging ─────────────────────────────────────── */}
-      <div className="vault-card p-5">
-        <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)] mb-1">AI Auto-Tagging</div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.35)] mb-4">
-          Automatically tag images with body parts, nudity level, clothing, pose, and more.
-          WD14 is used for anime/art; JoyTag for cosplay and real photos.
-        </div>
-
-        {/* GPU acceleration status */}
-        <div className="mb-4"><GpuStatusPanel /></div>
-
-        {/* Model status */}
-        <div className="flex flex-col gap-2 mb-4">
-          {[
-            { key: 'wd14',   label: 'WD14 v3',  desc: 'Anime / art / characters (~200 MB)',          ready: tagModels?.wd14_downloaded,   size: tagModels?.wd14_size_mb },
-            { key: 'joytag', label: 'JoyTag',   desc: 'Cosplay / real photos / ethots (~366 MB)',    ready: tagModels?.joytag_downloaded, size: tagModels?.joytag_size_mb },
-          ].map(({ key, label, desc, ready, size }) => (
-            <div key={key} className="flex items-center justify-between py-2 px-3 rounded-[8px]"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full flex-shrink-0"
-                     style={{ background: ready ? '#1D9E75' : 'rgba(255,255,255,0.2)' }} />
-                <div>
-                  <div className="text-[13px] font-medium text-[rgba(255,255,255,0.8)]">{label}</div>
-                  <div className="text-[11px] text-[rgba(255,255,255,0.35)]">
-                    {ready ? `Downloaded · ${size ?? '?'} MB` : desc}
-                  </div>
-                </div>
-              </div>
-              {!ready && (
-                <button
-                  disabled={tagStatus?.running}
-                  onClick={() => downloadModel(key)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[11px] cursor-pointer disabled:opacity-40"
-                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                  <Download size={11} /> Download
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Running state */}
-        {tagStatus?.running ? (
-          <div>
-            {/* Top row: badges + cancel */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                {tagStatus.active_model && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
-                        style={{ background: tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.2)' : tagStatus.active_model === 'JoyTag' ? 'rgba(212,83,126,0.2)' : 'rgba(127,119,221,0.2)',
-                                 color:      tagStatus.active_model === 'WD14' ? '#7AB8F5' : tagStatus.active_model === 'JoyTag' ? '#F4C0D1' : '#CECBF6',
-                                 border:     `0.5px solid ${tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.35)' : tagStatus.active_model === 'JoyTag' ? 'rgba(212,83,126,0.35)' : 'rgba(127,119,221,0.35)'}` }}>
-                    <Cpu size={9} /> {tagStatus.active_model}
-                  </span>
-                )}
-                {tagStatus.device && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
-                        style={{ background: tagStatus.device === 'gpu' ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.07)',
-                                 color:      tagStatus.device === 'gpu' ? '#9FE1CB' : 'rgba(255,255,255,0.4)',
-                                 border:     `0.5px solid ${tagStatus.device === 'gpu' ? 'rgba(29,158,117,0.4)' : 'rgba(255,255,255,0.12)'}` }}>
-                    {tagStatus.device === 'gpu' ? '⚡ GPU' : '🖥 CPU'}
-                  </span>
-                )}
-                {/* Phase label: downloading vs tagging */}
-                {tagStatus.total === 0 ? (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
-                        style={{ background: 'rgba(186,117,23,0.18)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
-                    ⬇ Downloading model
-                  </span>
-                ) : (
-                  <span className="text-[12px] text-[rgba(255,255,255,0.55)] flex-shrink-0">
-                    {tagStatus.progress} / {tagStatus.total}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={async () => {
-                  await taggerApi.cancel()
-                  tagRunStartRef.current = null
-                  qc.invalidateQueries({ queryKey: ['ai-tag-status'] })
-                }}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] cursor-pointer ml-2 flex-shrink-0"
-                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-                <X size={10} /> Cancel
-              </button>
-            </div>
-
-            {/* Progress bar */}
-            <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
-              {tagStatus.total > 0 ? (() => {
-                // Seed / update ETA reference point
-                if (!tagRunStartRef.current && tagStatus.progress > 0) {
-                  tagRunStartRef.current = { ts: Date.now(), progress: tagStatus.progress }
-                }
-                const pct = (tagStatus.progress / tagStatus.total) * 100
-                return (
-                  <div className="h-full rounded-full transition-all"
-                       style={{ width: `${pct}%`, background: '#7F77DD' }} />
-                )
-              })() : (
-                <div className="h-full rounded-full"
-                     style={{ width: '100%', background: 'linear-gradient(90deg, rgba(186,117,23,0.25) 0%, rgba(186,117,23,0.6) 50%, rgba(186,117,23,0.25) 100%)', animation: 'pulse 1.5s ease-in-out infinite' }} />
-              )}
-            </div>
-
-            {/* Status line */}
-            {tagStatus.total > 0 ? (() => {
-              // ETA
-              let etaStr = ''
-              if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
-                const elapsed = (Date.now() - tagRunStartRef.current.ts) / 1000
-                const done    = tagStatus.progress - tagRunStartRef.current.progress
-                const rate    = done / elapsed
-                const remaining = (tagStatus.total - tagStatus.progress) / rate
-                if (remaining > 0 && remaining < 86400) {
-                  if (remaining >= 3600) etaStr = `~${Math.round(remaining / 3600)}h left`
-                  else if (remaining >= 60) etaStr = `~${Math.round(remaining / 60)}m left`
-                  else etaStr = `~${Math.round(remaining)}s left`
-                  tagEtaRef.current = etaStr
-                } else if (tagEtaRef.current) {
-                  etaStr = tagEtaRef.current
-                }
-              } else if (tagEtaRef.current) {
-                etaStr = tagEtaRef.current
-              }
-              return (
-                <div className="mt-1 flex flex-col gap-0.5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] text-[rgba(255,255,255,0.3)]">
-                      {tagStatus.tagged} tagged · {tagStatus.skipped} skipped
-                      {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} errors</span>}
+            {/* ── Library tab ──────────────────────────── */}
+            {settingsTab === 'library' && (
+              <div className="space-y-3">
+                <SettingsSection title="Library folders" icon={FolderOpen} accentColor="var(--c-amber)">
+                  <p className="text-[16px] text-white/45 mb-4">
+                    Add folders to scan. Each subfolder becomes a gallery.
+                  </p>
+                  {(() => {
+                    const allRoots = roots ?? []
+                    const COLLAPSE_AT = 5
+                    const visible = (!showAllRoots && allRoots.length > COLLAPSE_AT) ? allRoots.slice(0, COLLAPSE_AT) : allRoots
+                    const hidden = allRoots.length - COLLAPSE_AT
+                    return (
+                      <>
+                        {allRoots.length === 0 && (
+                          <div className="text-[16px] text-white/25 py-2">No library folders added yet.</div>
+                        )}
+                        {visible.map(r => (
+                          <div key={r.id} className="flex items-center gap-3 py-2.5 border-b border-[rgba(255,255,255,0.06)]">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[16px] text-white/75 truncate">{r.path}</div>
+                              {r.label && <div className="text-[14px] text-white/35">{r.label}</div>}
+                            </div>
+                            {r.last_scan && (
+                              <div className="text-[13px] text-white/30 shrink-0">
+                                scanned {new Date(r.last_scan).toLocaleDateString()}
+                              </div>
+                            )}
+                            <button onClick={async () => {
+                              await fetch(`/api/scanner/roots/${r.id}`, { method: 'DELETE' })
+                              qc.invalidateQueries({ queryKey: ['library-roots'] })
+                            }} className="text-[13px] px-2.5 py-1 rounded cursor-pointer shrink-0"
+                                    style={{ color: 'rgba(212,83,126,0.7)', background: 'rgba(212,83,126,0.1)' }}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        {allRoots.length > COLLAPSE_AT && (
+                          <button onClick={() => setShowAllRoots(v => !v)}
+                                  className="mt-1 text-[14px] cursor-pointer"
+                                  style={{ color: 'rgba(127,119,221,0.7)' }}>
+                            {showAllRoots ? '▲ Show less' : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
+                          </button>
+                        )}
+                      </>
+                    )
+                  })()}
+                  <div className="flex flex-col gap-2 mt-5">
+                    <div className="flex gap-2">
+                      <input value={newPath} onChange={e => setNewPath(e.target.value)}
+                             placeholder="C:\Users\You\Pictures\Collection"
+                             className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[16px] text-white/80 placeholder-[rgba(255,255,255,0.2)]"
+                             style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
+                             onKeyDown={e => e.key === 'Enter' && addRoot()} />
+                      <button onClick={browseForFolder}
+                              className="px-3 py-2 rounded-[8px] text-[16px] cursor-pointer whitespace-nowrap"
+                              style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+                        📁 Browse
+                      </button>
                     </div>
-                    {etaStr && <div className="text-[10px]" style={{ color: 'rgba(127,119,221,0.7)' }}>{etaStr}</div>}
-                  </div>
-                  {tagStatus.current_path && (
-                    <div className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.2)' }}
-                         title={tagStatus.current_path}>
-                      {tagStatus.current_path.replace(/.*[\\/]/, '')}
+                    <div className="flex gap-2">
+                      <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                             placeholder="Label (optional — e.g. Cosplayers)"
+                             className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[16px] text-white/80 placeholder-[rgba(255,255,255,0.2)]"
+                             style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
+                             onKeyDown={e => e.key === 'Enter' && addRoot()} />
+                      <button onClick={addRoot} disabled={!newPath.trim()}
+                              className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40"
+                              style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                        Add
+                      </button>
                     </div>
-                  )}
-                </div>
-              )
-            })() : (
-              <div className="text-[10px] text-[rgba(255,255,255,0.35)] mt-1">{tagStatus.message}</div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {tagStatus?.message && tagStatus.message !== 'Idle' && (
-              <div className="text-[13px] text-[rgba(255,255,255,0.45)]">{tagStatus.message}</div>
-            )}
+                  </div>
+                </SettingsSection>
 
-            {/* Scope */}
-            <div>
-              <div className="text-[11px] text-[rgba(255,255,255,0.5)] mb-2">Scope</div>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { key: 'library', label: 'Entire library' },
-                  { key: 'folder',  label: 'Specific folder' },
-                  { key: 'creator', label: 'By creator' },
-                ].map(({ key, label }) => (
-                  <button key={key} onClick={() => setTagScope(key)}
-                          className="px-3 py-1.5 rounded-[6px] text-[11px] cursor-pointer"
-                          style={{
-                            background: tagScope === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                            color:      tagScope === key ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-                            border:     `0.5px solid ${tagScope === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                          }}>
-                    {label}
+                <SettingsSection title="Creator folder sync" icon={RefreshCw} accentColor="var(--c-accent)" defaultOpen={false}>
+                  <p className="text-[16px] text-white/45 mb-4">
+                    Re-checks every creator's source folder and assigns any galleries added since it was last set.
+                    Also runs automatically on each scan — use this if you assigned a source folder after importing.
+                  </p>
+                  <button onClick={handleSyncFolders} disabled={syncing}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer disabled:opacity-50"
+                          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                    <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                    {syncing ? 'Syncing…' : 'Sync now'}
                   </button>
-                ))}
+                </SettingsSection>
               </div>
-              {tagScope === 'folder' && (
-                <div className="mt-2">
-                  <RootDropdown
-                    roots={roots ?? []}
-                    value={tagRootId}
-                    onChange={setTagRootId}
-                  />
-                </div>
-              )}
-              {tagScope === 'creator' && (
-                <div className="mt-2 flex flex-col gap-1.5">
-                  <input
-                    placeholder="Search creators…"
-                    value={tagCreatorSearch}
-                    onChange={e => { setTagCreatorSearch(e.target.value); setTagCreatorId('') }}
-                    className="w-full px-3 py-2 rounded-[8px] text-[12px] outline-none"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }}
-                  />
-                  {tagCreatorId && (() => {
-                    const sel = filteredTagCreators.find(c => String(c.id) === String(tagCreatorId))
-                              || (allCreators ?? []).find(c => String(c.id) === String(tagCreatorId))
-                    return sel ? (
-                      <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
-                           style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                        <span style={{ fontSize: 12, color: '#CECBF6', fontWeight: 600 }}>{sel.name}</span>
-                        <button onClick={() => setTagCreatorId('')} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                          <X size={12} />
+            )}
+
+            {/* ── Scanner tab ──────────────────────────── */}
+            {settingsTab === 'scanner' && (
+              <div className="space-y-3">
+                <SettingsSection title="Library scan" icon={ScanLine} accentColor="var(--c-green)">
+                  {scanStatus?.running ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[16px] text-white/60">{scanStatus.message}</div>
+                        <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[14px] cursor-pointer ml-2 flex-shrink-0"
+                                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                          <X size={10} /> Cancel
                         </button>
                       </div>
-                    ) : null
-                  })()}
-                  {!tagCreatorId && filteredTagCreators.length > 0 && (
-                    <div className="rounded-[8px] overflow-hidden overflow-y-auto"
-                         style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 160 }}>
-                      {filteredTagCreators.map(c => (
-                        <button key={c.id}
-                                onClick={() => { setTagCreatorId(String(c.id)); setTagCreatorSearch('') }}
-                                className="w-full text-left px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
-                                style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.12)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: {cosplayer:'#1D9E75',ethot:'#D4537E',artist:'#7F77DD',character:'#BA7517',actress:'#378ADD',custom:'#888780'}[c.creator_type] || '#888780', flexShrink: 0, display: 'inline-block' }} />
-                          {c.name}
-                          <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,0.25)', textTransform: 'capitalize' }}>{c.creator_type}</span>
+                      <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
+                        <div className="h-full rounded-full bg-[#7F77DD] transition-all"
+                             style={{ width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
+                      </div>
+                      <div className="text-[14px] text-white/30 mt-1">
+                        {scanStatus.progress} / {scanStatus.total} folders · {scanStatus.new_galleries} new galleries · {scanStatus.new_images} new images
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-5">
+                      {scanStatus?.message && scanStatus.message !== 'Idle' && (
+                        <div className="text-[16px] text-white/45">{scanStatus.message}</div>
+                      )}
+                      <div>
+                        <div className="text-[17px] font-semibold text-white/70 mb-1">Full library scan</div>
+                        <p className="text-[15px] text-white/40 mb-3">Walks every library folder, creates Gallery records, generates thumbnails, detects funscripts.</p>
+                        <button onClick={startScan}
+                                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit"
+                                style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                          Scan entire library
+                        </button>
+                      </div>
+                      <div className="pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                        <div className="text-[17px] font-semibold text-white/70 mb-1">Rescan a single folder</div>
+                        {(roots ?? []).length === 0 ? (
+                          <div className="text-[16px] text-white/25">No library folders added yet.</div>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            <RootDropdown roots={roots ?? []} value={selectedRootId} onChange={setSelectedRootId} />
+                            <button onClick={startFolderScan} disabled={!selectedRootId || folderScanning}
+                                    className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40 w-fit"
+                                    style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                              {folderScanning ? 'Starting…' : 'Scan selected root'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </SettingsSection>
+
+                <SettingsSection title="Regenerate thumbnails" icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
+                  <p className="text-[16px] text-white/45 mb-4">
+                    Rebuilds any missing or broken thumbnails across your entire library. Runs in the background.
+                  </p>
+                  <button disabled={regenning}
+                          onClick={async () => {
+                            setRegenning(true)
+                            try { await scannerApi.regenThumbs(); toast.success('Thumbnail regeneration started!') }
+                            catch { toast.error('Failed to start regeneration') }
+                            finally { setTimeout(() => setRegenning(false), 3000) }
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                          style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+                    {regenning ? 'Starting…' : '🖼️ Regenerate missing thumbnails'}
+                  </button>
+                </SettingsSection>
+              </div>
+            )}
+
+            {/* ── AI Tagging tab ───────────────────────── */}
+            {settingsTab === 'tagging' && (
+              <div className="space-y-3">
+                <SettingsSection title="AI models" icon={Download} accentColor="var(--c-accent)">
+                  <p className="text-[16px] text-white/45 mb-4">
+                    WD14 for anime/art, JoyTag for cosplay and real photos. Both are local ONNX models — nothing sent to the cloud.
+                  </p>
+                  <div className="mb-4"><GpuStatusPanel /></div>
+                  <div className="flex flex-col gap-2">
+                    {[
+                      { key: 'wd14',   label: 'WD14 v3', desc: 'Anime / art / characters (~200 MB)',       ready: tagModels?.wd14_downloaded,   size: tagModels?.wd14_size_mb },
+                      { key: 'joytag', label: 'JoyTag',  desc: 'Cosplay / real photos / ethots (~366 MB)', ready: tagModels?.joytag_downloaded, size: tagModels?.joytag_size_mb },
+                    ].map(({ key, label, desc, ready, size }) => (
+                      <div key={key} className="flex items-center justify-between py-3 px-4 rounded-[8px]"
+                           style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 rounded-full flex-shrink-0"
+                               style={{ background: ready ? '#1D9E75' : 'rgba(255,255,255,0.2)' }} />
+                          <div>
+                            <div className="text-[16px] font-medium text-white/80">{label}</div>
+                            <div className="text-[14px] text-white/35">{ready ? `Downloaded · ${size ?? '?'} MB` : desc}</div>
+                          </div>
+                        </div>
+                        {!ready && (
+                          <button disabled={tagStatus?.running} onClick={() => downloadModel(key)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[14px] cursor-pointer disabled:opacity-40"
+                                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                            <Download size={12} /> Download
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title="Run tagging" icon={Cpu} accentColor="var(--c-accent)">
+                  {tagStatus?.running ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                          {tagStatus.active_model && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
+                                  style={{ background: tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.2)' : 'rgba(212,83,126,0.2)',
+                                           color:      tagStatus.active_model === 'WD14' ? '#7AB8F5' : '#F4C0D1' }}>
+                              <Cpu size={9} /> {tagStatus.active_model}
+                            </span>
+                          )}
+                          {tagStatus.device && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
+                                  style={{ background: tagStatus.device === 'gpu' ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.07)',
+                                           color:      tagStatus.device === 'gpu' ? '#9FE1CB' : 'rgba(255,255,255,0.4)' }}>
+                              {tagStatus.device === 'gpu' ? '⚡ GPU' : '🖥 CPU'}
+                            </span>
+                          )}
+                          {tagStatus.total === 0 ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
+                                  style={{ background: 'rgba(186,117,23,0.18)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
+                              ⬇ Downloading model
+                            </span>
+                          ) : (
+                            <span className="text-[14px] text-white/55 flex-shrink-0">{tagStatus.progress} / {tagStatus.total}</span>
+                          )}
+                        </div>
+                        <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer ml-2 flex-shrink-0"
+                                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                          <X size={10} /> Cancel
+                        </button>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
+                        {tagStatus.total > 0 ? (() => {
+                          if (!tagRunStartRef.current && tagStatus.progress > 0)
+                            tagRunStartRef.current = { ts: Date.now(), progress: tagStatus.progress }
+                          return <div className="h-full rounded-full transition-all" style={{ width: `${(tagStatus.progress / tagStatus.total) * 100}%`, background: '#7F77DD' }} />
+                        })() : (
+                          <div className="h-full rounded-full"
+                               style={{ width: '100%', background: 'linear-gradient(90deg,rgba(186,117,23,0.25) 0%,rgba(186,117,23,0.6) 50%,rgba(186,117,23,0.25) 100%)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                        )}
+                      </div>
+                      {tagStatus.total > 0 ? (() => {
+                        let etaStr = ''
+                        if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
+                          const elapsed = (Date.now() - tagRunStartRef.current.ts) / 1000
+                          const done = tagStatus.progress - tagRunStartRef.current.progress
+                          const remaining = (tagStatus.total - tagStatus.progress) / (done / elapsed)
+                          if (remaining > 0 && remaining < 86400) {
+                            etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)}h left` : remaining >= 60 ? `~${Math.round(remaining/60)}m left` : `~${Math.round(remaining)}s left`
+                            tagEtaRef.current = etaStr
+                          } else { etaStr = tagEtaRef.current || '' }
+                        } else { etaStr = tagEtaRef.current || '' }
+                        return (
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            <div className="flex items-center justify-between">
+                              <div className="text-[13px] text-white/30">
+                                {tagStatus.tagged} tagged · {tagStatus.skipped} skipped
+                                {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} errors</span>}
+                              </div>
+                              {etaStr && <div className="text-[13px]" style={{ color: 'rgba(127,119,221,0.7)' }}>{etaStr}</div>}
+                            </div>
+                            {tagStatus.current_path && (
+                              <div className="text-[13px] truncate text-white/20" title={tagStatus.current_path}>
+                                {tagStatus.current_path.replace(/.*[\\/]/, '')}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })() : (
+                        <div className="text-[13px] text-white/35 mt-1">{tagStatus.message}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-5">
+                      {tagStatus?.message && tagStatus.message !== 'Idle' && (
+                        <div className="text-[16px] text-white/45">{tagStatus.message}</div>
+                      )}
+                      <div>
+                        <div className="text-[15px] font-semibold text-white/55 mb-2">Scope</div>
+                        <div className="flex gap-2 flex-wrap">
+                          {[{ key: 'library', label: 'Entire library' }, { key: 'folder', label: 'Specific folder' }, { key: 'creator', label: 'By creator' }].map(({ key, label }) => (
+                            <button key={key} onClick={() => setTagScope(key)}
+                                    className="px-3 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
+                                    style={{ background: tagScope === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagScope === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagScope === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {tagScope === 'folder' && <div className="mt-2"><RootDropdown roots={roots ?? []} value={tagRootId} onChange={setTagRootId} /></div>}
+                        {tagScope === 'creator' && (
+                          <div className="mt-2 flex flex-col gap-1.5">
+                            <input placeholder="Search creators…" value={tagCreatorSearch}
+                                   onChange={e => { setTagCreatorSearch(e.target.value); setTagCreatorId('') }}
+                                   className="w-full px-3 py-2 rounded-[8px] text-[15px] outline-none"
+                                   style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
+                            {tagCreatorId && (() => {
+                              const sel = filteredTagCreators.find(c => String(c.id) === String(tagCreatorId)) || (allCreators ?? []).find(c => String(c.id) === String(tagCreatorId))
+                              return sel ? (
+                                <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
+                                     style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                                  <span style={{ fontSize: 15, color: '#CECBF6', fontWeight: 600 }}>{sel.name}</span>
+                                  <button onClick={() => setTagCreatorId('')} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}><X size={12} /></button>
+                                </div>
+                              ) : null
+                            })()}
+                            {!tagCreatorId && filteredTagCreators.length > 0 && (
+                              <div className="rounded-[8px] overflow-hidden overflow-y-auto"
+                                   style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 160 }}>
+                                {filteredTagCreators.map(c => (
+                                  <button key={c.id} onClick={() => { setTagCreatorId(String(c.id)); setTagCreatorSearch('') }}
+                                          className="w-full text-left px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                                          style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
+                                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.12)'}
+                                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: {cosplayer:'#1D9E75',ethot:'#D4537E',artist:'#7F77DD',character:'#BA7517',actress:'#378ADD',custom:'#888780'}[c.creator_type] || '#888780', flexShrink: 0, display: 'inline-block' }} />
+                                    {c.name}
+                                    <span style={{ marginLeft: 'auto', fontSize: 13, color: 'rgba(255,255,255,0.25)', textTransform: 'capitalize' }}>{c.creator_type}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {!tagCreatorId && filteredTagCreators.length === 0 && tagCreatorSearch && (
+                              <div className="px-3 py-2 rounded-[8px] text-[15px]" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)' }}>No creators found</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[15px] font-semibold text-white/55 mb-2">Model</div>
+                        <div className="flex gap-2">
+                          {[{ key: 'auto', label: 'Auto', desc: 'Routes by creator type' }, { key: 'wd14', label: 'WD14', desc: 'Anime / art / characters', disabled: !tagModels?.wd14_downloaded }, { key: 'joytag', label: 'JoyTag', desc: 'Cosplay / real photos', disabled: !tagModels?.joytag_downloaded }].map(({ key, label, desc, disabled }) => (
+                            <button key={key} disabled={disabled} onClick={() => !disabled && setTagModelOverride(key)}
+                                    className="flex-1 px-2 py-1.5 rounded-[6px] text-[15px] cursor-pointer text-center disabled:opacity-30"
+                                    style={{ background: tagModelOverride === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagModelOverride === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagModelOverride === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}
+                                    title={disabled ? 'Model not downloaded' : desc}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {tagModelOverride === 'auto' && (
+                          <div className="text-[14px] text-white/25 mt-1">Galleries with an assigned creator use that creator's type. Unassigned → JoyTag (or WD14 fallback).</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[15px] font-semibold text-white/55">Confidence threshold</div>
+                          <div className="text-[15px] font-mono" style={{ color: '#CECBF6' }}>{Math.round(tagThreshold * 100)}%</div>
+                        </div>
+                        <input type="range" min="10" max="90" step="5" value={Math.round(tagThreshold * 100)}
+                               onChange={e => setTagThreshold(Number(e.target.value) / 100)}
+                               className="w-full accent-[#7F77DD] cursor-pointer" />
+                        <div className="flex justify-between text-[13px] text-white/25 mt-0.5">
+                          <span>More tags (10%)</span><span>Fewer, precise (90%)</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[16px] text-white/75">GPU acceleration (NVIDIA CUDA)</div>
+                          <div className="text-[14px] text-white/30 mt-0.5">{configData?.use_gpu !== false ? 'ON — using CUDA if available, CPU fallback otherwise' : 'OFF — running on CPU only'}</div>
+                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: '#BA7517' }}>⚠ No NVIDIA GPU mode — AI tagging will be slower</div>}
+                        </div>
+                        <button onClick={() => gpuMutation.mutate(configData?.use_gpu === false ? true : false)}
+                                disabled={gpuMutation.isPending}
+                                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors disabled:opacity-50"
+                                style={{ background: configData?.use_gpu !== false ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                          <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                               style={{ left: configData?.use_gpu !== false ? 'calc(100% - 17px)' : '3px' }} />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[16px] text-white/75">Re-tag already tagged images</div>
+                          <div className="text-[14px] text-white/30 mt-0.5">Off = skip images that already have AI tags</div>
+                        </div>
+                        <button onClick={() => setTagRetag(!tagRetag)}
+                                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
+                                style={{ background: tagRetag ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                          <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                               style={{ left: tagRetag ? 'calc(100% - 17px)' : '3px' }} />
+                        </button>
+                      </div>
+                      {aiTaskQueued ? (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[15px] w-fit"
+                             style={{ background: 'rgba(127,119,221,0.1)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
+                          <Clock size={12} style={{ color: '#7F77DD' }} /> Queued in task queue…
+                        </div>
+                      ) : (
+                        <button disabled={tagStarting || (!tagModels?.wd14_downloaded && !tagModels?.joytag_downloaded)}
+                                onClick={startTagging}
+                                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                          <Cpu size={13} /> {tagStarting ? 'Starting…' : 'Start AI Tagging'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </SettingsSection>
+              </div>
+            )}
+
+            {/* ── Appearance tab ───────────────────────── */}
+            {settingsTab === 'appearance' && (
+              <div className="space-y-3">
+                <SettingsSection title="Theme" icon={Sparkles} accentColor="var(--c-accent)">
+                  <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
+                    {PALETTES.map(p => (
+                      <button key={p.id} onClick={() => setPalette(p)}
+                              className="flex flex-col gap-2 p-3 rounded-[10px] cursor-pointer text-left transition-all"
+                              style={{ background: currentPalette.id === p.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.08)'}` }}>
+                        <div className="flex gap-1 items-center">
+                          {[p.accent, p.pink, p.amber, p.green].map((c, i) => (
+                            <div key={i} className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: c }} />
+                          ))}
+                          {currentPalette.id === p.id && <Check size={12} className="ml-auto flex-shrink-0" style={{ color: p.accent }} />}
+                        </div>
+                        <div className="w-full h-1.5 rounded-full" style={{ background: `linear-gradient(to right, ${p.bg}, ${p.card})` }} />
+                        <div className="text-[14px] font-medium" style={{ color: currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.55)' }}>{p.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {currentPalette.id === 'glass' && (
+                    <div className="pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                      <div className="text-[16px] font-semibold text-white/55 mb-1">Glass Background Image</div>
+                      <div className="text-[14px] text-white/25 mb-3">Pick any image from your PC to use as the background behind the glass effect.</div>
+                      <input ref={glassBgFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                             onChange={e => {
+                               const file = e.target.files[0]; if (!file) return
+                               const reader = new FileReader()
+                               reader.onload = ev => { setGlassBackground(ev.target.result); setGlassBgLabel(file.name); localStorage.setItem('vault_glass_bg_label', file.name) }
+                               reader.readAsDataURL(file)
+                             }} />
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => glassBgFileRef.current?.click()}
+                                className="px-4 py-2 rounded-[8px] text-[15px] cursor-pointer"
+                                style={{ background: 'rgba(160,180,208,0.15)', color: '#A0B4D0', border: '0.5px solid rgba(160,180,208,0.35)' }}>
+                          Browse…
+                        </button>
+                        {glassBgLabel ? <span className="text-[14px] text-white/50 truncate flex-1">{glassBgLabel}</span>
+                                      : <span className="text-[14px] text-white/20 flex-1">No image selected — using default gradient</span>}
+                      </div>
+                      {glassBackground && (
+                        <button onClick={() => { setGlassBackground(''); setGlassBgLabel(''); localStorage.removeItem('vault_glass_bg_label'); if (glassBgFileRef.current) glassBgFileRef.current.value = '' }}
+                                className="mt-2 text-[14px] text-white/30 hover:text-white/60 transition-colors">
+                          Reset to default
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </SettingsSection>
+
+                <SettingsSection title="Typography &amp; Animations" icon={Type} accentColor="rgba(255,255,255,0.4)" defaultOpen={false}>
+                  <div className="mb-5">
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">Font</div>
+                    <div className="flex flex-wrap gap-2">
+                      {FONTS.map(f => (
+                        <button key={f.id} onClick={() => setFont(f)}
+                                className="px-4 py-2 rounded-[8px] cursor-pointer transition-all text-[15px]"
+                                style={{ fontFamily: f.family, background: currentFont.id === f.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${currentFont.id === f.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: currentFont.id === f.id ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}>
+                          {f.label}
                         </button>
                       ))}
                     </div>
-                  )}
-                  {!tagCreatorId && filteredTagCreators.length === 0 && tagCreatorSearch && (
-                    <div className="px-3 py-2 rounded-[8px] text-[12px]" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)' }}>No creators found</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Model override */}
-            <div>
-              <div className="text-[11px] text-[rgba(255,255,255,0.5)] mb-2">Model</div>
-              <div className="flex gap-2">
-                {[
-                  { key: 'auto',   label: 'Auto',   desc: 'Routes by creator type' },
-                  { key: 'wd14',   label: 'WD14',   desc: 'Anime / art / characters', disabled: !tagModels?.wd14_downloaded },
-                  { key: 'joytag', label: 'JoyTag', desc: 'Cosplay / real photos',    disabled: !tagModels?.joytag_downloaded },
-                ].map(({ key, label, desc, disabled }) => (
-                  <button key={key}
-                          disabled={disabled}
-                          onClick={() => !disabled && setTagModelOverride(key)}
-                          className="flex-1 px-2 py-1.5 rounded-[6px] text-[11px] cursor-pointer text-center disabled:opacity-30"
-                          style={{
-                            background: tagModelOverride === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                            color:      tagModelOverride === key ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-                            border:     `0.5px solid ${tagModelOverride === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                          }}
-                          title={disabled ? 'Model not downloaded' : desc}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {tagModelOverride === 'auto' && (
-                <div className="text-[10px] text-[rgba(255,255,255,0.25)] mt-1">
-                  Galleries with an assigned creator use that creator's type to pick the model. Unassigned → JoyTag (or WD14 fallback).
-                </div>
-              )}
-            </div>
-
-            {/* Confidence threshold */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] text-[rgba(255,255,255,0.5)]">Confidence threshold</div>
-                <div className="text-[12px] font-mono" style={{ color: '#CECBF6' }}>{Math.round(tagThreshold * 100)}%</div>
-              </div>
-              <input type="range" min="10" max="90" step="5"
-                     value={Math.round(tagThreshold * 100)}
-                     onChange={e => setTagThreshold(Number(e.target.value) / 100)}
-                     className="w-full accent-[#7F77DD] cursor-pointer" />
-              <div className="flex justify-between text-[10px] text-[rgba(255,255,255,0.25)] mt-0.5">
-                <span>More tags (10%)</span><span>Fewer, precise (90%)</span>
-              </div>
-            </div>
-
-            {/* GPU toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[12px] text-[rgba(255,255,255,0.75)]">GPU acceleration (NVIDIA CUDA)</div>
-                <div className="text-[10px] text-[rgba(255,255,255,0.3)] mt-0.5">
-                  {configData?.use_gpu !== false
-                    ? 'ON — using CUDA if available, CPU fallback otherwise'
-                    : 'OFF — running on CPU only'}
-                </div>
-                {configData?.use_gpu === false && (
-                  <div className="text-[10px] mt-1" style={{ color: '#BA7517' }}>
-                    ⚠ No NVIDIA GPU mode — AI tagging will be slower
                   </div>
-                )}
-              </div>
-              <button
-                onClick={() => gpuMutation.mutate(configData?.use_gpu === false ? true : false)}
-                disabled={gpuMutation.isPending}
-                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors disabled:opacity-50"
-                style={{ background: configData?.use_gpu !== false ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
-                <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
-                     style={{ left: configData?.use_gpu !== false ? 'calc(100% - 17px)' : '3px' }} />
-              </button>
-            </div>
-
-            {/* Re-tag toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[12px] text-[rgba(255,255,255,0.75)]">Re-tag already tagged images</div>
-                <div className="text-[10px] text-[rgba(255,255,255,0.3)] mt-0.5">Off = skip images that already have AI tags</div>
-              </div>
-              <button onClick={() => setTagRetag(!tagRetag)}
-                      className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                      style={{ background: tagRetag ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
-                <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
-                     style={{ left: tagRetag ? 'calc(100% - 17px)' : '3px' }} />
-              </button>
-            </div>
-
-            {aiTaskQueued ? (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[12px] w-fit"
-                   style={{ background: 'rgba(127,119,221,0.1)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
-                <Clock size={12} style={{ color: '#7F77DD' }} /> Queued in task queue…
-              </div>
-            ) : (
-              <button
-                disabled={tagStarting || (!tagModels?.wd14_downloaded && !tagModels?.joytag_downloaded)}
-                onClick={startTagging}
-                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[12px] cursor-pointer w-fit disabled:opacity-40"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                <Cpu size={13} /> {tagStarting ? 'Starting…' : 'Start AI Tagging'}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Session mode ────────────────────────────────────────── */}
-      <div className="vault-card p-5">
-        <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)] mb-1">Session mode</div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.35)] mb-4">
-          Controls what happens when you click "Start session" on the dashboard.
-        </div>
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <div className="text-[12px] text-[rgba(255,255,255,0.75)]">Neon border effect</div>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] mt-0.5">Pulsing glow around screen edges during a session</div>
-          </div>
-          <button
-            onClick={() => setShowGoonBorder(!showGoonBorder)}
-            className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-            style={{ background: showGoonBorder ? 'rgba(212,83,126,0.6)' : 'rgba(255,255,255,0.1)' }}>
-            <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all"
-                 style={{ background: '#fff', left: showGoonBorder ? 'calc(100% - 17px)' : '3px' }} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── Personalization ─────────────────────────────────────── */}
-      <div className="vault-card p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={14} style={{ color: 'var(--c-accent)' }} />
-          <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Personalization</div>
-        </div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.35)] mb-5">
-          Themes, fonts, and visual preferences.
-        </div>
-
-        {/* ── Themes ── */}
-        <div className="mb-6">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)] mb-3">Theme</div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-            {PALETTES.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPalette(p)}
-                className="flex flex-col gap-2 p-3 rounded-[10px] cursor-pointer text-left transition-all"
-                style={{
-                  background: currentPalette.id === p.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.08)'}`,
-                }}>
-                <div className="flex gap-1 items-center">
-                  {[p.accent, p.pink, p.amber, p.green].map((c, i) => (
-                    <div key={i} className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: c }} />
-                  ))}
-                  {currentPalette.id === p.id && (
-                    <Check size={12} className="ml-auto flex-shrink-0" style={{ color: p.accent }} />
-                  )}
-                </div>
-                <div className="w-full h-1.5 rounded-full"
-                     style={{ background: `linear-gradient(to right, ${p.bg}, ${p.card})` }} />
-                <div className="text-[11px] font-medium" style={{ color: currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.55)' }}>
-                  {p.label}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Font ── */}
-        <div className="mb-6">
-          <div className="flex items-center gap-1.5 mb-3">
-            <Type size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)]">Font</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {FONTS.map(f => (
-              <button
-                key={f.id}
-                onClick={() => setFont(f)}
-                className="px-4 py-2 rounded-[8px] cursor-pointer transition-all text-[13px]"
-                style={{
-                  fontFamily: f.family,
-                  background: currentFont.id === f.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${currentFont.id === f.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`,
-                  color: currentFont.id === f.id ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)',
-                }}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Animation speed ── */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-3">
-            <Gauge size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)]">Animations</div>
-          </div>
-          <div className="flex gap-2">
-            {[['full', 'Full'], ['reduced', 'Reduced'], ['off', 'Off']].map(([val, label]) => (
-              <button
-                key={val}
-                onClick={() => setAnimSpeed(val)}
-                className="flex-1 py-2 rounded-[8px] text-[12px] cursor-pointer transition-all"
-                style={{
-                  background: animSpeed === val ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${animSpeed === val ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`,
-                  color: animSpeed === val ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.2)] mt-2">
-            "Off" disables all transitions and animations — useful on low-end hardware.
-          </div>
-        </div>
-
-        {/* ── Custom vault name ── */}
-        <div className="mt-6 pt-5" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)] mb-3">Vault Name</div>
-          <div className="flex gap-2">
-            <input
-              value={vaultNameInput}
-              onChange={e => setVaultNameInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && setVaultName(vaultNameInput)}
-              placeholder="The Vault"
-              maxLength={30}
-              className="flex-1 px-3 py-2 rounded-[8px] text-[13px] outline-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }}
-            />
-            <button
-              onClick={() => setVaultName(vaultNameInput)}
-              className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer"
-              style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-              Save
-            </button>
-          </div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.2)] mt-1.5">Shown in the sidebar. Max 30 characters.</div>
-        </div>
-
-        {/* ── Session glow color ── */}
-        <div className="mt-6 pt-5" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)] mb-3">Session Border Glow</div>
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { label: 'Pink',   value: 'var(--c-pink)',  swatch: '#D4537E' },
-              { label: 'Red',    value: '#FF3333',         swatch: '#FF3333' },
-              { label: 'Cyan',   value: '#00DDFF',         swatch: '#00DDFF' },
-              { label: 'Violet', value: 'var(--c-accent)', swatch: '#7F77DD' },
-              { label: 'White',  value: '#FFFFFF',         swatch: '#FFFFFF' },
-              { label: 'Green',  value: 'var(--c-green)',  swatch: '#1D9E75' },
-            ].map(opt => (
-              <button
-                key={opt.label}
-                onClick={() => setSessionGlowColor(opt.value)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] cursor-pointer transition-all"
-                style={{
-                  background: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${sessionGlowColor === opt.value ? opt.swatch : 'rgba(255,255,255,0.08)'}`,
-                  color: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)',
-                }}>
-                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: opt.swatch }} />
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Glass background ── */}
-        {currentPalette.id === 'glass' && (
-          <div className="mt-6 pt-5" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[rgba(255,255,255,0.3)] mb-1">Glass Background Image</div>
-            <div className="text-[10px] text-[rgba(255,255,255,0.25)] mb-3">Pick any image from your PC to use as the background behind the glass effect.</div>
-            <input
-              ref={glassBgFileRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={e => {
-                const file = e.target.files[0]
-                if (!file) return
-                const reader = new FileReader()
-                reader.onload = ev => {
-                  setGlassBackground(ev.target.result)
-                  setGlassBgLabel(file.name)
-                  localStorage.setItem('vault_glass_bg_label', file.name)
-                }
-                reader.readAsDataURL(file)
-              }}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => glassBgFileRef.current?.click()}
-                className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
-                style={{ background: 'rgba(160,180,208,0.15)', color: '#A0B4D0', border: '0.5px solid rgba(160,180,208,0.35)' }}>
-                Browse…
-              </button>
-              {glassBgLabel
-                ? <span className="text-[12px] text-[rgba(255,255,255,0.5)] truncate flex-1">{glassBgLabel}</span>
-                : <span className="text-[12px] text-[rgba(255,255,255,0.2)] flex-1">No image selected — using default gradient</span>
-              }
-            </div>
-            {glassBackground && (
-              <button
-                onClick={() => {
-                  setGlassBackground('')
-                  setGlassBgLabel('')
-                  localStorage.removeItem('vault_glass_bg_label')
-                  if (glassBgFileRef.current) glassBgFileRef.current.value = ''
-                }}
-                className="mt-2 text-[11px] text-[rgba(255,255,255,0.3)] hover:text-[rgba(255,255,255,0.6)] transition-colors">
-                Reset to default
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── Toggles ── */}
-        <div className="mt-6 pt-5 flex flex-col gap-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-          {[
-            {
-              label: '🎉 Confetti on level-up',
-              sub: 'Burst of confetti every time you level up.',
-              val: confettiEnabled, set: setConfettiEnabled, color: '#D4537E',
-            },
-          ].map(({ label, sub, val, set, color }) => (
-            <div key={label} className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-[13px] text-[rgba(255,255,255,0.75)]">{label}</div>
-                <div className="text-[11px] text-[rgba(255,255,255,0.3)] mt-0.5">{sub}</div>
-              </div>
-              <button
-                onClick={() => set(!val)}
-                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                style={{ background: val ? `${color}99` : 'rgba(255,255,255,0.1)' }}>
-                <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all"
-                     style={{ background: '#fff', left: val ? 'calc(100% - 17px)' : '3px' }} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Maintenance ─────────────────────────────────────────── */}
-      <div className="vault-card p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <ShieldCheck size={14} style={{ color: '#1D9E75' }} />
-          <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Maintenance</div>
-        </div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.35)] mb-5">
-          Database backup and server controls.
-        </div>
-
-        <div className="flex flex-col gap-3">
-
-          {/* Backup + Restore */}
-          <div className="p-4 rounded-[10px] flex flex-col gap-4"
-               style={{ background: 'rgba(29,158,117,0.06)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
-
-            {/* Backup row */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Backup database</div>
-                <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                  Downloads a consistent snapshot of <code className="text-[rgba(255,255,255,0.5)]">vault.db</code> — all galleries, creators, sessions, and cards.
-                </div>
-              </div>
-              <button
-                onClick={() => { systemApi.backup(); toast.success('Backup download started!') }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer flex-shrink-0 ml-4"
-                style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }}>
-                <Download size={14} /> Download backup
-              </button>
-            </div>
-
-            <div style={{ height: '0.5px', background: 'rgba(29,158,117,0.2)' }} />
-
-            {/* Restore row */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Restore backup</div>
-                <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                  Select a <code className="text-[rgba(255,255,255,0.5)]">.db</code> backup file to restore. Your current database is automatically saved before overwriting.
-                </div>
-
-                {/* Confirming state — shown inline below the description */}
-                {restoreState === 'confirming' && restoreFile && (
-                  <div className="mt-3 p-3 rounded-[8px]"
-                       style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.35)' }}>
-                    <div className="text-[12px] font-medium mb-1" style={{ color: '#F4C0D1' }}>
-                      ⚠️ Replace entire database?
-                    </div>
-                    <div className="text-[11px] mb-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                      File: <span style={{ color: 'rgba(255,255,255,0.7)' }}>{restoreFile.name}</span>
-                      <br />This will replace all your current data. The app will restart automatically.
-                    </div>
+                  <div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">Animations</div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={confirmRestore}
-                        className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium cursor-pointer"
-                        style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
-                        Yes, restore
+                      {[['full', 'Full'], ['reduced', 'Reduced'], ['off', 'Off']].map(([val, label]) => (
+                        <button key={val} onClick={() => setAnimSpeed(val)}
+                                className="flex-1 py-2 rounded-[8px] text-[15px] cursor-pointer transition-all"
+                                style={{ background: animSpeed === val ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${animSpeed === val ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: animSpeed === val ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[14px] text-white/20 mt-2">"Off" disables all transitions and animations — useful on low-end hardware.</div>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title="Vault identity" icon={Sparkles} accentColor="var(--c-amber)" defaultOpen={false}>
+                  <div className="mb-5">
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">Vault name</div>
+                    <div className="flex gap-2">
+                      <input value={vaultNameInput} onChange={e => setVaultNameInput(e.target.value)}
+                             onKeyDown={e => e.key === 'Enter' && setVaultName(vaultNameInput)}
+                             placeholder="The Vault" maxLength={30}
+                             className="flex-1 px-3 py-2 rounded-[8px] text-[16px] outline-none"
+                             style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
+                      <button onClick={() => setVaultName(vaultNameInput)}
+                              className="px-4 py-2 rounded-[8px] text-[15px] cursor-pointer"
+                              style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                        Save
                       </button>
-                      <button
-                        onClick={() => { setRestoreState('idle'); setRestoreFile(null) }}
-                        className="px-4 py-1.5 rounded-[6px] text-[12px] cursor-pointer"
-                        style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                        Cancel
+                    </div>
+                    <div className="text-[14px] text-white/20 mt-1.5">Shown in the sidebar. Max 30 characters.</div>
+                  </div>
+                  <div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">Session border glow</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { label: 'Pink',   value: 'var(--c-pink)',  swatch: '#D4537E' },
+                        { label: 'Red',    value: '#FF3333',         swatch: '#FF3333' },
+                        { label: 'Cyan',   value: '#00DDFF',         swatch: '#00DDFF' },
+                        { label: 'Violet', value: 'var(--c-accent)', swatch: '#7F77DD' },
+                        { label: 'White',  value: '#FFFFFF',         swatch: '#FFFFFF' },
+                        { label: 'Green',  value: 'var(--c-green)',  swatch: '#1D9E75' },
+                      ].map(opt => (
+                        <button key={opt.label} onClick={() => setSessionGlowColor(opt.value)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[15px] cursor-pointer transition-all"
+                                style={{ background: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sessionGlowColor === opt.value ? opt.swatch : 'rgba(255,255,255,0.08)'}`, color: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}>
+                          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: opt.swatch }} />
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title="Effects &amp; Companion" icon={Sparkles} accentColor="var(--c-pink)" defaultOpen={false}>
+                  <div className="flex flex-col gap-4 mb-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-[16px] text-white/75">🎉 Confetti on level-up</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">Burst of confetti every time you level up.</div>
+                      </div>
+                      <button onClick={() => setConfettiEnabled(!confettiEnabled)}
+                              className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
+                              style={{ background: confettiEnabled ? 'rgba(212,83,126,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                        <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                             style={{ left: confettiEnabled ? 'calc(100% - 17px)' : '3px' }} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-[16px] text-white/75">Neon border effect</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">Pulsing glow around screen edges during a session.</div>
+                      </div>
+                      <button onClick={() => setShowGoonBorder(!showGoonBorder)}
+                              className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
+                              style={{ background: showGoonBorder ? 'rgba(212,83,126,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                        <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                             style={{ left: showGoonBorder ? 'calc(100% - 17px)' : '3px' }} />
                       </button>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Hidden file input */}
-              <input
-                ref={restoreInputRef}
-                type="file"
-                accept=".db"
-                className="hidden"
-                onChange={handleRestoreFileChange}
-              />
-
-              {/* Restore button */}
-              <button
-                onClick={() => restoreState === 'idle' && restoreInputRef.current?.click()}
-                disabled={restoreState !== 'idle'}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
-                style={restoreState === 'done'
-                  ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
-                  : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
-                {restoreState === 'uploading' ? (
-                  <><RefreshCw size={14} className="animate-spin" /> Uploading…</>
-                ) : restoreState === 'restarting' ? (
-                  <><RefreshCw size={14} className="animate-spin" /> Restarting…</>
-                ) : restoreState === 'done' ? (
-                  <><Check size={14} /> Restored!</>
-                ) : (
-                  <><Download size={14} style={{ transform: 'rotate(180deg)' }} /> Restore backup</>
-                )}
-              </button>
-            </div>
-
-          </div>
-
-          {/* Storage Location */}
-          <div className="p-4 rounded-[10px] flex flex-col gap-3"
-               style={{ background: 'rgba(127,119,221,0.06)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
-            <div className="flex items-center gap-2">
-              <HardDrive size={13} style={{ color: '#9F99E8' }} />
-              <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Storage location</div>
-            </div>
-            <div className="text-[13px] text-[rgba(255,255,255,0.35)]">
-              Where <code className="text-[rgba(255,255,255,0.5)]">vault.db</code> and the thumbnail cache are stored.
-              Move this to a larger drive if your C: space is limited. The server will restart automatically when saved.
-            </div>
-            {configData && (
-              <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                Active: <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span>
+                  <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+                    <div className="text-[17px] font-semibold text-white/75 mb-1">Vault Companion</div>
+                    <div className="text-[15px] text-white/35 mb-4">AI companion powered by Ollama (local, private, uncensored). Requires Ollama to be installed.</div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[16px] text-white/70">{compConfig?.enabled ? `${compConfig?.name || 'Erika'} is active` : 'Companion disabled'}</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">When enabled, she appears in the sidebar and as a floating chat bubble.</div>
+                      </div>
+                      <button onClick={toggleCompanion}
+                              className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors"
+                              style={{ background: compConfig?.enabled ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                        <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                             style={{ left: compConfig?.enabled ? 'calc(100% - 17px)' : '3px' }} />
+                      </button>
+                    </div>
+                    {compConfig?.enabled && (
+                      <a href="/erika" className="inline-flex items-center gap-1.5 mt-3 text-[15px] px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
+                         style={{ color: '#A89FE8', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                        <Sparkles size={12} /> Open {compConfig?.name || 'Erika'} →
+                      </a>
+                    )}
+                  </div>
+                </SettingsSection>
               </div>
             )}
-            {configData && configData.data_dir && configData.data_dir !== configData.effective_data_dir && (
-              <div className="text-[11px]" style={{ color: '#BA7517' }}>
-                ⚠ Configured path <span className="font-mono">{configData.data_dir}</span> was not available at startup — drive may not have been mounted. Restart the server once the drive is ready.
+
+            {/* ── Backup tab ───────────────────────────── */}
+            {settingsTab === 'backup' && (
+              <div className="space-y-3">
+                <SettingsSection title="Backup &amp; Restore" icon={Archive} accentColor="var(--c-green)">
+                  <div className="flex items-center justify-between py-3">
+                    <div>
+                      <div className="text-[17px] font-semibold text-white/80">Backup database</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">Downloads a snapshot of <code className="text-white/50">vault.db</code> — all galleries, creators, sessions, and cards.</div>
+                    </div>
+                    <button onClick={() => { systemApi.backup(); toast.success('Backup download started!') }}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
+                            style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }}>
+                      <Download size={14} /> Download backup
+                    </button>
+                  </div>
+                  <div style={{ height: '0.5px', background: 'rgba(29,158,117,0.2)' }} />
+                  <div className="flex items-start justify-between gap-4 pt-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[17px] font-semibold text-white/80">Restore backup</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">Select a <code className="text-white/50">.db</code> backup file. Your current database is saved automatically before overwriting.</div>
+                      {restoreState === 'confirming' && restoreFile && (
+                        <div className="mt-3 p-3 rounded-[8px]"
+                             style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+                          <div className="text-[15px] font-medium mb-1" style={{ color: '#F4C0D1' }}>⚠️ Replace entire database?</div>
+                          <div className="text-[14px] mb-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                            File: <span style={{ color: 'rgba(255,255,255,0.7)' }}>{restoreFile.name}</span><br />
+                            This will replace all your current data. The app will restart automatically.
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={confirmRestore}
+                                    className="px-4 py-1.5 rounded-[6px] text-[15px] font-medium cursor-pointer"
+                                    style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
+                              Yes, restore
+                            </button>
+                            <button onClick={() => { setRestoreState('idle'); setRestoreFile(null) }}
+                                    className="px-4 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
+                                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <input ref={restoreInputRef} type="file" accept=".db" className="hidden" onChange={handleRestoreFileChange} />
+                    <button onClick={() => restoreState === 'idle' && restoreInputRef.current?.click()}
+                            disabled={restoreState !== 'idle'}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
+                            style={restoreState === 'done'
+                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
+                              : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+                      {restoreState === 'uploading' ? <><RefreshCw size={14} className="animate-spin" /> Uploading…</>
+                       : restoreState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> Restarting…</>
+                       : restoreState === 'done' ? <><Check size={14} /> Restored!</>
+                       : <><Download size={14} style={{ transform: 'rotate(180deg)' }} /> Restore backup</>}
+                    </button>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title="Storage location" icon={HardDrive} accentColor="var(--c-accent)" defaultOpen={false}>
+                  <p className="text-[16px] text-white/45 mb-4">Where <code className="text-white/50">vault.db</code> and the thumbnail cache are stored. Move to a larger drive if C: space is limited. The server restarts automatically when saved.</p>
+                  {configData && <div className="text-[15px] mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>Active: <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span></div>}
+                  {configData?.data_dir && configData.data_dir !== configData?.effective_data_dir && (
+                    <div className="text-[14px] mb-3" style={{ color: '#BA7517' }}>⚠ Configured path <span className="font-mono">{configData.data_dir}</span> was not available at startup.</div>
+                  )}
+                  <div className="flex gap-2">
+                    <input value={storageInput} onChange={e => { setStorageInput(e.target.value); setStorageState('idle') }}
+                           placeholder="e.g. D:\VaultData"
+                           className="flex-1 px-3 py-2 rounded-[7px] text-[15px] font-mono outline-none"
+                           style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }} />
+                    <button onClick={storageState === 'idle' ? handleStorageSave : undefined}
+                            disabled={storageState === 'saving' || storageState === 'saved'}
+                            className="flex items-center gap-2 px-4 py-2 rounded-[7px] text-[15px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
+                            style={storageState === 'saved'
+                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
+                              : { background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                      {storageState === 'saving' ? <><RefreshCw size={12} className="animate-spin" /> Saving…</>
+                       : storageState === 'saved' ? <><Check size={12} /> Saved — restarting…</>
+                       : <><Check size={12} /> Save &amp; restart</>}
+                    </button>
+                  </div>
+                </SettingsSection>
               </div>
             )}
-            <div className="flex gap-2">
-              <input
-                value={storageInput}
-                onChange={e => { setStorageInput(e.target.value); setStorageState('idle') }}
-                placeholder="e.g. D:\VaultData"
-                className="flex-1 px-3 py-2 rounded-[7px] text-[12px] font-mono outline-none"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}
-              />
-              <button
-                onClick={storageState === 'idle' ? handleStorageSave : undefined}
-                disabled={storageState === 'saving' || storageState === 'saved'}
-                className="flex items-center gap-2 px-4 py-2 rounded-[7px] text-[12px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
-                style={storageState === 'saved'
-                  ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
-                  : { background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                {storageState === 'saving' ? (
-                  <><RefreshCw size={12} className="animate-spin" /> Saving…</>
-                ) : storageState === 'saved' ? (
-                  <><Check size={12} /> Saved — restarting…</>
-                ) : (
-                  <><Check size={12} /> Save & restart</>
-                )}
-              </button>
-            </div>
-          </div>
 
-          {/* Run on startup */}
-          <div className="flex items-center justify-between p-4 rounded-[10px]"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            <div>
-              <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Run on startup</div>
-              <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                Launch The Vault automatically when Windows starts.
+            {/* ── System tab ───────────────────────────── */}
+            {settingsTab === 'system' && (
+              <div className="space-y-3">
+                <SettingsSection title="Startup &amp; Updates" icon={RefreshCw} accentColor="var(--c-accent)">
+                  <div className="flex items-center justify-between py-3 mb-4" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+                    <div>
+                      <div className="text-[17px] font-semibold text-white/80">Run on startup</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">Launch The Vault automatically when Windows starts.</div>
+                      {startupData && !startupData.available && <div className="text-[14px] mt-1 text-white/25">Only available in the installed version</div>}
+                    </div>
+                    <button disabled={!startupData?.available || startupMutation.isPending}
+                            onClick={() => startupMutation.mutate(!startupData?.enabled)}
+                            className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors disabled:opacity-30"
+                            style={{ background: startupData?.enabled ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)', cursor: startupData?.available ? 'pointer' : 'not-allowed' }}>
+                      <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
+                           style={{ left: startupData?.enabled ? 'calc(100% - 17px)' : '3px' }} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-[17px] font-semibold text-white/80">App updates</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">
+                        Current version: <span className="font-mono text-white/50">v{versionData?.version ?? '…'}</span>
+                        {versionData && !versionData.is_installed && <span className="ml-2 text-white/25">(dev mode)</span>}
+                      </div>
+                    </div>
+                    <button onClick={handleCheckUpdate}
+                            disabled={['checking','downloading','installing'].includes(updateState)}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-50"
+                            style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                      {updateState === 'checking' ? <><RefreshCw size={14} className="animate-spin" /> Checking…</> : <><RefreshCw size={14} /> Check for updates</>}
+                    </button>
+                  </div>
+                  {updateState === 'up_to_date' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#9FE1CB' }}><CheckCircle2 size={14} /> You're on the latest version.</div>}
+                  {updateState === 'available' && updateInfo && (
+                    <div className="rounded-[8px] p-4 space-y-2" style={{ background: 'rgba(127,119,221,0.1)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                      <div className="text-[17px] font-semibold" style={{ color: '#D0CEFD' }}>v{updateInfo.latest_version} available</div>
+                      {updateInfo.changelog && <div className="text-[16px] whitespace-pre-line text-white/45">{updateInfo.changelog}</div>}
+                      <button onClick={handleInstallUpdate}
+                              className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer mt-1"
+                              style={{ background: 'rgba(127,119,221,0.3)', color: '#D0CEFD', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                        <Download size={14} /> Download &amp; Install
+                      </button>
+                    </div>
+                  )}
+                  {(updateState === 'downloading' || updateState === 'installing') && (
+                    <div className="space-y-2">
+                      <div className="text-[16px] text-white/50">{updateState === 'installing' ? 'Launching installer — the app will close and restart…' : `Downloading… ${updateProgress}%`}</div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${updateProgress}%`, background: 'rgba(127,119,221,0.7)' }} />
+                      </div>
+                    </div>
+                  )}
+                  {updateState === 'error' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#F4C0D1' }}><AlertCircle size={13} /> {updateError}</div>}
+                </SettingsSection>
+
+                <SettingsSection title="Server" icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[17px] font-semibold text-white/80">Restart server</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">Restarts the Python backend. The page will reconnect automatically — takes about 3–5 seconds.</div>
+                    </div>
+                    <button onClick={restartState === 'idle' ? handleRestart : undefined}
+                            disabled={restartState === 'restarting'}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-60"
+                            style={restartState === 'done'
+                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
+                              : { background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.4)' }}>
+                      {restartState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> Restarting…</>
+                       : restartState === 'done' ? <><Check size={14} /> Back online</>
+                       : <><RefreshCw size={14} /> Restart server</>}
+                    </button>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title="Factory reset" icon={AlertCircle} accentColor="var(--c-pink)" defaultOpen={false}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[17px] font-semibold" style={{ color: 'rgba(244,192,209,0.9)' }}>Restore defaults</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">Wipe all galleries, creators, sessions, and cards for a clean start.</div>
+                    </div>
+                    <button onClick={() => setShowResetModal(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
+                            style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+                      <AlertCircle size={14} /> Reset collection
+                    </button>
+                  </div>
+                </SettingsSection>
               </div>
-              {startupData && !startupData.available && (
-                <div className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  Only available in the installed version
-                </div>
-              )}
-            </div>
-            <button
-              disabled={!startupData?.available || startupMutation.isPending}
-              onClick={() => startupMutation.mutate(!startupData?.enabled)}
-              className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors disabled:opacity-30"
-              style={{ background: startupData?.enabled ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)',
-                       cursor: startupData?.available ? 'pointer' : 'not-allowed' }}>
-              <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
-                   style={{ left: startupData?.enabled ? 'calc(100% - 17px)' : '3px' }} />
-            </button>
-          </div>
+            )}
 
-          {/* Restart */}
-          <div className="flex items-center justify-between p-4 rounded-[10px]"
-               style={{ background: 'rgba(186,117,23,0.06)', border: '0.5px solid rgba(186,117,23,0.2)' }}>
-            <div>
-              <div className="text-[15px] font-medium text-[rgba(255,255,255,0.8)]">Restart server</div>
-              <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                Restarts the Python backend. The page will reconnect automatically — takes about 3–5 seconds.
-              </div>
-            </div>
-            <button
-              onClick={restartState === 'idle' ? handleRestart : undefined}
-              disabled={restartState === 'restarting'}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-60"
-              style={restartState === 'done'
-                ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
-                : { background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.4)' }}>
-              {restartState === 'restarting' ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" /> Restarting…
-                </>
-              ) : restartState === 'done' ? (
-                <>
-                  <Check size={14} /> Back online
-                </>
-              ) : (
-                <>
-                  <RefreshCw size={14} /> Restart server
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Factory reset */}
-          <div className="flex items-center justify-between p-4 rounded-[10px]"
-               style={{ background: 'rgba(212,83,126,0.05)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
-            <div>
-              <div className="text-[15px] font-medium" style={{ color: 'rgba(244,192,209,0.9)' }}>Restore defaults</div>
-              <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                Wipe all galleries, creators, sessions, and cards for a clean start.
-              </div>
-            </div>
-            <button
-              onClick={() => setShowResetModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer flex-shrink-0 ml-4"
-              style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
-              <AlertCircle size={14} /> Reset collection
-            </button>
-          </div>
-
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {/* Factory reset confirmation modal */}
+      {/* ── Factory reset confirmation modal ───────────────────────────────── */}
       {showResetModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6"
              style={{ background: 'rgba(0,0,0,0.75)' }}
@@ -3267,12 +3233,8 @@ export function Settings() {
                style={{ background: '#1a1a1a', border: '1px solid rgba(212,83,126,0.4)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
                onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#F4C0D1', marginBottom: 10 }}>
-              Wipe entire collection?
-            </div>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: 16 }}>
-              This will permanently delete:
-            </div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#F4C0D1', marginBottom: 10 }}>Wipe entire collection?</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: 16 }}>This will permanently delete:</div>
             <ul style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.8, marginBottom: 20, paddingLeft: 20 }}>
               <li>All galleries and images</li>
               <li>All creators and characters</li>
@@ -3281,28 +3243,18 @@ export function Settings() {
               <li>All XP, levels, and achievements</li>
             </ul>
             <div className="p-3 rounded-[8px] mb-6" style={{ background: 'rgba(212,83,126,0.12)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#F4C0D1', marginBottom: 4 }}>
-                This cannot be undone.
-              </div>
-              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>
-                The only way to recover your data is from a backup file. Use the <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Download backup</strong> button first if you want to keep a copy.
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#F4C0D1', marginBottom: 4 }}>This cannot be undone.</div>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>The only way to recover your data is from a backup file. Use <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Download backup</strong> first if you want to keep a copy.</div>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={resetState === 'idle' ? handleReset : undefined}
-                disabled={resetState !== 'idle'}
-                className="flex items-center gap-2 px-5 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-50"
-                style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
-                {resetState === 'resetting'
-                  ? <><RefreshCw size={15} className="animate-spin" /> Wiping & restarting…</>
-                  : '💣 Yes, wipe everything'}
+              <button onClick={resetState === 'idle' ? handleReset : undefined} disabled={resetState !== 'idle'}
+                      className="flex items-center gap-2 px-5 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-50"
+                      style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
+                {resetState === 'resetting' ? <><RefreshCw size={15} className="animate-spin" /> Wiping &amp; restarting…</> : '💣 Yes, wipe everything'}
               </button>
-              <button
-                onClick={() => setShowResetModal(false)}
-                disabled={resetState === 'resetting'}
-                className="flex-1 px-4 py-3 rounded-[8px] text-[15px] cursor-pointer disabled:opacity-40"
-                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+              <button onClick={() => setShowResetModal(false)} disabled={resetState === 'resetting'}
+                      className="flex-1 px-4 py-3 rounded-[8px] text-[15px] cursor-pointer disabled:opacity-40"
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
                 Cancel
               </button>
             </div>

@@ -45,6 +45,10 @@ class DeviceService {
     // Map<deviceIndex, { featureIndex, maxSteps }>
     this._linearFeatures = new Map()
 
+    // Per-device vibrate feature indices extracted at connect time
+    // Map<deviceIndex, number[]> — array to support multi-actuator devices (e.g. Lovense Gush)
+    this._vibrateFeatures = new Map()
+
     // Funscript
     this._funscript      = null
     this._funscriptTimer = null
@@ -123,6 +127,10 @@ class DeviceService {
           maxSteps: raw.HwPositionWithDuration.Value?.[1] ?? 99,
         })
       }
+      if (raw.Vibrate !== undefined) {
+        const feats = this._vibrateFeatures.get(dev.index) || []
+        this._vibrateFeatures.set(dev.index, [...feats, featIdx])
+      }
     }
 
     const prev = store().devices
@@ -139,6 +147,7 @@ class DeviceService {
 
   _onDeviceRemoved(dev) {
     this._linearFeatures.delete(dev.index)
+    this._vibrateFeatures.delete(dev.index)
     useDeviceStore.setState({
       devices: store().devices.filter(d => d.index !== dev.index),
     })
@@ -196,6 +205,27 @@ class DeviceService {
         },
       })
     }
+
+    // Drive vibrate-only devices: map stroke-limited position → intensity.
+    // Devices that also support linear are skipped (they already received a position command).
+    this._sendVibrate(pos)
+  }
+
+  // Send a vibration intensity command (0.0–1.0, already stroke-limited) to all
+  // vibrate-capable devices that are NOT also linear (pure vibrators like Lovense Gush).
+  _sendVibrate(pos) {
+    const storeDevs = store().devices
+    for (const [devIndex, featIdxList] of this._vibrateFeatures) {
+      const d = storeDevs.find(sd => sd.index === devIndex)
+      if (d?.canLinear) continue  // linear device already handled
+      this._rawSend({
+        ScalarCmd: {
+          Id: this._msgId++,
+          DeviceIndex: devIndex,
+          Scalars: featIdxList.map(idx => ({ Index: idx, Scalar: clamp(pos, 0, 1), ActuatorType: 'Vibrate' })),
+        },
+      })
+    }
   }
 
   // ── Test stroke ─────────────────────────────────────────────────────────────
@@ -219,11 +249,13 @@ class DeviceService {
       return
     }
 
-    // Intiface: verify we have a linear device first
-    const devs = this._getLinearDevices()
-    if (devs.length === 0) {
-      throw new Error(`No linear devices detected. Connected: ${this._describeDevices()}`)
+    // Intiface: verify we have at least one compatible device
+    const hasLinear  = this._getLinearDevices().length > 0
+    const hasVibrate = this._vibrateFeatures.size > 0
+    if (!hasLinear && !hasVibrate) {
+      throw new Error(`No compatible devices detected. Connected: ${this._describeDevices()}`)
     }
+    // _sendLinear routes to both linear and vibrate-only devices in one call
     const dur = 700
     this._sendLinear(100, dur)
     await new Promise(r => setTimeout(r, dur + 100))

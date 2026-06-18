@@ -1,16 +1,17 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Images, Users, Play, ListMusic,
   Columns3, Gamepad2, Trophy, Star, Map, CreditCard,
   ScanLine, Tag, Settings, Flame, Box, Film, Video, Cpu, ScrollText, Layers,
   Wifi, WifiOff, Activity, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
+  Sparkles,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
-import { gamiApi } from '../../lib/api'
+import { gamiApi, companionApi } from '../../lib/api'
 
 const NAV = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -155,16 +156,25 @@ function SectionLabel({ label }) {
 }
 
 export default function Sidebar() {
-  const navigate      = useNavigate()
-  const queueCount    = useVaultStore(s => s.multiViewerQueue.length)
-  const avatarBust    = useVaultStore(s => s.avatarBust)
-  const vaultName     = useVaultStore(s => s.vaultName)
+  const navigate         = useNavigate()
+  const queueCount       = useVaultStore(s => s.multiViewerQueue.length)
+  const avatarBust       = useVaultStore(s => s.avatarBust)
+  const vaultName        = useVaultStore(s => s.vaultName)
+  const setCompanionConfig = useVaultStore(s => s.setCompanionConfig)
+  const companionEnabled = useVaultStore(s => s.companion.enabled)
 
   const { data: profile } = useQuery({
     queryKey: ['profile'],
     queryFn:  () => gamiApi.profile().then(r => r.data),
     staleTime: 30000,
   })
+
+  const { data: companionConfig } = useQuery({
+    queryKey: ['companion-config'],
+    queryFn:  () => companionApi.getConfig().then(r => r?.data ?? null),
+    staleTime: 60000,
+  })
+  useEffect(() => { if (companionConfig) setCompanionConfig(companionConfig) }, [companionConfig])
 
   const { data: taskState } = useQuery({
     queryKey: ['task-queue'],
@@ -206,6 +216,7 @@ export default function Sidebar() {
         <SectionLabel label="Goon" />
         <NavItem to="/multi-panel" icon={Columns3} label="Multi-panel" badge={queueCount} />
         {GOON_NAV.filter(n => n.to !== '/multi-panel').map(n => <NavItem key={n.to} {...n} />)}
+        <NavItem to="/erika" icon={Sparkles} label="Erika AI" />
         <QuickConnect />
 
         <SectionLabel label="Collect" />

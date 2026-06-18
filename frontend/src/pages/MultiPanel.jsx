@@ -427,15 +427,19 @@ export default function MultiPanel() {
   const removeFromViewer = useVaultStore(s => s.removeFromMultiViewer)
   const clearViewer      = useVaultStore(s => s.clearMultiViewer)
   const addXpToast       = useVaultStore(s => s.addXpToast)
-  const MAX              = useVaultStore(s => s.MULTIVIEWER_MAX)
-  const sessionActive    = useVaultStore(s => s.sessionActive)
-  const startSession     = useVaultStore(s => s.startSession)
-  const endSession       = useVaultStore(s => s.endSession)
+  const MAX                    = useVaultStore(s => s.MULTIVIEWER_MAX)
+  const sessionActive          = useVaultStore(s => s.sessionActive)
+  const startSession           = useVaultStore(s => s.startSession)
+  const endSession             = useVaultStore(s => s.endSession)
+  const setMultiPanelFullscreen = useVaultStore(s => s.setMultiPanelFullscreen)
 
   const [layoutIdx, setLayoutIdx]   = useState(2)   // default: 3 cols
   const [showAdd, setShowAdd]       = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  
+  const isFullscreenRef             = useRef(false)
+  const [showTopBar, setShowTopBar] = useState(true)
+  const topBarTimer                 = useRef(null)
+
   const [galleryMode, setGalleryMode] = useState('grouped') // 'grouped' | 'shuffled'
   const [showMenu, setShowMenu] = useState(false)
   const [showDevicePanel, setShowDevicePanel] = useState(false)
@@ -465,27 +469,89 @@ export default function MultiPanel() {
 
   const wrapperRef = useRef(null)
 
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
+  const enterFullscreen = useCallback(() => {
+    isFullscreenRef.current = true
+    setIsFullscreen(true)
+    setMultiPanelFullscreen(true)
+    setShowTopBar(true)
+    clearTimeout(topBarTimer.current)
+    topBarTimer.current = setTimeout(() => setShowTopBar(false), 2500)
+    if (window.pywebview?.api) {
+      window.pywebview.api.toggle_fullscreen()
+    } else {
       wrapperRef.current?.requestFullscreen()
+    }
+  }, [setMultiPanelFullscreen])
+
+  const exitFullscreen = useCallback(() => {
+    isFullscreenRef.current = false
+    setIsFullscreen(false)
+    setMultiPanelFullscreen(false)
+    setShowTopBar(true)
+    clearTimeout(topBarTimer.current)
+    if (window.pywebview?.api) {
+      window.pywebview.api.toggle_fullscreen()
     } else {
       document.exitFullscreen()
     }
-  }, [])
+  }, [setMultiPanelFullscreen])
+
+  const toggleFullscreen = useCallback(() => {
+    if (isFullscreenRef.current) exitFullscreen()
+    else enterFullscreen()
+  }, [enterFullscreen, exitFullscreen])
 
   useEffect(() => {
     const handler = () => {
-      setIsFullscreen(!!document.fullscreenElement)
+      const fs = !!document.fullscreenElement
+      isFullscreenRef.current = fs
+      setIsFullscreen(fs)
+      setMultiPanelFullscreen(fs)
+      if (fs) {
+        setShowTopBar(true)
+        clearTimeout(topBarTimer.current)
+        topBarTimer.current = setTimeout(() => setShowTopBar(false), 2500)
+      } else {
+        setShowTopBar(true)
+        clearTimeout(topBarTimer.current)
+      }
     }
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
+  }, [setMultiPanelFullscreen])
+
+  useEffect(() => {
+    if (!window.pywebview?.api) return
+    const handler = (e) => {
+      if (e.key === 'Escape' && isFullscreenRef.current) exitFullscreen()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [exitFullscreen])
+
+  // Reset global fullscreen flag when navigating away
+  useEffect(() => {
+    return () => { setMultiPanelFullscreen(false) }
+  }, [setMultiPanelFullscreen])
+
+  const handleMouseMove = useCallback(() => {
+    if (!isFullscreenRef.current) return
+    setShowTopBar(true)
+    clearTimeout(topBarTimer.current)
+    topBarTimer.current = setTimeout(() => setShowTopBar(false), 2500)
   }, [])
 
   // Close options menu on outside click
   useEffect(() => {
     const handler = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false)
-      if (deviceBtnRef.current && !deviceBtnRef.current.contains(e.target)) setShowDevicePanel(false)
+      // DeviceControls uses a portal that renders to document.body, so the preset
+      // dropdown options are outside deviceBtnRef in the DOM. Guard against that by
+      // ignoring clicks on any portal element (z-index 9999 fixed-position children).
+      if (deviceBtnRef.current && !deviceBtnRef.current.contains(e.target)) {
+        const isPortal = e.target.closest('[data-portal]')
+        if (!isPortal) setShowDevicePanel(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -498,15 +564,23 @@ export default function MultiPanel() {
   })
 
   const wrapperClass = isFullscreen
-    ? 'flex flex-col w-full h-full'
-    : 'flex flex-col h-full'
+    ? 'flex flex-col w-full h-full relative'
+    : 'flex flex-col h-full relative'
 
   return (
-    <div ref={wrapperRef} className={wrapperClass} style={{ background: '#080808' }}>
+    <div ref={wrapperRef} className={wrapperClass} style={{ background: '#080808' }} onMouseMove={handleMouseMove}>
+
+      {/* Top bar + queue strip — absolute overlay in fullscreen, normal flow otherwise */}
+      <div style={isFullscreen ? {
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
+        opacity: showTopBar ? 1 : 0,
+        pointerEvents: showTopBar ? 'auto' : 'none',
+        transition: 'opacity 0.3s ease',
+      } : { flexShrink: 0 }}>
 
       {/* Top bar */}
-      <div className="flex items-center gap-2 px-3 flex-shrink-0"
-           style={{ height: 44, borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#111' }}>
+      <div className="flex items-center gap-2 px-3"
+           style={{ height: 44, borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#111', flexShrink: 0 }}>
 
         <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Multi panel view</span>
 
@@ -648,6 +722,8 @@ export default function MultiPanel() {
 
       {/* Queue strip */}
       <QueueStrip queue={queue} manualAssignments={manualAssignments} onRemove={handleRemoveFromViewer} onClear={handleClearViewer} />
+
+      </div>{/* end topbar overlay wrapper */}
 
       {/* Empty state */}
       {queue.length === 0 ? (

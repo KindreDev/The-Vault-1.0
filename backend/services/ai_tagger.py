@@ -924,12 +924,12 @@ def _video_duration(video_path: str) -> Optional[float]:
     """Return video duration in seconds via ffprobe, or None on failure."""
     import subprocess, sys
     exe = _get_ffmpeg_exe().replace("ffmpeg", "ffprobe")
-    no_win = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    no_win = 0x00000008 if sys.platform == "win32" else 0  # DETACHED_PROCESS — no conhost.exe
     try:
         r = subprocess.run(
             [exe, "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", video_path],
-            capture_output=True, text=True, timeout=15, creationflags=no_win,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15, creationflags=no_win,
         )
         return float(r.stdout.strip())
     except Exception:
@@ -941,7 +941,7 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
     Returns (frame_paths, tmpdir). Caller must shutil.rmtree(tmpdir)."""
     import subprocess, sys, tempfile
     ffmpeg = _get_ffmpeg_exe()
-    no_win = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    no_win = 0x00000008 if sys.platform == "win32" else 0  # DETACHED_PROCESS — no conhost.exe
     tmpdir = tempfile.mkdtemp(prefix="vault_vtag_")
     frames: list[str] = []
 
@@ -959,7 +959,7 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
                 [ffmpeg, "-y", "-ss", str(t), "-i", video_path,
                  "-vframes", "1", "-vf", "scale=448:448:force_original_aspect_ratio=decrease",
                  "-q:v", "2", out],
-                capture_output=True, timeout=30, creationflags=no_win,
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=30, creationflags=no_win,
             )
             if r.returncode == 0 and os.path.exists(out):
                 frames.append(out)
@@ -974,7 +974,7 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
                 [ffmpeg, "-y", "-i", video_path,
                  "-vframes", "1", "-vf", "scale=448:448:force_original_aspect_ratio=decrease",
                  "-q:v", "2", out0],
-                capture_output=True, timeout=30, creationflags=no_win,
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=30, creationflags=no_win,
             )
             if r.returncode == 0 and os.path.exists(out0):
                 frames.append(out0)

@@ -118,7 +118,11 @@ def serve_profile_avatar(db: Session = Depends(get_db)):
     ext = os.path.splitext(profile.avatar_path)[1].lower()
     if ext not in PROFILE_AVATAR_EXTS:
         raise HTTPException(404, "Invalid avatar file")
-    return FileResponse(profile.avatar_path)
+    # no-cache so a fresh upload (e.g. from the mobile app) is picked up
+    # everywhere immediately instead of serving a stale browser-cached image.
+    # FileResponse still sends ETag/Last-Modified, so unchanged images return a
+    # cheap 304 rather than re-downloading.
+    return FileResponse(profile.avatar_path, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/tagging-mission")

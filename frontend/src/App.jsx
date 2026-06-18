@@ -32,6 +32,7 @@ const XPHistory  = lazy(() => import('./pages/pages').then(m => ({ default: m.XP
 const ScanLog    = lazy(() => import('./pages/pages').then(m => ({ default: m.ScanLog })))
 const Console    = lazy(() => import('./pages/Console'))
 const Help       = lazy(() => import('./pages/Help'))
+const ErikaAI    = lazy(() => import('./pages/ErikaAI'))
 
 export default function App() {
   const setProfile         = useVaultStore(s => s.setProfile)
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="scan-log"      element={<TaskQueue />} />
           <Route path="console"       element={<Console />} />
           <Route path="help"          element={<Help />} />
+          <Route path="erika"         element={<ErikaAI />} />
         </Route>
       </Routes>
     </BrowserRouter>

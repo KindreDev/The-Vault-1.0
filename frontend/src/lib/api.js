@@ -83,7 +83,11 @@ export const galleriesApi = {
   rate:          (id, rating)     => api.post(`/galleries/${id}/rate`, null, { params: { rating } }),
   similar:       (id, limit = 6)  => api.get(`/galleries/${id}/similar`, { params: { limit } }),
   merge:         (targetId, body) => api.post(`/galleries/${targetId}/merge`, body),
+  renameFolder:  (id, folderName) => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }),
+  extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
   randomMix:     (d)              => api.post('/galleries/random-mix', d),
+  pickFolder:    ()               => api.post('/galleries/pick-folder'),
+  exportZip:     (galleryIds, outputPath) => api.post('/galleries/export-zip', { gallery_ids: galleryIds, output_path: outputPath }, { timeout: 300000 }),
 }
 
 // ── Creators ──────────────────────────────────────────────────────────────────
@@ -94,12 +98,12 @@ export const creatorsApi = {
   update:            (id, d)  => api.patch(`/creators/${id}`, d),
   delete:            (id)     => api.delete(`/creators/${id}`),
   favorites:         ()       => api.get('/creators/favorites'),
+  franchises:        ()       => api.get('/creators/franchises'),
   hof:               (n = 5) => api.get('/creators/hall-of-fame', { params: { limit: n } }),
   distribution:      ()      => api.get('/creators/distribution'),
-  wikiImport:        (id)     => api.post(`/creators/${id}/wiki-import`),
   topImages:         (id, n)  => api.get(`/creators/${id}/top-images`, { params: { limit: n } }),
-  setAvatarRandom:   (id)     => api.post(`/creators/${id}/set-avatar-random`),
-  setBannerRandom:   (id)     => api.post(`/creators/${id}/set-banner-random`),
+  setAvatarRandom:   (id, excludePath) => api.post(`/creators/${id}/set-avatar-random`, excludePath ? { exclude_path: excludePath } : {}),
+  setBannerRandom:   (id, excludeId)   => api.post(`/creators/${id}/set-banner-random`,  excludeId   ? { exclude_id:   excludeId   } : {}),
   uploadBanner:      (id, file) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -111,6 +115,7 @@ export const creatorsApi = {
     return api.post(`/creators/${id}/avatar-upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   setAvatarFromImage:(id, imageId) => api.post(`/creators/${id}/set-avatar-image/${imageId}`),
+  setBannerFromImage:(id, imageId) => api.post(`/creators/${id}/set-banner-image/${imageId}`),
   setAvatarFromUrl:  (id, url)     => api.post(`/creators/${id}/avatar-from-url`, { url }),
   randomPicks:       (n = 8) => api.get('/creators/', { params: { sort_by: 'random', limit: n } }),
   byCountry:         ()      => api.get('/creators/by-country'),
@@ -118,6 +123,7 @@ export const creatorsApi = {
   jikanSearch:       (q)     => api.get('/creators/jikan-search', { params: { q, limit: 8 } }),
   jikanCharacter:    (malId) => api.get(`/creators/jikan-character/${malId}`),
   assignFolder:      (id, folderPath) => api.post(`/creators/${id}/assign-folder`, { folder_path: folderPath }),
+  syncSourceFolders: ()              => api.post('/creators/sync-source-folders'),
   giftHeart:         (id)            => api.post(`/creators/${id}/gift-heart`),
   avatarUrl:         (id) => `/api/creators/${id}/avatar`,
   avatarThumbUrl:    (id, size = 480) => `/api/creators/${id}/avatar-thumb?size=${size}`,
@@ -271,6 +277,10 @@ export const systemApi = {
       timeout: 30000,
     })
   },
+  getVersion:    () => api.get('/system/version'),
+  checkUpdate:   () => api.get('/system/update/check'),
+  installUpdate: (download_url) => api.post('/system/update/install', { download_url }),
+  updateStatus:  () => api.get('/system/update/status'),
 }
 
 export const tasksApi = {
@@ -289,6 +299,30 @@ export const dedupApi = {
   ignorePermanent:      (imageIds)       => api.post('/dedup/ignore-permanent', { image_ids: imageIds }),
   clearIgnoredPermanent:()               => api.delete('/dedup/ignore-permanent'),
   ignoredCount:         ()               => api.get('/dedup/ignored-count'),
+}
+
+// ── Companion (Erika AI) ──────────────────────────────────────────────────────
+export const companionApi = {
+  getConfig:    ()      => api.get('/companion/config').catch(() => null),
+  updateConfig: (d)     => api.patch('/companion/config', d),
+  history:      (n=50, personaId=undefined) => api.get('/companion/history', { params: { limit: n, ...(personaId !== undefined ? { persona_id: personaId } : {}) } }),
+  clearHistory: (personaId = undefined) => api.delete('/companion/history', {
+    params: personaId !== undefined ? { persona_id: personaId } : {}
+  }),
+  sessionBreak: (personaId = undefined) => api.post('/companion/session-break', null, {
+    params: personaId !== undefined ? { persona_id: personaId } : {}
+  }),
+  suggest:      ()      => fetch('/api/companion/suggest', { method: 'POST' }),
+  ollamaStatus: ()      => api.get('/companion/ollama/status'),
+  ollamaUnload: ()      => api.post('/companion/ollama/unload'),
+  bond:         ()      => api.get('/companion/bond'),
+  resetBond:    ()      => api.post('/companion/bond/reset'),
+  avatarUrl:    ()      => '/api/companion/avatar',
+  uploadAvatar: (file)  => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/companion/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 export default api

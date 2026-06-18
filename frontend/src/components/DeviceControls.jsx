@@ -10,6 +10,7 @@
  * Contains: pattern picker · intensity · glans · stroke limiter · 💦 Cum · ⏹ Stop
  */
 import React, { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Square, Droplets, ChevronDown } from 'lucide-react'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { deviceService } from '../services/device'
@@ -58,20 +59,23 @@ function buildOptions(savedPatterns) {
   return [...builtins, ...saved]
 }
 
-// Compact pattern dropdown — flips direction based on available viewport space
+// Compact pattern dropdown — renders via portal so overflow-y-auto parents can't clip it
 function CompactPatternSelect({ value, onChange, options }) {
-  const [open, setOpen]       = useState(false)
-  const [dropUp, setDropUp]   = useState(false)
-  const [maxH, setMaxH]       = useState(240)
-  const btnRef                = useRef(null)
-  const wrapRef               = useRef(null)
-  const selected              = options.find(o => o.value === value)
+  const [open, setOpen]   = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, dropUp: false, maxH: 240 })
+  const btnRef  = useRef(null)
+  const wrapRef = useRef(null)
+  const dropRef = useRef(null)   // ref for the portal content
+  const selected = options.find(o => o.value === value)
 
-  // Click-outside to close
   useEffect(() => {
     if (!open) return
     function onDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+      // Must check BOTH the trigger element AND the portal content — the portal
+      // renders into document.body so it is outside wrapRef in the DOM tree.
+      const insideTrigger = wrapRef.current?.contains(e.target)
+      const insideDrop    = dropRef.current?.contains(e.target)
+      if (!insideTrigger && !insideDrop) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -80,18 +84,17 @@ function CompactPatternSelect({ value, onChange, options }) {
   function handleOpen() {
     if (open) { setOpen(false); return }
     if (btnRef.current) {
-      const rect     = btnRef.current.getBoundingClientRect()
+      const rect       = btnRef.current.getBoundingClientRect()
       const spaceBelow = window.innerHeight - rect.bottom - 8
       const spaceAbove = rect.top - 8
-      if (spaceBelow >= 160) {
-        // enough room below — drop down
-        setDropUp(false)
-        setMaxH(Math.min(spaceBelow, 260))
-      } else {
-        // not enough below — drop up
-        setDropUp(true)
-        setMaxH(Math.min(spaceAbove, 260))
-      }
+      const up         = spaceBelow < 160
+      setDropPos({
+        top:    up ? undefined : rect.bottom + 4,
+        bottom: up ? (window.innerHeight - rect.top + 4) : undefined,
+        left:   rect.left,
+        dropUp: up,
+        maxH:   Math.min(up ? spaceAbove : spaceBelow, 260),
+      })
     }
     setOpen(true)
   }
@@ -109,13 +112,19 @@ function CompactPatternSelect({ value, onChange, options }) {
                      style={{ color: 'rgba(255,255,255,0.4)' }} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
-          className="absolute left-0 bg-[#1c1c1c] border border-[rgba(255,255,255,0.12)] rounded-lg overflow-y-auto z-[200] shadow-2xl"
+          ref={dropRef}
+          data-portal="device-dropdown"
+          className="bg-[#1c1c1c] border border-[rgba(255,255,255,0.12)] rounded-lg overflow-y-auto shadow-2xl"
           style={{
-            minWidth: 140,
-            maxHeight: maxH,
-            ...(dropUp ? { bottom: 'calc(100% + 4px)' } : { top: 'calc(100% + 4px)' }),
+            position:  'fixed',
+            top:       dropPos.dropUp ? undefined : dropPos.top,
+            bottom:    dropPos.dropUp ? dropPos.bottom : undefined,
+            left:      dropPos.left,
+            minWidth:  140,
+            maxHeight: dropPos.maxH,
+            zIndex:    9999,
           }}>
           {options.map(opt => (
             <button
@@ -130,7 +139,8 @@ function CompactPatternSelect({ value, onChange, options }) {
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

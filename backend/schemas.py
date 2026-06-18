@@ -108,6 +108,8 @@ class CreatorOut(CreatorBase):
     bond_score: Optional[float] = 0.0
     bond_excluded: Optional[bool] = False
     bond_gifts: int = 0
+    personality_type: Optional[str] = None
+    companion_bond_xp: Optional[int] = 0
     class Config:
         from_attributes = True
 
@@ -353,6 +355,51 @@ class ModelStatus(BaseModel):
     joytag_downloaded: bool
     wd14_size_mb: Optional[float] = None
     joytag_size_mb: Optional[float] = None
+
+
+# ── Companion ─────────────────────────────────────────────────────────────────
+class CompanionConfigOut(BaseModel):
+    id: int
+    enabled: bool
+    name: str
+    avatar_path: Optional[str] = None
+    personality_base: str
+    active_persona_id: Optional[int] = None
+    bond_xp: int
+    bond_level: int
+    is_visible: bool
+    ollama_url: str
+    ollama_model: str
+    saved_models: str
+    keep_alive: str = "10m"
+    num_ctx: int = 16384
+    companion_prompt: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class CompanionConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    name: Optional[str] = None
+    personality_base: Optional[str] = None
+    active_persona_id: Optional[int] = None
+    is_visible: Optional[bool] = None
+    ollama_url: Optional[str] = None
+    ollama_model: Optional[str] = None
+    saved_models: Optional[str] = None
+    keep_alive: Optional[str] = None
+    num_ctx: Optional[int] = None
+    companion_prompt: Optional[str] = None
+
+class CompanionMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    persona_id: Optional[int] = None
+    bond_level: Optional[int] = None
+    image_data_url: Optional[str] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 
 # ── Stats ──────────────────────────────────────────────────────────────────────

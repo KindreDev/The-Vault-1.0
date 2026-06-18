@@ -57,10 +57,9 @@ echo  Frontend: http://localhost:5173
 echo  API docs: http://localhost:8000/docs
 echo.
 
-echo  Stopping any old backend processes on port 8000...
-for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":8000 "') do (
-    taskkill /F /PID %%a >nul 2>&1
-)
+echo  Stopping any old vault processes...
+for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":8000 "') do taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":5173 "') do taskkill /F /PID %%a >nul 2>&1
 timeout /t 1 /nobreak >nul
 
 start "The Vault — Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && python main.py"

@@ -7,18 +7,22 @@ import {
   Search, Droplets, Star, Images, Filter, SortAsc, X,
   CheckSquare, Square, UserPlus, UserMinus, ChevronDown, AlertCircle,
   Pencil, FolderPlus, Check, LayoutTemplate, Trash2, GitMerge,
-  ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw
+  ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw, FolderSymlink, Archive,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi } from '../lib/api'
+import { galleriesApi, creatorsApi, imagesApi } from '../lib/api'
 import TagFilterInput from '../components/TagFilterInput'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { SortDropdown } from '../components/SortDropdown'
+import FranchiseFilter from '../components/FranchiseFilter'
+import GalleryContextMenu from '../components/GalleryContextMenu'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
 }
+
+const GL_STATE_KEY = 'vault_gl_state'
 
 const SORT_OPTIONS = [
   { value: 'date_added',    label: 'Date added' },
@@ -80,6 +84,60 @@ function CreateGalleryModal({ onClose }) {
     </div>
   )
 }
+
+// ── Rename folder on disk modal ────────────────────────────────────────────────
+function RenameFolderModal({ gallery, onClose }) {
+  const folderName = gallery.folder_path ? gallery.folder_path.split(/[\\/]/).filter(Boolean).pop() : gallery.name
+  const [name, setName] = useState(folderName)
+  const qc = useQueryClient()
+
+  const renameMutation = useMutation({
+    mutationFn: () => galleriesApi.renameFolder(gallery.id, name.trim()),
+    onSuccess: () => {
+      toast.success('Folder renamed on disk')
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
+      onClose()
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || 'Rename failed'),
+  })
+
+  const submit = () => { if (name.trim() && name.trim() !== folderName) renameMutation.mutate() }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="rounded-[14px] p-5 w-96 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-1 flex items-center gap-2">
+          <FolderSymlink size={13} style={{ color: '#7F77DD' }} /> Rename folder on disk
+        </div>
+        <div className="text-[13px] mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          This renames the actual directory — files will move and all paths will update.
+        </div>
+        <input
+          autoFocus value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+          className="w-full px-3 py-2 rounded-[8px] text-[14px] outline-none mb-4 font-mono"
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.15)' }}
+        />
+        <div className="flex gap-2 justify-end">
+          <button type="button" onMouseDown={onClose}
+                  className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
+            Cancel
+          </button>
+          <button type="button" onMouseDown={submit}
+                  disabled={!name.trim() || name.trim() === folderName || renameMutation.isPending}
+                  className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+            {renameMutation.isPending ? 'Renaming…' : 'Rename folder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 // ── Rename gallery modal ───────────────────────────────────────────────────────
 function RenameModal({ gallery, onClose }) {
@@ -173,14 +231,21 @@ function StarRating({ value = 0, onRate, className = '' }) {
 // ── Gallery card ──────────────────────────────────────────────────────────────
 // React.memo: grid of 100 cards won't re-render when parent state changes
 // (search input, sort, modal open, bulk selection of other cards, etc.)
-const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRename }) {
-  const [isHovered, setIsHovered] = useState(false)
-  const [shouldFetch, setShouldFetch] = useState(false)
+const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRename, onContextMenu }) {
+  const [isHovered, setIsHovered]     = useState(false)
+  const [fanImgs, setFanImgs]         = useState([])
+  const [firstVideo, setFirstVideo]   = useState(null)
   const [localRating, setLocalRating] = useState(gallery.rating ?? 0)
-  const hoverTimerRef = useRef(null)
-  const fetchTimerRef = useRef(null)
-  const videoRef = useRef(null)
+  const [mouseX, setMouseX]           = useState(0.5)
+  const videoRef      = useRef(null)
+  const cardRef       = useRef(null)
+  const hoverTimer    = useRef(null)
   const qc = useQueryClient()
+
+  const handleMouseMove = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMouseX(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
+  }, [])
 
   const rateMutation = useMutation({
     mutationFn: (r) => galleriesApi.rate(gallery.id, r),
@@ -190,26 +255,34 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   })
 
   const handleMouseEnter = useCallback(() => {
-    fetchTimerRef.current = setTimeout(() => setShouldFetch(true), 150)
-    setIsHovered(true)
-    hoverTimerRef.current = setTimeout(() => setIsHovered(false), 15000)
-  }, [])
+    // No fan/video in bulk-select mode — you're clicking, not browsing
+    if (bulkMode) return
+    // 400 ms intent delay — accidental mouse passes don't trigger anything
+    hoverTimer.current = setTimeout(async () => {
+      if (!gallery?.id) return
+      setIsHovered(true)
+      try {
+        const [rPhotos, rVideo] = await Promise.all([
+          imagesApi.list({ gallery_id: gallery.id, is_video: false, sort_by: 'random', limit: 5 }),
+          imagesApi.list({ gallery_id: gallery.id, is_video: true,  sort_by: 'random', limit: 1 }),
+        ])
+        const toArr = (r) => { const d = r.data; return d?.images ?? (Array.isArray(d) ? d : []) }
+        setFanImgs(toArr(rPhotos).slice(0, 5))
+        setFirstVideo(toArr(rVideo)[0] ?? null)
+      } catch {}
+    }, 400)
+  }, [bulkMode, gallery?.id])
 
   const handleMouseLeave = useCallback(() => {
-    clearTimeout(fetchTimerRef.current)
-    clearTimeout(hoverTimerRef.current)
+    clearTimeout(hoverTimer.current)
     setIsHovered(false)
+    setFanImgs([])
+    setFirstVideo(null)
   }, [])
 
-  const { data: images } = useQuery({
-    queryKey: ['gallery-images-hover', gallery.id],
-    queryFn: () => galleriesApi.images(gallery.id).then(r => r.data),
-    enabled: shouldFetch,
-    staleTime: 60_000,
-    gcTime:   30_000,  // evict quickly — full image lists just for hover preview
-  })
-
-  const firstVideo = useMemo(() => images?.find(i => i.is_video), [images])
+  const showFan  = isHovered && fanImgs.length >= 3 && thumbSize >= 150
+  const visCount = fanImgs.length
+  const activeIdx = fanImgs.length > 0 ? Math.min(fanImgs.length - 1, Math.floor(mouseX * fanImgs.length)) : 0
 
   useEffect(() => {
     if (isHovered && firstVideo && videoRef.current) {
@@ -218,15 +291,12 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
     } else if (!isHovered && videoRef.current) {
       videoRef.current.pause()
     }
-    return () => {
-      clearTimeout(fetchTimerRef.current)
-      clearTimeout(hoverTimerRef.current)
-    }
   }, [isHovered, firstVideo])
 
-  // Release video file handle when the card unmounts (e.g. page navigation)
+  // Release video file handle and cancel any pending hover timer on unmount
   useEffect(() => {
     return () => {
+      clearTimeout(hoverTimer.current)
       const v = videoRef.current
       if (!v) return
       v.pause()
@@ -236,11 +306,15 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   }, [])
 
   return (
-    <div className="vault-card overflow-hidden cursor-pointer group relative animate-fade-in"
+    <>
+    <div ref={cardRef}
+         className="vault-card overflow-hidden cursor-pointer group relative animate-fade-in"
          style={{ contentVisibility: 'auto', containIntrinsicSize: `0 ${thumbSize + 64}px` }}
          onMouseEnter={handleMouseEnter}
          onMouseLeave={handleMouseLeave}
-         onClick={(e) => bulkMode ? onSelect(gallery.id, e) : onClick()}>
+         onMouseMove={isHovered ? handleMouseMove : undefined}
+         onClick={(e) => bulkMode ? onSelect(gallery.id, e) : onClick()}
+         onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(gallery, e) }}>
       {bulkMode && (
         <div className="absolute top-2 left-2 z-20"
              onClick={e => { e.stopPropagation(); onSelect(gallery.id, e) }}>
@@ -344,6 +418,48 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         </div>
       </div>
     </div>
+
+    {/* Photo fan — portal to document.body escapes both the scroll container
+        AND any Framer Motion transform ancestor that would break position:fixed */}
+    {showFan && cardRef.current && createPortal(
+      (() => {
+        const r = cardRef.current.getBoundingClientRect()
+        return (
+          <div className="pointer-events-none" style={{
+            position: 'fixed',
+            left: r.left + r.width / 2,
+            top: r.top - 8,
+            transform: 'translateX(-50%) translateY(-100%)',
+            zIndex: 9998,
+          }}>
+            <div className="relative flex items-end justify-center" style={{ width: 320, height: 200 }}>
+              {fanImgs.slice(0, visCount).map((img, i) => {
+                const isActive = i === activeIdx % visCount
+                const spread   = (i - (visCount - 1) / 2) * 44
+                const rot      = (i - (visCount - 1) / 2) * 5
+                return (
+                  <div key={img.id} style={{
+                    position: 'absolute', bottom: 0, left: '50%',
+                    transform: `translateX(calc(-50% + ${spread}px)) rotate(${rot}deg) translateY(${isActive ? -18 : 0}px)`,
+                    transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+                    zIndex: isActive ? 10 : visCount - Math.abs(i - activeIdx % visCount),
+                    boxShadow: isActive ? '0 14px 32px rgba(0,0,0,0.8)' : '0 6px 16px rgba(0,0,0,0.6)',
+                    borderRadius: 8, overflow: 'hidden',
+                    width: isActive ? 108 : 78,
+                    border: `1px solid ${isActive ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                  }}>
+                    <img src={`/api/images/${img.id}/thumb`} alt=""
+                         style={{ width: '100%', display: 'block', aspectRatio: '2/3', objectFit: 'cover' }} />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })(),
+      document.body
+    )}
+    </>
   )
 }, (prev, next) =>
   prev.gallery   === next.gallery   &&
@@ -362,7 +478,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
 
   const { data: creators } = useQuery({
     queryKey: ['creators-mini'],
-    queryFn: () => creatorsApi.list({ limit: 200 }).then(r => r.data),
+    queryFn: () => creatorsApi.list({ limit: 5000 }).then(r => r.data),
   })
 
   const filtered = useMemo(() => {
@@ -877,6 +993,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
   const [deleteOp, setDeleteOp]               = useState(null) // null | 'vault' | 'disk'
   const [assigning, setAssigning]             = useState(false)
   const [removing, setRemoving]               = useState(false)
+  const [zipping, setZipping]                 = useState(false)
   const [showMergeModal, setShowMergeModal]   = useState(false)
   const qc = useQueryClient()
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
@@ -984,6 +1101,23 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     if (deleted > 0) onDone()
   }
 
+  const handleExportZip = async () => {
+    setZipping(true)
+    try {
+      const folderRes = await galleriesApi.pickFolder()
+      const outputPath = folderRes.data.path
+      const tid = toast.loading(`Zipping ${selectedGalleries.length} ${selectedGalleries.length === 1 ? 'gallery' : 'galleries'}…`)
+      const res = await galleriesApi.exportZip(selectedIds, outputPath)
+      toast.dismiss(tid)
+      const d = res.data
+      toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
+    } catch (e) {
+      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || 'Export failed')
+    } finally {
+      setZipping(false)
+    }
+  }
+
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 rounded-[10px] flex-wrap animate-slide-up"
          style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
@@ -992,10 +1126,17 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       </span>
 
       {/* Action: Send to viewer */}
-      <button type="button" onMouseDown={handleSendToViewer} disabled={assigning}
+      <button type="button" onMouseDown={handleSendToViewer} disabled={assigning || zipping}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[rgba(127,119,221,0.2)] disabled:opacity-40"
               style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
         <LayoutTemplate size={12} /> Send to viewer
+      </button>
+
+      {/* Action: Export as zip */}
+      <button type="button" onMouseDown={handleExportZip} disabled={assigning || zipping}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+              style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+        <Archive size={12} /> {zipping ? 'Zipping…' : 'Export as zip'}
       </button>
 
       {selectedIds.length >= 2 && (
@@ -1085,6 +1226,23 @@ export default function GalleryList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // ── Persist filter state so back-navigation (and sidebar re-entry) restores it
+  const _glRestoredRef = useRef(false)
+  useEffect(() => {
+    if (_glRestoredRef.current) return
+    _glRestoredRef.current = true
+    if (searchParams.toString() === '') {
+      try {
+        const saved = sessionStorage.getItem(GL_STATE_KEY)
+        if (saved) setSearchParams(new URLSearchParams(saved), { replace: true })
+      } catch {}
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    try { sessionStorage.setItem(GL_STATE_KEY, searchParams.toString()) } catch {}
+  }, [searchParams])
+
   // ── Derive all filter state from URL search params ──────────────────────────
   const search         = searchParams.get('q') || ''
   const sortBy         = searchParams.get('sort') || 'date_added'
@@ -1097,6 +1255,7 @@ export default function GalleryList() {
   const unassignedOnly = searchParams.get('unassigned') === '1'
   const favOnly        = searchParams.get('fav') === '1'
   const creatorType    = searchParams.get('ctype') || ''
+  const franchise      = searchParams.get('franchise') || ''
   const activeTags     = useMemo(() => {
     const raw = searchParams.get('tags') || searchParams.get('tag') || ''
     return raw ? raw.split(',').filter(Boolean) : []
@@ -1105,18 +1264,33 @@ export default function GalleryList() {
   const pageSize       = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE
 
   // Persistent thumb size from store (not a filter, doesn't belong in URL)
-  const thumbSize      = useVaultStore(s => s.thumbSizeGalleries)
-  const setThumbSize   = useVaultStore(s => s.setThumbSizeGalleries)
+  const thumbSize         = useVaultStore(s => s.thumbSizeGalleries)
+  const setThumbSize      = useVaultStore(s => s.setThumbSizeGalleries)
+  const addToMultiViewer  = useVaultStore(s => s.addToMultiViewer)
+  const multiViewerQueue  = useVaultStore(s => s.multiViewerQueue)
+  const MULTIVIEWER_MAX   = useVaultStore(s => s.MULTIVIEWER_MAX)
 
   // Transient UI state (not persisted in URL)
   const [bulkMode, setBulkMode]       = useState(false)
   const [selected, setSelected]       = useState(new Set())
-  const [renamingGallery, setRenamingGallery] = useState(null)
-  const [showCreate, setShowCreate]   = useState(false)
+  const [renamingGallery, setRenamingGallery]   = useState(null)
+  const [renamingFolder, setRenamingFolder]     = useState(null)
+  const [contextMenu, setContextMenu]           = useState(null) // { gallery, x, y }
+  const [showCreate, setShowCreate]             = useState(false)
+  const [ctxMergingGalleries, setCtxMergingGalleries]   = useState(null)
+  const [ctxDeletingGalleries, setCtxDeletingGalleries] = useState(null) // array
+  const [ctxDeleteOp, setCtxDeleteOp]                   = useState(null)
+
+  const qc = useQueryClient()
 
   // Refs keep toggleSelect stable so GalleryCard memo never sees a stale closure
   const lastSelectedIdRef = useRef(null)
   const galleriesRef      = useRef(null)
+  // Refs for bulk context menu — read inside stable callbacks without adding deps
+  const bulkModeRef       = useRef(bulkMode)
+  const selectedRef       = useRef(selected)
+  useEffect(() => { bulkModeRef.current = bulkMode }, [bulkMode])
+  useEffect(() => { selectedRef.current = selected }, [selected])
 
   // ── Helper: update a single URL param (merges with existing) ────────────────
   const setParam = useCallback((key, value) => {
@@ -1165,15 +1339,16 @@ export default function GalleryList() {
     setParams({ creators: arr.length > 0 ? arr.join(',') : null, creator_id: null, unassigned: null, page: null })
   }, [setParams, creatorFilter])
   const setCreatorType = useCallback((v) => setParams({ ctype: v || null, page: null }), [setParams])
+  const setFranchise   = useCallback((v) => setParams({ franchise: v || null, page: null }), [setParams])
 
   // ── Detect active filters & reset ───────────────────────────────────────────
-  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType
+  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType || franchise
   const resetFilters = useCallback(() => {
     setSearchParams({}, { replace: true })
   }, [setSearchParams])
 
   // Reset pagination when filters change
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}|${franchise}`
 
   const params = {
     search: search || undefined,
@@ -1181,6 +1356,7 @@ export default function GalleryList() {
     sort_dir: sortBy !== 'random' ? sortDir : undefined,
     creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
     creator_type: creatorType || undefined,
+    series: franchise || undefined,
     unassigned: unassignedOnly || undefined,
     favorite: favOnly || undefined,
     tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1211,6 +1387,59 @@ export default function GalleryList() {
   const handleCreatorFilterChange = useCallback((updater) => {
     setCreatorFilter(typeof updater === 'function' ? updater : () => updater)
   }, [setCreatorFilter])
+
+  // Context menu — stable handler so GalleryCard memo never sees a new function ref
+  // Windows behaviour: right-clicking a selected item operates on the whole selection
+  const handleContextMenu = useCallback((gallery, e) => {
+    const inSelection = bulkModeRef.current && selectedRef.current.has(gallery.id)
+    const bulkGalleries = inSelection
+      ? (galleriesRef.current ?? []).filter(g => selectedRef.current.has(g.id))
+      : null
+    setContextMenu({ gallery, x: e.clientX, y: e.clientY, bulkGalleries })
+  }, [])
+
+  const handleCtxSendToPanel = useCallback(async (galleries) => {
+    const targets = Array.isArray(galleries) ? galleries : [galleries]
+    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : 'Adding to Multi-panel…')
+    let added = 0, skipped = 0
+    for (const gallery of targets) {
+      if (multiViewerQueue.length + added >= MULTIVIEWER_MAX) { skipped += targets.length - added; break }
+      try {
+        const res = await galleriesApi.images(gallery.id)
+        const ok = addToMultiViewer({ id: `gal-${gallery.id}`, type: 'gallery', media: gallery, images: res.data })
+        if (ok) added++
+        else skipped++
+      } catch { skipped++ }
+    }
+    toast.dismiss(tid)
+    if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Multi-panel`)
+    if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
+    if (added === 0 && skipped === 0) toast.error('Could not load gallery images')
+  }, [addToMultiViewer, multiViewerQueue, MULTIVIEWER_MAX])
+
+  const favMutation = useMutation({
+    mutationFn: (g) => galleriesApi.update(g.id, { is_favorite: !g.is_favorite }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['galleries'] }),
+    onError: () => toast.error('Could not update favourite'),
+  })
+
+  const doCtxDelete = useCallback(async (galleries, mode) => {
+    const targets = Array.isArray(galleries) ? galleries : [galleries]
+    setCtxDeleteOp(mode)
+    let errs = 0
+    for (const g of targets) {
+      try { await galleriesApi.delete(g.id, mode === 'disk') }
+      catch { errs++ }
+    }
+    const n = targets.length - errs
+    if (n > 0) toast.success(mode === 'disk'
+      ? `${n} ${n === 1 ? 'gallery' : 'galleries'} deleted from disk`
+      : `${n} ${n === 1 ? 'gallery' : 'galleries'} removed from vault`)
+    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+    qc.invalidateQueries({ queryKey: ['galleries'] })
+    setCtxDeletingGalleries(null)
+    setCtxDeleteOp(null)
+  }, [qc])
 
   // Stable reference — reads lastSelectedId and galleries through refs so the
   // GalleryCard memo comparator (which excludes onSelect) never sees a stale closure
@@ -1243,6 +1472,21 @@ export default function GalleryList() {
   const selectAll = () => {
     setSelected(selected.size === galleries?.length ? new Set() : new Set(galleries?.map(g => g.id) ?? []))
   }
+  const handleCtxExportZip = useCallback(async (galleries) => {
+    const targets = Array.isArray(galleries) ? galleries : [galleries]
+    try {
+      const folderRes = await galleriesApi.pickFolder()
+      const outputPath = folderRes.data.path
+      const tid = toast.loading('Creating zip…')
+      const res = await galleriesApi.exportZip(targets.map(g => g.id), outputPath)
+      toast.dismiss(tid)
+      const d = res.data
+      toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
+    } catch (e) {
+      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || 'Export failed')
+    }
+  }, [])
+
   const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
 
   return (
@@ -1267,6 +1511,8 @@ export default function GalleryList() {
         <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder="All creators" />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
+
+        <FranchiseFilter value={franchise} onChange={setFranchise} />
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
@@ -1423,6 +1669,7 @@ export default function GalleryList() {
                 bulkMode={bulkMode}
                 thumbSize={thumbSize}
                 onRename={setRenamingGallery}
+                onContextMenu={handleContextMenu}
               />
             ))}
           </div>
@@ -1473,6 +1720,52 @@ export default function GalleryList() {
       {/* Modals */}
       {showCreate && <CreateGalleryModal onClose={() => setShowCreate(false)} />}
       {renamingGallery && <RenameModal gallery={renamingGallery} onClose={() => setRenamingGallery(null)} />}
+      {renamingFolder  && <RenameFolderModal gallery={renamingFolder} onClose={() => setRenamingFolder(null)} />}
+      {ctxMergingGalleries && (
+        <BulkMergeModal
+          galleries={ctxMergingGalleries}
+          onClose={() => setCtxMergingGalleries(null)}
+          onMerged={() => { setCtxMergingGalleries(null); qc.invalidateQueries({ queryKey: ['galleries'] }) }}
+        />
+      )}
+      {ctxDeletingGalleries && (
+        <DeleteModal
+          count={ctxDeletingGalleries.length}
+          activeOp={ctxDeleteOp}
+          onVault={() => doCtxDelete(ctxDeletingGalleries, 'vault')}
+          onDisk={()  => doCtxDelete(ctxDeletingGalleries, 'disk')}
+          onCancel={() => { setCtxDeletingGalleries(null); setCtxDeleteOp(null) }}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <GalleryContextMenu
+          gallery={contextMenu.gallery}
+          bulkCount={contextMenu.bulkGalleries?.length ?? null}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onSelectMode={() => {
+            setBulkMode(true)
+            setSelected(new Set([contextMenu.gallery.id]))
+          }}
+          onOpen={() => navigate(`/galleries/${contextMenu.gallery.id}`)}
+          onRename={() => { setRenamingGallery(contextMenu.gallery) }}
+          onRenameFolder={() => { setRenamingFolder(contextMenu.gallery) }}
+          onToggleFav={() => {
+            const targets = contextMenu.bulkGalleries ?? [contextMenu.gallery]
+            targets.forEach(g => favMutation.mutate(g))
+          }}
+          onMerge={() => setCtxMergingGalleries(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
+          onExportZip={() => handleCtxExportZip(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
+          onSendToPanel={() => handleCtxSendToPanel(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
+          onDelete={(mode) => {
+            const targets = contextMenu.bulkGalleries ?? [contextMenu.gallery]
+            if (mode === 'vault') doCtxDelete(targets, 'vault')
+            else setCtxDeletingGalleries(targets)
+          }}
+        />
+      )}
     </div>
   )
 }

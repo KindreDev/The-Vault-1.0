@@ -1,4 +1,5 @@
 import re
+import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, or_
@@ -114,6 +115,7 @@ def list_galleries(
     db: Session = Depends(get_db),
     creator_id: Optional[str] = None,  # single id or comma-separated ids
     creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
+    series: Optional[str] = None,  # franchise / series filter (partial match)
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,  # comma-separated, AND logic
@@ -130,8 +132,8 @@ def list_galleries(
         selectinload(Gallery.creators),
     )
 
-    # Filter by creator via M2M — supports comma-separated IDs and/or creator_type
-    if creator_id or creator_type:
+    # Filter by creator via M2M — supports comma-separated IDs, creator_type, and series/franchise
+    if creator_id or creator_type or series:
         q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
         if creator_id:
             cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
@@ -139,9 +141,12 @@ def list_galleries(
                 q = q.filter(gallery_creators.c.creator_id == cid_list[0])
             elif len(cid_list) > 1:
                 q = q.filter(gallery_creators.c.creator_id.in_(cid_list))
-        if creator_type:
-            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)\
-                 .filter(Creator.creator_type == creator_type)
+        if creator_type or series:
+            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
+            if creator_type:
+                q = q.filter(Creator.creator_type == creator_type)
+            if series:
+                q = q.filter(Creator.series.ilike(f"%{series}%"))
 
     # Unassigned: galleries with no entries in gallery_creators
     if unassigned:
@@ -342,13 +347,16 @@ def track_gallery_view(gallery_id: int, db: Session = Depends(get_db)):
 
 @router.get("/hall-of-fame")
 def hall_of_fame(db: Session = Depends(get_db), limit: int = 10):
-    """Images ranked by composite engagement score (all columns on Image — pure SQL sort):
-       view_seconds + (cum_count × 120) + (view_count × 5)
+    """Images ranked by composite engagement score.
+       cum_count is the strongest signal (deliberate action), then view_count
+       (intentional re-opens), then view_seconds lightly weighted to avoid
+       passive watch time dominating the ranking.
+       Formula: (cum_count × 500) + (view_count × 30) + (view_seconds × 0.1)
     """
     score_expr = (
-        func.coalesce(Image.view_seconds, 0)
-        + func.coalesce(Image.cum_count, 0) * 120
-        + func.coalesce(Image.view_count, 0) * 5
+        func.coalesce(Image.cum_count, 0) * 500
+        + func.coalesce(Image.view_count, 0) * 30
+        + func.coalesce(Image.view_seconds, 0) * 0.1
     )
     images = (
         db.query(Image)
@@ -516,6 +524,149 @@ def update_gallery(gallery_id: int, data: GalleryUpdate, db: Session = Depends(g
     return _enrich(g)
 
 
+@router.post("/{gallery_id}/rename-folder", response_model=GalleryOut)
+def rename_folder_on_disk(gallery_id: int, data: dict, db: Session = Depends(get_db)):
+    """
+    Rename the gallery's actual folder on disk, then update all image file_paths
+    to match. The display name (gallery.name) is only auto-synced when it currently
+    matches the old folder name — a custom display name is left untouched.
+    """
+    new_name = (data.get("folder_name") or "").strip()
+    if not new_name or any(c in new_name for c in ('/', '\\', '\x00')) or new_name in ('.', '..'):
+        raise HTTPException(400, "Invalid folder name")
+
+    g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
+    if not g:
+        raise HTTPException(404, "Gallery not found")
+
+    old_path = g.folder_path
+    if not old_path or not os.path.isdir(old_path):
+        raise HTTPException(400, "Gallery folder not found on disk")
+
+    parent   = os.path.dirname(old_path)
+    new_path = os.path.join(parent, new_name)
+
+    if os.path.normpath(new_path) == os.path.normpath(old_path):
+        return _enrich(g)   # no-op
+
+    if os.path.exists(new_path):
+        raise HTTPException(409, f"A folder named '{new_name}' already exists in the same directory")
+
+    try:
+        os.rename(old_path, new_path)
+    except Exception as e:
+        raise HTTPException(500, f"Could not rename folder: {e}")
+
+    # Update every image's file_path (prefix swap)
+    images = db.query(Image).filter(Image.gallery_id == gallery_id).all()
+    for img in images:
+        if img.file_path and img.file_path.startswith(old_path):
+            img.file_path = new_path + img.file_path[len(old_path):]
+
+    # Sync display name only when it matches the old folder basename
+    old_folder_name = os.path.basename(old_path)
+    if g.name == old_folder_name:
+        g.name = new_name
+
+    g.folder_path = new_path
+    db.commit()
+    db.refresh(g)
+    return _enrich(g)
+
+
+@router.post("/{gallery_id}/extract")
+def extract_images(gallery_id: int, data: dict, db: Session = Depends(get_db)):
+    """
+    Extract a selection of images from this gallery into a new sibling gallery folder.
+    Physically moves the files on disk, creates a Gallery record, and re-assigns
+    the Image records. Creator associations are copied from the source gallery.
+    """
+    image_ids      = data.get("image_ids") or []
+    new_folder_name = (data.get("new_folder_name") or "").strip()
+
+    # ── Validate inputs ────────────────────────────────────────────────────────
+    if not new_folder_name or any(c in new_folder_name for c in ('/', '\\', '\x00')) \
+            or new_folder_name in ('.', '..'):
+        raise HTTPException(400, "Invalid folder name")
+    if not image_ids:
+        raise HTTPException(400, "No images selected")
+
+    # ── Source gallery ─────────────────────────────────────────────────────────
+    src = db.query(Gallery).options(selectinload(Gallery.creators)).filter(Gallery.id == gallery_id).first()
+    if not src:
+        raise HTTPException(404, "Source gallery not found")
+    if not src.folder_path or src.folder_path.startswith("__manual__") or not os.path.isdir(src.folder_path):
+        raise HTTPException(400, "Source gallery has no real folder on disk")
+
+    # ── New folder path (sibling of source) ────────────────────────────────────
+    parent   = os.path.dirname(src.folder_path)
+    new_path = os.path.join(parent, new_folder_name)
+
+    if os.path.normpath(new_path) == os.path.normpath(src.folder_path):
+        raise HTTPException(400, "New folder name matches the source folder")
+    if os.path.exists(new_path):
+        raise HTTPException(409, f"A folder named '{new_folder_name}' already exists here")
+
+    # ── Fetch images (must all belong to this gallery) ─────────────────────────
+    images = db.query(Image).filter(
+        Image.id.in_(image_ids),
+        Image.gallery_id == gallery_id,
+    ).all()
+    if not images:
+        raise HTTPException(400, "None of the selected images belong to this gallery")
+
+    # ── Create folder on disk ──────────────────────────────────────────────────
+    try:
+        os.makedirs(new_path)
+    except Exception as e:
+        raise HTTPException(500, f"Could not create folder: {e}")
+
+    # ── Create new Gallery record ──────────────────────────────────────────────
+    new_gallery = Gallery(name=new_folder_name, folder_path=new_path, image_count=0)
+    db.add(new_gallery)
+    db.flush()   # populate new_gallery.id
+
+    # Copy creator associations from source
+    for creator in src.creators:
+        db.execute(gallery_creators.insert().values(gallery_id=new_gallery.id, creator_id=creator.id))
+
+    # ── Move files ─────────────────────────────────────────────────────────────
+    moved  = 0
+    errors = []
+    for img in images:
+        if not img.file_path or not os.path.exists(img.file_path):
+            errors.append(f"Missing: {os.path.basename(img.file_path or '')}")
+            continue
+        filename  = os.path.basename(img.file_path)
+        dest_path = os.path.join(new_path, filename)
+        # Resolve filename collision
+        if os.path.exists(dest_path):
+            base, ext = os.path.splitext(filename)
+            n = 1
+            while os.path.exists(dest_path):
+                dest_path = os.path.join(new_path, f"{base}_{n}{ext}")
+                n += 1
+        try:
+            os.rename(img.file_path, dest_path)
+            img.file_path  = dest_path
+            img.gallery_id = new_gallery.id
+            moved += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    # ── Update image counts ────────────────────────────────────────────────────
+    new_gallery.image_count = moved
+    src.image_count         = max(0, (src.image_count or 0) - moved)
+
+    db.commit()
+    db.refresh(new_gallery)
+
+    result           = _enrich(new_gallery)
+    result["moved"]  = moved
+    result["errors"] = errors
+    return result
+
+
 @router.delete("/{gallery_id}")
 def delete_gallery(gallery_id: int, delete_files: bool = False, db: Session = Depends(get_db)):
     import os, shutil
@@ -572,12 +723,12 @@ def log_cum(gallery_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{gallery_id}/rate")
 def rate_gallery(gallery_id: int, rating: float, db: Session = Depends(get_db)):
-    """Set a 0–5 star rating on a gallery and award XP."""
+    """Set a 0–10 star rating on a gallery and award XP."""
     g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
     if not g:
         raise HTTPException(404, "Gallery not found")
-    if not (0 <= rating <= 5):
-        raise HTTPException(400, "Rating must be between 0 and 5")
+    if not (0 <= rating <= 10):
+        raise HTTPException(400, "Rating must be between 0 and 10")
     g.rating = rating
     db.commit()
     xp = gami.notify_action(db, "gallery_rated", extra={"rating": rating})
@@ -747,6 +898,105 @@ class MergeRequest(_BaseModel):
     collision_strategy: str = "rename"   # "replace" | "rename" | "skip"
 
 
+@router.post("/pick-folder")
+def pick_folder():
+    """Open a native Windows folder-picker dialog and return the chosen path."""
+    import subprocess
+    ps_script = (
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+        "$d.Description = 'Choose export folder';"
+        "$d.ShowNewFolderButton = $true;"
+        "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
+        "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            capture_output=True, text=True, timeout=60
+        )
+        folder = result.stdout.strip()
+    except Exception as e:
+        raise HTTPException(500, f"Could not open folder picker: {e}")
+    if not folder:
+        raise HTTPException(400, "No folder selected")
+    return {"path": folder}
+
+
+@router.post("/export-zip")
+def export_zip(data: dict, db: Session = Depends(get_db)):
+    """Zip the files from one or more galleries into a single archive."""
+    import zipfile
+    import re as _re
+    from datetime import datetime
+    from models import mix_images as _mix_images
+
+    gallery_ids = [int(x) for x in (data.get("gallery_ids") or []) if x]
+    output_path = (data.get("output_path") or "").strip()
+
+    if not gallery_ids:
+        raise HTTPException(400, "No galleries selected")
+    if not output_path or not os.path.isdir(output_path):
+        raise HTTPException(400, "Invalid output path")
+
+    galleries = db.query(Gallery).filter(Gallery.id.in_(gallery_ids)).all()
+    if not galleries:
+        raise HTTPException(404, "No galleries found")
+
+    def _safe(name: str) -> str:
+        return _re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name).strip('. ') or 'Gallery'
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_name = (
+        f"{_safe(galleries[0].name)}_{timestamp}.zip"
+        if len(galleries) == 1
+        else f"Vault_Export_{timestamp}.zip"
+    )
+    zip_path = os.path.join(output_path, zip_name)
+
+    file_count = 0
+    errors = []
+    used_folders: dict = {}
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_STORED) as zf:
+        for gallery in galleries:
+            base = _safe(gallery.name)
+            if base in used_folders:
+                used_folders[base] += 1
+                folder_name = f"{base}_{used_folders[base]}"
+            else:
+                used_folders[base] = 0
+                folder_name = base
+
+            if gallery.is_mix:
+                rows = db.execute(
+                    _mix_images.select().where(_mix_images.c.gallery_id == gallery.id)
+                ).fetchall()
+                img_ids = [r.image_id for r in rows]
+                images = db.query(Image).filter(Image.id.in_(img_ids)).all() if img_ids else []
+            else:
+                images = db.query(Image).filter(Image.gallery_id == gallery.id).all()
+
+            for img in images:
+                if img.file_path and os.path.exists(img.file_path):
+                    arcname = os.path.join(folder_name, os.path.basename(img.file_path))
+                    try:
+                        zf.write(img.file_path, arcname)
+                        file_count += 1
+                    except Exception as exc:
+                        errors.append(str(exc))
+                else:
+                    errors.append(os.path.basename(img.file_path or '(missing)'))
+
+    # Open the output folder in Explorer
+    try:
+        os.startfile(output_path)
+    except Exception:
+        pass
+
+    return {"zip_path": zip_path, "zip_name": zip_name, "file_count": file_count, "errors": errors}
+
+
 @router.post("/{target_id}/merge")
 def merge_gallery(target_id: int, req: MergeRequest, db: Session = Depends(get_db)):
     """
@@ -828,7 +1078,9 @@ def merge_gallery(target_id: int, req: MergeRequest, db: Session = Depends(get_d
             img.filename  = new_filename
             img.gallery_id = target_id
             moved += 1
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.warning("merge: failed to move %s → %s: %s", src_path, dst_path, exc)
             skipped += 1
             continue
 
@@ -841,18 +1093,23 @@ def merge_gallery(target_id: int, req: MergeRequest, db: Session = Depends(get_d
             if target.creator_id is None:
                 target.creator_id = c.id
 
-    # Recalculate image counts
-    remaining_in_source = db.query(Image).filter(Image.gallery_id == req.source_id).count()
-    target.image_count = db.query(Image).filter(Image.gallery_id == target_id).count()
-
+    # Commit all image reassignments and creator merges first
     db.commit()
 
-    # Delete source gallery only if it's now empty
+    # Recalculate image counts POST-commit (autoflush=False means pre-commit
+    # queries would read stale data — counts must come after the commit)
+    remaining_in_source = db.query(Image).filter(Image.gallery_id == req.source_id).count()
+    target.image_count  = db.query(Image).filter(Image.gallery_id == target_id).count()
+
+    # Delete source gallery only if it's now empty, otherwise fix its count
     source_deleted = False
     if remaining_in_source == 0:
         db.delete(source)
-        db.commit()
         source_deleted = True
+    else:
+        source.image_count = remaining_in_source
+
+    db.commit()
 
     return {
         "moved":          moved,

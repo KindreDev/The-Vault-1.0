@@ -7,7 +7,7 @@ import {
   Pencil, Trash2, Sparkles, FolderOpen,
 } from 'lucide-react'
 import BondHearts from '../components/BondHearts'
-import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi } from '../lib/api'
+import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
@@ -179,14 +179,14 @@ function GalleryScroll({ title, icon: Icon, galleries, onGalleryClick, onViewAll
 }
 
 // ── Avatar picker modal ────────────────────────────────────────────────────────
-function AvatarModal({ creatorId, onClose, onSuccess }) {
+function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
   const qc = useQueryClient()
   const bumpAvatarBust = useVaultStore(s => s.bumpAvatarBust)
 
   const randomMutation = useMutation({
-    mutationFn: () => creatorsApi.setAvatarRandom(creatorId),
+    mutationFn: () => creatorsApi.setAvatarRandom(creatorId, currentAvatarPath),
     onSuccess: () => {
       toast.success('Avatar updated!')
       qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] })
@@ -194,6 +194,7 @@ function AvatarModal({ creatorId, onClose, onSuccess }) {
       bumpAvatarBust()
       onSuccess()
     },
+    onError: (err) => toast.error(err?.response?.data?.detail || 'No images found — assign galleries to this creator first'),
   })
 
   const handleFileUpload = async (e) => {
@@ -245,6 +246,17 @@ function AvatarModal({ creatorId, onClose, onSuccess }) {
 
 // BannerPickerModal removed — banner upload is now inline in the banner controls
 
+// Safely extract a string from FastAPI error responses.
+// detail can be a string (HTTPException) or array of objects (Pydantic validation).
+function extractApiError(e, fallback = 'Something went wrong') {
+  const detail = e?.response?.data?.detail
+  if (!detail) return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) return detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+  return fallback
+}
+
+
 function EditCreatorModal({ creator, onClose }) {
   let initialLinks = ''
   try {
@@ -260,7 +272,7 @@ function EditCreatorModal({ creator, onClose }) {
     fake_ass: creator.fake_ass === true ? 'yes' : creator.fake_ass === false ? 'no' : '',
     date_of_birth: creator.date_of_birth || '', height: creator.height || '', body_measurements: creator.body_measurements || '',
     country: creator.country || '', series: creator.series || '', origin: creator.origin || '',
-    description: creator.description || '', wiki_url: creator.wiki_url || '', card_rarity: creator.card_rarity || 'common',
+    description: creator.description || '', wiki_url: creator.wiki_url || '', lore: creator.lore || '', card_rarity: creator.card_rarity || 'common',
     patreon_price: creator.patreon_price || '', platform_links: initialLinks,
     status: creator.status || 'Active',
     retirement_year: creator.retirement_year || ''
@@ -407,7 +419,7 @@ function EditCreatorModal({ creator, onClose }) {
             {form.creator_type === 'character' && (
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: 'Series / Game', key: 'series', placeholder: 'Series' },
+                  { label: 'Franchise', key: 'series', placeholder: 'Franchise' },
                   { label: 'Origin', key: 'origin', placeholder: 'Origin' },
                 ].map(f => (
                   <div key={f.key}>
@@ -434,9 +446,16 @@ function EditCreatorModal({ creator, onClose }) {
               <div className={form.creator_type !== 'character' ? '' : 'col-span-2'}>
                 <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Wiki URL</div>
                 <input value={form.wiki_url} onChange={e => set('wiki_url', e.target.value)}
-                       placeholder="https://..."
-                       className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
+                       placeholder="https://residentevil.fandom.com/wiki/Ada_Wong"
+                       className="w-full rounded-[8px] px-3.5 py-2.5 text-[16px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
+              </div>
+              <div className="col-span-2">
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Lore</div>
+                <textarea value={form.lore} onChange={e => set('lore', e.target.value)}
+                          rows={4} placeholder="Character lore / bio — paste or import from wiki above"
+                          className="w-full rounded-[8px] px-3.5 py-2.5 text-[16px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
             </div>
           </div>
@@ -489,8 +508,8 @@ export default function CreatorProfile() {
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [showAvatarZoom, setShowAvatarZoom]   = useState(false)
   const [aiTagging, setAiTagging]             = useState(false)  // quick-tag this creator
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showEditModal, setShowEditModal]     = useState(false)
+  const [confirmDelete, setConfirmDelete]     = useState(false)
   const [valueRevealed, setValueRevealed] = useState(false)
   const [bannerImageId, setBannerImageId] = useState(null)
   const [bannerLocalUrl, setBannerLocalUrl] = useState(null)
@@ -587,15 +606,20 @@ export default function CreatorProfile() {
 
   const randomizeBanner = useCallback(async () => {
     try {
-      const res = await creatorsApi.setBannerRandom(id)
+      const res = await creatorsApi.setBannerRandom(id, bannerImageId)
       const newId = res.data.banner_image_id
-      setBannerImageId(newId)
+      // Force a re-render even if the same ID came back (shouldn't happen with exclude,
+      // but clears the old state first so the image always visibly reloads)
+      setBannerImageId(null)
       setBannerLocalUrl(null)
-      saveBanner(newId, bannerY, bannerZoom)
+      setTimeout(() => {
+        setBannerImageId(newId)
+        saveBanner(newId, bannerY, bannerZoom)
+      }, 0)
     } catch {
-      toast.error('No images found to use as banner')
+      toast.error('No images found — assign galleries to this creator first')
     }
-  }, [id, bannerY, bannerZoom, saveBanner])
+  }, [id, bannerImageId, bannerY, bannerZoom, saveBanner])
 
   const handleBannerFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0]
@@ -637,13 +661,14 @@ export default function CreatorProfile() {
     mutationFn: (r) => creatorsApi.update(id, { rating: r }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['creator', id] })
   })
-  const wikiMutation = useMutation({
-    mutationFn: () => creatorsApi.wikiImport(id),
-    onSuccess: (r) => {
-      if (r.data.success) { toast.success('Wiki data imported!'); qc.invalidateQueries({ queryKey: ['creator', id] }) }
-      else toast.error(r.data.message || 'Wiki import failed')
+  const talkToCreator = async () => {
+    try {
+      await companionApi.updateConfig({ active_persona_id: creator.id, enabled: true })
+      navigate('/erika')
+    } catch {
+      toast.error('Could not open chat')
     }
-  })
+  }
   const deleteMutation = useMutation({
     mutationFn: () => creatorsApi.delete(id),
     onSuccess: () => {
@@ -756,6 +781,12 @@ export default function CreatorProfile() {
               {bannerMenuOpen && (
                 <div className="absolute top-10 right-0 rounded-[10px] w-52 z-20 overflow-hidden"
                      style={{ background: 'rgba(18,18,18,0.97)', border: '0.5px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
+                  <button onClick={() => { setShowWikiModal(true); setBannerMenuOpen(false) }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
+                          style={{ color: '#b8b3f0' }}>
+                    <Globe size={12} /> Wiki Import
+                  </button>
+                  <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)' }} />
                   <button onClick={() => { randomizeBanner(); setBannerMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
                           style={{ color: 'rgba(255,255,255,0.75)' }}>
@@ -828,11 +859,6 @@ export default function CreatorProfile() {
                       </span>
                     )}
                   </div>
-                  <button onClick={() => setShowEditModal(true)}
-                          className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1.5 rounded-full cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]"
-                          title="Edit creator details">
-                    <Pencil size={14} />
-                  </button>
                 </div>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <span className="text-[13px] px-3 py-0.5 rounded-full capitalize font-medium" style={{ background: tc.bg, color: tc.text }}>
@@ -942,13 +968,16 @@ export default function CreatorProfile() {
 
           {/* Action buttons */}
           <div className="flex gap-1.5 flex-shrink-0 pt-2 flex-wrap justify-end">
-            {creator.creator_type === 'character' && (
-              <button onClick={() => wikiMutation.mutate()} disabled={wikiMutation.isPending}
-                      className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                      style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-                <Globe size={12} /> {wikiMutation.isPending ? 'Importing...' : 'Wiki import'}
-              </button>
-            )}
+            <button onClick={() => setShowEditModal(true)}
+                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+              <Pencil size={11} /> Edit
+            </button>
+            <button onClick={talkToCreator}
+                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              <Sparkles size={12} /> Talk to {creator.name}
+            </button>
             <button
               disabled={aiTagging}
               onClick={async () => {
@@ -1208,7 +1237,7 @@ export default function CreatorProfile() {
                 <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider mb-2">Character Info</div>
                 {[
                   ['Origin',    creator.origin],
-                  ['Series',    creator.series],
+                  ['Franchise', creator.series],
                   ['Developer', creator.developer],
                   ['Year',      creator.release_year],
                   ['Type',      creator.character_type],
@@ -1257,6 +1286,7 @@ export default function CreatorProfile() {
       {showAvatarModal && (
         <AvatarModal
           creatorId={parseInt(id)}
+          currentAvatarPath={creator?.avatar_path}
           onClose={() => setShowAvatarModal(false)}
           onSuccess={() => { setShowAvatarModal(false); setAvatarFailed(false); bumpAvatarBust() }}
         />

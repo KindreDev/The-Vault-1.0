@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent:  #7F77DD;
+  --c-pink:  #D4537E;
+  --c-amber: #BA7517;
+  --c-green: #1D9E75;
+  --c-bg:      #0e0e0e;
+  --c-surface: #161616;
+  --c-card:    #1e1e1e;
+  /* Safe-area insets (notch / status bar / gesture bar) */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--c-bg);
+}
+
+body {
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Disable text selection / callout on long-press — we use long-press for menus */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+}
+
+/* Hide scrollbars but keep scrolling */
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Accent-driven helpers */
+.text-accent { color: var(--accent); }
+.bg-accent   { background-color: var(--accent); }
+.border-accent { border-color: var(--accent); }
+
+.safe-top    { padding-top: var(--sat); }
+.safe-bottom { padding-bottom: var(--sab); }

@@ -110,6 +110,12 @@ class Creator(Base):
     card_level    = Column(Integer, default=1)
     bond_gifts    = Column(Integer, default=0)         # hearts gifted by user → boosts bond score
 
+    # AI companion
+    companion_prompt    = Column(Text, nullable=True)      # custom persona system prompt
+    personality_type    = Column(String, default='bold')   # shy | bold | dominant | playful | cold
+    companion_bond_xp   = Column(Integer, default=0)
+    companion_bond_level = Column(Integer, default=0)
+
     # 100% collection completion reward tracking — reset to None when completion drops
     completion_rewarded_at = Column(DateTime, nullable=True)
 
@@ -245,8 +251,9 @@ class Image(Base):
     # Perceptual hash for deduplication (pHash hex string, 64-bit)
     perceptual_hash  = Column(String, nullable=True, index=True)
 
-    last_viewed_at = Column(DateTime, nullable=True)
-    created_at    = Column(DateTime, default=func.now())
+    last_viewed_at   = Column(DateTime, nullable=True)
+    file_modified_at = Column(DateTime, nullable=True)   # on-disk mtime, populated by scanner
+    created_at       = Column(DateTime, default=func.now())
 
     gallery       = relationship("Gallery", back_populates="images")
     tags          = relationship("Tag", secondary=image_tags, back_populates="images")
@@ -468,6 +475,42 @@ class CraftingMaterials(Base):
     id            = Column(Integer, primary_key=True, default=1)
     shards        = Column(Integer, default=0)
     catalyst_tokens = Column(Integer, default=0)
+
+
+# ── Companion (Erika AI) ──────────────────────────────────────────────────────
+class CompanionConfig(Base):
+    __tablename__ = "companion_config"
+
+    id                = Column(Integer, primary_key=True, default=1)
+    enabled           = Column(Boolean, default=False)
+    name              = Column(String, default='Erika')
+    avatar_path       = Column(String, nullable=True)
+    personality_base  = Column(String, default='warm')   # warm | teasing | dominant | shy
+    active_persona_id = Column(Integer, ForeignKey("creators.id"), nullable=True)
+    bond_xp           = Column(Integer, default=0)
+    bond_level        = Column(Integer, default=0)
+    is_visible        = Column(Boolean, default=True)
+    ollama_url        = Column(String, default='http://localhost:11434')
+    ollama_model      = Column(String, default='hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS')
+    saved_models      = Column(Text, default='[]')   # JSON array of model name strings
+    keep_alive        = Column(String, default='10m') # Ollama keep_alive: "5m", "30m", "-1" (forever), "0" (immediate)
+    num_ctx           = Column(Integer, default=16384) # Ollama context window size (tokens)
+    companion_prompt  = Column(Text, nullable=True)  # custom system prompt for Erika; null = auto-generate
+    created_at        = Column(DateTime, default=func.now())
+
+    active_persona = relationship("Creator", foreign_keys=[active_persona_id])
+
+
+class CompanionMessage(Base):
+    __tablename__ = "companion_messages"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    role           = Column(String, nullable=False)    # 'user' | 'assistant'
+    content        = Column(Text, nullable=False)
+    persona_id     = Column(Integer, nullable=True)
+    bond_level     = Column(Integer, nullable=True)
+    image_data_url = Column(Text, nullable=True)      # full data:image/...;base64,... for display
+    created_at     = Column(DateTime, default=func.now())
 
 
 # ── TCG: Credit event audit log ───────────────────────────────────────────────

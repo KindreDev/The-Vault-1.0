@@ -193,6 +193,7 @@ from database import engine, Base, SessionLocal, get_db, DATA_DIR
 from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
+from routers.companion import router as companion_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -286,6 +287,20 @@ def _migrate_add_columns():
         "ALTER TABLE creators ADD COLUMN bond_gifts INTEGER DEFAULT 0",
         # Hearts — earned by dismantling rare+ cards; gifted to creators to boost bond
         "ALTER TABLE user_profile ADD COLUMN hearts INTEGER DEFAULT 0",
+        # Companion (Erika AI) — tables created via Base.metadata.create_all; no ALTER needed
+        # (companion_config and companion_messages are new tables, not column additions)
+        # Companion persona fields on Creator
+        "ALTER TABLE creators ADD COLUMN companion_prompt TEXT",
+        "ALTER TABLE creators ADD COLUMN personality_type VARCHAR DEFAULT 'bold'",
+        "ALTER TABLE creators ADD COLUMN companion_bond_xp INTEGER DEFAULT 0",
+        "ALTER TABLE creators ADD COLUMN companion_bond_level INTEGER DEFAULT 0",
+        "ALTER TABLE companion_config ADD COLUMN saved_models TEXT DEFAULT '[]'",
+        "ALTER TABLE companion_config ADD COLUMN keep_alive VARCHAR DEFAULT '10m'",
+        "ALTER TABLE companion_config ADD COLUMN companion_prompt TEXT",
+        "ALTER TABLE companion_messages ADD COLUMN image_data_url TEXT",
+        "ALTER TABLE companion_config ADD COLUMN num_ctx INTEGER DEFAULT 16384",
+        # Image file mtime — on-disk last-modified date, for sort by date_modified
+        "ALTER TABLE images ADD COLUMN file_modified_at DATETIME",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -404,11 +419,18 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="0.1.0")
+app = FastAPI(title="The Vault", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    # Mobile: Capacitor APK WebView origins + any private-LAN address (phone on same WiFi).
+    # The iOS PWA is same-origin (served from :8000) so it needs no CORS entry.
+    allow_origin_regex=(
+        r"^(https?://localhost(:\d+)?"
+        r"|capacitor://localhost|ionic://localhost"
+        r"|https?://(192\.168|10|172\.(1[6-9]|2\d|3[01]))\.[0-9.]+(:\d+)?)$"
+    ),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
@@ -559,6 +581,7 @@ app.include_router(economy_router)
 app.include_router(system_router,            prefix="/api/system",        tags=["system"])
 app.include_router(dedup.router,             prefix="/api/dedup",          tags=["dedup"])
 app.include_router(tasks.router,             prefix="/api/tasks",          tags=["tasks"])
+app.include_router(companion_router,         prefix="/api/companion",      tags=["companion"])
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 os.makedirs(THUMBS_DIR, exist_ok=True)
@@ -643,7 +666,9 @@ if __name__ == "__main__":
 
         def _run_server():
             # Signal readiness after the first successful health-check poll below.
-            uvicorn.run(app, host="127.0.0.1", port=8000, reload=False,
+            # Bind 0.0.0.0 so the mobile app (phone on the same WiFi) can reach the
+            # desktop server over LAN. 127.0.0.1 connections (PyWebView) still work.
+            uvicorn.run(app, host="0.0.0.0", port=8000, reload=False,
                         log_config=None)
 
         srv_thread = threading.Thread(target=_run_server, daemon=True, name="vault-server")
@@ -722,4 +747,5 @@ if __name__ == "__main__":
         # reaching our _vault_handler.  With log_config=None, all loggers use
         # their default propagation (True) so everything flows to root → deque.
         logging.getLogger("vault").info("Server ready — Console connected")
-        uvicorn.run(app, host="127.0.0.1", port=8000, reload=False, log_config=None)
+        # Bind 0.0.0.0 so the mobile app can reach the dev server over LAN.
+        uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, log_config=None)

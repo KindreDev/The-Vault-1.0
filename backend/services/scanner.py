@@ -9,7 +9,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from PIL import Image as PILImage
 
-from models import Gallery, Image, LibraryRoot, Tag, TagSource
+from models import Gallery, Image, LibraryRoot, Tag, TagSource, Creator
 from database import DATA_DIR
 import services.gamification as gami
 
@@ -20,8 +20,10 @@ def _natural_sort_key(s: str):
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv"}
 
-# Suppress the CMD window flash when spawning ffmpeg from a windowed EXE on Windows.
-_NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+# DETACHED_PROCESS (0x8) — no console allocated at all, so no conhost.exe is created.
+# CREATE_NO_WINDOW (0x8000000) still allocates an invisible console and spawns conhost.
+# For ffmpeg calls that only use pipes we never need a console, so DETACHED is cleaner.
+_NO_WINDOW = 0x00000008 if sys.platform == "win32" else 0
 
 # Thumbnails go to the writable data directory (AppData when frozen, backend/ in dev)
 THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
@@ -120,6 +122,7 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
                 "-q:v", "3",
                 thumb_path,
             ],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=30,
             creationflags=_NO_WINDOW,
@@ -136,6 +139,7 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
                 "-q:v", "3",
                 thumb_path,
             ],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=30,
             creationflags=_NO_WINDOW,
@@ -409,6 +413,19 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
         _scan_state["new_galleries"] += 1
         is_new_gallery = True
 
+        # Auto-assign creators whose source_folder matches this gallery's path.
+        # This means adding files to a creator's folder and re-scanning is enough —
+        # no manual assignment needed.
+        norm_gal = os.path.normcase(os.path.normpath(dirpath))
+        for c in db.query(Creator).filter(Creator.source_folder.isnot(None)).all():
+            norm_src = os.path.normcase(os.path.normpath(c.source_folder))
+            if norm_gal == norm_src or norm_gal.startswith(norm_src + os.sep):
+                if c not in gallery.creators:
+                    gallery.creators.append(c)
+                    gallery.is_tagged = True
+                if gallery.creator_id is None:
+                    gallery.creator_id = c.id
+
     new_image_count = 0
     cover_set = False
 
@@ -464,6 +481,10 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
                 generate_thumbnail(file_path, thumb_path)
 
         file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
+        try:
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+        except OSError:
+            file_mtime = None
 
         funscript_path = None
         if is_video:
@@ -482,6 +503,7 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list):
             is_video=is_video,
             funscript_path=funscript_path,
             sort_order=new_image_count,
+            file_modified_at=file_mtime,
         )
         db.add(img)
         db.flush()  # get img.id

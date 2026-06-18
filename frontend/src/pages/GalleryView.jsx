@@ -6,9 +6,10 @@ import {
   ArrowLeft, Star, Droplets, Shuffle, Heart, ChevronLeft, ChevronRight,
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
-  FolderOpen, Zap,
+  FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
+import ImageContextMenu from '../components/ImageContextMenu'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
@@ -153,7 +154,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
   )
 }
 
-const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDeleted, galleryId }) {
+const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDeleted, galleryId, bulkMode, selected, onSelect, onContextMenu }) {
   const [failed, setFailed] = useState(false)
   const [hoverVideo, setHoverVideo] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -233,9 +234,26 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
   return (
     <div onMouseEnter={handleMouseEnter}
          onMouseLeave={handleMouseLeave}
+         onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
          className="relative rounded-[8px] overflow-hidden group animate-fade-in"
-         style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.07)', aspectRatio: '1' }}>
-      <div onClick={() => onClick(idx)} className="cursor-pointer w-full h-full">
+         style={{ background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${selected ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.07)'}`, aspectRatio: '1' }}>
+
+      {/* Bulk select overlay */}
+      {bulkMode && (
+        <div className="absolute top-1.5 left-1.5 z-[20]"
+             onClick={(e) => { e.stopPropagation(); onSelect?.(image.id, idx, e.shiftKey) }}>
+          {selected
+            ? <CheckSquare size={15} style={{ color: '#7F77DD', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
+            : <Square size={15} style={{ color: 'rgba(255,255,255,0.6)', fill: 'rgba(0,0,0,0.5)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
+          }
+        </div>
+      )}
+      {selected && (
+        <div className="absolute inset-0 z-[5] pointer-events-none rounded-[8px]"
+             style={{ background: 'rgba(127,119,221,0.18)' }} />
+      )}
+
+      <div onClick={(e) => bulkMode ? onSelect?.(image.id, idx, e.shiftKey) : onClick(idx)} className="cursor-pointer w-full h-full">
         {!failed
           ? <img
               src={`/api/images/${image.id}/thumb`}
@@ -268,9 +286,9 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
           </div>
         )}
         {image.rating > 0 && (
-          <div className="absolute top-1 left-1 text-[9px] px-1.5 py-0.5 rounded-full z-[3]"
+          <div className="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded-full z-[3] font-medium"
                style={{ background: 'rgba(0,0,0,0.75)', color: '#EF9F27' }}>
-            {'★'.repeat(Math.round(image.rating))}
+            ★ {image.rating}
           </div>
         )}
       </div>
@@ -321,7 +339,9 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
 }, (prev, next) =>
   prev.image     === next.image     &&
   prev.idx       === next.idx       &&
-  prev.galleryId === next.galleryId
+  prev.galleryId === next.galleryId &&
+  prev.bulkMode  === next.bulkMode  &&
+  prev.selected  === next.selected
 )
 
 const SLIDESHOW_SPEEDS = [3, 5, 8, 12]
@@ -406,7 +426,15 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
   useEffect(() => { setFullLoaded(false) }, [idx])
 
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
+    if (window.pywebview?.api) {
+      const next = !isFullscreenRef.current
+      window.pywebview.api.toggle_fullscreen()
+      isFullscreenRef.current = next
+      setIsFullscreen(next)
+      clearTimeout(filmstripTimer.current)
+      if (next) setShowFilmstrip(false)
+      else setShowFilmstrip(true)
+    } else if (!document.fullscreenElement) {
       viewerRef.current?.requestFullscreen().catch(() => {})
     } else {
       document.exitFullscreen().catch(() => {})
@@ -441,7 +469,16 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
   useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'INPUT') return
-      if (e.key === 'Escape') { if (zoom > 1) resetZoom(); else onClose(); return }
+      if (e.key === 'Escape') {
+        if (window.pywebview?.api && isFullscreenRef.current) {
+          window.pywebview.api.toggle_fullscreen()
+          isFullscreenRef.current = false
+          setIsFullscreen(false)
+          setShowFilmstrip(true)
+        }
+        if (zoom > 1) resetZoom(); else onClose()
+        return
+      }
       if (e.key === 'ArrowLeft') {
         if (image.is_video) videoPlayerRef.current?.seek(-3)
         else { setSlideshowActive(false); setIdx(i => Math.max(0, i - 1)) }
@@ -859,11 +896,11 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
         {/* Rating */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
           <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Rating</div>
-          <div className="flex gap-1">
-            {[1,2,3,4,5].map(s => (
+          <div className="flex gap-0.5">
+            {[1,2,3,4,5,6,7,8,9,10].map(s => (
               <button key={s}
                       onMouseDown={() => { setRating(s); rateMutation.mutate(s) }}
-                      className="text-[22px] cursor-pointer leading-none"
+                      className="text-[18px] cursor-pointer leading-none"
                       style={{ color: s <= rating ? '#EF9F27' : 'rgba(255,255,255,0.1)' }}>
                 ★
               </button>
@@ -1233,6 +1270,280 @@ function MergeModal({ gallery, onClose, onMerged }) {
 }
 
 
+// ── Transfer images to an existing gallery modal ─────────────────────────────
+function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred }) {
+  const [search, setSearch] = useState('')
+  const [targetGallery, setTargetGallery] = useState(null)
+  const [transferring, setTransferring] = useState(false)
+  const inputRef = useRef(null)
+  const qc = useQueryClient()
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const { data: allGalleries } = useQuery({
+    queryKey: ['galleries-mini'],
+    queryFn: () => galleriesApi.list({ limit: 2000, sort_by: 'name' }).then(r => r.data),
+    staleTime: 30000,
+  })
+
+  const filtered = useMemo(() => {
+    if (!allGalleries) return []
+    const q = search.toLowerCase().trim()
+    if (!q) return []
+    return allGalleries
+      .filter(g => g.id !== currentGalleryId && g.name.toLowerCase().includes(q))
+      .slice(0, 40)
+  }, [allGalleries, search, currentGalleryId])
+
+  const doTransfer = async () => {
+    if (!targetGallery || transferring) return
+    setTransferring(true)
+    try {
+      await Promise.all(images.map(img => imagesApi.transfer(img.id, targetGallery.id)))
+      qc.invalidateQueries({ queryKey: ['gallery-images'] })
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      toast.success(`${images.length} image${images.length !== 1 ? 's' : ''} → "${targetGallery.name}"`)
+      onTransferred(targetGallery.id, images.map(i => i.id))
+    } catch {
+      toast.error('Transfer failed')
+      setTransferring(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+         style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="rounded-[14px] w-full max-w-sm flex flex-col overflow-hidden"
+           style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', maxHeight: '80vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
+          <div className="flex items-center gap-2">
+            <FolderInput size={16} style={{ color: '#FAC775' }} />
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              Move {images.length === 1 ? 'image' : `${images.length} images`} to gallery
+            </span>
+          </div>
+          <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 flex flex-col gap-3">
+          {/* Search */}
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>Search by gallery name</div>
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setTargetGallery(null) }}
+              onKeyDown={e => { if (e.key === 'Escape') onClose() }}
+              placeholder="Type to search galleries…"
+              className="w-full rounded-[8px] px-3 py-2 outline-none"
+              style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.9)' }}
+            />
+          </div>
+
+          {/* Selected target */}
+          {targetGallery ? (
+            <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
+                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.4)' }}>
+              <div>
+                <div style={{ fontSize: 13, color: '#FAC775', fontWeight: 600 }}>{targetGallery.name}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{targetGallery.image_count ?? 0} images currently</div>
+              </div>
+              <button onClick={() => { setTargetGallery(null); setSearch('') }}
+                      className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            filtered.length > 0 && (
+              <div className="rounded-[8px] overflow-hidden overflow-y-auto"
+                   style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 200 }}>
+                {filtered.map(g => (
+                  <button key={g.id} onClick={() => { setTargetGallery(g); setSearch(g.name) }}
+                          className="w-full text-left px-3 py-2 flex items-center justify-between cursor-pointer transition-colors"
+                          style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(186,117,23,0.1)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <span>{g.name}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} imgs</span>
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+
+          {search.length > 0 && filtered.length === 0 && !targetGallery && (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '8px 0' }}>No galleries found</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[rgba(255,255,255,0.07)]">
+          <button onClick={onClose} disabled={transferring}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
+                  style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            Cancel
+          </button>
+          <button onClick={doTransfer} disabled={!targetGallery || transferring}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
+                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
+            {transferring
+              ? <><span className="animate-spin inline-block">⟳</span> Moving…</>
+              : <><FolderInput size={13} /> Move {images.length === 1 ? 'image' : `${images.length} images`}</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+
+// ── Extract images to new gallery modal ──────────────────────────────────────
+function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted }) {
+  const [folderName, setFolderName] = useState('')
+  const qc = useQueryClient()
+  const inputRef = useRef(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const noFolder = !gallery.folder_path || gallery.folder_path.startsWith('__manual__')
+
+  // Derive parent path for preview
+  const parentPath = useMemo(() => {
+    if (noFolder || !gallery.folder_path) return null
+    const p = gallery.folder_path.replace(/\\/g, '/')
+    const lastSlash = p.lastIndexOf('/')
+    return lastSlash > 0 ? gallery.folder_path.substring(0, lastSlash) : gallery.folder_path
+  }, [gallery.folder_path, noFolder])
+
+  const previewPath = useMemo(() => {
+    if (!folderName.trim() || !parentPath) return null
+    return parentPath + '\\' + folderName.trim()
+  }, [folderName, parentPath])
+
+  const creators = gallery.creators ?? []
+
+  const extractMutation = useMutation({
+    mutationFn: () => galleriesApi.extract(
+      gallery.id,
+      selectedImages.map(i => i.id),
+      folderName.trim(),
+    ),
+    onSuccess: (res) => {
+      const g = res.data
+      const errs = g.errors?.length ?? 0
+      if (errs > 0) toast.error(`Extracted with ${errs} file error(s)`)
+      else toast.success(`${g.moved ?? selectedImages.length} images → "${g.name}"`)
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      onExtracted(g)
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || 'Extract failed'),
+  })
+
+  const canSubmit = folderName.trim().length > 0 && !extractMutation.isPending
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+         style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="rounded-[14px] w-full max-w-md flex flex-col overflow-hidden"
+           style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
+          <div className="flex items-center gap-2">
+            <FolderOutput size={16} style={{ color: '#9FE1CB' }} />
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Extract to new gallery</span>
+          </div>
+          <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-4">
+
+          {/* Summary */}
+          <div className="rounded-[8px] px-3 py-2.5 flex items-center gap-3"
+               style={{ background: 'rgba(159,225,203,0.08)', border: '0.5px solid rgba(159,225,203,0.2)' }}>
+            <FolderOutput size={18} style={{ color: '#9FE1CB', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#9FE1CB' }}>
+                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                Will be moved out of <span style={{ color: 'rgba(255,255,255,0.65)' }}>{gallery.name}</span> into a new gallery
+              </div>
+            </div>
+          </div>
+
+          {/* Folder name input */}
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>New gallery folder name</div>
+            <input
+              ref={inputRef}
+              value={folderName}
+              onChange={e => setFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) extractMutation.mutate(); if (e.key === 'Escape') onClose() }}
+              placeholder="e.g. Cosplay Set 01"
+              className="w-full rounded-[8px] px-3 py-2 outline-none"
+              style={{ fontSize: 14, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.9)' }}
+            />
+            {previewPath && (
+              <div className="mt-1.5 flex items-center gap-1.5"
+                   style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                <FolderOpen size={11} style={{ flexShrink: 0, color: 'rgba(255,255,255,0.2)' }} />
+                <span className="truncate">{previewPath}</span>
+              </div>
+            )}
+            {noFolder && (
+              <div className="mt-1.5" style={{ fontSize: 11, color: '#FAC775' }}>
+                ⚠ This gallery has no folder path. The new gallery will be database-only (no files moved).
+              </div>
+            )}
+          </div>
+
+          {/* Creator info */}
+          {creators.length > 0 && (
+            <div className="rounded-[8px] px-3 py-2.5"
+                 style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.3)', fontSize: 12, color: '#9FE1CB', lineHeight: 1.5 }}>
+              Creator association{creators.length > 1 ? 's' : ''} (<b>{creators.map(c => c.name).join(', ')}</b>) will be copied to the new gallery.
+            </div>
+          )}
+
+          {/* What happens note */}
+          <div className="rounded-[8px] px-3 py-2.5"
+               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
+            The selected images will be <b style={{ color: 'rgba(255,255,255,0.6)' }}>physically moved</b> to the new folder on disk. The remaining images stay in <span style={{ color: 'rgba(255,255,255,0.6)' }}>{gallery.name}</span>.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[rgba(255,255,255,0.07)]">
+          <button onClick={onClose} disabled={extractMutation.isPending}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
+                  style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            Cancel
+          </button>
+          <button onClick={() => extractMutation.mutate()} disabled={!canSubmit}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
+                  style={{ background: 'rgba(159,225,203,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(159,225,203,0.3)' }}>
+            {extractMutation.isPending
+              ? <><span className="animate-spin inline-block">⟳</span> Extracting…</>
+              : <><FolderOutput size={13} /> Extract {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''}</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+
 export default function GalleryView() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1251,6 +1562,19 @@ export default function GalleryView() {
   const [periodMonth, setPeriodMonth] = useState(null)
   const [periodYear, setPeriodYear] = useState(null)
   const [thumbSizeIdx, setThumbSizeIdx] = useState(2) // default: 160px
+  // Bulk select + extract
+  const [bulkMode, setBulkMode]   = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [showExtract, setShowExtract] = useState(false)
+  const lastSelectIdxRef = useRef(null)
+  // Image context menu
+  const [imgCtx, setImgCtx] = useState(null) // { image, x, y }
+  // Transfer modal — single image (from ctx menu) or bulk
+  const [transferCtx, setTransferCtx] = useState(null) // { images: [...] }
+  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
+  const multiViewerQueue = useVaultStore(s => s.multiViewerQueue)
+  const MULTIVIEWER_MAX  = useVaultStore(s => s.MULTIVIEWER_MAX)
+  const bumpAvatarBust   = useVaultStore(s => s.bumpAvatarBust)
   const retagPollRef = useRef(null)
 
   useEffect(() => {
@@ -1414,6 +1738,26 @@ export default function GalleryView() {
             <span className="text-[11px] text-[rgba(255,255,255,0.35)]">
               {gallery?.image_count ?? 0} photos
             </span>
+            {gallery?.folder_path && !gallery.folder_path.startsWith('__manual__') && (
+              <button
+                type="button"
+                title={`${gallery.folder_path}\n\nClick to copy`}
+                onClick={() => { navigator.clipboard.writeText(gallery.folder_path).catch(() => {}); toast.success('Path copied') }}
+                className="flex items-center gap-1 cursor-pointer group/path"
+                style={{ maxWidth: '55ch', minWidth: 0 }}>
+                <FolderOpen size={10} style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
+                <span
+                  className="group-hover/path:text-[rgba(255,255,255,0.5)] transition-colors"
+                  style={{
+                    fontSize: 11, fontFamily: 'monospace',
+                    color: 'rgba(255,255,255,0.25)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    direction: 'rtl', textAlign: 'left',
+                  }}>
+                  {gallery.folder_path}
+                </span>
+              </button>
+            )}
             {/* Period badge */}
             {gallery?.period_month && gallery?.period_year ? (
               <button
@@ -1516,6 +1860,17 @@ export default function GalleryView() {
             <GitMerge size={12} />
             Merge
           </button>
+          <button onClick={() => { setBulkMode(b => !b); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
+                  title="Select images to extract or delete"
+                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
+                  style={{
+                    background: bulkMode ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
+                    color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+                    border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                  }}>
+            <CheckSquare size={12} />
+            {bulkMode ? `${selectedIds.size} selected` : 'Select'}
+          </button>
         </div>
       </div>
 
@@ -1529,6 +1884,35 @@ export default function GalleryView() {
         </div>
       )}
 
+      {/* Bulk action bar */}
+      {bulkMode && selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] mb-3 animate-slide-up relative z-10"
+             style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+          <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>{selectedIds.size} selected</span>
+          <button type="button"
+                  onMouseDown={() => setSelectedIds(s => s.size === images?.filter(i => !deletedIds.has(i.id)).length ? new Set() : new Set(images?.filter(i => !deletedIds.has(i.id)).map(i => i.id) ?? []))}
+                  className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            {selectedIds.size === images?.filter(i => !deletedIds.has(i.id)).length ? 'Deselect all' : 'Select all'}
+          </button>
+          <button type="button" onMouseDown={() => setShowExtract(true)}
+                  className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+            <FolderOutput size={12} /> Extract to gallery
+          </button>
+          <button type="button"
+                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)) })}
+                  className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+            <FolderInput size={12} /> Move to gallery
+          </button>
+          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
+                  className="ml-auto text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Image grid */}
       <div className="relative z-10" />
       {!images
@@ -1539,7 +1923,29 @@ export default function GalleryView() {
               {images.filter(img => !deletedIds.has(img.id)).map((img, i) => (
                 <ImageThumb key={img.id} image={img} idx={i} onClick={setViewerIdx}
                             galleryId={parseInt(id)}
-                            onDeleted={(imgId) => setDeletedIds(s => new Set([...s, imgId]))} />
+                            onDeleted={(imgId) => setDeletedIds(s => new Set([...s, imgId]))}
+                            bulkMode={bulkMode}
+                            selected={selectedIds.has(img.id)}
+                            onSelect={(imgId, imgIdx, shiftKey) => {
+                              const visibleImgs = images.filter(i => !deletedIds.has(i.id))
+                              if (shiftKey && lastSelectIdxRef.current !== null) {
+                                const lo = Math.min(lastSelectIdxRef.current, imgIdx)
+                                const hi = Math.max(lastSelectIdxRef.current, imgIdx)
+                                const rangeIds = visibleImgs.slice(lo, hi + 1).map(i => i.id)
+                                setSelectedIds(s => { const n = new Set(s); rangeIds.forEach(rid => n.add(rid)); return n })
+                              } else {
+                                setSelectedIds(s => { const n = new Set(s); n.has(imgId) ? n.delete(imgId) : n.add(imgId); return n })
+                                lastSelectIdxRef.current = imgIdx
+                              }
+                            }}
+                            onContextMenu={(im, e) => {
+                              // Windows behaviour: right-click on selected image → apply to whole selection
+                              const inSel = bulkMode && selectedIds.has(im.id)
+                              const bulkImages = inSel
+                                ? images.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id))
+                                : null
+                              setImgCtx({ image: im, x: e.clientX, y: e.clientY, bulkImages })
+                            }} />
               ))}
             </div>
       }
@@ -1565,10 +1971,95 @@ export default function GalleryView() {
           onClose={() => setShowMergeModal(false)}
           onMerged={(result) => {
             setShowMergeModal(false)
-            if (result.source_deleted) {
-              // This gallery was absorbed — navigate to the target
-              navigate(`/galleries/${result.target_id}`)
+            if (result.source_deleted) navigate(`/galleries/${result.target_id}`)
+          }}
+        />
+      )}
+
+      {/* Extract selected images to new gallery */}
+      {showExtract && gallery && (
+        <ExtractFromGalleryModal
+          gallery={gallery}
+          selectedImages={images?.filter(img => selectedIds.has(img.id)) ?? []}
+          onClose={() => setShowExtract(false)}
+          onExtracted={(newGallery) => {
+            setShowExtract(false)
+            setBulkMode(false)
+            setSelectedIds(new Set())
+            qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
+            navigate(`/galleries/${newGallery.id}`)
+          }}
+        />
+      )}
+
+      {/* Transfer images to another existing gallery */}
+      {transferCtx && (
+        <GalleryTransferModal
+          images={transferCtx.images}
+          currentGalleryId={parseInt(id)}
+          onClose={() => setTransferCtx(null)}
+          onTransferred={(targetId, transferredIds) => {
+            setTransferCtx(null)
+            setDeletedIds(s => new Set([...s, ...transferredIds]))
+            setSelectedIds(s => { const n = new Set(s); transferredIds.forEach(i => n.delete(i)); return n })
+            qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
+          }}
+        />
+      )}
+
+      {/* Image right-click context menu */}
+      {imgCtx && (
+        <ImageContextMenu
+          image={imgCtx.image}
+          bulkCount={imgCtx.bulkImages?.length ?? null}
+          position={{ x: imgCtx.x, y: imgCtx.y }}
+          onClose={() => setImgCtx(null)}
+          onView={() => {
+            const idx2 = images?.filter(i => !deletedIds.has(i.id)).findIndex(i => i.id === imgCtx.image.id) ?? -1
+            if (idx2 >= 0) setViewerIdx(idx2)
+          }}
+          onSetCover={() => galleriesApi.setCover(parseInt(id), imgCtx.image.id)
+            .then(() => { toast.success('Set as gallery cover!'); qc.invalidateQueries({ queryKey: ['gallery', String(id)] }) })
+            .catch(() => toast.error('Failed to set cover'))
+          }
+          onSendToViewer={() => {
+            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            let added = 0, skipped = 0
+            for (const img of targets) {
+              if (multiViewerQueue.length + added >= MULTIVIEWER_MAX) { skipped += targets.length - added; break }
+              const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
+              if (ok) added++; else skipped++
             }
+            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
+            if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
+          }}
+          onTransfer={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}
+          creators={gallery?.creators ?? []}
+          onSetAsAvatar={(creatorId) => {
+            creatorsApi.setAvatarFromImage(creatorId, imgCtx.image.id)
+              .then(() => { toast.success('Avatar updated!'); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error('Failed to set avatar'))
+          }}
+          onSetAsBanner={(creatorId) => {
+            creatorsApi.setBannerFromImage(creatorId, imgCtx.image.id)
+              .then(() => { toast.success('Banner updated!'); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error('Failed to set banner'))
+          }}
+          onDelete={async (mode) => {
+            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            let errs = 0
+            for (const img of targets) {
+              try {
+                await imagesApi.delete(img.id, mode === 'vault')
+                setDeletedIds(s => new Set([...s, img.id]))
+              } catch { errs++ }
+            }
+            const n = targets.length - errs
+            if (n > 0) toast.success(mode === 'vault'
+              ? `${n} ${n === 1 ? 'image' : 'images'} removed from vault`
+              : `${n} ${n === 1 ? 'image' : 'images'} deleted from disk`)
+            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+            qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
           }}
         />
       )}

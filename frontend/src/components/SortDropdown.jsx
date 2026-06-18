@@ -30,18 +30,31 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
 
   return (
     <div ref={ref} className="relative z-20 flex-shrink-0">
-      <button type="button" onMouseDown={() => setOpen(o => !o)}
-              className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full text-[11px] cursor-pointer"
-              style={{ background: '#1e1e1e', color: 'rgba(255,255,255,0.75)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
-        {selected?.label}
-        {isReversed && value !== 'random' && (
-          <span className="text-[9px] px-1 py-0 rounded-full ml-0.5"
-                style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6' }}>
-            REV
-          </span>
+      {/* Two-zone trigger: label opens dropdown, arrow directly toggles asc/desc */}
+      <div className="flex items-center rounded-full overflow-hidden text-[11px]"
+           style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <button type="button" onMouseDown={() => setOpen(o => !o)}
+                className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 cursor-pointer"
+                style={{ color: 'rgba(255,255,255,0.75)' }}>
+          {selected?.label}
+          {isReversed && value !== 'random' && (
+            <span className="text-[9px] px-1 py-0 rounded-full"
+                  style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6' }}>
+              ↑
+            </span>
+          )}
+        </button>
+        {onSortDirChange && value !== 'random' && (
+          <button
+            type="button"
+            onMouseDown={(e) => { e.stopPropagation(); onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc') }}
+            className="px-2 py-1.5 cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+            style={{ borderLeft: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)' }}
+            title={`${sortDir === 'asc' ? 'Ascending' : 'Descending'} — click to flip`}>
+            <SortIcon size={11} />
+          </button>
         )}
-        <SortIcon size={11} className="text-[rgba(255,255,255,0.3)] ml-1" />
-      </button>
+      </div>
       {open && (
         <div className="absolute top-full right-0 mt-1 rounded-[8px] shadow-2xl overflow-hidden animate-menu-pop min-w-[160px]"
              style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>

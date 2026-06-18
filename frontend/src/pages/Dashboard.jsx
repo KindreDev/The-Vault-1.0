@@ -1,13 +1,15 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Star, Droplets, Clock, Shuffle, Dice6, Target, CheckCircle2, Circle,
   Plus, Images, Eye, User, HardDrive, Video, Trophy, Flame, X, Play,
   BarChart2, Calendar, Tag as TagIcon, Hash, Activity, Zap, Info, PlayCircle, StarHalf,
-  ChevronDown, Heart,
+  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi } from '../lib/api'
+import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
 import { useCountUp } from '../hooks/useCountUp'
@@ -217,10 +219,10 @@ function CreatorHofCard({ creator, onClick, avatarBust }) {
 }
 
 // ── Portrait card ─────────────────────────────────────────────────────────────
-function PortraitCard({ imgSrc, title, sub, onClick, fallbackIcon }) {
+function PortraitCard({ imgSrc, title, sub, onClick, onContextMenu, fallbackIcon }) {
   const [failed, setFailed] = useState(false)
   return (
-    <div onClick={onClick}
+    <div onClick={onClick} onContextMenu={onContextMenu}
          className="rounded-[10px] overflow-hidden cursor-pointer group flex flex-col"
          style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', aspectRatio: '2/3' }}>
       <div className="flex-1 overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -800,22 +802,500 @@ function MoreLikeThis({ refGalleryId, refGalleryName, onNavigate }) {
   )
 }
 
-// ── Main dashboard ────────────────────────────────────────────────────────────
+// ── Daily greeting (shown once per app launch, not per route visit) ──────────
+const GREETINGS = [
+  "Welcome back to the Vault, {name}.",
+  "Good to have you here, {name}.",
+  "The collection awaits, {name}.",
+  "Ready when you are, {name}.",
+  "Good evening, {name}. The Vault is yours.",
+  "You made it, {name}.",
+  "Hey {name}. Something good is waiting.",
+  "The Vault missed you, {name}.",
+  "Settle in, {name}. Let's see what's here.",
+  "Back again, {name}. Good taste.",
+  "Your collection grows, {name}.",
+  "All yours, {name}. Take your time.",
+]
+
+function getOrCreateGreeting(name) {
+  const existing = sessionStorage.getItem('vault_greeting')
+  if (existing) return existing // same greeting all session; new message each app/tab open
+  const display = name || 'Collector'
+  const text = GREETINGS[Math.floor(Math.random() * GREETINGS.length)].replace('{name}', display)
+  sessionStorage.setItem('vault_greeting', text)
+  return text
+}
+
+// ── Scan Folders Modal ────────────────────────────────────────────────────────
+function ScanModal({ onClose }) {
+  const [search, setSearch]       = useState('')
+  const [scanning, setScanning]   = useState(false)
+  const [done, setDone]           = useState(false)
+  const [scanningId, setScanningId] = useState(null) // null = full library
+  const qc = useQueryClient()
+
+  const { data: roots = [] } = useQuery({
+    queryKey: ['library-roots'],
+    queryFn: () => scannerApi.roots().then(r => r.data),
+  })
+
+  const { data: status } = useQuery({
+    queryKey: ['scan-status-modal'],
+    queryFn: () => scannerApi.status().then(r => r.data),
+    refetchInterval: scanning ? 1500 : false,
+  })
+
+  // Watch for scan completion
+  useEffect(() => {
+    if (scanning && status && !status.running) {
+      setScanning(false)
+      setDone(true)
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    }
+  }, [scanning, status, qc])
+
+  const triggerScan = async (rootId = null) => {
+    setDone(false)
+    setScanning(true)
+    setScanningId(rootId)
+    try {
+      await scannerApi.scan(rootId)
+    } catch {
+      setScanning(false)
+      toast.error('Failed to start scan')
+    }
+  }
+
+  const filtered = roots.filter(r =>
+    r.label?.toLowerCase().includes(search.toLowerCase()) ||
+    r.path?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const progressPct = status?.total > 0 ? Math.round((status.scanned / status.total) * 100) : null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+         style={{ background: 'rgba(0,0,0,0.7)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="rounded-[16px] shadow-2xl animate-modal-pop w-[420px]"
+           style={{ background: '#161616', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4"
+             style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center gap-2">
+            <FolderSearch size={16} style={{ color: '#7F77DD' }} />
+            <span style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Scan Folders</span>
+          </div>
+          <button onMouseDown={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4">
+
+          {/* Scan status bar */}
+          {(scanning || done) && (
+            <div className="rounded-[10px] px-4 py-3 flex items-center gap-3"
+                 style={{ background: done ? 'rgba(29,158,117,0.12)' : 'rgba(127,119,221,0.1)', border: `0.5px solid ${done ? 'rgba(29,158,117,0.3)' : 'rgba(127,119,221,0.25)'}` }}>
+              {done
+                ? <Check size={15} style={{ color: '#1D9E75', flexShrink: 0 }} />
+                : <Loader2 size={15} className="animate-spin" style={{ color: '#7F77DD', flexShrink: 0 }} />}
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: 13, color: done ? '#9FE1CB' : '#CECBF6', fontWeight: 500 }}>
+                  {done ? 'Scan complete' : status?.current_file
+                    ? `Scanning — ${status.current_file.split(/[\\/]/).pop()}`
+                    : 'Starting scan…'}
+                </div>
+                {scanning && progressPct !== null && (
+                  <div className="mt-1.5 rounded-full overflow-hidden" style={{ height: 3, background: 'rgba(255,255,255,0.08)' }}>
+                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: '#7F77DD' }} />
+                  </div>
+                )}
+                {scanning && status?.total > 0 && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    {status.scanned} / {status.total} folders
+                  </div>
+                )}
+                {done && status?.new_galleries > 0 && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+                    {status.new_galleries} new {status.new_galleries === 1 ? 'gallery' : 'galleries'} found
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Full library scan */}
+          <button
+            onMouseDown={() => triggerScan(null)}
+            disabled={scanning}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-[10px] cursor-pointer transition-all disabled:opacity-50"
+            style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)', color: '#CECBF6' }}>
+            {scanning && scanningId === null
+              ? <Loader2 size={16} className="animate-spin" style={{ flexShrink: 0 }} />
+              : <Plus size={16} style={{ flexShrink: 0 }} />}
+            <div className="text-left">
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Scan Entire Library</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                {roots.length} root {roots.length === 1 ? 'folder' : 'folders'} configured
+              </div>
+            </div>
+          </button>
+
+          {/* Divider */}
+          {roots.length > 0 && (
+            <>
+              <div className="flex items-center gap-3">
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>or scan one folder</span>
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+              </div>
+
+              {/* Search */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-[8px]"
+                   style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                <FolderSearch size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search folders…"
+                  style={{ background: 'transparent', outline: 'none', fontSize: 14, color: 'rgba(255,255,255,0.8)', width: '100%' }}
+                />
+              </div>
+
+              {/* Root list */}
+              <div className="flex flex-col gap-1.5" style={{ maxHeight: 220, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+                {filtered.map(root => (
+                  <button
+                    key={root.id}
+                    onMouseDown={() => triggerScan(root.id)}
+                    disabled={scanning}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer text-left transition-all disabled:opacity-50"
+                    style={{ background: scanningId === root.id && scanning ? 'rgba(127,119,221,0.12)' : 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}
+                    onMouseEnter={e => { if (!scanning) e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = scanningId === root.id && scanning ? 'rgba(127,119,221,0.12)' : 'rgba(255,255,255,0.03)' }}>
+                    {scanning && scanningId === root.id
+                      ? <Loader2 size={13} className="animate-spin" style={{ color: '#7F77DD', flexShrink: 0 }} />
+                      : <FolderSearch size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />}
+                    <div className="min-w-0 flex-1">
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {root.label || root.path.split(/[\\/]/).pop()}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {root.path}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {filtered.length === 0 && (
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '12px 0' }}>
+                    No folders match
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ── Minimal dashboard right-click context menu ────────────────────────────────
+function DashMenuButton({ icon: Icon, label, onMouseDown }) {
+  return (
+    <button type="button" onMouseDown={onMouseDown}
+      className="w-full text-left cursor-pointer flex items-center gap-2.5 select-none"
+      style={{ padding: '7px 12px', fontSize: 13, color: 'rgba(255,255,255,0.82)', background: 'transparent', transition: 'background 0.08s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      <Icon size={13} style={{ flexShrink: 0, opacity: 0.8 }} />
+      {label}
+    </button>
+  )
+}
+
+function DashboardContextMenu({ item, itemType, position, onClose }) {
+  const menuRef = useRef(null)
+  const navigate = useNavigate()
+  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
+
+  useEffect(() => {
+    const onKey  = (e) => { if (e.key === 'Escape') onClose() }
+    const onDown = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) onClose() }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown) }
+  }, [onClose])
+
+  const x = Math.min(position.x, window.innerWidth  - 188 - 8)
+  const y = Math.min(position.y, window.innerHeight - 100 - 8)
+
+  const handleOpen = () => {
+    if (itemType === 'gallery') navigate(`/galleries/${item.id}`)
+    else navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)
+    onClose()
+  }
+
+  const handleSendToViewer = async () => {
+    onClose()
+    if (itemType === 'gallery') {
+      try {
+        const res = await galleriesApi.images(item.id)
+        const added = addToMultiViewer({ id: `gal-${item.id}`, type: 'gallery', media: item, images: res.data })
+        if (added) toast.success('Gallery added to multi-viewer')
+        else toast('Already in viewer or viewer is full', { icon: '⚠️' })
+      } catch {
+        toast.error('Failed to load gallery images')
+      }
+    } else {
+      const added = addToMultiViewer({ id: `img-${item.id}`, type: 'image', media: item })
+      if (added) toast.success('Added to multi-viewer')
+      else toast('Already in viewer or viewer is full', { icon: '⚠️' })
+    }
+  }
+
+  return createPortal(
+    <div ref={menuRef} style={{
+      position: 'fixed', left: x, top: y, zIndex: 9999, width: 188,
+      background: 'rgba(22,22,26,0.97)', backdropFilter: 'blur(24px)',
+      border: '0.5px solid rgba(255,255,255,0.13)', borderRadius: 10,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.6)', padding: '4px 0',
+    }}>
+      <div style={{ padding: '5px 12px 6px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', marginBottom: 2, fontSize: 11, color: 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {item.name || item.filename || 'Item'}
+      </div>
+      <DashMenuButton icon={Eye}           label="Open"                   onMouseDown={(e) => { e.stopPropagation(); handleOpen() }} />
+      <DashMenuButton icon={LayoutTemplate} label="Send to multi-viewer"  onMouseDown={(e) => { e.stopPropagation(); handleSendToViewer() }} />
+    </div>,
+    document.body
+  )
+}
+
+// ── Gallery hover preview tile ────────────────────────────────────────────────
+function GalleryHoverTile({ gallery, onClick, onContextMenu }) {
+  const [hovered, setHovered]   = useState(false)
+  const [imgs, setImgs]         = useState([])
+  const [mouseX, setMouseX]     = useState(0.5)
+  const fetchedRef              = useRef(false)
+
+  const onMouseEnter = async () => {
+    setHovered(true)
+    if (!fetchedRef.current && gallery?.id) {
+      fetchedRef.current = true
+      try {
+        const r = await imagesApi.list({ gallery_id: gallery.id, limit: 8 })
+        const raw = r.data
+        setImgs((raw?.images ?? (Array.isArray(raw) ? raw : [])).filter(i => !i.is_video).slice(0, 6))
+      } catch {}
+    }
+  }
+
+  const onMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMouseX(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
+  }
+
+  const visCount  = Math.min(imgs.length, 5)
+  const activeIdx = imgs.length > 0 ? Math.min(imgs.length - 1, Math.floor(mouseX * imgs.length)) : 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={() => setHovered(false)}
+      onMouseMove={onMouseMove}
+      className="group rounded-[12px] cursor-pointer text-left relative flex flex-col"
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: '0.5px solid rgba(255,255,255,0.1)',
+        minHeight: 88,
+        overflow: hovered && imgs.length > 0 ? 'visible' : 'hidden',
+        transition: 'border-color 0.15s, background 0.15s',
+      }}
+      onMouseEnterCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
+      onMouseLeaveCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+    >
+      {/* Blurred cover background */}
+      {gallery?.cover_thumb && (
+        <div className="absolute inset-0 transition-opacity duration-300"
+             style={{ opacity: hovered ? 0.08 : 0.18, overflow: 'hidden', borderRadius: 12 }}>
+          <img src={gallery.cover_thumb} className="w-full h-full object-cover" alt="" />
+        </div>
+      )}
+
+      {/* Floating photo fan on hover */}
+      {hovered && imgs.length > 0 && (
+        <div className="absolute pointer-events-none"
+             style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', paddingBottom: 10, zIndex: 50 }}>
+          <div className="relative flex items-end justify-center" style={{ width: 320, height: 200 }}>
+            {imgs.slice(0, visCount).map((img, i) => {
+              const isActive = i === activeIdx % visCount
+              const spread   = (i - (visCount - 1) / 2) * 44
+              const rot      = (i - (visCount - 1) / 2) * 5
+              return (
+                <div key={img.id} style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: '50%',
+                  transform: `translateX(calc(-50% + ${spread}px)) rotate(${rot}deg) translateY(${isActive ? -18 : 0}px)`,
+                  transition: 'transform 0.18s ease, box-shadow 0.18s ease, z-index 0s',
+                  zIndex: isActive ? 10 : visCount - Math.abs(i - activeIdx % visCount),
+                  boxShadow: isActive ? '0 14px 32px rgba(0,0,0,0.8)' : '0 6px 16px rgba(0,0,0,0.6)',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  width: isActive ? 108 : 78,
+                  border: `1px solid ${isActive ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                }}>
+                  <img src={`/api/images/${img.id}/thumb`} alt=""
+                       style={{ width: '100%', display: 'block', aspectRatio: '2/3', objectFit: 'cover' }} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tile content */}
+      <div className="relative p-3 flex flex-col justify-between" style={{ minHeight: 88 }}>
+        <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          Random gallery
+        </div>
+        <div>
+          <div className="text-[15px] font-semibold text-white truncate">{gallery?.name ?? '—'}</div>
+          <div className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            {gallery?.image_count ?? 0} photos{gallery?.creator_name ? ` · ${gallery.creator_name}` : ''}
+          </div>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ── Tabbed random discovery section ──────────────────────────────────────────
+const RAND_TABS = [
+  { key: 'galleries', label: 'Galleries', color: '#7F77DD' },
+  { key: 'photos',    label: 'Photos',    color: '#D4537E' },
+  { key: 'videos',    label: 'Videos',    color: '#7F77DD' },
+  { key: 'creators',  label: 'Creators',  color: '#BA7517' },
+]
+
+function RandomDiscovery({ galleries, images, videos, creators, onContextMenu }) {
+  const [tab, setTab] = useState('galleries')
+  const navigate = useNavigate()
+  const active = RAND_TABS.find(t => t.key === tab)
+
+  const allData = { galleries, photos: images, videos, creators }
+  const items = allData[tab] ?? []
+
+  const browseLinks = { galleries: '/galleries', photos: '/images', videos: '/videos', creators: '/creators' }
+
+  return (
+    <div>
+      {/* Header row with inline tabs */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
+          <Shuffle size={16} style={{ color: active.color }} /> Discover
+        </div>
+        <div className="flex items-center gap-1 ml-1">
+          {RAND_TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+                    className="px-2.5 py-0.5 rounded-full text-[13px] cursor-pointer transition-all"
+                    style={{
+                      background: tab === t.key ? `${t.color}22` : 'transparent',
+                      color: tab === t.key ? t.color : 'rgba(255,255,255,0.3)',
+                      border: `0.5px solid ${tab === t.key ? `${t.color}55` : 'transparent'}`,
+                    }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => navigate(browseLinks[tab])} className="ml-auto text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>
+          browse all
+        </button>
+      </div>
+
+      {/* Card grid */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+        {items.map(item => {
+          if (tab === 'galleries') {
+            return <PortraitCard key={item.id} imgSrc={item.cover_thumb} title={item.name}
+                      sub={`${item.image_count} photos${item.creator_name ? ' · ' + item.creator_name : ''}`}
+                      onClick={() => navigate(`/galleries/${item.id}`)}
+                      onContextMenu={(e) => onContextMenu?.(e, item, 'gallery')} />
+          }
+          if (tab === 'photos') {
+            return <PortraitCard key={item.id} imgSrc={`/api/images/${item.id}/thumb`} title={item.filename}
+                      sub={item.gallery_name} onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)}
+                      onContextMenu={(e) => onContextMenu?.(e, item, 'image')} />
+          }
+          if (tab === 'videos') {
+            return <PortraitCard key={item.id} imgSrc={`/api/images/${item.id}/thumb`} title={item.filename}
+                      sub={item.gallery_name} onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)}
+                      onContextMenu={(e) => onContextMenu?.(e, item, 'video')}
+                      fallbackIcon={<Play size={28} style={{ color: 'rgba(255,255,255,0.1)' }} />} />
+          }
+          // creators — no context menu
+          const tc = TYPE_COLORS[item.creator_type] || TYPE_COLORS.custom
+          const initials = item.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+          return <PortraitCard key={item.id} imgSrc={item.avatar_path ? `/api/creators/${item.id}/avatar` : null}
+                    title={item.title || item.name} sub={item.creator_type}
+                    onClick={() => navigate(`/creators/${item.id}`)}
+                    fallbackIcon={<span className="text-[40px] font-semibold select-none" style={{ color: tc.text, opacity: 0.7 }}>{initials}</span>} />
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── DASHBOARD v2 — June 2026 redesign ─────────────────────────────────────────
+// To revert: git checkout HEAD -- frontend/src/pages/Dashboard.jsx
+// ─────────────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
   const addXpToast       = useVaultStore(s => s.addXpToast)
   const avatarBust       = useVaultStore(s => s.avatarBust)
   const sessionActive    = useVaultStore(s => s.sessionActive)
-  const sessionTotalMs   = useVaultStore(s => s.sessionTotalMs)
+  const sessionStartAt   = useVaultStore(s => s.sessionStartAt)
   const startSession     = useVaultStore(s => s.startSession)
   const endSession       = useVaultStore(s => s.endSession)
   const qc = useQueryClient()
 
+  const profile = useVaultStore(s => s.profile)
+
+  // Live elapsed timer — ticks every second while session is active
+  const [tickNow, setTickNow] = useState(Date.now())
+  useEffect(() => {
+    if (!sessionActive) return
+    const id = setInterval(() => setTickNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [sessionActive])
+  const sessionElapsedMs = sessionActive && sessionStartAt ? tickNow - sessionStartAt : 0
+
+  // Greeting — pick once per app launch (sessionStorage clears on tab close)
+  const [greeting] = useState(() => getOrCreateGreeting(profile?.username || profile?.name))
+
+  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
+
   const [showMission, setShowMission] = useState(false)
   const [showMoreStats, setShowMoreStats] = useState(false)
+  const [showScanModal, setShowScanModal] = useState(false)
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [showSpinModal, setShowSpinModal] = useState(false)
   const [showMixModal, setShowMixModal] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState(null) // { item, itemType, x, y }
+
+  const openCtx = useCallback((e, item, itemType) => {
+    e.preventDefault()
+    setCtxMenu({ item, itemType, position: { x: e.clientX, y: e.clientY } })
+  }, [])
 
   const handleRandomGallery = async () => {
     try {
@@ -858,10 +1338,10 @@ export default function Dashboard() {
   }, [])
 
   const { data: stats, isLoading: statsLoading } = useQuery({ queryKey: ['vault-stats'], queryFn: () => galleriesApi.stats().then(r => r.data) })
-  const { data: favorites }      = useQuery({ queryKey: ['favorites'],        queryFn: () => creatorsApi.favorites().then(r => r.data) })
-  const { data: imageHof }       = useQuery({ queryKey: ['hof',          4],  queryFn: () => galleriesApi.hof(4).then(r => r.data) })
-  const { data: galleryHof }     = useQuery({ queryKey: ['gallery-hof',  4],  queryFn: () => galleriesApi.galleryHof(4).then(r => r.data) })
-  const { data: creatorHof }     = useQuery({ queryKey: ['creator-hof',  4],  queryFn: () => creatorsApi.hof(4).then(r => r.data) })
+  const { data: favorites }      = useQuery({ queryKey: ['favorites',        avatarBust], queryFn: () => creatorsApi.favorites().then(r => r.data) })
+  const { data: imageHof }       = useQuery({ queryKey: ['hof',          4],              queryFn: () => galleriesApi.hof(4).then(r => r.data) })
+  const { data: galleryHof }     = useQuery({ queryKey: ['gallery-hof',  4],              queryFn: () => galleriesApi.galleryHof(4).then(r => r.data) })
+  const { data: creatorHof }     = useQuery({ queryKey: ['creator-hof',  4, avatarBust],  queryFn: () => creatorsApi.hof(4).then(r => r.data) })
   const { data: quests }         = useQuery({ queryKey: ['quests'],           queryFn: () => gamiApi.quests().then(r => r.data) })
   const { data: recent }         = useQuery({ queryKey: ['recent-galleries'], queryFn: () => galleriesApi.recent(6).then(r => r.data) })
   const { data: sesStats }       = useQuery({ queryKey: ['ses-stats'],        queryFn: () => sessionsApi.stats().then(r => r.data) })
@@ -872,6 +1352,7 @@ export default function Dashboard() {
   const { data: topCollections }  = useQuery({ queryKey: ['top-collections'],  queryFn: () => creatorsApi.topByValue(5).then(r => r.data), enabled: collectionsOpen })
   const { data: recentSessions } = useQuery({ queryKey: ['recent-sessions'], queryFn: () => sessionsApi.list({ limit: 8 }).then(r => r.data) })
   const { data: balance }        = useQuery({ queryKey: ['economy-balance'], queryFn: () => economyApi.balance().then(r => r.data) })
+  const { data: epicCards }      = useQuery({ queryKey: ['epic-cards-strip'], queryFn: () => cardsApi.inventory({ sort: 'rarity_desc', limit: 20 }).then(r => (r.data?.items ?? []).filter(c => ['epic','legendary','relic','celestial'].includes(c.rarity))) })
 
   const sessionMutation = useMutation({
     mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
@@ -899,29 +1380,49 @@ export default function Dashboard() {
 
       {/* Top bar */}
       <div className="flex items-center justify-between">
-        <div className="text-[22px] font-medium text-white">Dashboard</div>
-        <div className="flex gap-3">
-          <button onClick={() => setShowMoreStats(true)}
-                  className="flex items-center gap-4 font-medium rounded-full cursor-pointer"
-                  style={{ fontSize: 24, padding: '14px 32px', background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-            <BarChart2 size={28} /> More stats
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="text-[22px] font-medium text-white">Dashboard</div>
+          {(profile?.streak_days ?? 0) > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full"
+                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)' }}>
+              <Flame size={13} style={{ color: '#BA7517' }} />
+              <span className="text-[14px] font-semibold" style={{ color: '#FAC775' }}>
+                Day {profile.streak_days}
+              </span>
+            </div>
+          )}
+          {/* Greeting — shown once per session (fades in slowly) */}
+          {greeting && (
+            <span className="text-[15px]" style={{
+              color: 'rgba(255,255,255,0.35)',
+              animation: 'vault-fade-in 1.8s ease forwards',
+              fontStyle: 'italic',
+            }}>
+              {greeting}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleRandomGallery}
+                  className="flex items-center gap-2 font-medium rounded-full cursor-pointer"
+                  style={{ fontSize: 14, padding: '8px 18px', background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+            <Dice6 size={15} /> Random Gallery
           </button>
-          <button onClick={() => setShowMission(true)}
-                  className="flex items-center gap-4 font-medium rounded-full cursor-pointer"
-                  style={{ fontSize: 24, padding: '14px 32px', background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.4)' }}>
-            <Dice6 size={28} /> Daily Tagging
+          <button onClick={() => setShowMixModal(true)}
+                  className="flex items-center gap-2 font-medium rounded-full cursor-pointer"
+                  style={{ fontSize: 14, padding: '8px 18px', background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+            <Shuffle size={15} /> Random Mix
           </button>
         </div>
       </div>
 
       {/* ── Vault stats strip ──────────────────────────────────────────────── */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
         {statsLoading ? (
-          // Skeleton placeholders while stats load
           Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="rounded-[10px] p-3 flex flex-col gap-2" style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', minHeight: 72 }}>
-              <div className="skeleton" style={{ height: 12, width: '55%' }} />
-              <div className="skeleton" style={{ height: 22, width: '70%' }} />
+            <div key={i} className="rounded-[8px] p-2.5 flex flex-col gap-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', minHeight: 56 }}>
+              <div className="skeleton" style={{ height: 10, width: '55%' }} />
+              <div className="skeleton" style={{ height: 18, width: '70%' }} />
             </div>
           ))
         ) : [
@@ -932,92 +1433,91 @@ export default function Dashboard() {
           { icon: User,      label: 'Creators',         value: (stats?.total_creators  ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
           { icon: HardDrive, label: 'Vault size',       value: `${stats?.total_size_gb ?? 0} GB`,             color: 'rgba(255,255,255,0.9)' },
           { icon: TagIcon,   label: 'Untagged',         value: `${stats?.untagged_files ?? 0}`, subValue: `${stats?.untagged_pct ?? 0}%`, color: '#9FE1CB' },
-          { icon: User,      label: 'Top creator',      value: stats?.top_creator || 'None', color: '#FAC775' },
-        ].map(({ icon: Icon, label, value, subValue, color }) => {
+          { icon: Target,    label: 'Collection value', value: `$${(stats?.collection_value ?? 0).toLocaleString()}`, color: '#1D9E75', onClick: () => setCollectionsOpen(v => !v) },
+        ].map(({ icon: Icon, label, value, subValue, color, onClick }) => {
           const valStr = String(value || '');
-          const isLong = valStr.length > 7 || label === 'Top creator';
+          const isLong = valStr.length > 7;
           return (
-            <div key={label} className="rounded-[10px] p-3 flex flex-col justify-center relative overflow-hidden"
+            <div key={label}
+                 onClick={onClick}
+                 className="rounded-[8px] p-2.5 flex flex-col justify-center relative overflow-hidden"
                  style={{
                    background: 'rgba(255,255,255,0.04)',
-                   border: '0.5px solid rgba(255,255,255,0.08)',
+                   border: `0.5px solid ${onClick && collectionsOpen ? 'rgba(29,158,117,0.4)' : 'rgba(255,255,255,0.08)'}`,
                    gridColumn: isLong ? 'span 2' : 'auto',
+                   cursor: onClick ? 'pointer' : 'default',
                  }}>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Icon size={13} style={{ color: 'rgba(255,255,255,0.25)' }} />
-                <span className="text-[14px] text-[rgba(255,255,255,0.4)] truncate">{label}</span>
+              <div className="flex items-center gap-1 mb-1">
+                <Icon size={11} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                <span className="text-[12px] text-[rgba(255,255,255,0.35)] truncate">{label}</span>
               </div>
-              <div className="text-[22px] font-medium leading-none truncate">
+              <div className="text-[18px] font-medium leading-none truncate">
                 <AnimatedStatValue value={value} color={color} />
               </div>
-              {subValue && <div className="absolute right-2 bottom-1.5 text-[15px] font-bold" style={{ color }}>{subValue}</div>}
+              {subValue && <div className="absolute right-2 bottom-1.5 text-[13px] font-bold" style={{ color }}>{subValue}</div>}
             </div>
           )
         })}
 
-        {/* ── Collection value — expandable ──────────────────────── */}
-        {(() => {
-          const colValStr = String((stats?.collection_value ?? 0).toLocaleString());
-          const isLong = colValStr.length > 6;
-          return (
-            <div
-              onClick={() => setCollectionsOpen(v => !v)}
-              className="rounded-[10px] p-3 flex flex-col justify-center relative overflow-hidden cursor-pointer transition-all duration-150"
-              style={{
-                background: collectionsOpen ? 'rgba(29,158,117,0.1)' : 'rgba(255,255,255,0.04)',
-                border: collectionsOpen ? '0.5px solid rgba(29,158,117,0.35)' : '0.5px solid rgba(255,255,255,0.08)',
-                gridColumn: isLong ? 'span 2' : 'auto',
-              }}>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Target size={13} style={{ color: 'rgba(255,255,255,0.25)' }} />
-                <span className="text-[14px] text-[rgba(255,255,255,0.4)] truncate flex-1">Collection value</span>
-                <ChevronDown size={11} style={{ color: '#1D9E75', flexShrink: 0, transition: 'transform 0.2s', transform: collectionsOpen ? 'rotate(180deg)' : 'none' }} />
-              </div>
-              <div className="text-[22px] font-medium leading-none truncate" style={{ color: '#1D9E75' }}>
-                ${(stats?.collection_value ?? 0).toLocaleString()}
-              </div>
-              <div className="text-[13px] mt-1" style={{ color: 'rgba(29,158,117,0.6)' }}>top creators ▾</div>
-            </div>
-          )
-        })()}
+        {/* ── More Stats button tile ─────────────────────────────── */}
+        <button
+          onClick={() => setShowMoreStats(true)}
+          className="rounded-[8px] p-2.5 flex flex-col justify-center cursor-pointer transition-all duration-150"
+          style={{ background: 'rgba(127,119,221,0.07)', border: '0.5px solid rgba(127,119,221,0.2)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.14)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.4)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.07)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.2)' }}
+        >
+          <div className="flex items-center gap-1 mb-1">
+            <BarChart2 size={11} style={{ color: 'rgba(127,119,221,0.5)' }} />
+            <span className="text-[12px] truncate" style={{ color: 'rgba(127,119,221,0.6)' }}>Stats</span>
+          </div>
+          <div className="text-[14px] font-medium" style={{ color: '#CECBF6' }}>More →</div>
+        </button>
       </div>
 
       {/* ── Top collections dropdown ───────────────────────────────────────── */}
-      <div style={{
-        maxHeight: collectionsOpen ? 400 : 0,
-        overflow: 'hidden',
-        transition: 'max-height 0.3s cubic-bezier(0.4,0,0.2,1)',
-      }}>
-        <div className="rounded-[12px] p-4" style={{
-          maxWidth: 440,
-          background: 'rgba(29,158,117,0.07)',
-          border: '0.5px solid rgba(29,158,117,0.25)',
-        }}>
-          <div className="text-[15px] font-semibold text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-3">
-            Top creators by collection value
-          </div>
-          {!topCollections ? (
-            <div className="text-[17px] text-[rgba(255,255,255,0.2)]">Loading…</div>
-          ) : topCollections.length === 0 ? (
-            <div className="text-[17px] text-[rgba(255,255,255,0.2)]">No values set yet — add purchase prices to galleries</div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {topCollections.map((c, i) => (
-                <div key={c.id}
-                     onClick={() => navigate(`/creators/${c.id}`)}
-                     className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer"
-                     style={{ background: 'rgba(255,255,255,0.03)' }}
-                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(29,158,117,0.1)'}
-                     onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-                  <span className="text-[16px] font-bold w-6 flex-shrink-0" style={{ color: 'rgba(29,158,117,0.5)' }}>#{i + 1}</span>
-                  <span className="flex-1 text-[18px] font-medium text-[rgba(255,255,255,0.85)] truncate">{c.name}</span>
-                  <span className="text-[19px] font-semibold flex-shrink-0" style={{ color: '#1D9E75' }}>${c.collection_value.toLocaleString()}</span>
+      <AnimatePresence initial={false}>
+        {collectionsOpen && (
+          <motion.div
+            key="collections-drop"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="rounded-[12px] p-4" style={{
+              maxWidth: 440,
+              background: 'rgba(29,158,117,0.07)',
+              border: '0.5px solid rgba(29,158,117,0.25)',
+            }}>
+              <div className="text-[15px] font-semibold text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-3">
+                Top creators by collection value
+              </div>
+              {!topCollections ? (
+                <div className="text-[17px] text-[rgba(255,255,255,0.2)]">Loading…</div>
+              ) : topCollections.length === 0 ? (
+                <div className="text-[17px] text-[rgba(255,255,255,0.2)]">No values set yet — add purchase prices to galleries</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {topCollections.map((c, i) => (
+                    <div key={c.id}
+                         onClick={() => navigate(`/creators/${c.id}`)}
+                         className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer"
+                         style={{ background: 'rgba(255,255,255,0.03)' }}
+                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(29,158,117,0.1)'}
+                         onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+                      <span className="text-[16px] font-bold w-6 flex-shrink-0" style={{ color: 'rgba(29,158,117,0.5)' }}>#{i + 1}</span>
+                      <span className="flex-1 text-[18px] font-medium text-[rgba(255,255,255,0.85)] truncate">{c.name}</span>
+                      <span className="text-[19px] font-semibold flex-shrink-0" style={{ color: '#1D9E75' }}>${c.collection_value.toLocaleString()}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── 2-column layout ─────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 284px', gap: 24, alignItems: 'start' }}>
@@ -1037,6 +1537,95 @@ export default function Dashboard() {
                       className="flex-shrink-0 ml-4 text-[16px] font-medium px-4 py-2 rounded-full cursor-pointer"
                       style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
                 Go to Settings →
+              </button>
+            </div>
+          )}
+
+          {/* ── Hero action tiles ─────────────────────────────────────────────── */}
+          {(stats?.total_galleries ?? 0) > 0 && (randomGalleries ?? []).length > 0 && (
+            <div className="grid gap-3" style={{ gridTemplateColumns: '1.2fr 1fr 1fr' }}>
+              {/* Random gallery with hover photo preview */}
+              <GalleryHoverTile
+                gallery={randomGalleries[0]}
+                onClick={() => navigate(`/galleries/${randomGalleries[0].id}`)}
+                onContextMenu={(e) => openCtx(e, randomGalleries[0], 'gallery')}
+              />
+
+              {/* TCG shortcut — strip of epic+ cards */}
+              <button onClick={() => navigate('/collection')}
+                      className="rounded-[12px] cursor-pointer text-left flex flex-col p-3 group"
+                      style={{ minHeight: 120, background: 'rgba(127,119,221,0.07)', border: '0.5px solid rgba(127,119,221,0.2)', transition: 'background 0.15s, border-color 0.15s', gap: 8 }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.13)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.45)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.07)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.2)' }}>
+                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(127,119,221,0.6)' }}>Card Collection</div>
+                {(epicCards ?? []).length > 0 ? (
+                  <div className="flex items-end justify-center flex-1" style={{ gap: 0 }}>
+                    {epicCards.slice(0, 5).map((c, i, arr) => {
+                      const rc = { epic: '#7F77DD', legendary: '#BA7517', relic: '#E24B4A', celestial: '#FAC775' }[c.rarity] ?? '#7F77DD'
+                      const isCenter = i === Math.floor(arr.slice(0, 5).length / 2)
+                      return (
+                        <div key={c.inventory_id} style={{
+                          width: isCenter ? 58 : 46,
+                          height: isCenter ? 86 : 68,
+                          borderRadius: 7,
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          border: `2px solid ${rc}`,
+                          boxShadow: `0 0 16px ${rc}77, 0 4px 12px rgba(0,0,0,0.6)`,
+                          marginLeft: i === 0 ? 0 : -12,
+                          zIndex: isCenter ? 10 : 5 - Math.abs(i - Math.floor(arr.slice(0, 5).length / 2)),
+                          background: '#111',
+                          transition: 'transform 0.15s',
+                        }}>
+                          {c.thumb_url
+                            ? <img src={c.thumb_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <div style={{ width: '100%', height: '100%', background: `${rc}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontSize: 11, color: rc, fontWeight: 800 }}>{c.rarity?.[0]?.toUpperCase()}</span>
+                              </div>
+                          }
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <span style={{ fontSize: 13, color: 'rgba(127,119,221,0.35)' }}>No epic+ cards yet</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 12, color: 'rgba(127,119,221,0.5)' }}>
+                  {(epicCards ?? []).length > 0 ? `${epicCards.length} epic+ owned →` : 'Open packs →'}
+                </div>
+              </button>
+
+              {/* Session start/stop — elapsed time from sessionStartAt, not accumulated total */}
+              <button onClick={handleSessionBtn}
+                      className="rounded-[12px] cursor-pointer text-left flex flex-col justify-between p-3"
+                      style={{
+                        minHeight: 88,
+                        transition: 'background 0.15s, border-color 0.15s',
+                        ...(sessionActive
+                          ? { background: 'rgba(212,83,126,0.18)', border: '0.5px solid rgba(212,83,126,0.45)' }
+                          : { background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.2)' })
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = sessionActive ? 'rgba(212,83,126,0.28)' : 'rgba(212,83,126,0.14)'
+                        e.currentTarget.style.borderColor = 'rgba(212,83,126,0.5)'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = sessionActive ? 'rgba(212,83,126,0.18)' : 'rgba(212,83,126,0.08)'
+                        e.currentTarget.style.borderColor = sessionActive ? 'rgba(212,83,126,0.45)' : 'rgba(212,83,126,0.2)'
+                      }}>
+                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(212,83,126,0.7)' }}>
+                  {sessionActive ? 'Session active' : 'Session'}
+                </div>
+                <div>
+                  <div className="text-[15px] font-semibold" style={{ color: '#ED93B1' }}>
+                    {sessionActive ? `⏹ End — ${fmtMs(sessionElapsedMs)}` : '▶ Start session'}
+                  </div>
+                  <div className="text-[12px] mt-0.5" style={{ color: 'rgba(212,83,126,0.5)' }}>
+                    {sessionActive ? 'Log when you finish' : '+25 XP when you finish'}
+                  </div>
+                </div>
               </button>
             </div>
           )}
@@ -1078,197 +1667,56 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── Creator Hall of Fame ───────────────────────────────────────────── */}
-          {(creatorHof ?? []).length > 0 && (
-            <HofSection
-              title="Creator Hall of Fame"
-              icon={Trophy}
-              iconColor="#BA7517"
-              items={creatorHof}
-              cardMinWidth={260}
-              emptyMsg="Log sessions to build your creator hall of fame"
-              onSeeAll={() => navigate('/hall-of-fame')}
-              renderCard={(c) => (
-                <CreatorHofCard key={c.id} creator={c} avatarBust={avatarBust} onClick={() => navigate(`/creators/${c.id}`)} />
-              )}
+          {/* ── Tabbed random discovery ────────────────────────────────────────── */}
+          {((randomGalleries?.length ?? 0) + (randomImages?.length ?? 0) + (randomVideos?.length ?? 0) + (randomCreators?.length ?? 0)) > 0 && (
+            <RandomDiscovery
+              galleries={randomGalleries}
+              images={randomImages}
+              videos={randomVideos}
+              creators={randomCreators}
+              onContextMenu={openCtx}
             />
           )}
 
-          {/* ── Photo Hall of Fame ─────────────────────────────────────────────── */}
-          <RevealSection>
-            <HofSection
-              title="Photo Hall of Fame"
-              icon={Droplets}
-              iconColor="#D4537E"
-              items={imageHof}
-              emptyMsg="Log sessions on images to build your image hall of fame"
-              onSeeAll={() => navigate('/hall-of-fame')}
-              renderCard={(item) => (
-                <ImageHofCard key={item.id} item={item}
-                              onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)} />
-              )}
-            />
-          </RevealSection>
+          {/* ── Recently added ────────────────────────────────────────────────── */}
+          {(recent ?? []).length > 0 && (
+            <RevealSection>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
+                    <Clock size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /> Recently added
+                  </div>
+                  <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>view all</button>
+                </div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                  {recent.map(g => (
+                    <PortraitCard key={g.id} imgSrc={g.cover_thumb} title={g.name}
+                      sub={`${g.image_count} photos${g.creator_name ? ' · ' + g.creator_name : ''}`}
+                      onClick={() => navigate(`/galleries/${g.id}`)}
+                      onContextMenu={(e) => openCtx(e, g, 'gallery')} />
+                  ))}
+                </div>
+              </div>
+            </RevealSection>
+          )}
 
-          {/* ── Gallery Hall of Fame ───────────────────────────────────────────── */}
-          {(galleryHof ?? []).length > 0 && (
-            <RevealSection delay={60}>
+          {/* ── Creator Hall of Fame ───────────────────────────────────────────── */}
+          {(creatorHof ?? []).length > 0 && (
+            <RevealSection delay={40}>
               <HofSection
-                title="Gallery Hall of Fame"
-                icon={Images}
-                iconColor="#7F77DD"
-                items={galleryHof}
-                emptyMsg="Log sessions on galleries to build your gallery hall of fame"
+                title="Creator Hall of Fame"
+                icon={Trophy}
+                iconColor="#BA7517"
+                items={creatorHof}
+                cardMinWidth={260}
+                emptyMsg="Log sessions to build your creator hall of fame"
                 onSeeAll={() => navigate('/hall-of-fame')}
-                renderCard={(g) => (
-                  <GalleryHofCard key={g.id} gallery={g} onClick={() => navigate(`/galleries/${g.id}`)} />
+                renderCard={(c) => (
+                  <CreatorHofCard key={c.id} creator={c} avatarBust={avatarBust} onClick={() => navigate(`/creators/${c.id}`)} />
                 )}
               />
             </RevealSection>
           )}
-
-          {/* ── More Like This ────────────────────────────────────────────────── */}
-          {(galleryHof ?? []).length > 0 && (
-            <RevealSection delay={80}>
-              <MoreLikeThis
-                refGalleryId={galleryHof[0].id}
-                refGalleryName={galleryHof[0].name}
-                onNavigate={() => navigate('/galleries')}
-              />
-            </RevealSection>
-          )}
-
-          {/* ── Random content (full width — daily quests moved to floating panel) ── */}
-          <div className="flex flex-col gap-6">
-            {(randomGalleries ?? []).length > 0 && (
-              <RevealSection><div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                    <Shuffle size={16} style={{ color: '#7F77DD' }} /> Random galleries
-                  </div>
-                  <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>browse all</button>
-                </div>
-                <div key={randomGalleries ? 1 : 0} className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {randomGalleries.map(g => (
-                    <PortraitCard key={g.id}
-                      imgSrc={g.cover_thumb}
-                      title={g.name}
-                      sub={`${g.image_count} photos${g.creator_name ? ' · ' + g.creator_name : ''}`}
-                      onClick={() => navigate(`/galleries/${g.id}`)} />
-                  ))}
-                </div>
-              </div></RevealSection>
-            )}
-
-            {(randomImages ?? []).length > 0 && (
-              <RevealSection delay={40}><div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                    <Eye size={16} style={{ color: '#D4537E' }} /> Random Photos
-                  </div>
-                  <button onClick={() => navigate('/images')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>browse all</button>
-                </div>
-                <div key={randomImages ? 1 : 0} className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {randomImages.map(img => (
-                    <PortraitCard key={img.id}
-                      imgSrc={`/api/images/${img.id}/thumb`}
-                      title={img.filename}
-                      sub={img.gallery_name}
-                      onClick={() => navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)} />
-                  ))}
-                </div>
-              </div></RevealSection>
-            )}
-
-            {(randomVideos ?? []).length > 0 && (
-              <RevealSection delay={40}><div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                    <Play size={16} style={{ color: '#7F77DD' }} /> Random videos
-                  </div>
-                  <button onClick={() => navigate('/videos')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>browse all</button>
-                </div>
-                <div key={randomVideos ? 1 : 0} className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {randomVideos.map(vid => (
-                    <PortraitCard key={vid.id}
-                      imgSrc={`/api/images/${vid.id}/thumb`}
-                      title={vid.filename}
-                      sub={vid.gallery_name}
-                      onClick={() => navigate(`/galleries/${vid.gallery_id}?openImage=${vid.id}`)}
-                      fallbackIcon={<Play size={28} style={{ color: 'rgba(255,255,255,0.1)' }} />} />
-                  ))}
-                </div>
-              </div></RevealSection>
-            )}
-
-            {(randomCreators ?? []).length > 0 && (
-              <RevealSection delay={40}><div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                    <User size={16} style={{ color: '#BA7517' }} /> Discover creators
-                  </div>
-                  <button onClick={() => navigate('/creators')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>view all</button>
-                </div>
-                <div key={randomCreators ? 1 : 0} className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {randomCreators.map(c => {
-                    const tc = TYPE_COLORS[c.creator_type] || TYPE_COLORS.custom
-                    const initials = c.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-                    return (
-                      <PortraitCard key={c.id}
-                        imgSrc={c.avatar_path ? `/api/creators/${c.id}/avatar` : null}
-                        title={c.title || c.name}
-                        sub={c.creator_type}
-                        onClick={() => navigate(`/creators/${c.id}`)}
-                        fallbackIcon={
-                          <span className="text-[40px] font-semibold select-none" style={{ color: tc.text, opacity: 0.7 }}>{initials}</span>
-                        } />
-                    )
-                  })}
-                </div>
-              </div></RevealSection>
-            )}
-          </div>
-
-          {/* Recently added */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                <Clock size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /> Recently added
-              </div>
-              <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>view all</button>
-            </div>
-            {(recent ?? []).length === 0
-              ? <div className="rounded-[10px] p-6 text-center text-[16px] text-[rgba(255,255,255,0.2)]"
-                     style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  No galleries yet — scan your library in Settings
-                </div>
-              : <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {recent.map(g => (
-                    <PortraitCard key={g.id}
-                      imgSrc={g.cover_thumb}
-                      title={g.name}
-                      sub={`${g.image_count} photos${g.creator_name ? ' · ' + g.creator_name : ''}`}
-                      onClick={() => navigate(`/galleries/${g.id}`)} />
-                  ))}
-                </div>
-            }
-          </div>
-
-          {/* Surprise me */}
-          <div className="rounded-[10px] p-4 flex items-center justify-between"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div>
-              <div className="text-[17px] font-medium text-[rgba(255,255,255,0.7)] mb-1 flex items-center gap-2">
-                <Shuffle size={16} style={{ color: '#BA7517' }} /> Surprise me
-              </div>
-              <div className="text-[15px] text-[rgba(255,255,255,0.3)]">Open a random gallery from your vault</div>
-            </div>
-            <button onClick={() => galleriesApi.random().then(r => navigate(`/galleries/${r.data.id}`))}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full text-[16px] font-medium cursor-pointer flex-shrink-0"
-                    style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              <Shuffle size={15} /> Random gallery
-            </button>
-          </div>
 
         </div>
 
@@ -1276,26 +1724,96 @@ export default function Dashboard() {
         <div className="flex flex-col gap-4"
              style={{ position: 'sticky', top: 20, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', scrollbarWidth: 'none' }}>
 
-          {/* ── Discover ─────────────────────────────────────── */}
+          {/* ── Tools ────────────────────────────────────────── */}
           <div className="rounded-[12px] p-4"
                style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-              <Dice6 size={14} style={{ color: '#BA7517' }} /> Discover
+              <Zap size={14} style={{ color: '#7F77DD' }} /> Tools
             </div>
             <div className="flex flex-col gap-2">
-              <button onClick={handleRandomGallery}
+              <button onClick={() => setShowScanModal(true)}
+                      className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
+                      style={{ background: 'rgba(29,158,117,0.12)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.25)', fontSize: 15, fontWeight: 500 }}>
+                <Plus size={15} /> Scan Folders
+              </button>
+              <button onClick={() => setShowMission(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
                       style={{ background: 'rgba(186,117,23,0.12)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.25)', fontSize: 15, fontWeight: 500 }}>
-                <Dice6 size={15} /> Random Gallery
-              </button>
-              <button onClick={() => setShowMixModal(true)}
-                      className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
-                      style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)', fontSize: 15, fontWeight: 500 }}>
-                <Shuffle size={15} /> Random Mix
+                <Dice6 size={15} /> Daily Tagging
               </button>
             </div>
           </div>
+
+          {/* ── Daily Quests ─────────────────────────────────── */}
+          {(quests ?? []).filter(q => q.quest_type === 'daily' && q.status !== 'completed').length > 0 && (
+            <div className="rounded-[12px] p-4"
+                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
+                     style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
+                  <Calendar size={14} style={{ color: '#BA7517' }} /> Daily Quests
+                </div>
+                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: '#7F77DD', cursor: 'pointer' }}>all →</button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {quests.filter(q => q.quest_type === 'daily' && q.status !== 'completed').map(q => {
+                  const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0
+                  return (
+                    <div key={q.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                          {q.title || q.key}
+                        </span>
+                        <span style={{ fontSize: 14, color: '#BA7517', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#1D9E75' : '#BA7517', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                        </div>
+                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Weekly Quests ─────────────────────────────────── */}
+          {(quests ?? []).filter(q => q.quest_type === 'weekly' && q.status !== 'completed').length > 0 && (
+            <div className="rounded-[12px] p-4"
+                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
+                     style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
+                  <Target size={14} style={{ color: '#7F77DD' }} /> Weekly Quests
+                </div>
+                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: '#7F77DD', cursor: 'pointer' }}>all →</button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {quests.filter(q => q.quest_type === 'weekly' && q.status !== 'completed').map(q => {
+                  const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0
+                  return (
+                    <div key={q.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                          {q.title || q.key}
+                        </span>
+                        <span style={{ fontSize: 14, color: '#7F77DD', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#1D9E75' : '#7F77DD', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                        </div>
+                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ── Trending Tags ────────────────────────────────── */}
           <TrendingTagsWidget onTagClick={(tag) => navigate(`/galleries?tag=${encodeURIComponent(tag)}`)} />
@@ -1451,8 +1969,17 @@ export default function Dashboard() {
         />
       )}
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
+      {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}
       {showSpinModal && <SpinModal onClose={() => setShowSpinModal(false)} />}
       {showMixModal && <RandomMixModal onClose={() => setShowMixModal(false)} />}
+      {ctxMenu && (
+        <DashboardContextMenu
+          item={ctxMenu.item}
+          itemType={ctxMenu.itemType}
+          position={ctxMenu.position}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
 
     </div>
   )

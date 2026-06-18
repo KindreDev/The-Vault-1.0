@@ -7,9 +7,10 @@ import {
   ChevronDown, ExternalLink, Tag, Play, Pause,
   ChevronsLeft, ChevronsRight, LayoutGrid, Star,
   CheckSquare, Square, UserPlus, Check, Trash2, LayoutTemplate, GripHorizontal,
-  FolderOpen, Zap,
+  FolderOpen, Zap, FolderOutput,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
+import ImageContextMenu from '../components/ImageContextMenu'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
@@ -17,6 +18,7 @@ import TagFilterInput from '../components/TagFilterInput'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import DeviceControls from '../components/DeviceControls'
 import { SortDropdown } from '../components/SortDropdown'
+import FranchiseFilter from '../components/FranchiseFilter'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -24,19 +26,20 @@ const TYPE_COLORS = {
 }
 
 const SORTS = [
-  { value: 'filename',   label: 'Filename' },
-  { value: 'date_added', label: 'Date Added' },
-  { value: 'view_count', label: 'Most Viewed' },
-  { value: 'cum_count',  label: 'Most Cummed' },
-  { value: 'rating',     label: 'Rating' },
-  { value: 'file_size',  label: 'File Size' },
-  { value: 'random',     label: 'Random' },
+  { value: 'filename',      label: 'Filename' },
+  { value: 'date_added',    label: 'Date Added' },
+  { value: 'date_modified', label: 'Date Modified' },
+  { value: 'view_count',    label: 'Most Viewed' },
+  { value: 'cum_count',     label: 'Most Cummed' },
+  { value: 'rating',        label: 'Rating' },
+  { value: 'file_size',     label: 'File Size' },
+  { value: 'random',        label: 'Random' },
 ]
 
 const SLIDESHOW_SPEEDS = [3, 5, 8, 12]
 
 // ── Thumbnail ──────────────────────────────────────────────────────────────────
-function ImageThumb({ image, onClick, bulkMode, selected, onSelect, masonry = false }) {
+function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMenu, masonry = false }) {
   const [failed, setFailed] = useState(false)
   const [hoverVideo, setHoverVideo] = useState(false)
   const videoRef = useRef(null)
@@ -99,6 +102,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, masonry = fa
     <div onClick={bulkMode ? () => onSelect(image.id) : onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
       className="relative rounded-[8px] overflow-hidden cursor-pointer group animate-fade-in"
       style={{
         background: 'rgba(255,255,255,0.04)',
@@ -253,8 +257,19 @@ function ImageViewer({ images, startIdx, onClose }) {
 
   // Fullscreen management
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) { viewerRef.current?.requestFullscreen() }
-    else { document.exitFullscreen() }
+    if (window.pywebview?.api) {
+      const next = !isFullscreenRef.current
+      window.pywebview.api.toggle_fullscreen()
+      isFullscreenRef.current = next
+      setIsFullscreen(next)
+      clearTimeout(filmstripTimer.current)
+      if (next) setShowFilmstrip(false)
+      else setShowFilmstrip(true)
+    } else if (!document.fullscreenElement) {
+      viewerRef.current?.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
   }, [])
   useEffect(() => {
     const h = () => {
@@ -287,7 +302,16 @@ function ImageViewer({ images, startIdx, onClose }) {
   // Keyboard nav
   useEffect(() => {
     const h = (e) => {
-      if (e.key === 'Escape') { if (zoom > 1) resetZoom(); else onClose(); return }
+      if (e.key === 'Escape') {
+        if (window.pywebview?.api && isFullscreenRef.current) {
+          window.pywebview.api.toggle_fullscreen()
+          isFullscreenRef.current = false
+          setIsFullscreen(false)
+          setShowFilmstrip(true)
+        }
+        if (zoom > 1) resetZoom(); else onClose()
+        return
+      }
       if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1))
       if (e.key === 'ArrowRight') setIdx(i => Math.min(images.length - 1, i + 1))
       if (e.key === ' ') { e.preventDefault(); setSlideshowActive(a => !a) }
@@ -361,7 +385,7 @@ function ImageViewer({ images, startIdx, onClose }) {
             onMouseDown={() => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) }}
             className="cursor-pointer p-1 rounded transition-colors"
             style={{ color: isFavorite ? '#EF9F27' : 'rgba(255,255,255,0.3)' }}
-            title={isFavorite ? 'Remove favorite' : 'Favorite (5★)'}>
+            title={isFavorite ? 'Remove favorite' : 'Favorite'}>
             <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
           </button>
 
@@ -627,10 +651,10 @@ function ImageViewer({ images, startIdx, onClose }) {
         {/* Rating */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
           <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Rating</div>
-          <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map(s => (
+          <div className="flex gap-0.5">
+            {[1,2,3,4,5,6,7,8,9,10].map(s => (
               <button key={s} type="button" onMouseDown={() => { setRating(s); rateMutation.mutate(s) }}
-                className="text-[26px] cursor-pointer leading-none"
+                className="text-[20px] cursor-pointer leading-none"
                 style={{ color: s <= rating ? '#EF9F27' : 'rgba(255,255,255,0.1)' }}>★</button>
             ))}
           </div>
@@ -770,7 +794,7 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
 
   const { data: creators } = useQuery({
     queryKey: ['creators-mini'],
-    queryFn: () => creatorsApi.list({ limit: 200 }).then(r => r.data),
+    queryFn: () => creatorsApi.list({ limit: 5000 }).then(r => r.data),
   })
 
   const filtered = (creators || []).filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
@@ -829,11 +853,134 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
 }
 
 // ── Bulk action panel ─────────────────────────────────────────────────────────
+// ── Extract-to-new-gallery modal ───────────────────────────────────────────────
+function ExtractModal({ selectedImages, onClose, onExtracted }) {
+  const sourceGalleryId = selectedImages[0]?.gallery_id
+  const [folderName, setFolderName] = useState('')
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+
+  const { data: srcGallery, isLoading: loadingSrc } = useQuery({
+    queryKey: ['gallery', String(sourceGalleryId)],
+    queryFn:  () => galleriesApi.get(sourceGalleryId).then(r => r.data),
+    enabled:  !!sourceGalleryId,
+    staleTime: 60_000,
+  })
+
+  const noFolder = srcGallery && (!srcGallery.folder_path || srcGallery.folder_path.startsWith('__manual__'))
+
+  const extractMutation = useMutation({
+    mutationFn: () => galleriesApi.extract(
+      sourceGalleryId,
+      selectedImages.map(i => i.id),
+      folderName.trim(),
+    ),
+    onSuccess: (res) => {
+      const g = res.data
+      const errs = g.errors?.length ?? 0
+      if (errs > 0) toast.error(`Extracted with ${errs} file error(s)`)
+      else toast.success(`${g.moved} images → "${g.name}"`)
+      qc.invalidateQueries({ queryKey: ['images-list'] })
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      onExtracted(g)
+      navigate(`/galleries/${g.id}`)
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || 'Extract failed'),
+  })
+
+  const parentLabel = srcGallery?.folder_path
+    ? srcGallery.folder_path.split(/[\\/]/).filter(Boolean).slice(0, -1).join(' › ') || '(root)'
+    : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+         style={{ background: 'rgba(0,0,0,0.75)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="rounded-[14px] p-5 w-[420px] animate-modal-pop shadow-2xl flex flex-col gap-4"
+           style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+
+        {/* Header */}
+        <div>
+          <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2 mb-1">
+            <FolderOutput size={14} style={{ color: '#7F77DD' }} />
+            Extract to new gallery
+          </div>
+          <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} will be moved out of
+            {' '}<span style={{ color: 'rgba(255,255,255,0.7)' }}>{srcGallery?.name ?? '…'}</span>
+          </div>
+        </div>
+
+        {noFolder ? (
+          <div className="px-3 py-3 rounded-[8px] text-[13px]"
+               style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', color: '#F4C0D1' }}>
+            This gallery has no real folder on disk. Extract requires a scanned gallery.
+          </div>
+        ) : (
+          <>
+            {/* Folder name input */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                New folder / gallery name
+              </label>
+              <input
+                autoFocus
+                value={folderName}
+                onChange={e => setFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && folderName.trim()) extractMutation.mutate()
+                  if (e.key === 'Escape') onClose()
+                }}
+                placeholder="e.g. Widowmaker NSFW"
+                className="w-full px-3 py-2 rounded-[8px] text-[14px] font-mono outline-none"
+                style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.15)' }}
+              />
+              {parentLabel && (
+                <div className="text-[11px] truncate" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  Will create: {parentLabel} › <span style={{ color: 'rgba(255,255,255,0.5)' }}>{folderName || '…'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Info strip */}
+            <div className="px-3 py-2 rounded-[8px] text-[12px]"
+                 style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+              Files are physically moved on disk. Creator associations are copied
+              from the source gallery. You'll be taken to the new gallery.
+            </div>
+          </>
+        )}
+
+        {/* Buttons */}
+        <div className="flex gap-2 justify-end">
+          <button type="button" onMouseDown={onClose}
+                  className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
+            Cancel
+          </button>
+          {!noFolder && (
+            <button type="button"
+                    onMouseDown={() => extractMutation.mutate()}
+                    disabled={!folderName.trim() || extractMutation.isPending || loadingSrc}
+                    className="px-4 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                    style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+              <FolderOutput size={12} />
+              {extractMutation.isPending ? 'Extracting…' : 'Extract'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function BulkActionPanel({ selectedImages, onDone, onCancel }) {
   const [creatorId, setCreatorId] = useState(null)
   const [tagInput, setTagInput] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   const [working, setWorking] = useState(false)
+  const [showExtract, setShowExtract] = useState(false)
   const qc = useQueryClient()
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
@@ -954,10 +1101,35 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
         </button>
       )}
 
+      {/* Extract — only when all selected images share the same source gallery */}
+      {(() => {
+        const galleryIds = new Set(selectedImages.map(i => i.gallery_id).filter(Boolean))
+        if (galleryIds.size !== 1) return null
+        return (
+          <>
+            <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
+            <button type="button" onMouseDown={() => setShowExtract(true)} disabled={working}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+              style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}
+              title="Move selected images to a brand-new gallery folder">
+              <FolderOutput size={12} /> Extract to gallery
+            </button>
+          </>
+        )
+      })()}
+
       <button type="button" onMouseDown={onCancel} disabled={working}
         className="text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer ml-auto disabled:opacity-40">
         <X size={14} />
       </button>
+
+      {showExtract && (
+        <ExtractModal
+          selectedImages={selectedImages}
+          onClose={() => setShowExtract(false)}
+          onExtracted={() => { setShowExtract(false); onDone() }}
+        />
+      )}
     </div>
   )
 }
@@ -969,10 +1141,12 @@ export default function ImageList({ onlyVideos = false }) {
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('date_added')
+  const [sortDir, setSortDir] = useState('desc')
   const [randomSeed, setRandomSeed] = useState(0)
   const [creatorId, setCreatorId] = useState(null)
   const [creatorType, setCreatorType] = useState('')
   const [favOnly, setFavOnly] = useState(false)
+  const [franchise, setFranchise] = useState('')
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
   const [activeTags, setActiveTags] = useState(() => {
     const multi = searchParams.get('tags')
@@ -984,6 +1158,13 @@ export default function ImageList({ onlyVideos = false }) {
 
   const [bulkMode, setBulkMode] = useState(false)
   const [selected, setSelected] = useState(new Set())
+  const [imageCtxMenu, setImageCtxMenu] = useState(null) // { image, x, y }
+
+  const queryClient = useQueryClient()
+  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
+  const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
+  const queue = useVaultStore(s => s.multiViewerQueue)
+  const bumpAvatarBust   = useVaultStore(s => s.bumpAvatarBust)
 
   // Persistent thumb size & layout
   const thumbSize = useVaultStore(s => onlyVideos ? s.thumbSizeVideos : s.thumbSizeImages)
@@ -1001,16 +1182,18 @@ export default function ImageList({ onlyVideos = false }) {
   const [page, setPage] = useState(1)
 
   // Reset to page 1 whenever any filter or page-size changes
-  const filterKey = `${search}|${sortBy}|${creatorId}|${creatorType}|${favOnly}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${franchise}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
   useEffect(() => { setPage(1) }, [filterKey])
 
   const { data: images, isLoading, isError } = useQuery({
-    queryKey: ['images-list', search, sortBy, creatorId, creatorType, favOnly, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
+    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, franchise, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
     queryFn: () => imagesApi.list({
       search: search || undefined,
       sort_by: sortBy,
+      sort_dir: sortDir,
       creator_id: creatorId || undefined,
       creator_type: creatorType || undefined,
+      series: franchise || undefined,
       favorite: favOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
       tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1037,6 +1220,7 @@ export default function ImageList({ onlyVideos = false }) {
   const handleSortChange = (val) => {
     if (val === 'random') setRandomSeed(Math.random())
     setSortBy(val)
+    setSortDir('desc')  // reset to default direction when switching sort column
   }
 
   const toggleSelect = (id) => {
@@ -1085,11 +1269,13 @@ export default function ImageList({ onlyVideos = false }) {
           )}
         </div>
 
-        <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
+        <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} sortDir={sortDir} onSortDirChange={setSortDir} />
 
         <CreatorFilter value={creatorId} onChange={setCreatorId} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
+
+        <FranchiseFilter value={franchise} onChange={v => { setFranchise(v || ''); setPage(1) }} />
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
@@ -1178,14 +1364,24 @@ export default function ImageList({ onlyVideos = false }) {
           <div className="grid-stagger" style={{ columns: `${thumbSize}px`, columnGap: '8px' }}>
             {images.map((img, i) => (
               <div key={img.id} style={{ breakInside: 'avoid', marginBottom: '8px' }}>
-                <ImageThumb image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect} masonry />
+                <ImageThumb image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
+                            onContextMenu={(im, e) => {
+                              const inSel = bulkMode && selected.has(im.id)
+                              const bulkImages = inSel ? (images || []).filter(i => selected.has(i.id)) : null
+                              setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
+                            }} masonry />
               </div>
             ))}
           </div>
         ) : (
           <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${thumbSize}px, 100%), ${thumbSize}px))` }}>
             {images.map((img, i) => (
-              <ImageThumb key={img.id} image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect} />
+              <ImageThumb key={img.id} image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
+                          onContextMenu={(im, e) => {
+                            const inSel = bulkMode && selected.has(im.id)
+                            const bulkImages = inSel ? (images || []).filter(i => selected.has(i.id)) : null
+                            setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
+                          }} />
             ))}
           </div>
         )
@@ -1238,6 +1434,60 @@ export default function ImageList({ onlyVideos = false }) {
       {/* Viewer */}
       {viewerIdx !== null && images?.length > 0 && (
         <ImageViewer images={images} startIdx={viewerIdx} onClose={() => setViewerIdx(null)} />
+      )}
+
+      {/* Image right-click context menu */}
+      {imageCtxMenu && (
+        <ImageContextMenu
+          image={imageCtxMenu.image}
+          bulkCount={imageCtxMenu.bulkImages?.length ?? null}
+          position={{ x: imageCtxMenu.x, y: imageCtxMenu.y }}
+          onClose={() => setImageCtxMenu(null)}
+          onSelectMode={() => {
+            setBulkMode(true)
+            setSelected(new Set([imageCtxMenu.image.id]))
+          }}
+          onView={() => {
+            const idx = images?.findIndex(i => i.id === imageCtxMenu.image.id) ?? -1
+            if (idx >= 0) setViewerIdx(idx)
+          }}
+          onSendToViewer={() => {
+            const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]
+            let added = 0, skipped = 0
+            for (const img of targets) {
+              if (queue.length + added >= MAX) { skipped += targets.length - added; break }
+              const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
+              if (ok) added++; else skipped++
+            }
+            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
+            if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
+          }}
+          creators={imageCtxMenu.image.creators ?? []}
+          onSetAsAvatar={(creatorId) => {
+            creatorsApi.setAvatarFromImage(creatorId, imageCtxMenu.image.id)
+              .then(() => { toast.success('Avatar updated!'); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error('Failed to set avatar'))
+          }}
+          onSetAsBanner={(creatorId) => {
+            creatorsApi.setBannerFromImage(creatorId, imageCtxMenu.image.id)
+              .then(() => { toast.success('Banner updated!'); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error('Failed to set banner'))
+          }}
+          onDelete={async (mode) => {
+            const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]
+            let errs = 0
+            for (const img of targets) {
+              try { await imagesApi.delete(img.id, mode === 'vault') }
+              catch { errs++ }
+            }
+            const n = targets.length - errs
+            if (n > 0) toast.success(mode === 'vault'
+              ? `${n} ${n === 1 ? 'image' : 'images'} removed from vault`
+              : `${n} ${n === 1 ? 'image' : 'images'} deleted from disk`)
+            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+            queryClient.invalidateQueries({ queryKey: ['images-list'] })
+          }}
+        />
       )}
     </div>
   )

@@ -389,6 +389,20 @@ export const useVaultStore = create((set, get) => ({
   avatarBust: 1,
   bumpAvatarBust: () => set(s => ({ avatarBust: s.avatarBust + 1 })),
 
+  // Multi-panel fullscreen — hides the sidebar in Layout
+  multiPanelFullscreen: false,
+  setMultiPanelFullscreen: (v) => set({ multiPanelFullscreen: v }),
+
+  // ── Companion (Erika AI) ─────────────────────────────────────────────────────
+  companion: {
+    open:    false,
+    enabled: false,
+    config:  null,
+  },
+  setCompanionOpen:    (v) => set(s => ({ companion: { ...s.companion, open: v } })),
+  setCompanionEnabled: (v) => set(s => ({ companion: { ...s.companion, enabled: v } })),
+  setCompanionConfig:  (v) => set(s => ({ companion: { ...s.companion, config: v, enabled: v?.enabled ?? false } })),
+
   // ── Goon session mode ────────────────────────────────────────────────────────
   // sessionActive + sessionStartAt are persisted so a browser switch or refresh
   // doesn't kill an in-progress session.

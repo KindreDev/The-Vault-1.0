@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func
+from sqlalchemy import func, nullslast
 from typing import Optional, List
 
 from database import get_db
@@ -58,10 +58,12 @@ def list_images(
     tag: Optional[str] = None,
     creator_id: Optional[int] = None,
     creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
+    series: Optional[str] = None,  # franchise / series filter (partial match)
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
-    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | random
+    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
+    sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
     tags: Optional[str] = None,  # comma-separated, AND logic
     skip: int = 0,
     limit: int = 200,
@@ -76,14 +78,17 @@ def list_images(
     tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
     for tag_name in tag_list:
         q = q.filter(Image.tags.any(Tag.name == tag_name))
-    if creator_id or creator_type:
+    if creator_id or creator_type or series:
         q = q.join(Gallery, Gallery.id == Image.gallery_id)\
              .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
         if creator_id:
             q = q.filter(gallery_creators.c.creator_id == creator_id)
-        if creator_type:
-            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)\
-                 .filter(Creator.creator_type == creator_type)
+        if creator_type or series:
+            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
+            if creator_type:
+                q = q.filter(Creator.creator_type == creator_type)
+            if series:
+                q = q.filter(Creator.series.ilike(f"%{series}%"))
     if gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == gallery_id).first()
         if gallery and gallery.is_mix:
@@ -99,22 +104,33 @@ def list_images(
         q = q.filter(Image.is_video == is_video)
     if favorite is not None:
         q = q.filter(Image.is_favorite == favorite)
+    # Sorting — sort_dir overrides default direction per column
+    use_asc = None
+    if sort_dir == "asc":
+        use_asc = True
+    elif sort_dir == "desc":
+        use_asc = False
+
     if sort_by == "rating":
-        q = q.order_by(Image.rating.desc())
+        q = q.order_by(Image.rating.asc() if (use_asc if use_asc is not None else False) else Image.rating.desc())
     elif sort_by == "cum_count":
-        q = q.order_by(Image.cum_count.desc())
+        q = q.order_by(Image.cum_count.asc() if (use_asc if use_asc is not None else False) else Image.cum_count.desc())
     elif sort_by == "file_size":
-        q = q.order_by(Image.file_size.desc())
+        q = q.order_by(Image.file_size.asc() if (use_asc if use_asc is not None else False) else Image.file_size.desc())
     elif sort_by == "view_count":
-        q = q.order_by(Image.view_count.desc())
+        q = q.order_by(Image.view_count.asc() if (use_asc if use_asc is not None else False) else Image.view_count.desc())
+    elif sort_by == "date_modified":
+        asc = (use_asc if use_asc is not None else False)
+        q = q.order_by(nullslast(Image.file_modified_at.asc() if asc else Image.file_modified_at.desc()))
     elif sort_by == "random":
         q = q.order_by(func.random())
     elif sort_by == "filename":
         images = q.offset(skip).limit(limit).all()
-        images.sort(key=lambda img: _natural_key(img.filename))
+        asc = (use_asc if use_asc is not None else True)
+        images.sort(key=lambda img: _natural_key(img.filename), reverse=not asc)
         return [_enrich_image(img, db) for img in images]
-    else:
-        q = q.order_by(Image.created_at.desc())
+    else:  # date_added
+        q = q.order_by(Image.created_at.asc() if (use_asc if use_asc is not None else False) else Image.created_at.desc())
     images = q.offset(skip).limit(limit).all()
     return [_enrich_image(img, db) for img in images]
 
