@@ -255,8 +255,8 @@ class Image(Base):
     file_modified_at = Column(DateTime, nullable=True)   # on-disk mtime, populated by scanner
     created_at       = Column(DateTime, default=func.now())
 
-    gallery       = relationship("Gallery", back_populates="images")
-    tags          = relationship("Tag", secondary=image_tags, back_populates="images")
+    gallery          = relationship("Gallery", back_populates="images")
+    tags             = relationship("Tag", secondary=image_tags, back_populates="images")
 
 
 # ── Tag ────────────────────────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ class UserProfile(Base):
     username       = Column(String, default="Vault Master")
     total_xp       = Column(Integer, default=0)
     level          = Column(Integer, default=1)
-    level_title    = Column(String, default="The Wanderer")
+    level_title    = Column(String, default="Lurker")
     streak_days    = Column(Integer, default=0)
     streak_best    = Column(Integer, default=0)
     last_login     = Column(DateTime, nullable=True)
@@ -350,6 +350,7 @@ class UserProfile(Base):
     premium_packs          = Column(Integer, default=0)   # unspent quest-awarded premium packs
     daily_bonus_claimable  = Column(Boolean, default=False)   # True = all dailies done, packs not yet claimed
     weekly_bonus_claimable = Column(Boolean, default=False)   # True = all weeklies done, packs not yet claimed
+    total_cards_dismantled = Column(Integer, default=0)
 
 
 class Quest(Base):

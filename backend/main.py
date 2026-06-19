@@ -301,6 +301,8 @@ def _migrate_add_columns():
         "ALTER TABLE companion_config ADD COLUMN num_ctx INTEGER DEFAULT 16384",
         # Image file mtime — on-disk last-modified date, for sort by date_modified
         "ALTER TABLE images ADD COLUMN file_modified_at DATETIME",
+        # Gamification — dismantle achievement counter
+        "ALTER TABLE user_profile ADD COLUMN total_cards_dismantled INTEGER DEFAULT 0",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -419,7 +421,7 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.1.2")
+app = FastAPI(title="The Vault", version="1.1.3")
 
 app.add_middleware(
     CORSMiddleware,
@@ -748,9 +750,36 @@ if __name__ == "__main__":
 
             _api = _VaultApi()
 
+            _wv_storage = os.path.join(DATA_DIR, "webview_data")
+            os.makedirs(_wv_storage, exist_ok=True)
+
+            # Cache-busting by URL — the reliable way to never see a stale UI after
+            # an update without ever pressing F5.
+            #
+            # WebView2 keys its cache by the FULL url. If we always load the same
+            # url ("http://127.0.0.1:8000") it re-paints the page it last cached
+            # for that url on every launch — i.e. the OLD build — and only a manual
+            # F5 forces a real re-fetch. So instead we tag the url with the current
+            # frontend build id: "?b=<hash of index.html>".
+            #   • New build  → new hash → a url WebView2 has never cached → it must
+            #     fetch the fresh index.html (and thus the new chunk names). No F5.
+            #   • Same build → same url → fully served from cache, so startup speed
+            #     and the V8 Code Cache are completely preserved. No perf cost.
+            # The "?b=" query is ignored by the SPA route and by React Router; it
+            # only changes the cache key. Hashed /assets stay cached immutably.
+            _build_id = "0"
+            try:
+                import hashlib as _hashlib
+                _idx = os.path.join(_FRONTEND_DIR, "index.html") if _FRONTEND_DIR else None
+                if _idx and os.path.isfile(_idx):
+                    with open(_idx, "rb") as _f:
+                        _build_id = _hashlib.md5(_f.read()).hexdigest()[:12]
+            except Exception:
+                pass  # best-effort; a fixed "0" just means no busting this launch
+
             _win = webview.create_window(
                 "The Vault",
-                "http://127.0.0.1:8000",
+                f"http://127.0.0.1:8000/?b={_build_id}",
                 width=1440,
                 height=900,
                 min_size=(1024, 700),
@@ -759,54 +788,6 @@ if __name__ == "__main__":
                 js_api=_api,
             )
             _api._win = _win   # back-reference so the API can reach the window
-
-            _wv_storage = os.path.join(DATA_DIR, "webview_data")
-            os.makedirs(_wv_storage, exist_ok=True)
-
-            # One-time cache invalidation — ONLY when the frontend build changes.
-            # index.html is served no-cache (see _serve_spa) so it's always fresh,
-            # but a machine upgrading from an OLDER build can still have that old
-            # build's index.html sitting in the WebView2 HTTP cache, pointing at
-            # JS chunk names that no longer exist. When the build's index.html
-            # hash changes we clear ONLY the HTTP "Cache" folder once.
-            #
-            # We deliberately do NOT touch "Code Cache" (V8 compiled bytecode) or
-            # the GPU/shader caches — wiping those every launch would force a cold
-            # re-compile and slow every startup. Local Storage (theme, fonts,
-            # thumbnail sizes, session timer) is likewise left untouched.
-            _build_changed = False
-            try:
-                import hashlib as _hashlib, shutil as _shutil
-                _idx = os.path.join(_FRONTEND_DIR, "index.html") if _FRONTEND_DIR else None
-                _build_id = ""
-                if _idx and os.path.isfile(_idx):
-                    with open(_idx, "rb") as _f:
-                        _build_id = _hashlib.md5(_f.read()).hexdigest()
-                _marker = os.path.join(_wv_storage, ".frontend_build")
-                _prev = ""
-                if os.path.isfile(_marker):
-                    with open(_marker, "r", encoding="utf-8") as _f:
-                        _prev = _f.read().strip()
-                if _build_id and _build_id != _prev:
-                    _build_changed = True
-                    for _root, _dirs, _files in os.walk(_wv_storage):
-                        for _d in list(_dirs):
-                            if _d == "Cache":   # HTTP response cache only
-                                _shutil.rmtree(os.path.join(_root, _d), ignore_errors=True)
-                                _dirs.remove(_d)
-                    with open(_marker, "w", encoding="utf-8") as _f:
-                        _f.write(_build_id)
-            except Exception:
-                pass  # best-effort; never block startup
-
-            # After an update the WebView2 can still paint the PREVIOUS build's
-            # page from a cache layer we can't reliably wipe from disk (the old
-            # instance's msedgewebview2 child can still hold the Cache folder
-            # locked at the moment we try to clear it, so the delete silently
-            # fails). Deleting files is a race we can lose. So when the build
-            # changed, force exactly one in-app reload after the page loads —
-            # the same thing pressing F5 did by hand. Guarded to fire only once.
-            _reloaded = {"done": False}
 
             def _on_loaded():
                 # Inject F5 → reload (Ctrl+F5 still does browser default)
@@ -818,9 +799,6 @@ if __name__ == "__main__":
                     "  }"
                     "});"
                 )
-                if _build_changed and not _reloaded["done"]:
-                    _reloaded["done"] = True
-                    _win.evaluate_js("location.reload()")
 
             webview.start(_on_loaded, debug=False, private_mode=False, storage_path=_wv_storage)
             # webview.start() blocks until the window is closed.

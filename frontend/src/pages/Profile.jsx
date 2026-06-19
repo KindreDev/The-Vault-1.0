@@ -591,7 +591,8 @@ export default function Profile() {
       {(() => {
         const sessions = recentSessionsData ?? []
         if (sessions.length === 0) return null
-        const last = sessions[0]
+        // Prefer the most recent session that actually earned XP (skip_xp secondaries have xp_earned=0)
+        const last = sessions.find(s => s.xp_earned > 0) ?? sessions[0]
         const ts = last.logged_at && !String(last.logged_at).endsWith('Z') ? last.logged_at + 'Z' : last.logged_at
         const when = (() => {
           const diff = Date.now() - new Date(ts).getTime()
@@ -638,9 +639,11 @@ export default function Profile() {
                 </div>
               )}
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#7F77DD', flexShrink: 0 }}>
-              +{last.xp_earned} XP
-            </div>
+            {last.xp_earned > 0 && (
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#7F77DD', flexShrink: 0 }}>
+                +{last.xp_earned} XP
+              </div>
+            )}
           </div>
         )
       })()}

@@ -144,8 +144,8 @@ export const imagesApi = {
   random:        (tag)     => api.get('/images/random/pick', { params: { tag } }),
   randomPicks:   (n = 8)   => api.get('/images/', { params: { sort_by: 'random', limit: n, is_video: false } }),
   randomVideos:  (n = 8)   => api.get('/images/', { params: { sort_by: 'random', limit: n, is_video: true } }),
-  transfer:      (id, galleryId) => api.patch(`/images/${id}`, { gallery_id: galleryId }),
-  focalPoint:    (id, x, y) => api.patch(`/images/${id}/focal-point`, { focal_x: x, focal_y: y }),
+  transfer:           (id, galleryId) => api.patch(`/images/${id}`, { gallery_id: galleryId }),
+  focalPoint:         (id, x, y) => api.patch(`/images/${id}/focal-point`, { focal_x: x, focal_y: y }),
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -278,6 +278,7 @@ export const systemApi = {
     })
   },
   getVersion:    () => api.get('/system/version'),
+  mobileLink:    () => api.get('/system/mobile-link'),
   checkUpdate:   () => api.get('/system/update/check'),
   installUpdate: (download_url) => api.post('/system/update/install', { download_url }),
   updateStatus:  () => api.get('/system/update/status'),

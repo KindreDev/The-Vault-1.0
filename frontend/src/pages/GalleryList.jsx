@@ -198,7 +198,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
       onMouseLeave={() => setHovered(0)}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}>
-      {[1, 2, 3, 4, 5].map(n => {
+      {[1,2,3,4,5,6,7,8,9,10].map(n => {
         const filled = hovered ? n <= hovered : n <= value
         return (
           <button
@@ -207,13 +207,12 @@ function StarRating({ value = 0, onRate, className = '' }) {
             onMouseEnter={() => setHovered(n)}
             onMouseDown={e => {
               e.stopPropagation()
-              // clicking the current rating clears it
               onRate(value === n ? 0 : n)
             }}
             className="cursor-pointer p-0.5 transition-transform hover:scale-125"
-            title={`Rate ${n} star${n !== 1 ? 's' : ''}`}>
+            title={`Rate ${n}/10`}>
             <Star
-              size={11}
+              size={9}
               fill={filled ? (hovered ? 'rgba(186,117,23,0.7)' : '#BA7517') : 'none'}
               stroke={filled ? '#BA7517' : 'rgba(255,255,255,0.2)'}
               strokeWidth={1.5}
@@ -1750,6 +1749,7 @@ export default function GalleryList() {
             setSelected(new Set([contextMenu.gallery.id]))
           }}
           onOpen={() => navigate(`/galleries/${contextMenu.gallery.id}`)}
+          onOpenSelect={() => navigate(`/galleries/${contextMenu.gallery.id}?select=true`)}
           onRename={() => { setRenamingGallery(contextMenu.gallery) }}
           onRenameFolder={() => { setRenamingFolder(contextMenu.gallery) }}
           onToggleFav={() => {

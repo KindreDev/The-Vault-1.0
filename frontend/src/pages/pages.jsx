@@ -2,7 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal } from 'lucide-react'
+import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -2067,6 +2068,12 @@ export function Settings() {
     onSuccess: (d) => { if (!storageInput) setStorageInput(d.data_dir || d.effective_data_dir) },
   })
 
+  const { data: mobileLink } = useQuery({
+    queryKey: ['mobile-link'],
+    queryFn:  () => systemApi.mobileLink().then(r => r.data),
+    enabled:  settingsTab === 'system',
+  })
+
   const gpuMutation = useMutation({
     mutationFn: (use_gpu) => systemApi.setGpuMode(use_gpu).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['system-config'] }),
@@ -3132,6 +3139,45 @@ export function Settings() {
             {/* ── System tab ───────────────────────────── */}
             {settingsTab === 'system' && (
               <div className="space-y-3">
+                <SettingsSection title="Connect mobile device" icon={Smartphone} accentColor="var(--c-accent)">
+                  <div className="text-[16px] text-white/45 mb-4 leading-relaxed">
+                    Open The Vault on your phone. Put the phone on the <strong className="text-white/70">same Wi-Fi</strong> as this PC,
+                    then scan the code below or type the address into the phone's browser.
+                    Tap <strong className="text-white/70">Add to Home Screen</strong> to get a full-screen app with no browser bars.
+                  </div>
+                  {mobileLink?.found === false && (
+                    <div className="flex items-center gap-2 text-[16px] mb-4 p-3 rounded-[8px]"
+                         style={{ background: 'rgba(186,117,23,0.12)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
+                      <AlertCircle size={16} /> Could not find this PC's network address. Make sure you're connected to Wi-Fi or a network.
+                    </div>
+                  )}
+                  <div className="flex items-center gap-6 flex-wrap">
+                    {mobileLink?.url && (
+                      <div className="p-3 rounded-[12px] bg-white flex-shrink-0">
+                        <QRCodeCanvas value={mobileLink.url} size={168} level="M" includeMargin={false} />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-[220px]">
+                      <div className="text-[15px] text-white/35 mb-1">Address for your phone</div>
+                      <div className="flex items-center gap-2">
+                        <code className="text-[18px] font-mono px-3 py-2 rounded-[8px] flex-1 break-all"
+                              style={{ background: 'rgba(255,255,255,0.05)', color: '#D0CEFD', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+                          {mobileLink?.url ?? '…'}
+                        </code>
+                        <button onClick={() => { if (mobileLink?.url) { navigator.clipboard?.writeText(mobileLink.url); toast.success('Address copied') } }}
+                                disabled={!mobileLink?.url}
+                                className="flex items-center gap-2 px-3 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-40"
+                                style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                          <Copy size={15} /> Copy
+                        </button>
+                      </div>
+                      <div className="text-[15px] text-white/30 mt-3 leading-relaxed">
+                        Keep The Vault running on this PC — your phone reads the library straight from here, so nothing is copied to the phone.
+                      </div>
+                    </div>
+                  </div>
+                </SettingsSection>
+
                 <SettingsSection title="Startup &amp; Updates" icon={RefreshCw} accentColor="var(--c-accent)">
                   <div className="flex items-center justify-between py-3 mb-4" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
                     <div>

@@ -507,10 +507,13 @@ def update_gallery(gallery_id: int, data: GalleryUpdate, db: Session = Depends(g
     if not g:
         raise HTTPException(404, "Gallery not found")
     update_data = data.model_dump(exclude_unset=True)
+    char_id_present = "linked_character_id" in update_data
     char_id = update_data.pop("linked_character_id", None)
     period_changed = "period_month" in update_data or "period_year" in update_data or "purchase_value" in update_data
     for field, value in update_data.items():
         setattr(g, field, value)
+    if char_id_present:
+        g.linked_character_id = char_id
     db.commit()
     db.refresh(g)
     # Check completion reward for all assigned creators whenever period/value changes

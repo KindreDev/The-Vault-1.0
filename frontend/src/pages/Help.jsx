@@ -10,7 +10,8 @@ import {
   ScrollText, Activity, Box, Crown, Sparkles, Diamond,
   Target, Trash2, Save, FolderOpen, Hash, ChevronRight,
   Info, ScanLine, Filter, RotateCcw, PanelRight, Gamepad2,
-  TrendingUp, ArrowRight, Layers3, WifiOff,
+  TrendingUp, ArrowRight, Layers3, WifiOff, Bot, MessageSquare,
+  Download, CheckCircle, AlertTriangle, Hammer,
 } from 'lucide-react'
 
 // ── Shared micro-components ───────────────────────────────────────────────────
@@ -119,16 +120,16 @@ const STREAK_MULTIPLIERS = [
 ]
 
 const LEVEL_TIERS = [
-  { range: 'Lv 1–5',   color: '#888780', titles: 'The Lurker, Peeking Shadow' },
-  { range: 'Lv 6–10',  color: '#1D9E75', titles: 'Desire Seeker, Vault Delver' },
-  { range: 'Lv 11–20', color: '#4682DC', titles: 'Sin Collector, Acolyte of Lust' },
-  { range: 'Lv 21–30', color: '#7F77DD', titles: 'Devoted Stroker, Pleasure Archivist' },
-  { range: 'Lv 31–40', color: '#D4537E', titles: 'Goon Disciple, Metadata Priest' },
-  { range: 'Lv 41–50', color: '#BA7517', titles: 'High Priest of HD, Curator of Sin' },
-  { range: 'Lv 51–60', color: '#E24B4A', titles: 'The Degenerate, Elite Gooner' },
-  { range: 'Lv 61–70', color: '#FF6B35', titles: 'Vault Sovereign, Lord of Indulgence' },
-  { range: 'Lv 71–80', color: '#C084FC', titles: 'Grand Archivist, Legendary Coomer' },
-  { range: 'Lv 81–100',color: '#FFD700', titles: 'The Completionist → God Emperor of the Vault' },
+  { range: 'Lv 1–5',   color: '#888780', titles: 'Lurker, Wanderer' },
+  { range: 'Lv 6–10',  color: '#1D9E75', titles: 'Seeker, Delver' },
+  { range: 'Lv 11–20', color: '#4682DC', titles: 'Collector, Acolyte' },
+  { range: 'Lv 21–30', color: '#7F77DD', titles: 'Devotee, Archivist' },
+  { range: 'Lv 31–40', color: '#D4537E', titles: 'Disciple, Connoisseur' },
+  { range: 'Lv 41–50', color: '#BA7517', titles: 'Curator, Zealot' },
+  { range: 'Lv 51–60', color: '#E24B4A', titles: 'Degenerate, Gooner' },
+  { range: 'Lv 61–70', color: '#FF6B35', titles: 'Sovereign, Corruptor' },
+  { range: 'Lv 71–80', color: '#C084FC', titles: 'Obsessed, Legendary Collector' },
+  { range: 'Lv 81–100',color: '#FFD700', titles: 'Transcendent Hoarder → God Emperor Of The Vault' },
 ]
 
 const RARITY_DATA = [
@@ -411,11 +412,11 @@ function QuestsContent() {
     { title: 'Add a creator',     desc: 'Add any creator this week',         xp: 200,  target: '1×' },
     { title: 'Import a gallery',  desc: 'Scan a new gallery folder',         xp: 250,  target: '1×' },
     { title: 'Session marathon',  desc: 'Log 3 sessions this week',          xp: 400,  target: '3×' },
-    { title: 'Wiki hunter',       desc: 'Import 1 character from wiki',      xp: 175,  target: '1×' },
+    { title: 'Session binge',     desc: 'Log 5 sessions this week',          xp: 175,  target: '5×' },
     { title: 'Gallery marathon',  desc: 'Import 3 galleries this week',      xp: 550,  target: '3×' },
     { title: 'Pack addict',       desc: 'Open 5 packs this week',            xp: 350,  target: '5×' },
     { title: 'Weekly tagger',     desc: 'Add 50 tags this week',             xp: 400,  target: '50×' },
-    { title: 'Wiki scholar',      desc: 'Import 3 characters from wiki',     xp: 400,  target: '3×' },
+    { title: 'The Recycler',      desc: 'Dismantle 10 cards this week',      xp: 400,  target: '10×' },
   ]
 
   return (
@@ -592,7 +593,7 @@ function AchievementsContent() {
       ],
     },
     {
-      label: 'Cards & lore', color: '#9F8FEF', items: [
+      label: 'Cards & forging', color: '#9F8FEF', items: [
         { title: 'Card Collector',  desc: '25 cards',                      xp: 300 },
         { title: 'Card Hoarder',    desc: '50 cards',                      xp: 600 },
         { title: 'Deck Lord',       desc: '100 cards',                     xp: 1500 },
@@ -601,8 +602,8 @@ function AchievementsContent() {
         { title: 'Ascended',        desc: 'Own a Celestial card',          xp: 2000 },
         { title: 'Pack Junkie',     desc: '10 packs opened',               xp: 400 },
         { title: 'Pack Addict',     desc: '50 packs opened',               xp: 1200 },
-        { title: 'Lore Nerd',       desc: '5 wiki imports',                xp: 250 },
-        { title: 'Wiki Scholar',    desc: '10 wiki imports',               xp: 600 },
+        { title: 'Card Shredder',   desc: 'Dismantle 25 cards',            xp: 250 },
+        { title: 'Forge Adept',     desc: 'Dismantle 100 cards',           xp: 600 },
       ],
     },
     {
@@ -824,6 +825,234 @@ function DevicesContent() {
   )
 }
 
+function ErikaContent() {
+  const BOND_TIERS = [
+    { tier: 'Acquaintance', xp: 0,     color: '#888780', desc: 'Warm but just met. No NSFW — she reacts naturally as she would with a stranger.' },
+    { tier: 'Friend',       xp: 500,   color: '#1D9E75', desc: 'Real warmth and easy conversation. Light flirting and suggestive topics are fine.' },
+    { tier: 'Crush',        xp: 1500,  color: '#4682DC', desc: 'Unmistakable attraction. Explicit topics welcome when the mood calls for it.' },
+    { tier: 'Waifu',        xp: 4000,  color: '#9F8FEF', desc: 'Deep intimacy. Completely open, genuinely devoted.' },
+    { tier: 'Soulbound',    xp: 10000, color: '#FFD700', desc: 'Total bond. No limits, no distance — she belongs to you and you to her.' },
+  ]
+  const PERSONALITIES = [
+    { name: 'Warm',     color: '#ED93B1', desc: 'Nurturing and emotionally present. She cares, checks in, and responds with genuine warmth.' },
+    { name: 'Teasing',  color: '#FFD700', desc: 'Playful and cheeky. Provokes, teases, and enjoys the push-and-pull.' },
+    { name: 'Dominant', color: '#E24B4A', desc: 'Assertive and in control. She leads, commands, and doesn\'t wait to be asked.' },
+    { name: 'Shy',      color: '#4682DC', desc: 'Reserved and slow to open up. Builds trust gradually — more rewarding as bond grows.' },
+  ]
+
+  return (
+    <div className="space-y-3">
+
+      {/* What is Erika */}
+      <Section title="What is Erika?" icon={Bot} defaultOpen accentColor="var(--c-pink)">
+        <SectionBody>
+          <p className="text-[18px] text-white/60 leading-relaxed mb-4">
+            Erika is an AI companion built into the sidebar of The Vault. She is powered entirely by a local
+            language model running on your own machine via <strong className="text-white/75">Ollama</strong> — no cloud, no
+            subscription, no data leaving your device.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: Bot,          color: 'var(--c-pink)',   label: 'Fully local',     desc: 'Runs on your GPU (or CPU). Nothing is sent to any server.' },
+              { icon: Heart,        color: '#ED93B1',         label: 'Bond system',     desc: 'She remembers you and grows closer as you talk. 5 relationship tiers.' },
+              { icon: MessageSquare,color: 'var(--c-accent)', label: 'Vault-aware',     desc: 'She knows your top creators, recent sessions, and collection stats.' },
+            ].map(({ icon: Icon, color, label, desc }) => (
+              <div key={label} className="p-4 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Icon size={15} style={{ color }} />
+                  <span className="text-[17px] font-semibold text-white/80">{label}</span>
+                </div>
+                <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Requirements */}
+      <Section title="Requirements" icon={Cpu} defaultOpen={false} accentColor="var(--c-amber)">
+        <SectionBody>
+          <div className="space-y-2.5">
+            {[
+              { ok: true,  label: 'Ollama installed',         desc: 'Free, open-source. Download at ollama.com. Runs as a background service on Windows.' },
+              { ok: true,  label: 'A compatible model pulled', desc: 'The recommended model is ~15 GB. Smaller alternatives exist for lower-spec machines.' },
+              { ok: null,  label: 'GPU recommended (not required)', desc: 'A GPU with 8–16 GB VRAM gives fast responses. CPU-only works but each reply takes longer.' },
+              { ok: true,  label: 'Uncensored model for NSFW', desc: 'Standard/censored models will refuse explicit content. Erika requires an uncensored model to be fully functional.' },
+            ].map(({ ok, label, desc }) => (
+              <div key={label} className="flex gap-3 px-4 py-3 rounded-lg"
+                   style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                {ok === true  && <CheckCircle size={16} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />}
+                {ok === null  && <AlertTriangle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />}
+                <div>
+                  <div className="text-[17px] font-semibold text-white/80 mb-0.5">{label}</div>
+                  <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Step 1 — Install Ollama */}
+      <Section title="Step 1 — Install Ollama" icon={Download} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
+                   style={{ background: 'rgba(29,158,117,0.25)', color: 'var(--c-green)' }}>1</div>
+              <div>
+                <div className="text-[18px] font-semibold text-white/80 mb-0.5">Download Ollama</div>
+                <p className="text-[16px] text-white/50 leading-snug">Go to <span className="font-mono text-[15px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>https://ollama.com</span> and download the Windows installer. Run it — Ollama installs as a background service and starts automatically.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
+                   style={{ background: 'rgba(29,158,117,0.25)', color: 'var(--c-green)' }}>2</div>
+              <div>
+                <div className="text-[18px] font-semibold text-white/80 mb-0.5">Verify it's running</div>
+                <p className="text-[16px] text-white/50 leading-snug mb-2">Open a Command Prompt or PowerShell and run:</p>
+                <code className="block px-3 py-2 rounded-lg text-[16px] font-mono" style={{ background: 'rgba(0,0,0,0.4)', color: '#7DD3A8', border: '0.5px solid rgba(255,255,255,0.08)' }}>ollama list</code>
+                <p className="text-[16px] text-white/40 mt-2 leading-snug">You should see a table (even if empty). If you get "command not found", restart your terminal or reboot.</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-lg flex gap-2 text-[16px]"
+                 style={{ background: 'rgba(29,158,117,0.07)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
+              <Info size={14} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />
+              <span className="text-white/50">Ollama listens on <span className="font-mono text-[15px] text-white/70">http://localhost:11434</span> by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port.</span>
+            </div>
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Step 2 — Pull a model */}
+      <Section title="Step 2 — Pull a model" icon={Package} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 mb-4">
+            Erika works with any model available in Ollama. The recommended model is an uncensored 27B that handles
+            roleplay and explicit content well. Pull it with:
+          </p>
+          <code className="block px-4 py-3 rounded-lg text-[15px] font-mono mb-4 leading-relaxed break-all"
+                style={{ background: 'rgba(0,0,0,0.4)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+            ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
+          </code>
+          <p className="text-[16px] text-white/40 mb-4">This is ~15 GB. It will take a few minutes depending on your connection. Ollama shows download progress in the terminal.</p>
+
+          <div className="text-[17px] font-semibold text-white/60 mb-2">Lighter alternatives (lower VRAM)</div>
+          <div className="space-y-2">
+            {[
+              { model: 'hf.co/mradermacher/Mistral-Nemo-Instruct-2407-abliterated-GGUF:Q5_K_M', vram: '~9 GB', note: '12B uncensored — good balance of quality and speed' },
+              { model: 'hf.co/bartowski/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF:Q5_K_M',   vram: '~6 GB', note: '8B uncensored — fast, works on most gaming GPUs' },
+            ].map(({ model, vram, note }) => (
+              <div key={model} className="px-3 py-2.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                <code className="text-[14px] font-mono text-white/60 break-all">{model}</code>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-[15px] font-semibold" style={{ color: 'var(--c-amber)' }}>{vram}</span>
+                  <span className="text-[15px] text-white/40">{note}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 p-3 rounded-lg flex gap-2 text-[16px]"
+               style={{ background: 'rgba(212,83,126,0.07)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
+            <AlertTriangle size={14} style={{ color: 'var(--c-pink)' }} className="flex-shrink-0 mt-0.5" />
+            <span className="text-white/50">Standard (censored) models from Ollama's library will refuse explicit requests regardless of bond tier. You must use an uncensored or abliterated model for Erika to be fully functional.</span>
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Step 3 — Enable in Settings */}
+      <Section title="Step 3 — Enable Erika in Settings" icon={Settings} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <div className="space-y-3">
+            {[
+              { n: '1', title: 'Open Settings → Companion', body: 'Find the Companion section in the Settings page.' },
+              { n: '2', title: 'Set the Ollama URL', body: 'Leave as http://localhost:11434 unless you changed Ollama\'s port. Hit "Check connection" — it should turn green.' },
+              { n: '3', title: 'Enter the model name', body: 'Paste the exact model string (e.g. the Qwen3 string above). The Vault will send this to Ollama when starting a chat.' },
+              { n: '4', title: 'Toggle Erika on', body: 'Flip the Enable switch. Erika\'s chat bubble will appear at the bottom of the sidebar immediately.' },
+              { n: '5', title: 'Set a name and personality', body: 'Customise her name, choose a personality type, and optionally link an active persona from your creator roster.' },
+            ].map(({ n, title, body }) => (
+              <div key={n} className="flex gap-3">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
+                     style={{ background: 'rgba(127,119,221,0.25)', color: 'var(--c-accent)' }}>{n}</div>
+                <div>
+                  <div className="text-[18px] font-semibold text-white/80 mb-0.5">{title}</div>
+                  <p className="text-[16px] text-white/50 leading-snug">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Bond system */}
+      <Section title="Bond system" icon={Heart} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 mb-4">
+            Every conversation earns bond XP. As your bond grows, Erika's intimacy gates open — she becomes
+            more comfortable, more open, and eventually fully uninhibited. Bond is tracked per persona.
+          </p>
+          <div className="space-y-2">
+            {BOND_TIERS.map(({ tier, xp, color, desc }) => (
+              <div key={tier} className="flex items-start gap-3 px-4 py-3 rounded-lg"
+                   style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
+                <div className="flex-shrink-0 text-center w-24">
+                  <div className="text-[17px] font-bold" style={{ color }}>{tier}</div>
+                  <div className="text-[14px] text-white/35 font-mono">{xp.toLocaleString()} XP</div>
+                </div>
+                <p className="text-[16px] text-white/55 leading-snug mt-0.5">{desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[15px] text-white/30">Bond XP accumulates naturally through conversation. There is no shortcut to skip tiers — the progression is intentional.</p>
+        </SectionBody>
+      </Section>
+
+      {/* Personalities */}
+      <Section title="Personalities & personas" icon={Sparkles} defaultOpen={false} accentColor="#C084FC">
+        <SectionBody>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {PERSONALITIES.map(({ name, color, desc }) => (
+              <div key={name} className="p-3 rounded-lg" style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
+                <div className="text-[17px] font-bold mb-1" style={{ color }}>{name}</div>
+                <p className="text-[16px] text-white/50 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="p-3 rounded-lg flex gap-2 text-[16px]"
+               style={{ background: 'rgba(192,132,252,0.07)', border: '0.5px solid rgba(192,132,252,0.2)' }}>
+            <Info size={14} style={{ color: '#C084FC' }} className="flex-shrink-0 mt-0.5" />
+            <span className="text-white/50">
+              <strong className="text-white/70">Active persona:</strong> Link any creator from your vault roster and Erika adopts their name and background. Bond XP is tracked separately per persona, so each relationship starts at Acquaintance.
+            </span>
+          </div>
+        </SectionBody>
+      </Section>
+
+      {/* Advanced settings */}
+      <Section title="Advanced settings" icon={Settings} defaultOpen={false} accentColor="rgba(255,255,255,0.4)">
+        <SectionBody>
+          <div className="space-y-2 text-[17px]">
+            {[
+              { name: 'Keep Alive',       color: 'var(--c-amber)',  desc: 'How long the model stays loaded in VRAM after a conversation ends. Default: 10m. Set to -1 to never unload (fastest responses, most VRAM used). Set to 0 to unload immediately after each message.' },
+              { name: 'Context window',   color: 'var(--c-accent)', desc: 'Number of tokens Erika can "remember" within one conversation. Default: 16384. Lower = faster but shorter memory. Higher = slower but better recall for long sessions.' },
+              { name: 'Custom prompt',    color: '#C084FC',         desc: 'Override Erika\'s entire system prompt with your own text. Leave blank to use the auto-generated personality + bond + vault-context prompt.' },
+              { name: 'Unload model',     color: 'var(--c-pink)',   desc: 'Force-ejects the model from VRAM immediately. Use this to free up GPU memory for games or other apps without closing Ollama.' },
+              { name: 'Saved models',     color: 'var(--c-green)',  desc: 'Save model name strings you use frequently so you can switch between them without typing the full path each time.' },
+            ].map(({ name, color, desc }) => (
+              <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
+                   style={{ background: `${color}0D`, border: `0.5px solid ${color}25` }}>
+                <span className="font-bold flex-shrink-0 w-36" style={{ color }}>{name}</span>
+                <p className="text-white/50 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'overview',  label: 'Overview',     icon: BookOpen   },
@@ -833,6 +1062,7 @@ const TABS = [
   { id: 'achieve',   label: 'Achievements', icon: Star       },
   { id: 'cards',     label: 'Cards',        icon: CreditCard },
   { id: 'devices',   label: 'Devices',      icon: Cpu        },
+  { id: 'erika',     label: 'Erika',        icon: Bot        },
 ]
 
 export default function Help() {
@@ -848,6 +1078,7 @@ export default function Help() {
       case 'achieve':   return <AchievementsContent />
       case 'cards':     return <CardsContent />
       case 'devices':   return <DevicesContent />
+      case 'erika':     return <ErikaContent />
       default: return null
     }
   }, [activeTab, search])

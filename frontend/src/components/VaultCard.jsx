@@ -738,7 +738,7 @@ export default function VaultCard({
                 const names    = collab_data.creator_names   || []
                 const charNames = collab_data.character_names || []
                 const joinedCreators   = names.join(' & ')
-                const joinedCharacters = charNames.join(' & ')
+                const joinedCharacters = charNames.filter(Boolean).join(' & ')
                 const isVariant = collabSubtype === 'variant'
                 const fs = Math.min(14, Math.max(8, width * 0.042))
                 return (

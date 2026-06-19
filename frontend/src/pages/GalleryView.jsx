@@ -154,6 +154,8 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
   )
 }
 
+
+
 const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDeleted, galleryId, bulkMode, selected, onSelect, onContextMenu }) {
   const [failed, setFailed] = useState(false)
   const [hoverVideo, setHoverVideo] = useState(false)
@@ -1563,7 +1565,7 @@ export default function GalleryView() {
   const [periodYear, setPeriodYear] = useState(null)
   const [thumbSizeIdx, setThumbSizeIdx] = useState(2) // default: 160px
   // Bulk select + extract
-  const [bulkMode, setBulkMode]   = useState(false)
+  const [bulkMode, setBulkMode]   = useState(() => new URLSearchParams(window.location.search).get('select') === 'true')
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExtract, setShowExtract] = useState(false)
   const lastSelectIdxRef = useRef(null)
@@ -1653,6 +1655,20 @@ export default function GalleryView() {
       addXpToast('+5 XP')
       qc.invalidateQueries({ queryKey: ['gallery', id] })
     }
+  })
+
+  const [galleryRating, setGalleryRating] = useState(0)
+  const [ratingHover, setRatingHover]     = useState(0)
+  useEffect(() => { setGalleryRating(gallery?.rating ?? 0) }, [gallery?.rating])
+
+  const rateGalleryMutation = useMutation({
+    mutationFn: (r) => galleriesApi.update(id, { rating: r }),
+    onSuccess: () => {
+      addXpToast('+3 XP')
+      qc.invalidateQueries({ queryKey: ['gallery', id] })
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+    },
+    onError: () => toast.error('Rating failed'),
   })
 
   const periodMutation = useMutation({
@@ -1829,6 +1845,33 @@ export default function GalleryView() {
                   style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
             <Droplets size={12} /> {gallery?.cum_count ?? 0}
           </button>
+          {/* Gallery rating */}
+          <div className="flex items-center gap-0.5 px-2 py-1.5 rounded-full"
+               style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}
+               onMouseLeave={() => setRatingHover(0)}>
+            {[1,2,3,4,5,6,7,8,9,10].map(n => {
+              const filled = ratingHover ? n <= ratingHover : n <= galleryRating
+              return (
+                <button key={n} type="button"
+                        onMouseEnter={() => setRatingHover(n)}
+                        onClick={() => {
+                          const next = galleryRating === n ? 0 : n
+                          setGalleryRating(next)
+                          rateGalleryMutation.mutate(next)
+                        }}
+                        className="cursor-pointer transition-transform hover:scale-125"
+                        title={`Rate ${n}/10`}>
+                  <Star size={9}
+                        fill={filled ? (ratingHover ? 'rgba(186,117,23,0.7)' : '#BA7517') : 'none'}
+                        stroke={filled ? '#BA7517' : 'rgba(255,255,255,0.2)'}
+                        strokeWidth={1.5} />
+                </button>
+              )
+            })}
+            {galleryRating > 0 && !ratingHover && (
+              <span className="text-[10px] ml-1" style={{ color: '#BA7517' }}>{galleryRating}</span>
+            )}
+          </div>
           <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
           {/* Size slider */}
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-full"
@@ -2014,6 +2057,11 @@ export default function GalleryView() {
           bulkCount={imgCtx.bulkImages?.length ?? null}
           position={{ x: imgCtx.x, y: imgCtx.y }}
           onClose={() => setImgCtx(null)}
+          onSelectMode={!bulkMode ? () => {
+            setBulkMode(true)
+            setSelectedIds(new Set([imgCtx.image.id]))
+            setImgCtx(null)
+          } : undefined}
           onView={() => {
             const idx2 = images?.filter(i => !deletedIds.has(i.id)).findIndex(i => i.id === imgCtx.image.id) ?? -1
             if (idx2 >= 0) setViewerIdx(idx2)

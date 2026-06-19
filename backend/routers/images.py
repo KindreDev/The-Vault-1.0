@@ -220,6 +220,7 @@ def update_image(image_id: int, data: ImageUpdate, db: Session = Depends(get_db)
     return result
 
 
+
 @router.post("/{image_id}/cum")
 def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
     img = db.query(Image).filter(Image.id == image_id).first()

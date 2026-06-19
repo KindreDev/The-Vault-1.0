@@ -257,7 +257,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:
@@ -275,6 +275,52 @@ def _parse_version(v: str):
 @router.get("/version")
 def get_version():
     return {"version": APP_VERSION, "is_installed": getattr(sys, "frozen", False)}
+
+
+def _find_lan_ip():
+    """Best guess at this PC's address on the local network.
+
+    Opens a dummy UDP socket toward a public address (no data is sent) so the
+    OS picks the network card it would actually use, then reads that card's
+    local IP. Falls back to localhost if there is no network.
+    """
+    import socket
+    candidates = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                candidates.append(ip)
+        finally:
+            s.close()
+    except Exception:
+        pass
+    # Backup: ask the hostname resolver for every address it knows
+    try:
+        host = socket.gethostname()
+        for info in socket.getaddrinfo(host, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127.") and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+    return candidates[0] if candidates else "127.0.0.1"
+
+
+@router.get("/mobile-link")
+def get_mobile_link():
+    """Returns the address a phone on the same Wi-Fi uses to open the app."""
+    ip = _find_lan_ip()
+    port = int(os.environ.get("VAULT_PORT", "8000"))
+    found = not ip.startswith("127.")
+    return {
+        "ip": ip,
+        "port": port,
+        "url": f"http://{ip}:{port}/m",
+        "found": found,
+    }
 
 
 @router.get("/update/check")

@@ -10,16 +10,16 @@ from schemas import XPEventOut
 
 # ── Level titles (1–100, every 5 levels) ─────────────────────────────────────
 LEVEL_TITLES = [
-    (1,   "The Lurker"),         (6,   "Peeking Shadow"),
-    (11,  "Desire Seeker"),      (16,  "Vault Delver"),
-    (21,  "Sin Collector"),      (26,  "Acolyte of Lust"),
-    (31,  "Devoted Stroker"),    (36,  "Pleasure Archivist"),
-    (41,  "Goon Disciple"),      (46,  "Metadata Priest"),
-    (51,  "High Priest of HD"),  (56,  "Curator of Sin"),
-    (61,  "The Degenerate"),     (66,  "Elite Gooner"),
-    (71,  "Vault Sovereign"),    (76,  "Lord of Indulgence"),
-    (81,  "Grand Archivist"),    (86,  "Legendary Coomer"),
-    (91,  "The Completionist"),  (96,  "God Emperor of the Vault"),
+    (1,   "Lurker"),               (6,   "Wanderer"),
+    (11,  "Seeker"),               (16,  "Delver"),
+    (21,  "Collector"),            (26,  "Acolyte"),
+    (31,  "Devotee"),              (36,  "Archivist"),
+    (41,  "Disciple"),             (46,  "Connoisseur"),
+    (51,  "Curator"),              (56,  "Zealot"),
+    (61,  "Degenerate"),           (66,  "Gooner"),
+    (71,  "Sovereign"),            (76,  "Corruptor"),
+    (81,  "Obsessed"),             (86,  "Legendary Collector"),
+    (91,  "Transcendent Hoarder"), (96,  "God Emperor Of The Vault"),
 ]
 
 def _xp_for_level(lvl: int) -> int:
@@ -45,7 +45,6 @@ XP_REWARDS = {
     "creator_added":       75,
     "gallery_imported":    15,
     "tag_added":            5,
-    "wiki_import":         25,
     "daily_login":         20,
     "quest_complete":       0,   # uses quest.xp_reward
     "achievement_unlock":   0,   # uses achievement.xp_reward
@@ -79,11 +78,11 @@ ALL_WEEKLY_QUESTS = [
     {"key": "add_creator",      "title": "Add a creator",       "description": "Add any creator this week",         "xp_reward": 200,  "credit_reward": 75,  "target": 1,  "icon": "ti-user-plus"},
     {"key": "import_gallery",   "title": "Import a gallery",    "description": "Scan a new gallery folder",         "xp_reward": 250,  "credit_reward": 100, "target": 1,  "icon": "ti-photo"},
     {"key": "session_streak",   "title": "Session marathon",    "description": "Log 3 sessions this week",          "xp_reward": 400,  "credit_reward": 150, "target": 3,  "icon": "ti-flame"},
-    {"key": "wiki_hunter",      "title": "Wiki hunter",         "description": "Import 1 character from wiki",      "xp_reward": 175,  "credit_reward": 60,  "target": 1,  "icon": "ti-world"},
+    {"key": "session_binge",    "title": "Session binge",       "description": "Log 5 sessions this week",           "xp_reward": 175,  "credit_reward": 60,  "target": 5,  "icon": "ti-heart"},
     {"key": "gallery_marathon", "title": "Gallery marathon",    "description": "Import 3 galleries this week",      "xp_reward": 550,  "credit_reward": 200, "target": 3,  "icon": "ti-folders"},
     {"key": "pack_spree",       "title": "Pack addict",         "description": "Open 5 packs this week",            "xp_reward": 350,  "credit_reward": 125, "target": 5,  "icon": "ti-cards"},
     {"key": "tag_master_week",  "title": "Weekly tagger",       "description": "Add 50 tags this week",             "xp_reward": 400,  "credit_reward": 150, "target": 50, "icon": "ti-tags"},
-    {"key": "wiki_scholar",     "title": "Wiki scholar",        "description": "Import 3 characters from wiki",     "xp_reward": 400,  "credit_reward": 150, "target": 3,  "icon": "ti-book"},
+    {"key": "forge_week",       "title": "The Recycler",        "description": "Dismantle 10 cards this week",      "xp_reward": 400,  "credit_reward": 150, "target": 10, "icon": "ti-hammer"},
 ]
 WEEKLY_POOL_SIZE = 4
 
@@ -152,8 +151,8 @@ ACHIEVEMENTS = [
     {"key": "night_owl",         "title": "Night Owl",              "description": "Use the vault after midnight",           "icon": "ti-moon",           "xp_reward": 100,  "credit_reward": 35},
     {"key": "early_bird",        "title": "Early Bird",             "description": "Use the vault before 8 AM",             "icon": "ti-sun",            "xp_reward": 100,  "credit_reward": 35},
     # ── Collection milestones ─────────────────────────────────────────────────
-    {"key": "lore_nerd",         "title": "Lore Nerd",              "description": "Import 5 characters from wiki",          "icon": "ti-book",           "xp_reward": 250,  "credit_reward": 100},
-    {"key": "wiki_scholar_ach",  "title": "Wiki Scholar",           "description": "Import 10 characters from wiki",         "icon": "ti-world",          "xp_reward": 600,  "credit_reward": 200},
+    {"key": "dismantle_25",      "title": "Card Shredder",          "description": "Dismantle 25 cards",                     "icon": "ti-hammer",         "xp_reward": 250,  "credit_reward": 100},
+    {"key": "dismantle_100",     "title": "Forge Adept",            "description": "Dismantle 100 cards",                    "icon": "ti-hammer",         "xp_reward": 600,  "credit_reward": 200},
     {"key": "true_fan",          "title": "True Fan",               "description": "Rate a gallery 10/10",                   "icon": "ti-heart-filled",   "xp_reward": 300,  "credit_reward": 100},
     {"key": "hundred_images",    "title": "Centurion",              "description": "Reach 100 images in the vault",          "icon": "ti-photo",          "xp_reward": 300,  "credit_reward": 100},
     {"key": "images_500",        "title": "Mid-Tier Vault",         "description": "Reach 500 images",                       "icon": "ti-stack",          "xp_reward": 750,  "credit_reward": 250},
@@ -193,18 +192,18 @@ ACHIEVEMENTS = [
 
 # ── Quest trigger map (action → list of quest keys that advance) ──────────────
 QUEST_TRIGGER_MAP = {
-    "session_logged":   ["log_session", "session_streak", "ten_sessions", "fifty_sessions", "hundred_sessions"],
+    "session_logged":   ["log_session", "session_streak", "session_binge", "ten_sessions", "fifty_sessions", "hundred_sessions"],
     "image_rated":      ["rate_images", "rate_spree"],
     "tag_added":        ["tag_images", "tag_spree", "tag_master_week", "tag_master", "tag_legend"],
     "creator_added":    ["add_creator", "five_creators", "ten_creators", "twenty_five_creators", "fifty_creators"],
     # image-count boss quests (century, five_hundred_imgs, etc.) are synced by absolute value
     # in notify_action → gallery_imported, NOT via +1 increments here
     "gallery_imported": ["import_gallery", "gallery_marathon"],
-    "wiki_import":      ["wiki_hunter", "wiki_scholar"],
     "cum_logged":       ["drain_tank", "double_goon", "fifty_nuts", "hundred_nuts", "five_hundred_nuts"],
     "gallery_rated":    ["rate_galleries"],
     # card-count boss quests (fifty_cards, etc.) are synced by absolute value in pack_opened handler
     "pack_opened":      ["open_pack", "pack_spree"],
+    "card_dismantled":  ["forge_week"],
     "daily_login":      ["open_the_vault", "month_streak", "two_month_streak"],
 }
 
@@ -406,6 +405,11 @@ def _reset_weekly_quests(db: Session):
     ).all()
     for q in expired:
         db.delete(q)
+    # Purge any active quests whose keys were removed from the pool
+    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic"}
+    stale = db.query(Quest).filter(Quest.key.in_(_REMOVED_QUEST_KEYS)).all()
+    for q in stale:
+        db.delete(q)
     db.flush()
 
     active = db.query(Quest).filter(
@@ -438,6 +442,14 @@ def _ensure_quests_present(db: Session):
     """Ensure boss quests are present (daily/weekly are pooled and don't need top-up).
     Also back-fills credit_reward on any existing quest row that is missing it — handles
     DB rows seeded before the credit_reward column existed."""
+    # Purge any quest rows whose keys were removed from all pools
+    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic"}
+    stale = db.query(Quest).filter(Quest.key.in_(_REMOVED_QUEST_KEYS)).all()
+    if stale:
+        for q in stale:
+            db.delete(q)
+        db.flush()
+
     # Add any missing boss quests
     existing_boss = {q.key for q in db.query(Quest).filter(
         Quest.quest_type == QuestType.boss
@@ -465,11 +477,26 @@ def _ensure_quests_present(db: Session):
 
 
 def _ensure_achievements_present(db: Session):
-    existing = {a.key for a in db.query(Achievement).all()}
-    additions = [Achievement(unlocked=False, **a) for a in ACHIEVEMENTS if a["key"] not in existing]
+    # Purge achievement rows whose keys were removed from the definitions
+    _REMOVED_ACHIEVEMENT_KEYS = {"lore_nerd", "wiki_scholar_ach"}
+    stale = db.query(Achievement).filter(Achievement.key.in_(_REMOVED_ACHIEVEMENT_KEYS)).all()
+    for a in stale:
+        db.delete(a)
+
+    existing_map = {a.key: a for a in db.query(Achievement).all()}
+    additions = []
+    for a in ACHIEVEMENTS:
+        if a["key"] not in existing_map:
+            additions.append(Achievement(unlocked=False, **a))
+        else:
+            # Keep title/description in sync with code definitions
+            row = existing_map[a["key"]]
+            if row.title != a["title"] or row.description != a["description"]:
+                row.title = a["title"]
+                row.description = a["description"]
     if additions:
         db.add_all(additions)
-        db.commit()
+    db.commit()
 
 
 def _advance_quest(db: Session, key: str, amount: int = 1):
@@ -691,7 +718,9 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         profile.total_images_rated = (profile.total_images_rated or 0) + 1
         db.commit()
         unlock_achievement(db, "first_rating")
+        if profile.total_images_rated >= 50:   unlock_achievement(db, "lore_nerd")
         if profile.total_images_rated >= 100:  unlock_achievement(db, "top_rated")
+        if profile.total_images_rated >= 200:  unlock_achievement(db, "wiki_scholar_ach")
         if profile.total_images_rated >= 500:  unlock_achievement(db, "harsh_critic")
         if profile.total_images_rated >= 1000: unlock_achievement(db, "rated_1000")
         # image max rating is 5 — true_fan triggers on perfect score
@@ -714,12 +743,6 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         if profile.tags_added_today >= 50:  unlock_achievement(db, "speed_tagger")
         if profile.total_tags_added >= 500:  unlock_achievement(db, "tag_master")
         if profile.total_tags_added >= 2000: unlock_achievement(db, "tag_obsessed")
-
-    elif action == "wiki_import":
-        profile.wiki_import_count = (profile.wiki_import_count or 0) + 1
-        db.commit()
-        if profile.wiki_import_count >= 5:  unlock_achievement(db, "lore_nerd")
-        if profile.wiki_import_count >= 10: unlock_achievement(db, "wiki_scholar_ach")
 
     elif action == "creator_added":
         from models import Creator as _Creator
@@ -780,7 +803,11 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
             pass
 
     elif action == "card_dismantled":
+        profile.total_cards_dismantled = (profile.total_cards_dismantled or 0) + count
+        db.commit()
         unlock_achievement(db, "first_dismantle")
+        if profile.total_cards_dismantled >= 25:  unlock_achievement(db, "dismantle_25")
+        if profile.total_cards_dismantled >= 100: unlock_achievement(db, "dismantle_100")
 
     elif action == "gallery_assigned":
         # override_amount is the image count (minimum 1).

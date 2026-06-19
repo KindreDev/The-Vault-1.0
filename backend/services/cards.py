@@ -269,50 +269,48 @@ def _pick_goon_card(db: Session) -> Optional[Card]:
     return generate_card(db, "goon", source_image_id=img.id)
 
 
-def _pick_variant_card(db: Session) -> Optional[Card]:
-    """Pick a real creator×character pair linked via Gallery.linked_character_id.
-    Only pairs where at least one gallery has BOTH creator_id AND linked_character_id
-    set are eligible — no more random cross-products between unrelated entities.
-    Hard cap: VARIANT_CAP variants per pair.
-    """
-    # All distinct (creator_id, character_id) pairs backed by a real gallery link
-    pairs = (
+def _variant_pairs(db: Session) -> list:
+    """Return all distinct (creator_id, character_id) pairs eligible for variant cards."""
+    return (
         db.query(Gallery.creator_id, Gallery.linked_character_id)
-        .filter(
-            Gallery.creator_id.isnot(None),
-            Gallery.linked_character_id.isnot(None),
-        )
+        .filter(Gallery.creator_id.isnot(None), Gallery.linked_character_id.isnot(None))
         .distinct()
         .all()
     )
+
+
+def _images_for_variant_pair(db: Session, creator_id: int, character_id: int) -> list:
+    """Return all images from galleries linking this creator to this character."""
+    imgs = []
+    for gal in db.query(Gallery).filter(
+        Gallery.creator_id == creator_id,
+        Gallery.linked_character_id == character_id,
+    ).all():
+        imgs.extend(db.query(Image).filter(Image.gallery_id == gal.id).all())
+    return imgs
+
+
+def _pick_variant_card(db: Session) -> Optional[Card]:
+    """Pick a real creator×character pair from gallery-level links.
+    Hard cap: VARIANT_CAP variants per pair.
+    """
+    pairs = _variant_pairs(db)
     if not pairs:
         return _pick_creator_card(db)
 
-    # Remove pairs at the hard cap
-    eligible = []
-    for creator_id, character_id in pairs:
-        existing = db.query(Card).filter(
+    eligible = [
+        (cid, chid) for cid, chid in pairs
+        if db.query(Card).filter(
             Card.card_type == CardType.variant,
-            Card.source_creator_id == creator_id,
-            Card.linked_character_id == character_id,
-        ).count()
-        if existing < VARIANT_CAP:
-            eligible.append((creator_id, character_id))
-
+            Card.source_creator_id == cid,
+            Card.linked_character_id == chid,
+        ).count() < VARIANT_CAP
+    ]
     if not eligible:
         return _pick_creator_card(db)
 
     creator_id, character_id = random.choice(eligible)
-
-    # Pick art from the intersection image pool
-    gals = db.query(Gallery).filter(
-        Gallery.creator_id == creator_id,
-        Gallery.linked_character_id == character_id,
-    ).all()
-    all_imgs = []
-    for gal in gals:
-        all_imgs.extend(db.query(Image).filter(Image.gallery_id == gal.id).all())
-
+    all_imgs = _images_for_variant_pair(db, creator_id, character_id)
     img = random.choice(all_imgs) if all_imgs else None
 
     return generate_card(
@@ -392,18 +390,34 @@ def _pick_collab_card(db: Session) -> Optional[Card]:
 
     if roll < 0.15:
         # Collab variant
-        characters = db.query(Creator).filter(Creator.creator_type == "character").all()
-        if not characters:
+        from models import gallery_creators as _gc
+        all_characters = db.query(Creator).filter(Creator.creator_type == "character").all()
+        if not all_characters:
             return _make_collab_gallery_card(db, gal, cosplayers)
+
+        def _chars_for_cosplayer(cosplayer):
+            """Return characters this cosplayer has actually cosplayed (gallery-level links)."""
+            return (
+                db.query(Creator)
+                .join(Gallery, Gallery.linked_character_id == Creator.id)
+                .join(_gc, _gc.c.gallery_id == Gallery.id)
+                .filter(_gc.c.creator_id == cosplayer.id)
+                .distinct()
+                .all()
+            )
+
+        def _pick_char(cosplayer):
+            pool = _chars_for_cosplayer(cosplayer)
+            return random.choice(pool) if pool else None
 
         # 3-way (20 % chance when gallery has 3+ cosplayers) → instantly Celestial
         if len(cosplayers) >= 3 and random.random() < 0.20:
             picked_creators = random.sample(cosplayers, 3)
-            picked_chars    = random.choices(characters, k=3)
+            picked_chars    = [_pick_char(c) for c in picked_creators]
             instantly_celestial = True
         else:
             picked_creators = random.sample(cosplayers, min(2, len(cosplayers)))
-            picked_chars    = random.choices(characters, k=len(picked_creators))
+            picked_chars    = [_pick_char(c) for c in picked_creators]
             instantly_celestial = False
 
         img_count = db.query(Image).filter(Image.gallery_id == gal_id).count()
@@ -413,10 +427,10 @@ def _pick_collab_card(db: Session) -> Optional[Card]:
 
         collab_data = json.dumps({
             "subtype":          "variant",
-            "creator_ids":      [c.id   for c in picked_creators],
-            "creator_names":    [c.name for c in picked_creators],
-            "character_ids":    [c.id   for c in picked_chars],
-            "character_names":  [c.name for c in picked_chars],
+            "creator_ids":      [c.id        for c in picked_creators],
+            "creator_names":    [c.name      for c in picked_creators],
+            "character_ids":    [c.id   if c else None for c in picked_chars],
+            "character_names":  [c.name if c else None for c in picked_chars],
         })
 
         if instantly_celestial:
@@ -869,8 +883,13 @@ def get_fuseable(db: Session, inventory_id: int) -> list:
         })
 
     # Same source, strictly lower rarity
+    # Collab cards are image-specific — each one is its own card. The only valid dupe
+    # is quantity > 1 on the exact same inventory entry (handled above).
+    target_card_type = target_card.card_type.value if hasattr(target_card.card_type, "value") else target_card.card_type
     same_source = []
-    if target_card.source_creator_id:
+    if target_card_type == "collab":
+        pass
+    elif target_card.source_creator_id:
         same_source = (
             db.query(CardInventory)
             .join(Card, CardInventory.card_id == Card.id)
@@ -1059,17 +1078,9 @@ def shards_to_credits(db: Session, amount: int) -> dict:
 
 def get_variant_pairs(db: Session) -> list:
     """Return all real creator×character pairs eligible for variant forging.
-    A pair is valid if at least one gallery links both via creator_id + linked_character_id.
+    Includes both gallery-level links and image-level links.
     """
-    pairs = (
-        db.query(Gallery.creator_id, Gallery.linked_character_id)
-        .filter(
-            Gallery.creator_id.isnot(None),
-            Gallery.linked_character_id.isnot(None),
-        )
-        .distinct()
-        .all()
-    )
+    pairs = _variant_pairs(db)
 
     results = []
     for creator_id, character_id in pairs:
@@ -1084,24 +1095,11 @@ def get_variant_pairs(db: Session) -> list:
             Card.linked_character_id == character_id,
         ).count()
 
-        gals = db.query(Gallery).filter(
-            Gallery.creator_id == creator_id,
-            Gallery.linked_character_id == character_id,
-        ).all()
-        img_count = sum(
-            db.query(Image).filter(Image.gallery_id == g.id).count()
-            for g in gals
-        )
+        all_imgs  = _images_for_variant_pair(db, creator_id, character_id)
+        img_count = len(all_imgs)
 
-        # Sample thumbnail from pool for preview
-        sample_img = None
-        for gal in gals:
-            sample_img = db.query(Image).filter(
-                Image.gallery_id == gal.id,
-                Image.thumb_path.isnot(None),
-            ).first()
-            if sample_img:
-                break
+        # Sample thumbnail from the pool
+        sample_img = next((i for i in all_imgs if i.thumb_path), None)
 
         results.append({
             "creator_id":      creator_id,

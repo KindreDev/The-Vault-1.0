@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Loader, Sparkles, BarChart2 } from 'lucide-react'
+import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Check, Loader, Sparkles, BarChart2 } from 'lucide-react'
 import { cardsApi, economyApi, gamiApi } from '../lib/api'
 import VaultCard, { RARITY_ORDER, RARITY_CONFIG } from '../components/VaultCard'
 import CardViewer from '../components/CardViewer'
@@ -20,7 +20,7 @@ const TABS = [
 ]
 
 const RARITY_LABELS = ['All', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Relic', 'Celestial']
-const TYPE_LABELS   = ['All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant']
+const TYPE_LABELS   = ['All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant', 'Collab']
 const TYPE_API_MAP  = { 'Photo': 'image' }
 const SORT_OPTIONS  = [
   { value: 'rarity_desc', label: 'Rarity ↓' },
@@ -33,6 +33,68 @@ const SORT_OPTIONS  = [
 const RARITY_COLORS = {
   common: '#888', uncommon: '#1D9E75', rare: '#4682DC',
   epic: '#7F77DD', legendary: '#ff8800', relic: '#FFD700', celestial: '#E8E8FF',
+}
+
+// ── Standard vault dropdown — matches GalleryList style exactly ──────────────
+function VaultDropdown({ value, onChange, options, colorMap }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const getOpt  = v => options.find(o => (o.value ?? o) === v) ?? options[0]
+  const getLabel = v => { const o = getOpt(v); return o?.label ?? o }
+  const isDefault = value === (options[0]?.value ?? options[0])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] cursor-pointer"
+        style={{
+          background: !isDefault ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
+          color: !isDefault ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${!isDefault ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          transition: 'all 0.15s ease',
+        }}>
+        {!isDefault && colorMap?.[value] && (
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorMap[value] }} />
+        )}
+        {getLabel(value)}
+        <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 rounded-[10px] shadow-2xl animate-menu-pop overflow-hidden"
+             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 140 }}>
+          {options.map(opt => {
+            const v = opt.value ?? opt
+            const l = opt.label ?? opt
+            const active = v === value
+            return (
+              <button key={String(v)} type="button"
+                      onMouseDown={() => { onChange(v); setOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-[12px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
+                      style={{
+                        background: active ? 'rgba(127,119,221,0.15)' : 'transparent',
+                        color: active ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                      }}>
+                {colorMap?.[v]
+                  ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorMap[v] }} />
+                  : <span className="w-1.5 h-1.5 flex-shrink-0" />}
+                {l}
+                {active && <Check size={10} className="ml-auto" style={{ color: '#7F77DD' }} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Collection() {
@@ -220,19 +282,17 @@ const feedDuplicateMutation = useMutation({
   }
 
   const selectRareOrBelow = () => {
-    // Only selects cards visible on the current forge page
     const threshold = RARITY_ORDER.indexOf('rare')
     setIsSelectAll(false)
-    setSelected(forgePagedItems
+    setSelected(items
       .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
       .map(inv => inv.inventory_id))
   }
 
   const selectUncommonOrBelow = () => {
-    // Only selects cards visible on the current forge page
     const threshold = RARITY_ORDER.indexOf('uncommon')
     setIsSelectAll(false)
-    setSelected(forgePagedItems
+    setSelected(items
       .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
       .map(inv => inv.inventory_id))
   }
@@ -407,29 +467,34 @@ const feedDuplicateMutation = useMutation({
           <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
             <Filter size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
             {/* Rarity filter */}
-            <select value={rarityFilter} onChange={e => { setRarityFilter(e.target.value); setPage(1); setForgePage(1) }}
-              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
-              {RARITY_LABELS.map(r => <option key={r}>{r}</option>)}
-            </select>
+            <VaultDropdown
+              value={rarityFilter}
+              onChange={v => { setRarityFilter(v); setPage(1); setForgePage(1) }}
+              options={RARITY_LABELS.map(r => ({ value: r, label: r }))}
+              colorMap={RARITY_COLORS}
+            />
             {/* Type filter */}
-            <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); setForgePage(1) }}
-              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
-              {TYPE_LABELS.map(t => <option key={t}>{t}</option>)}
-            </select>
+            <VaultDropdown
+              value={typeFilter}
+              onChange={v => { setTypeFilter(v); setPage(1); setForgePage(1) }}
+              options={TYPE_LABELS.map(t => ({ value: t, label: t }))}
+            />
             {/* Sort */}
-            <select value={sort} onChange={e => setSort(e.target.value)}
-              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
-              {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+            <VaultDropdown
+              value={sort}
+              onChange={v => setSort(v)}
+              options={SORT_OPTIONS}
+            />
 
             {/* Divider */}
             <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
 
             {/* Per-page */}
-            <select value={pageSize} onChange={e => { const n = Number(e.target.value); setPageSize(n); localStorage.setItem('vault-collection-page-size', n); setPage(1) }}
-              style={{ background: '#1a1a2e', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', outline: 'none' }}>
-              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} per page</option>)}
-            </select>
+            <VaultDropdown
+              value={pageSize}
+              onChange={v => { setPageSize(v); localStorage.setItem('vault-collection-page-size', v); setPage(1) }}
+              options={PAGE_SIZE_OPTIONS.map(n => ({ value: n, label: `${n} per page` }))}
+            />
 
             {/* Effects toggle */}
             <button onClick={() => setShowEffects(v => { const n = !v; localStorage.setItem('vault-show-effects', n); return n })} style={{
