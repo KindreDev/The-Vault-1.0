@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:pwa": "vite build --base=/m/ --outDir dist-pwa",
     "preview": "vite preview",
     "cap:sync": "vite build && cap sync",
     "cap:open": "cap open android",

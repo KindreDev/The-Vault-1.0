@@ -59,6 +59,23 @@ if not exist "dist\index.html" (
 echo     React app built to frontend\dist\
 echo.
 
+REM Step 2b - Build mobile PWA (served at /m for phones on the LAN)
+echo [2b/5] Building mobile PWA...
+cd /d "%~dp0frontend-mobile"
+
+call npm ci
+if %errorlevel% neq 0 ( echo [ERROR] mobile npm ci failed. & pause & exit /b 1 )
+
+call npm run build:pwa
+if %errorlevel% neq 0 ( echo [ERROR] mobile build:pwa failed. & pause & exit /b 1 )
+
+if not exist "dist-pwa\index.html" (
+    echo [ERROR] frontend-mobile\dist-pwa\index.html missing after build.
+    pause & exit /b 1
+)
+echo     Mobile PWA built to frontend-mobile\dist-pwa\ (served at /m)
+echo.
+
 REM Step 3 - Python venv + dependencies
 echo [3/5] Setting up Python environment...
 cd /d "%~dp0backend"

@@ -419,7 +419,7 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.1.0")
+app = FastAPI(title="The Vault", version="1.1.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -619,6 +619,46 @@ def debug_level_up(db: Session = Depends(get_db)):
     return {"level": new_level, "title": new_title, "xp_to_next": 1, "total_xp": profile.total_xp}
 
 
+# ── Serve the mobile PWA (phones on the LAN) ─────────────────────────────────
+# A phone on the same WiFi opens http://<pc-ip>:8000/m, taps "Add to Home
+# Screen", and gets a fullscreen app that talks to this same server for data.
+# It's a separate build (npm run build:pwa → dist-pwa, base '/m/') served under
+# /m so it never collides with the desktop app mounted at the root.
+# IMPORTANT: registered BEFORE the desktop catch-all below so /m wins.
+
+def _get_mobile_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'frontend-mobile', 'dist-pwa')
+    candidate = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend-mobile', 'dist-pwa')
+    )
+    return candidate if os.path.isdir(candidate) else None
+
+_MOBILE_DIR = _get_mobile_dir()
+
+if _MOBILE_DIR and os.path.isdir(_MOBILE_DIR):
+    _m_assets = os.path.join(_MOBILE_DIR, 'assets')
+    if os.path.isdir(_m_assets):
+        app.mount("/m/assets", StaticFiles(directory=_m_assets), name="mobile-assets")
+
+    # index.html is cached but always revalidated: "no-cache" lets the WebView
+    # keep a copy and just ask "still current?" on each load. FileResponse sends
+    # an ETag, so unchanged builds get a near-instant 304 (no re-download); only
+    # when the build changes does the hashed-chunk index.html actually re-fetch.
+    # It must not be cached *immutably* — its chunk names change every build.
+    _MOBILE_NO_CACHE = {"Cache-Control": "no-cache"}
+
+    # SPA fallback for everything under /m — serves real files (manifest, icons,
+    # sw.js) when they exist, otherwise index.html so React Router takes over.
+    @app.get("/m", include_in_schema=False)
+    @app.get("/m/{full_path:path}", include_in_schema=False)
+    async def _serve_mobile(full_path: str = ""):
+        candidate = os.path.join(_MOBILE_DIR, full_path)
+        if full_path and os.path.isfile(candidate) and os.path.basename(candidate) != "index.html":
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(_MOBILE_DIR, "index.html"), headers=_MOBILE_NO_CACHE)
+
+
 # ── Serve the pre-built React frontend ───────────────────────────────────────
 # Active only when frontend/dist/ exists (production build or bundled exe).
 # In dev mode the Vite dev-server on :5173 proxies to :8000 instead.
@@ -641,15 +681,26 @@ if _FRONTEND_DIR and os.path.isdir(_FRONTEND_DIR):
     if os.path.isdir(_assets_dir):
         app.mount("/assets", StaticFiles(directory=_assets_dir), name="frontend-assets")
 
+    # index.html is cached but revalidated, never frozen. "no-cache" lets the
+    # WebView store a copy and just ask the server "still current?" on each load;
+    # FileResponse sends an ETag so an unchanged build answers 304 in well under
+    # a millisecond (no re-download). Only when the build changes does it actually
+    # re-fetch. It must NOT be cached immutably: its <script> tags point at hashed
+    # chunk files (e.g. CreatorList-B2ZZZlqR.js) that change every build, so a
+    # frozen index.html would request chunks that no longer exist → "Failed to
+    # fetch dynamically imported module". The hashed /assets files themselves stay
+    # cached forever (their name changes when their content does).
+    _NO_CACHE = {"Cache-Control": "no-cache"}
+
     # Catch-all SPA route — must be registered LAST so API routes take priority.
     # Known static files (favicon, manifest, etc.) are served directly;
     # everything else returns index.html so React Router handles the path.
     @app.get("/{full_path:path}", include_in_schema=False)
     async def _serve_spa(full_path: str):
         candidate = os.path.join(_FRONTEND_DIR, full_path)
-        if full_path and os.path.isfile(candidate):
+        if full_path and os.path.isfile(candidate) and os.path.basename(candidate) != "index.html":
             return FileResponse(candidate)
-        return FileResponse(os.path.join(_FRONTEND_DIR, "index.html"))
+        return FileResponse(os.path.join(_FRONTEND_DIR, "index.html"), headers=_NO_CACHE)
 
 
 if __name__ == "__main__":
@@ -709,6 +760,54 @@ if __name__ == "__main__":
             )
             _api._win = _win   # back-reference so the API can reach the window
 
+            _wv_storage = os.path.join(DATA_DIR, "webview_data")
+            os.makedirs(_wv_storage, exist_ok=True)
+
+            # One-time cache invalidation — ONLY when the frontend build changes.
+            # index.html is served no-cache (see _serve_spa) so it's always fresh,
+            # but a machine upgrading from an OLDER build can still have that old
+            # build's index.html sitting in the WebView2 HTTP cache, pointing at
+            # JS chunk names that no longer exist. When the build's index.html
+            # hash changes we clear ONLY the HTTP "Cache" folder once.
+            #
+            # We deliberately do NOT touch "Code Cache" (V8 compiled bytecode) or
+            # the GPU/shader caches — wiping those every launch would force a cold
+            # re-compile and slow every startup. Local Storage (theme, fonts,
+            # thumbnail sizes, session timer) is likewise left untouched.
+            _build_changed = False
+            try:
+                import hashlib as _hashlib, shutil as _shutil
+                _idx = os.path.join(_FRONTEND_DIR, "index.html") if _FRONTEND_DIR else None
+                _build_id = ""
+                if _idx and os.path.isfile(_idx):
+                    with open(_idx, "rb") as _f:
+                        _build_id = _hashlib.md5(_f.read()).hexdigest()
+                _marker = os.path.join(_wv_storage, ".frontend_build")
+                _prev = ""
+                if os.path.isfile(_marker):
+                    with open(_marker, "r", encoding="utf-8") as _f:
+                        _prev = _f.read().strip()
+                if _build_id and _build_id != _prev:
+                    _build_changed = True
+                    for _root, _dirs, _files in os.walk(_wv_storage):
+                        for _d in list(_dirs):
+                            if _d == "Cache":   # HTTP response cache only
+                                _shutil.rmtree(os.path.join(_root, _d), ignore_errors=True)
+                                _dirs.remove(_d)
+                    with open(_marker, "w", encoding="utf-8") as _f:
+                        _f.write(_build_id)
+            except Exception:
+                pass  # best-effort; never block startup
+
+            # After an update the WebView2 can still paint the PREVIOUS build's
+            # page from a cache layer we can't reliably wipe from disk (the old
+            # instance's msedgewebview2 child can still hold the Cache folder
+            # locked at the moment we try to clear it, so the delete silently
+            # fails). Deleting files is a race we can lose. So when the build
+            # changed, force exactly one in-app reload after the page loads —
+            # the same thing pressing F5 did by hand. Guarded to fire only once.
+            _reloaded = {"done": False}
+
             def _on_loaded():
                 # Inject F5 → reload (Ctrl+F5 still does browser default)
                 _win.evaluate_js(
@@ -719,9 +818,10 @@ if __name__ == "__main__":
                     "  }"
                     "});"
                 )
+                if _build_changed and not _reloaded["done"]:
+                    _reloaded["done"] = True
+                    _win.evaluate_js("location.reload()")
 
-            _wv_storage = os.path.join(DATA_DIR, "webview_data")
-            os.makedirs(_wv_storage, exist_ok=True)
             webview.start(_on_loaded, debug=False, private_mode=False, storage_path=_wv_storage)
             # webview.start() blocks until the window is closed.
             # os._exit() is a hard exit — it kills all threads (including uvicorn's

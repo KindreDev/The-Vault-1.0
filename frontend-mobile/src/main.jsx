@@ -19,11 +19,16 @@ async function initNative() {
 }
 initNative()
 
+// The APK is served from the root ("/"); the PWA is served from "/m" (built with
+// base=/m/). import.meta.env.BASE_URL reflects whichever build this is, so the
+// router uses the correct path prefix in both.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
+        <BrowserRouter basename={basename}>
           <App />
         </BrowserRouter>
       </QueryClientProvider>

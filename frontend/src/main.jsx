@@ -7,6 +7,18 @@ import queryClient from './lib/queryClient'
 import './index.css'
 import 'flag-icons/css/flag-icons.min.css'
 
+// If a lazily-loaded route chunk can't be fetched (the app was rebuilt while a
+// stale page was open), reload once to pull the fresh index.html + chunk names
+// instead of showing "Failed to fetch dynamically imported module". The guard
+// stops an endless reload loop if the chunk is genuinely gone.
+window.addEventListener('vite:preloadError', () => {
+  if (!sessionStorage.getItem('vault_chunk_reloaded')) {
+    sessionStorage.setItem('vault_chunk_reloaded', '1')
+    window.location.reload()
+  }
+})
+window.addEventListener('load', () => sessionStorage.removeItem('vault_chunk_reloaded'))
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>
     <App />

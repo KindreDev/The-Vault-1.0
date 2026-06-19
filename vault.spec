@@ -11,10 +11,19 @@ block_cipher = None
 ROOT          = os.path.abspath(SPECPATH)
 BACKEND_DIR   = os.path.join(ROOT, 'backend')
 FRONTEND_DIST = os.path.join(ROOT, 'frontend', 'dist')
+MOBILE_PWA_DIST = os.path.join(ROOT, 'frontend-mobile', 'dist-pwa')
 FFMPEG_EXE    = os.path.join(ROOT, 'tools', 'ffmpeg.exe')
 
 # Build the datas list — always include the frontend, bundle ffmpeg if present
 _datas = [(FRONTEND_DIST, 'frontend/dist')]
+
+# Mobile PWA (served at /m for phones on the LAN). Built via build:pwa; skipped
+# gracefully if it hasn't been built yet.
+if os.path.isdir(MOBILE_PWA_DIST):
+    _datas.append((MOBILE_PWA_DIST, 'frontend-mobile/dist-pwa'))
+    print("[vault.spec] Bundling mobile PWA (frontend-mobile/dist-pwa)")
+else:
+    print("[vault.spec] WARNING: frontend-mobile/dist-pwa not found — phones won't get the /m app. Run: npm run build:pwa")
 if os.path.isfile(FFMPEG_EXE):
     _datas.append((FFMPEG_EXE, '.'))   # extracted to sys._MEIPASS/ffmpeg.exe at runtime
     print(f"[vault.spec] Bundling ffmpeg.exe ({os.path.getsize(FFMPEG_EXE)//1024//1024} MB)")

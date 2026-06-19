@@ -3,7 +3,7 @@
 ; Output:   dist\VaultSetup.exe
 
 #define AppName      "The Vault"
-#define AppVersion   "1.1.0"
+#define AppVersion   "1.1.2"
 #define AppPublisher "The Vault"
 #define AppURL       "https://github.com/"
 #define AppExeName   "vault.exe"
@@ -57,10 +57,13 @@ Name: "{userdesktop}\{#AppName}";     Filename: "{app}\{#AppExeName}"; Tasks: de
 Root: HKCU; Subkey: "Software\TheVault"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
-; Offer to launch the app when the installer finishes
+; Offer to launch the app when the installer finishes (interactive installs)
 Filename: "{app}\{#AppExeName}"; \
   Description: "Launch {#AppName} now"; \
   Flags: nowait postinstall skipifsilent
+; Auto-relaunch after a silent auto-update (the running app exits itself, so
+; /RESTARTAPPLICATIONS can't bring it back — start it explicitly here instead)
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 ; Nothing special on uninstall — user data stays in %APPDATA%\TheVault
