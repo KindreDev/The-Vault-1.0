@@ -178,6 +178,7 @@ def get_config():
         "effective_data_dir": DATA_DIR,
         "config_dir":         CONFIG_DIR,
         "use_gpu":            config.get("use_gpu", True),  # GPU on by default
+        "funscript_library_path": config.get("funscript_library_path", ""),
     }
 
 
@@ -198,6 +199,18 @@ def set_config(body: dict):
     _write_config(config)
 
     return {"message": "Saved. Restart the server to apply.", "data_dir": new_dir}
+
+
+@router.post("/config/funscript-library")
+def set_funscript_library(body: dict):
+    """Save the central funscript library folder path. Takes effect immediately."""
+    path = (body.get("funscript_library_path") or "").strip()
+    if path and not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {path}")
+    config = _read_config()
+    config["funscript_library_path"] = path
+    _write_config(config)
+    return {"funscript_library_path": path}
 
 
 @router.post("/config/gpu-mode")
@@ -257,7 +270,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.5"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:

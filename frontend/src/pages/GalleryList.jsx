@@ -15,7 +15,10 @@ import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { SortDropdown } from '../components/SortDropdown'
 import FranchiseFilter from '../components/FranchiseFilter'
+import PeriodFilter from '../components/PeriodFilter'
+import { useAllCreators } from '../hooks/useAllCreators'
 import GalleryContextMenu from '../components/GalleryContextMenu'
+import { useT } from '../i18n'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -31,6 +34,7 @@ const SORT_OPTIONS = [
   { value: 'image_count',   label: 'Most photos' },
   { value: 'rating',        label: 'Highest rated' },
   { value: 'cum_count',     label: 'Most cummed' },
+  { value: 'period',        label: 'Period' },
   { value: 'random',        label: 'Random' },
 ]
 
@@ -39,6 +43,7 @@ const DEFAULT_PAGE_SIZE = 100
 
 // ── Create gallery modal ───────────────────────────────────────────────────────
 function CreateGalleryModal({ onClose }) {
+  const t = useT()
   const [name, setName] = useState('')
   const qc = useQueryClient()
 
@@ -49,7 +54,7 @@ function CreateGalleryModal({ onClose }) {
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onClose()
     },
-    onError: (err) => toast.error(err.response?.data?.detail || 'Failed to create gallery'),
+    onError: (err) => toast.error(err.response?.data?.detail || t('Failed to create gallery')),
   })
 
   const submit = () => { if (name.trim()) createMutation.mutate() }
@@ -59,12 +64,12 @@ function CreateGalleryModal({ onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
-          <FolderPlus size={14} style={{ color: '#7F77DD' }} /> New gallery
+          <FolderPlus size={14} style={{ color: '#7F77DD' }} /> {t('New gallery')}
         </div>
         <input
           autoFocus value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
-          placeholder="Gallery name…"
+          placeholder={t('Gallery name…')}
           className="w-full px-3 py-2 rounded-[8px] text-[14px] outline-none mb-4"
           style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.15)' }}
         />
@@ -72,12 +77,12 @@ function CreateGalleryModal({ onClose }) {
           <button type="button" onMouseDown={onClose}
                   className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" onMouseDown={submit} disabled={!name.trim() || createMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
                   style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-            {createMutation.isPending ? 'Creating…' : 'Create'}
+            {createMutation.isPending ? t('Creating…') : t('Create')}
           </button>
         </div>
       </div>
@@ -87,6 +92,7 @@ function CreateGalleryModal({ onClose }) {
 
 // ── Rename folder on disk modal ────────────────────────────────────────────────
 function RenameFolderModal({ gallery, onClose }) {
+  const t = useT()
   const folderName = gallery.folder_path ? gallery.folder_path.split(/[\\/]/).filter(Boolean).pop() : gallery.name
   const [name, setName] = useState(folderName)
   const qc = useQueryClient()
@@ -94,12 +100,12 @@ function RenameFolderModal({ gallery, onClose }) {
   const renameMutation = useMutation({
     mutationFn: () => galleriesApi.renameFolder(gallery.id, name.trim()),
     onSuccess: () => {
-      toast.success('Folder renamed on disk')
+      toast.success(t('Folder renamed on disk'))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
       onClose()
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'Rename failed'),
+    onError: (err) => toast.error(err?.response?.data?.detail || t('Rename failed')),
   })
 
   const submit = () => { if (name.trim() && name.trim() !== folderName) renameMutation.mutate() }
@@ -109,10 +115,10 @@ function RenameFolderModal({ gallery, onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-96 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-1 flex items-center gap-2">
-          <FolderSymlink size={13} style={{ color: '#7F77DD' }} /> Rename folder on disk
+          <FolderSymlink size={13} style={{ color: '#7F77DD' }} /> {t('Rename folder on disk')}
         </div>
         <div className="text-[13px] mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
-          This renames the actual directory — files will move and all paths will update.
+          {t('This renames the actual directory — files will move and all paths will update.')}
         </div>
         <input
           autoFocus value={name} onChange={e => setName(e.target.value)}
@@ -124,13 +130,13 @@ function RenameFolderModal({ gallery, onClose }) {
           <button type="button" onMouseDown={onClose}
                   className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" onMouseDown={submit}
                   disabled={!name.trim() || name.trim() === folderName || renameMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
                   style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-            {renameMutation.isPending ? 'Renaming…' : 'Rename folder'}
+            {renameMutation.isPending ? t('Renaming…') : t('Rename folder')}
           </button>
         </div>
       </div>
@@ -141,18 +147,19 @@ function RenameFolderModal({ gallery, onClose }) {
 
 // ── Rename gallery modal ───────────────────────────────────────────────────────
 function RenameModal({ gallery, onClose }) {
+  const t = useT()
   const [name, setName] = useState(gallery.name)
   const qc = useQueryClient()
 
   const renameMutation = useMutation({
     mutationFn: () => galleriesApi.update(gallery.id, { name: name.trim() }),
     onSuccess: () => {
-      toast.success('Gallery renamed')
+      toast.success(t('Gallery renamed'))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
       onClose()
     },
-    onError: () => toast.error('Rename failed'),
+    onError: () => toast.error(t('Rename failed')),
   })
 
   const submit = () => { if (name.trim() && name.trim() !== gallery.name) renameMutation.mutate() }
@@ -162,7 +169,7 @@ function RenameModal({ gallery, onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
-          <Pencil size={13} style={{ color: '#7F77DD' }} /> Rename gallery
+          <Pencil size={13} style={{ color: '#7F77DD' }} /> {t('Rename gallery')}
         </div>
         <input
           autoFocus value={name} onChange={e => setName(e.target.value)}
@@ -174,13 +181,13 @@ function RenameModal({ gallery, onClose }) {
           <button type="button" onMouseDown={onClose}
                   className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" onMouseDown={submit}
                   disabled={!name.trim() || name.trim() === gallery.name || renameMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
                   style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-            {renameMutation.isPending ? 'Saving…' : 'Rename'}
+            {renameMutation.isPending ? t('Saving…') : t('Rename')}
           </button>
         </div>
       </div>
@@ -231,6 +238,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
 // React.memo: grid of 100 cards won't re-render when parent state changes
 // (search input, sort, modal open, bulk selection of other cards, etc.)
 const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRename, onContextMenu }) {
+  const t = useT()
   const [isHovered, setIsHovered]     = useState(false)
   const [fanImgs, setFanImgs]         = useState([])
   const [firstVideo, setFirstVideo]   = useState(null)
@@ -250,7 +258,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
     mutationFn: (r) => galleriesApi.rate(gallery.id, r),
     onMutate: (r) => setLocalRating(r),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['galleries'] }),
-    onError: () => { setLocalRating(gallery.rating ?? 0); toast.error('Rating failed') },
+    onError: () => { setLocalRating(gallery.rating ?? 0); toast.error(t('Rating failed')) },
   })
 
   const handleMouseEnter = useCallback(() => {
@@ -360,7 +368,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         {gallery.creators?.length === 0 && (
           <div className="absolute bottom-2 left-2 text-[11px] px-1.5 py-0.5 rounded-full z-10"
                style={{ background: 'rgba(186,117,23,0.7)', color: '#FAC775' }}>
-            unassigned
+            {t('unassigned')}
           </div>
         )}
         </div>{/* end absolute inset-0 */}
@@ -371,17 +379,17 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
           <button type="button"
                   onMouseDown={e => { e.stopPropagation(); onRename?.(gallery) }}
                   className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-[rgba(255,255,255,0.8)] p-0.5 z-20 relative"
-                  title="Rename gallery">
+                  title={t('Rename gallery')}>
             <Pencil size={10} />
           </button>
         </div>
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[12px] text-[rgba(255,255,255,0.35)]">{gallery.image_count} items</span>
+            <span className="text-[12px] text-[rgba(255,255,255,0.35)]">{gallery.image_count} {t('items')}</span>
             {gallery.is_mix && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
                     style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
-                Mix
+                {t('Mix')}
               </span>
             )}
             {gallery.period_month && gallery.period_year && (
@@ -469,16 +477,14 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
 
 // ── Creator dropdown — multi or single-select, ref-based outside-click ──────────
 function CreatorDropdown({ value, onChange, placeholder }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const wrapperRef = useRef(null)
 
   const isMulti = Array.isArray(value)
 
-  const { data: creators } = useQuery({
-    queryKey: ['creators-mini'],
-    queryFn: () => creatorsApi.list({ limit: 5000 }).then(r => r.data),
-  })
+  const { data: creators } = useAllCreators()
 
   const filtered = useMemo(() => {
     if (!creators) return []
@@ -560,7 +566,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
               autoFocus
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search creators..."
+              placeholder={t('Search creators...')}
               className="w-full bg-transparent text-[13px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] outline-none"
             />
           </div>
@@ -570,7 +576,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
                 type="button"
                 onMouseDown={clearAll}
                 className="w-full text-left px-3 py-2 text-[13px] text-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.05)] cursor-pointer">
-                Clear selection
+                {t('Clear selection')}
               </button>
             )}
             {filtered.map(c => {
@@ -599,7 +605,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
               )
             })}
             {filtered.length === 0 && (
-              <div className="px-3 py-4 text-[13px] text-[rgba(255,255,255,0.25)] text-center">No creators found</div>
+              <div className="px-3 py-4 text-[13px] text-[rgba(255,255,255,0.25)] text-center">{t('No creators found')}</div>
             )}
           </div>
         </div>
@@ -620,6 +626,7 @@ const CREATOR_TYPE_OPTIONS = [
 ]
 
 function CreatorTypeDropdown({ value, onChange }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const selected = CREATOR_TYPE_OPTIONS.find(o => o.value === value) || CREATOR_TYPE_OPTIONS[0]
@@ -645,7 +652,7 @@ function CreatorTypeDropdown({ value, onChange }) {
         {active
           ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
           : null}
-        {selected.label}
+        {t(selected.label)}
         {active
           ? <X size={11} onMouseDown={e => { e.stopPropagation(); onChange('') }} className="cursor-pointer" />
           : <ChevronDown size={11} />}
@@ -666,7 +673,7 @@ function CreatorTypeDropdown({ value, onChange }) {
               {opt.value
                 ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
                 : <span className="w-1.5 h-1.5 flex-shrink-0" />}
-              {opt.label}
+              {t(opt.label)}
               {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
             </button>
           ))}
@@ -679,6 +686,7 @@ function CreatorTypeDropdown({ value, onChange }) {
 // ── Bulk action panel ─────────────────────────────────────────────────────────
 // ── Bulk Merge Modal ──────────────────────────────────────────────────────────
 function BulkMergeModal({ galleries, onClose, onMerged }) {
+  const t = useT()
   const qc = useQueryClient()
   const [targetId, setTargetId]       = useState(null)
   const [moveFiles, setMoveFiles]     = useState(true)
@@ -717,7 +725,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
     if (totalMoved   > 0) parts.push(`${totalMoved} images merged`)
     if (totalSkipped > 0) parts.push(`${totalSkipped} skipped`)
     if (errors       > 0) parts.push(`${errors} failed`)
-    toast[errors > 0 ? 'error' : 'success'](parts.join(', ') || 'Merged')
+    toast[errors > 0 ? 'error' : 'success'](parts.join(', ') || t('Merged'))
 
     qc.invalidateQueries({ queryKey: ['galleries'] })
     setMerging(false)
@@ -736,7 +744,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
           <div className="flex items-center gap-2">
             <GitMerge size={16} style={{ color: '#CECBF6' }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-              Merge {galleries.length} galleries
+              {t('Merge')} {galleries.length} {t('galleries')}
             </span>
           </div>
           {!merging && (
@@ -752,10 +760,10 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
               {/* Pick target */}
               <div>
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginBottom: 6 }}>
-                  Which gallery should survive?
+                  {t('Which gallery should survive?')}
                 </div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
-                  All others will be merged into it. The target keeps its name and folder.
+                  {t('All others will be merged into it. The target keeps its name and folder.')}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {galleries.map(g => (
@@ -771,10 +779,10 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div style={{ fontSize: 13, color: targetId === g.id ? '#CECBF6' : 'rgba(255,255,255,0.75)', fontWeight: targetId === g.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{g.image_count ?? 0} images</div>
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{g.image_count ?? 0} {t('images')}</div>
                       </div>
                       {targetId === g.id && (
-                        <span style={{ fontSize: 10, color: '#CECBF6', background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.4)', padding: '1px 6px', borderRadius: 4 }}>TARGET</span>
+                        <span style={{ fontSize: 10, color: '#CECBF6', background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.4)', padding: '1px 6px', borderRadius: 4 }}>{t('TARGET')}</span>
                       )}
                     </button>
                   ))}
@@ -784,9 +792,9 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
               {/* Move files toggle */}
               <div className="flex items-start justify-between gap-3 pt-3 border-t border-[rgba(255,255,255,0.06)]">
                 <div>
-                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Move files on disk</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{t('Move files on disk')}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
-                    {moveFiles ? 'Files physically moved into target folder' : 'DB records only — files stay in place'}
+                    {moveFiles ? t('Files physically moved into target folder') : t('DB records only — files stay in place')}
                   </div>
                 </div>
                 <button onClick={() => setMoveFiles(v => !v)} className="flex-shrink-0 mt-0.5"
@@ -798,7 +806,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
               {/* Collision strategy */}
               {moveFiles && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>If a filename already exists in the target folder</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{t('If a filename already exists in the target folder')}</div>
                   <div className="flex gap-2">
                     {[
                       { key: 'rename',  label: 'Rename',  desc: 'Add _1, _2…' },
@@ -811,15 +819,15 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                                 background: collision === key ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
                                 border: `0.5px solid ${collision === key ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
-                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{label}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{desc}</div>
+                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
                   {collision === 'replace' && (
                     <div className="mt-2 px-3 py-2 rounded-[8px]"
                          style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', fontSize: 11, color: '#F4C0D1' }}>
-                      ⚠ Replace permanently deletes existing files in the target folder that share a filename.
+                      ⚠ {t('Replace permanently deletes existing files in the target folder that share a filename.')}
                     </div>
                   )}
                 </div>
@@ -830,14 +838,14 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
             <div className="flex flex-col items-center gap-4 py-4">
               <GitMerge size={28} style={{ color: '#CECBF6' }} className="animate-pulse" />
               <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>
-                Merging {progress?.done ?? 0} of {progress?.total ?? 0}…
+                {t('Merging')} {progress?.done ?? 0} {t('of')} {progress?.total ?? 0}…
               </div>
               <div className="w-full h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
                 <div className="h-full rounded-full transition-all"
                      style={{ width: `${progress ? (progress.done / progress.total) * 100 : 0}%`, background: '#7F77DD' }} />
               </div>
               {(progress?.errors ?? 0) > 0 && (
-                <div style={{ fontSize: 12, color: '#F4C0D1' }}>{progress.errors} errors so far</div>
+                <div style={{ fontSize: 12, color: '#F4C0D1' }}>{progress.errors} {t('errors so far')}</div>
               )}
             </div>
           ) : (
@@ -845,10 +853,10 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
             <>
               <div className="rounded-[8px] px-3 py-3 flex flex-col gap-1"
                    style={{ background: 'rgba(186,117,23,0.1)', border: '1px solid rgba(186,117,23,0.35)' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>⚠ Confirm merge</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>⚠ {t('Confirm merge')}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginTop: 2 }}>
-                  {sources.length} {sources.length === 1 ? 'gallery' : 'galleries'} will be merged into <b style={{ color: 'rgba(255,255,255,0.85)' }}>{target?.name}</b>.
-                  {' '}Merged galleries will be deleted if all their images are moved successfully.
+                  {sources.length} {sources.length === 1 ? t('gallery') : t('galleries')} {t('will be merged into')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{target?.name}</b>.
+                  {' '}{t('Merged galleries will be deleted if all their images are moved successfully.')}
                 </div>
               </div>
 
@@ -858,25 +866,25 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                        style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
                     <GitMerge size={11} style={{ color: 'rgba(127,119,221,0.5)', flexShrink: 0 }} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{g.image_count ?? 0} imgs</span>
+                    <span style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{g.image_count ?? 0} {t('imgs')}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-2 px-3 py-2 rounded-[8px] mt-1"
                      style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.4)', fontSize: 12, color: '#CECBF6' }}>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>→ {target?.name}</span>
-                  <span style={{ color: 'rgba(127,119,221,0.6)', flexShrink: 0, fontSize: 10 }}>TARGET</span>
+                  <span style={{ color: 'rgba(127,119,221,0.6)', flexShrink: 0, fontSize: 10 }}>{t('TARGET')}</span>
                 </div>
               </div>
 
               {moveFiles ? (
                 <div className="px-3 py-2 rounded-[8px]"
                      style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.25)', fontSize: 11, color: '#F4C0D1' }}>
-                  Files will be physically moved on disk · Conflicts: <b>{collision}</b>
+                  {t('Files will be physically moved on disk · Conflicts:')} <b>{collision}</b>
                 </div>
               ) : (
                 <div className="px-3 py-2 rounded-[8px]"
                      style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                  Database records only — files stay in current locations
+                  {t('Database records only — files stay in current locations')}
                 </div>
               )}
             </>
@@ -890,12 +898,12 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
               <>
                 <button onClick={onClose} className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
                         style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button onClick={() => setStep('confirm')} disabled={!targetId}
                         className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
                         style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                  Review →
+                  {t('Review →')}
                 </button>
               </>
             ) : (
@@ -903,12 +911,12 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                 <button onClick={() => setStep('pick')}
                         className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
                         style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  ← Back
+                  {t('← Back')}
                 </button>
                 <button onClick={doMerge}
                         className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer flex items-center gap-2"
                         style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-                  <GitMerge size={13} /> Confirm merge
+                  <GitMerge size={13} /> {t('Confirm merge')}
                 </button>
               </>
             )}
@@ -921,6 +929,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
 
 
 function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
+  const t = useT()
   const busy = activeOp !== null
   return createPortal(
     <>
@@ -945,10 +954,10 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
              style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
           <div>
             <div className="text-[17px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.9)' }}>
-              Delete {count} {count === 1 ? 'gallery' : 'galleries'}
+              {t('Delete')} {count} {count === 1 ? t('gallery') : t('galleries')}
             </div>
             <div className="text-[15px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-              Choose how you want to remove the selected galleries.
+              {t('Choose how you want to remove the selected galleries.')}
             </div>
           </div>
 
@@ -957,24 +966,24 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
               className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
               style={{ background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)' }}>
               <div className="text-[15px] font-medium" style={{ color: '#CECBF6' }}>
-                {activeOp === 'vault' ? 'Removing…' : 'Remove from vault'}
+                {activeOp === 'vault' ? t('Removing…') : t('Remove from vault')}
               </div>
-              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Files stay on disk — only removed from The Vault</div>
+              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{t('Files stay on disk — only removed from The Vault')}</div>
             </button>
 
             <button onClick={onDisk} disabled={busy}
               className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
               style={{ background: 'rgba(212,83,126,0.12)', border: '1px solid rgba(212,83,126,0.3)' }}>
               <div className="text-[15px] font-medium" style={{ color: '#F4C0D1' }}>
-                {activeOp === 'disk' ? 'Deleting…' : 'Delete from drive'}
+                {activeOp === 'disk' ? t('Deleting…') : t('Delete from drive')}
               </div>
-              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>Permanently removes files from your disk — cannot be undone</div>
+              <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{t('Permanently removes files from your disk — cannot be undone')}</div>
             </button>
 
             <button onClick={onCancel} disabled={busy}
               className="w-full py-2 rounded-[10px] text-[15px] cursor-pointer disabled:opacity-40 transition-colors hover:bg-[rgba(255,255,255,0.04)]"
               style={{ color: 'rgba(255,255,255,0.35)' }}>
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </div>
@@ -986,6 +995,7 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
 
 
 function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
+  const t = useT()
   const [creatorId, setCreatorId]             = useState(null)
   const [removeCreatorId, setRemoveCreatorId] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -1008,7 +1018,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onDone()
     },
-    onError: () => toast.error('Assignment failed')
+    onError: () => toast.error(t('Assignment failed'))
   })
 
   const handleBulkRemove = async () => {
@@ -1034,7 +1044,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
   const handleSendToViewer = async () => {
     let added = 0
     let skipped = 0
-    toast('Adding galleries...', { icon: '⏳', id: 'bulk-add' })
+    toast(t('Adding galleries...'), { icon: '⏳', id: 'bulk-add' })
     for (const g of selectedGalleries) {
       if (queue.length + added >= MAX) break
       try {
@@ -1048,7 +1058,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     }
     toast.dismiss('bulk-add')
     if (added > 0) toast.success(`Sent ${added} galleries to viewer`)
-    if (skipped > 0) toast('Some were already queued or queue is full', { icon: 'ℹ️' })
+    if (skipped > 0) toast(t('Some were already queued or queue is full'), { icon: 'ℹ️' })
     onDone()
   }
 
@@ -1111,7 +1121,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       const d = res.data
       toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
     } catch (e) {
-      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || 'Export failed')
+      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || t('Export failed'))
     } finally {
       setZipping(false)
     }
@@ -1121,21 +1131,21 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     <div className="flex items-center gap-3 px-4 py-2.5 rounded-[10px] flex-wrap animate-slide-up"
          style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
       <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
-        {selectedIds.length} selected
+        {selectedIds.length} {t('selected')}
       </span>
 
       {/* Action: Send to viewer */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={assigning || zipping}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[rgba(127,119,221,0.2)] disabled:opacity-40"
               style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-        <LayoutTemplate size={12} /> Send to viewer
+        <LayoutTemplate size={12} /> {t('Send to viewer')}
       </button>
 
       {/* Action: Export as zip */}
       <button type="button" onMouseDown={handleExportZip} disabled={assigning || zipping}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
               style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-        <Archive size={12} /> {zipping ? 'Zipping…' : 'Export as zip'}
+        <Archive size={12} /> {zipping ? t('Zipping…') : t('Export as zip')}
       </button>
 
       {selectedIds.length >= 2 && (
@@ -1144,7 +1154,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           <button type="button" onMouseDown={() => setShowMergeModal(true)} disabled={assigning || removing}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
                   style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
-            <GitMerge size={12} /> Merge
+            <GitMerge size={12} /> {t('Merge')}
           </button>
         </>
       )}
@@ -1152,9 +1162,9 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
       {/* Action: Assign creator */}
-      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">assign to</span>
+      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">{t('assign to')}</span>
       <div style={{ position: 'relative', zIndex: 80 }}>
-        <CreatorDropdown value={creatorId} onChange={setCreatorId} placeholder="Pick creator..." />
+        <CreatorDropdown value={creatorId} onChange={setCreatorId} placeholder={t('Pick creator...')} />
       </div>
       <button
         type="button"
@@ -1162,15 +1172,15 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         disabled={!creatorId || assignMutation.isPending || assigning}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-        <UserPlus size={12} /> {assignMutation.isPending ? 'Assigning...' : 'Assign'}
+        <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning...') : t('Assign')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
       {/* Action: Remove creator */}
-      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">remove</span>
+      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">{t('remove')}</span>
       <div style={{ position: 'relative', zIndex: 79 }}>
-        <CreatorDropdown value={removeCreatorId} onChange={setRemoveCreatorId} placeholder="Pick creator..." />
+        <CreatorDropdown value={removeCreatorId} onChange={setRemoveCreatorId} placeholder={t('Pick creator...')} />
       </div>
       <button
         type="button"
@@ -1178,7 +1188,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         disabled={!removeCreatorId || removing || assigning}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
-        <UserMinus size={12} /> {removing ? 'Removing...' : 'Remove'}
+        <UserMinus size={12} /> {removing ? t('Removing...') : t('Remove')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
@@ -1187,7 +1197,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       <button onMouseDown={() => setShowDeleteModal(true)} disabled={assigning || removing || deleteOp !== null}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
               style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-        <Trash2 size={12} /> Delete
+        <Trash2 size={12} /> {t('Delete')}
       </button>
 
       <AnimatePresence>
@@ -1222,6 +1232,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
 
 
 export default function GalleryList() {
+  const t = useT()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -1255,12 +1266,21 @@ export default function GalleryList() {
   const favOnly        = searchParams.get('fav') === '1'
   const creatorType    = searchParams.get('ctype') || ''
   const franchise      = searchParams.get('franchise') || ''
+  const period         = searchParams.get('period') || ''
   const activeTags     = useMemo(() => {
     const raw = searchParams.get('tags') || searchParams.get('tag') || ''
     return raw ? raw.split(',').filter(Boolean) : []
   }, [searchParams])
   const page           = parseInt(searchParams.get('page') || '1', 10) || 1
-  const pageSize       = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE
+
+  // Page size: stored in localStorage (not URL) so it can't get stuck via sessionStorage restore
+  const [pageSize, setPageSizeState] = useState(() => {
+    try {
+      const stored = localStorage.getItem('vault_gallery_page_size')
+      const v = stored ? parseInt(stored, 10) : DEFAULT_PAGE_SIZE
+      return PAGE_SIZES.includes(v) ? v : DEFAULT_PAGE_SIZE
+    } catch { return DEFAULT_PAGE_SIZE }
+  })
 
   // Persistent thumb size from store (not a filter, doesn't belong in URL)
   const thumbSize         = useVaultStore(s => s.thumbSizeGalleries)
@@ -1324,7 +1344,11 @@ export default function GalleryList() {
     const p = typeof v === 'function' ? v(page) : v
     setParam('page', p > 1 ? p : null)
   }, [setParam, page])
-  const setPageSize = useCallback((v) => setParams({ size: v !== DEFAULT_PAGE_SIZE ? v : null, page: null }), [setParams])
+  const setPageSize = useCallback((v) => {
+    setPageSizeState(v)
+    try { localStorage.setItem('vault_gallery_page_size', String(v)) } catch {}
+    setParam('page', null)
+  }, [setParam])
   const setUnassignedOnly = useCallback((v) => setParams({ unassigned: v ? '1' : null, creators: null, page: null }), [setParams])
   const setFavOnly = useCallback((v) => setParams({ fav: v ? '1' : null, page: null }), [setParams])
   const setActiveTags = useCallback((updater) => {
@@ -1339,15 +1363,16 @@ export default function GalleryList() {
   }, [setParams, creatorFilter])
   const setCreatorType = useCallback((v) => setParams({ ctype: v || null, page: null }), [setParams])
   const setFranchise   = useCallback((v) => setParams({ franchise: v || null, page: null }), [setParams])
+  const setPeriod      = useCallback((v) => setParams({ period: v || null, page: null }), [setParams])
 
   // ── Detect active filters & reset ───────────────────────────────────────────
-  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType || franchise
+  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType || franchise || period
   const resetFilters = useCallback(() => {
     setSearchParams({}, { replace: true })
   }, [setSearchParams])
 
   // Reset pagination when filters change
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}|${franchise}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}|${franchise}|${period}`
 
   const params = {
     search: search || undefined,
@@ -1356,6 +1381,7 @@ export default function GalleryList() {
     creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
     creator_type: creatorType || undefined,
     series: franchise || undefined,
+    period: period || undefined,
     unassigned: unassignedOnly || undefined,
     favorite: favOnly || undefined,
     tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1372,6 +1398,32 @@ export default function GalleryList() {
   // Keep galleriesRef fresh so toggleSelect can read the current list without
   // being recreated on every fetch (which would bust GalleryCard memo)
   useEffect(() => { galleriesRef.current = galleries }, [galleries])
+
+  // Period options reflect the CURRENT filter context (creator, type, franchise,
+  // tags, etc.) — but never the selected period itself, so the dropdown always
+  // shows every period available under the other filters.
+  const periodParams = {
+    search: search || undefined,
+    creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
+    creator_type: creatorType || undefined,
+    series: franchise || undefined,
+    unassigned: unassignedOnly || undefined,
+    favorite: favOnly || undefined,
+    tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+  }
+  const periodKey = `${search}|${creatorFilter.join(',')}|${creatorType}|${franchise}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}`
+  const { data: periods = [] } = useQuery({
+    queryKey: ['gallery-periods', periodKey],
+    queryFn: () => galleriesApi.periods(periodParams).then(r => r.data),
+  })
+
+  // Auto-clear the selected period if the active filters no longer contain it
+  // (e.g. switch to a creator that has no galleries in the chosen period).
+  useEffect(() => {
+    if (period && periods.length && !periods.some(p => p.value === period)) {
+      setPeriod(null)
+    }
+  }, [period, periods, setPeriod])
 
   const handleSortChange = useCallback((val) => {
     if (val === 'random') {
@@ -1399,7 +1451,7 @@ export default function GalleryList() {
 
   const handleCtxSendToPanel = useCallback(async (galleries) => {
     const targets = Array.isArray(galleries) ? galleries : [galleries]
-    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : 'Adding to Multi-panel…')
+    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : t('Adding to Multi-panel…'))
     let added = 0, skipped = 0
     for (const gallery of targets) {
       if (multiViewerQueue.length + added >= MULTIVIEWER_MAX) { skipped += targets.length - added; break }
@@ -1413,13 +1465,13 @@ export default function GalleryList() {
     toast.dismiss(tid)
     if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Multi-panel`)
     if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
-    if (added === 0 && skipped === 0) toast.error('Could not load gallery images')
+    if (added === 0 && skipped === 0) toast.error(t('Could not load gallery images'))
   }, [addToMultiViewer, multiViewerQueue, MULTIVIEWER_MAX])
 
   const favMutation = useMutation({
     mutationFn: (g) => galleriesApi.update(g.id, { is_favorite: !g.is_favorite }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['galleries'] }),
-    onError: () => toast.error('Could not update favourite'),
+    onError: () => toast.error(t('Could not update favourite')),
   })
 
   const doCtxDelete = useCallback(async (galleries, mode) => {
@@ -1476,13 +1528,13 @@ export default function GalleryList() {
     try {
       const folderRes = await galleriesApi.pickFolder()
       const outputPath = folderRes.data.path
-      const tid = toast.loading('Creating zip…')
+      const tid = toast.loading(t('Creating zip…'))
       const res = await galleriesApi.exportZip(targets.map(g => g.id), outputPath)
       toast.dismiss(tid)
       const d = res.data
       toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
     } catch (e) {
-      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || 'Export failed')
+      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || t('Export failed'))
     }
   }, [])
 
@@ -1492,13 +1544,13 @@ export default function GalleryList() {
     <div className="p-5 flex flex-col gap-4 w-full">
       {/* Header + controls */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">Galleries</div>
+        <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Galleries')}</div>
 
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full flex-1 min-w-[160px] max-w-xs"
              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
           <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Search galleries..."
+                 placeholder={t('Search galleries...')}
                  className="bg-transparent border-none outline-none text-[14px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-full" />
           {search && (
             <button type="button" onMouseDown={() => setSearch('')} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
@@ -1507,18 +1559,20 @@ export default function GalleryList() {
           )}
         </div>
 
-        <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder="All creators" />
+        <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder={t('All creators')} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
 
         <FranchiseFilter value={franchise} onChange={setFranchise} />
 
+        <PeriodFilter value={period} periods={periods} onChange={setPeriod} />
+
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
           activeTags={activeTags}
           onAdd={name => setActiveTags(prev => prev.includes(name) ? prev : [...prev, name])}
-          onRemove={name => setActiveTags(prev => prev.filter(t => t !== name))}
-          placeholder="Filter by tag…"
+          onRemove={name => setActiveTags(prev => prev.filter(tg => tg !== name))}
+          placeholder={t('Filter by tag…')}
           rounded="full"
         />
 
@@ -1531,7 +1585,7 @@ export default function GalleryList() {
                   color: unassignedOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
                   border: `0.5px solid ${unassignedOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
-          <AlertCircle size={11} /> Unassigned
+          <AlertCircle size={11} /> {t('Unassigned')}
         </button>
         <button type="button" onMouseDown={() => setFavOnly(!favOnly)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
@@ -1540,18 +1594,18 @@ export default function GalleryList() {
                   color: favOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
                   border: `0.5px solid ${favOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
-          <Star size={11} /> Favorites
+          <Star size={11} /> {t('Favorites')}
         </button>
         <button type="button" onMouseDown={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                 style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          <FolderPlus size={11} /> New
+          <FolderPlus size={11} /> {t('New')}
         </button>
         {hasActiveFilters && (
           <button type="button" onMouseDown={resetFilters}
                   className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer transition-colors"
                   style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-            <RotateCcw size={11} /> Reset
+            <RotateCcw size={11} /> {t('Reset')}
           </button>
         )}
         <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
@@ -1561,7 +1615,7 @@ export default function GalleryList() {
                   color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.45)',
                   border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
-          <CheckSquare size={11} /> Select
+          <CheckSquare size={11} /> {t('Select')}
         </button>
         <span className="text-[13px] text-[rgba(255,255,255,0.3)]">{galleries?.length ?? 0}</span>
       </div>
@@ -1569,16 +1623,16 @@ export default function GalleryList() {
       {/* Size controls */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-[rgba(255,255,255,0.3)]">Size</span>
+          <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
                  onChange={e => setThumbSize(Number(e.target.value))}
                  className="w-24 h-1 cursor-pointer accent-[#7F77DD]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">Per page</span>
+          <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">{t('Per page')}</span>
           {PAGE_SIZES.map(n => (
-            <button key={n} type="button" onMouseDown={() => { setPageSize(n); setPage(1) }}
+            <button key={n} type="button" onMouseDown={() => setPageSize(n)}
                     className="text-[12px] px-2 py-0.5 rounded-full cursor-pointer"
                     style={{
                       background: pageSize === n ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
@@ -1597,7 +1651,7 @@ export default function GalleryList() {
           <button type="button" onMouseDown={selectAll}
                   className="text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            {selected.size === galleries?.length ? 'Deselect all' : 'Select all'}
+            {selected.size === galleries?.length ? t('Deselect all') : t('Select all')}
           </button>
           {selected.size > 0 && (
             <BulkActionPanel selectedGalleries={galleries.filter(g => selected.has(g.id))} onDone={exitBulk} onCancel={exitBulk} />
@@ -1618,13 +1672,13 @@ export default function GalleryList() {
           {unassignedOnly && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775' }}>
-              Unassigned only <button type="button" onMouseDown={() => setUnassignedOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
+              {t('Unassigned only')} <button type="button" onMouseDown={() => setUnassignedOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
           {creatorFilter.length > 0 && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
-              {creatorFilter.length} creator{creatorFilter.length > 1 ? 's' : ''} selected <button type="button" onMouseDown={() => setCreatorFilter([])} className="cursor-pointer ml-0.5"><X size={10} /></button>
+              {creatorFilter.length} creator{creatorFilter.length > 1 ? 's' : ''} {t('selected')} <button type="button" onMouseDown={() => setCreatorFilter([])} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
         </div>
@@ -1647,9 +1701,9 @@ export default function GalleryList() {
       ) : !galleries || galleries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <div style={{ fontSize: 52, opacity: 0.12 }}>🖼️</div>
-          <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>No galleries found</div>
+          <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>{t('No galleries found')}</div>
           <div className="text-[15px]" style={{ color: 'rgba(255,255,255,0.15)' }}>
-            {unassignedOnly ? 'All galleries have been assigned to a creator' : 'Try adjusting your filters or scan a folder'}
+            {unassignedOnly ? t('All galleries have been assigned to a creator') : t('Try adjusting your filters or scan a folder')}
           </div>
         </div>
       ) : (
@@ -1679,7 +1733,7 @@ export default function GalleryList() {
               disabled={page === 1}
               className="p-1.5 rounded-[6px] cursor-pointer disabled:opacity-30"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}
-              title="First page">
+              title={t('First page')}>
               <ChevronsLeft size={14} />
             </button>
             <button
@@ -1687,7 +1741,7 @@ export default function GalleryList() {
               disabled={page === 1}
               className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-              <ChevronLeft size={13} /> Prev
+              <ChevronLeft size={13} /> {t('Prev')}
             </button>
 
             {/* Page number pills — sliding window of up to 7 pages around current */}
@@ -1710,7 +1764,7 @@ export default function GalleryList() {
               disabled={(galleries?.length ?? 0) < pageSize}
               className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-              Next <ChevronRight size={13} />
+              {t('Next')} <ChevronRight size={13} />
             </button>
           </div>
         </>

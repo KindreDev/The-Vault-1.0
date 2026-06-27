@@ -72,9 +72,9 @@ export default function GalleryView() {
             <Droplet size={16} /> {g.cum_count}
           </button>
           <div className="flex items-center gap-0.5">
-            {[1, 2, 3, 4, 5].map(n => (
-              <button key={n} onClick={() => rate(n * 2)}>
-                <Star size={22} fill={(g.rating || 0) >= n * 2 ? 'var(--c-amber)' : 'none'} color="var(--c-amber)" />
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              <button key={n} onClick={() => rate((g.rating || 0) === n ? 0 : n)}>
+                <Star size={18} fill={(g.rating || 0) >= n ? 'var(--c-amber)' : 'none'} color="var(--c-amber)" />
               </button>
             ))}
           </div>

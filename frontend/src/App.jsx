@@ -98,8 +98,8 @@ export default function App() {
           <Route path="dashboard"    element={<Dashboard />} />
           <Route path="galleries"    element={<GalleryList />} />
           <Route path="galleries/:id" element={<GalleryView />} />
-          <Route path="images"       element={<ImageList />} />
-          <Route path="videos"       element={<ImageList onlyVideos />} />
+          <Route path="images"       element={<ImageList key="images" />} />
+          <Route path="videos"       element={<ImageList key="videos" onlyVideos />} />
           <Route path="creators"     element={<CreatorList />} />
           <Route path="creators/:id" element={<CreatorProfile />} />
           <Route path="multi-panel"     element={<MultiPanel />} />

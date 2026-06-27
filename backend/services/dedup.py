@@ -452,6 +452,7 @@ def _compute_duplicate_groups(db, threshold: int) -> list:
             group_imgs.append({
                 "id":             img.id,
                 "filename":       img.filename,
+                "file_path":      img.file_path,
                 "thumb_path":     img.thumb_path,
                 "file_size":      img.file_size,
                 "width":          img.width,
@@ -541,3 +542,116 @@ def get_hash_stats(db) -> dict:
         ImageModel.perceptual_hash != None   # noqa: E711
     ).scalar() or 0
     return {"total": total, "hashed": hashed}
+
+
+def get_gallery_overlaps(db_factory, threshold: int) -> dict:
+    """
+    Aggregate cached duplicate groups into gallery-pair overlaps.
+    Returns immediately from cache; returns {computing: True} if groups not ready.
+    """
+    from collections import defaultdict
+
+    state = get_search_state()
+    if state["threshold"] != threshold or state["groups"] is None:
+        return {"computing": True, "pairs": []}
+
+    groups = state["groups"]
+    ignored = _load_ignored()
+    if ignored:
+        groups = [g for g in groups if frozenset(img["id"] for img in g["images"]) not in ignored]
+
+    pair_map = defaultdict(lambda: {"a_img_map": {}, "b_img_map": {}})
+
+    for group in groups:
+        by_gallery = defaultdict(list)
+        for img in group["images"]:
+            gid = img.get("gallery_id")
+            if gid is not None:
+                by_gallery[gid].append(img)
+
+        gallery_ids = sorted(by_gallery.keys())
+        if len(gallery_ids) < 2:
+            continue
+
+        for i in range(len(gallery_ids)):
+            for j in range(i + 1, len(gallery_ids)):
+                gid_a, gid_b = gallery_ids[i], gallery_ids[j]
+                key = (gid_a, gid_b)
+                for img in by_gallery[gid_a]:
+                    pair_map[key]["a_img_map"][img["id"]] = img
+                for img in by_gallery[gid_b]:
+                    pair_map[key]["b_img_map"][img["id"]] = img
+
+    if not pair_map:
+        return {"computing": False, "pairs": []}
+
+    all_gallery_ids = set()
+    for gid_a, gid_b in pair_map:
+        all_gallery_ids.add(gid_a)
+        all_gallery_ids.add(gid_b)
+
+    db = db_factory()
+    try:
+        from models import Gallery as GalleryModel, Image as ImageModel
+        from sqlalchemy import func
+
+        galleries = {
+            g.id: g
+            for g in db.query(GalleryModel)
+            .filter(GalleryModel.id.in_(all_gallery_ids))
+            .all()
+        }
+
+        counts = dict(
+            db.query(ImageModel.gallery_id, func.count(ImageModel.id))
+            .filter(
+                ImageModel.gallery_id.in_(all_gallery_ids),
+                ImageModel.is_video == False,
+            )
+            .group_by(ImageModel.gallery_id)
+            .all()
+        )
+
+        pairs = []
+        for (gid_a, gid_b), data in pair_map.items():
+            ga = galleries.get(gid_a)
+            gb = galleries.get(gid_b)
+            if not ga or not gb:
+                continue
+
+            creator_a = ga.creator
+            creator_b = gb.creator
+
+            def _sort_key(img):
+                return -((img.get("width") or 0) * (img.get("height") or 0))
+
+            a_imgs = sorted(data["a_img_map"].values(), key=_sort_key)
+            b_imgs = sorted(data["b_img_map"].values(), key=_sort_key)
+
+            pairs.append({
+                "gallery_a": {
+                    "id":            gid_a,
+                    "name":          ga.name,
+                    "creator_name":  creator_a.name if creator_a else None,
+                    "creator_id":    creator_a.id   if creator_a else None,
+                    "total_images":  counts.get(gid_a, 0),
+                    "matched_count": len(a_imgs),
+                    "images":        a_imgs,
+                },
+                "gallery_b": {
+                    "id":            gid_b,
+                    "name":          gb.name,
+                    "creator_name":  creator_b.name if creator_b else None,
+                    "creator_id":    creator_b.id   if creator_b else None,
+                    "total_images":  counts.get(gid_b, 0),
+                    "matched_count": len(b_imgs),
+                    "images":        b_imgs,
+                },
+                "overlap_count": max(len(a_imgs), len(b_imgs)),
+            })
+
+        pairs.sort(key=lambda p: p["overlap_count"], reverse=True)
+        return {"computing": False, "pairs": pairs}
+
+    finally:
+        db.close()

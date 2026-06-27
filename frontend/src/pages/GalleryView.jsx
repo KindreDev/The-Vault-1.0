@@ -9,12 +9,14 @@ import {
   FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
+import { useT } from '../i18n'
 import ImageContextMenu from '../components/ImageContextMenu'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
+import { useAllCreators } from '../hooks/useAllCreators'
 import DeviceControls from '../components/DeviceControls'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import { SortDropdown } from '../components/SortDropdown'
@@ -36,15 +38,13 @@ const TYPE_COLORS = {
 }
 
 function CreatorAssignPanel({ galleryId, assignedCreators }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const wrapperRef = useRef(null)
   const qc = useQueryClient()
 
-  const { data: allCreators } = useQuery({
-    queryKey: ['creators-mini'],
-    queryFn: () => creatorsApi.list({ limit: 200 }).then(r => r.data),
-  })
+  const { data: allCreators } = useAllCreators()
 
   const filtered = useMemo(() => {
     if (!allCreators) return []
@@ -87,17 +87,17 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
     <div ref={wrapperRef} className="rounded-[10px] p-3.5"
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center justify-between mb-2.5">
-        <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider">Creators</div>
+        <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider">{t('Creators')}</div>
         <button type="button" onMouseDown={() => setOpen(o => !o)}
                 className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full cursor-pointer"
                 style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          <UserPlus size={10} /> Add
+          <UserPlus size={10} /> {t('Add')}
         </button>
       </div>
 
       {/* Assigned creators */}
       {assignedCreators.length === 0 ? (
-        <div className="text-[11px] text-[rgba(255,255,255,0.2)] py-1">No creator assigned</div>
+        <div className="text-[11px] text-[rgba(255,255,255,0.2)] py-1">{t('No creator assigned')}</div>
       ) : (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {assignedCreators.map(c => (
@@ -106,7 +106,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
                  style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
               <span style={{ color: TYPE_COLORS[c.creator_type] || '#D3D1C7', fontWeight: 500 }}>{c.name}</span>
               <button type="button" onMouseDown={e => { e.stopPropagation(); removeMutation.mutate(c.id) }}
-                      title="Remove creator"
+                      title={t('Remove creator')}
                       className="cursor-pointer rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 transition-colors"
                       style={{ color: 'rgba(255,255,255,0.3)', background: 'transparent' }}
                       onMouseEnter={e => { e.currentTarget.style.color = '#F4C0D1'; e.currentTarget.style.background = 'rgba(212,83,126,0.2)' }}
@@ -125,7 +125,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
             autoFocus
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search creators..."
+            placeholder={t('Search creators...')}
             className="w-full px-2.5 py-1.5 rounded-[7px] text-[11px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] outline-none mb-1"
             style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.12)' }}
           />
@@ -133,7 +133,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
                style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)', maxHeight: 180, overflowY: 'auto' }}>
             {filtered.length === 0 ? (
               <div className="px-3 py-2 text-[11px] text-[rgba(255,255,255,0.25)] text-center">
-                {search ? 'No creators found' : 'All creators already assigned'}
+                {search ? t('No creators found') : t('All creators already assigned')}
               </div>
             ) : filtered.map(c => (
               <button key={c.id}
@@ -163,25 +163,26 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
   const videoRef = useRef(null)
   const hoverTimerRef = useRef(null)
   const qc = useQueryClient()
+  const t = useT()
 
   const coverMutation = useMutation({
     mutationFn: () => galleriesApi.setCover(galleryId, image.id),
     onSuccess: () => {
-      toast.success('Set as gallery cover!')
+      toast.success(t('Set as gallery cover!'))
       qc.invalidateQueries({ queryKey: ['gallery', String(galleryId)] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
     },
-    onError: () => toast.error('Failed to set cover'),
+    onError: () => toast.error(t('Failed to set cover')),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (keepFile) => imagesApi.delete(image.id, keepFile),
     onSuccess: (_, keepFile) => {
-      toast.success(keepFile ? 'Removed from vault' : 'Deleted from disk')
+      toast.success(keepFile ? t('Removed from vault') : t('Deleted from disk'))
       onDeleted(image.id)
       qc.invalidateQueries({ queryKey: ['gallery'] })
     },
-    onError: () => toast.error('Delete failed'),
+    onError: () => toast.error(t('Delete failed')),
   })
 
   const handleMouseEnter = useCallback(() => {
@@ -307,7 +308,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
       {galleryId && !image.is_video && (
         <button
           onClick={(e) => { e.stopPropagation(); coverMutation.mutate() }}
-          title="Set as gallery cover"
+          title={t('Set as gallery cover')}
           className="absolute top-1 right-1 z-[4] opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
           style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(127,119,221,0.9)' }}>
           <ImagePlus size={11} />
@@ -320,19 +321,19 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
              style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 140 }}
              onClick={e => e.stopPropagation()}>
           <div className="px-2 py-1.5 text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider border-b border-[rgba(255,255,255,0.06)]">
-            Remove photo
+            {t('Remove photo')}
           </div>
           <button
             onClick={() => { setConfirmDelete(false); deleteMutation.mutate(true) }}
             className="w-full text-left px-2.5 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
             style={{ color: 'rgba(255,255,255,0.7)' }}>
-            Vault only
+            {t('Vault only')}
           </button>
           <button
             onClick={() => { setConfirmDelete(false); deleteMutation.mutate(false) }}
             className="w-full text-left px-2.5 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,80,80,0.15)]"
             style={{ color: 'rgba(255,100,100,0.9)' }}>
-            Delete from disk
+            {t('Delete from disk')}
           </button>
         </div>
       )}
@@ -357,7 +358,7 @@ function fmtVideoTime(s) {
   return `${m}:${String(sec).padStart(2,'0')}`
 }
 
-function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
+function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators, onClose }) {
   const [idx, setIdx] = useState(startIdx)
   const [fullLoaded, setFullLoaded] = useState(false)
   const [rating, setRating] = useState(0)
@@ -374,6 +375,8 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
   const [showFilmstrip, setShowFilmstrip] = useState(true)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
+  const [hasImageCreators, setHasImageCreators] = useState(false)
+  const [fileCreatorIds, setFileCreatorIds] = useState([])
   const [localFunscript, setLocalFunscript] = useState(null)
 
   const dragStart          = useRef({ x: 0, y: 0 })
@@ -391,6 +394,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
   const endSession      = useVaultStore(s => s.endSession)
   const addXpToast      = useVaultStore(s => s.addXpToast)
   const qc              = useQueryClient()
+  const t               = useT()
   const image = images[idx]
 
   // Sync local state when image changes; track view count and time spent
@@ -398,6 +402,8 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
     if (!image) return
     setLocalTags(image?.tags ?? [])
     setLocalCreators(image?.creators ?? [])
+    setHasImageCreators(image?.has_image_creators ?? false)
+    setFileCreatorIds(image?.file_creator_ids ?? [])
     setRating(image?.rating || 0)
     setIsFavorite(image?.is_favorite ?? false)
     setCumCount(image?.cum_count ?? 0)
@@ -567,14 +573,14 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
     mutationFn: (data = {}) => sessionsApi.log({ image_id: image.id, gallery_id: galleryId, ...data }).then(r => r.data),
     onSuccess: (data) => {
       addXpToast(`+${data.xp_earned} XP`)
-      toast.success('Session logged ❤️')
+      toast.success(t('Session logged ❤️'))
     }
   })
 
   if (!image) return null
   const isZoomed = zoom > 1
 
-  return (
+  return createPortal((
     <div
       ref={viewerRef}
       className="fixed inset-0 z-50 flex"
@@ -607,7 +613,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
               onMouseDown={() => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) }}
               className="cursor-pointer p-1 rounded transition-colors"
               style={{ color: isFavorite ? '#EF9F27' : 'rgba(255,255,255,0.3)' }}
-              title={isFavorite ? 'Remove favorite' : 'Add to favorites'}>
+              title={isFavorite ? t('Remove favorite') : t('Add to favorites')}>
               <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
             </button>
             {/* Slideshow controls */}
@@ -619,15 +625,15 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
                   ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
                   : { background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }
                 }
-                title="Play/Pause slideshow (Space)">
+                title={t('Play/Pause slideshow (Space)')}>
                 {slideshowActive ? <Pause size={13} /> : <Play size={13} />}
-                <span>{slideshowActive ? 'Pause' : 'Play'}</span>
+                <span>{slideshowActive ? t('Pause') : t('Play')}</span>
               </button>
               <button
                 onMouseDown={() => setShowSpeedMenu(s => !s)}
                 className="px-2.5 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer"
                 style={{ background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.15)' }}
-                title="Slideshow speed">
+                title={t('Slideshow speed')}>
                 {slideshowSpeed}s
               </button>
               {showSpeedMenu && (
@@ -652,17 +658,17 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
             )}
             <button onMouseDown={() => setZoom(z => Math.min(z * 1.4, 8))}
                     className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white p-1 rounded"
-                    title="Zoom in (scroll wheel)">
+                    title={t('Zoom in (scroll wheel)')}>
               <ZoomIn size={14} />
             </button>
             <button onMouseDown={resetZoom}
                     className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white p-1 rounded"
-                    title="Reset zoom">
+                    title={t('Reset zoom')}>
               <ZoomOut size={14} />
             </button>
             <button onMouseDown={toggleFullscreen}
                     className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white p-1 rounded"
-                    title="Fullscreen">
+                    title={t('Fullscreen')}>
               {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
             </button>
           </div>
@@ -766,13 +772,13 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
           {isZoomed && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none z-20"
                  style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.4)' }}>
-              Double-click or Esc to reset · Drag to pan
+              {t('Double-click or Esc to reset · Drag to pan')}
             </div>
           )}
           {slideshowActive && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
                  style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-              <Play size={9} /> Slideshow · {slideshowSpeed}s · Space to pause
+              <Play size={9} /> {t('Slideshow')} · {slideshowSpeed}s · {t('Space to pause')}
             </div>
           )}
         </div>
@@ -808,25 +814,31 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
 
         {/* Creators */}
         <CreatorPanel
+          imageId={image.id}
           galleryId={galleryId}
           creators={localCreators}
+          hasImageCreators={hasImageCreators}
+          fileCreatorIds={fileCreatorIds}
+          galleryCreatorIds={(galleryCreators ?? []).map(c => c.id)}
           onCreatorsChanged={setLocalCreators}
+          onHasImageCreatorsChanged={setHasImageCreators}
+          onFileCreatorIdsChanged={setFileCreatorIds}
         />
 
         {/* Gallery name + set cover */}
         {galleryName && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">Gallery</div>
+            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">{t('Gallery')}</div>
             <div className="flex items-center gap-1 text-[11px] text-[rgba(255,255,255,0.65)] truncate mb-2">
               <span className="truncate">{galleryName}</span>
               <ExternalLink size={9} className="flex-shrink-0 opacity-40" />
             </div>
             {!image?.is_video && (
               <button
-                onClick={() => galleriesApi.setCover(galleryId, image.id).then(() => toast.success('Set as gallery cover!')).catch(() => toast.error('Failed'))}
+                onClick={() => galleriesApi.setCover(galleryId, image.id).then(() => toast.success(t('Set as gallery cover!'))).catch(() => toast.error(t('Failed')))}
                 className="flex items-center gap-1.5 w-full px-2.5 py-1.5 rounded-[6px] text-[11px] cursor-pointer"
                 style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)' }}>
-                <ImagePlus size={11} /> Set as cover
+                <ImagePlus size={11} /> {t('Set as cover')}
               </button>
             )}
           </div>
@@ -835,7 +847,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
         {/* Funscript loader — videos only */}
         {image.is_video && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Funscript</div>
+            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Funscript')}</div>
             <input ref={funscriptInputRef} type="file" accept=".funscript" className="hidden"
               onChange={e => {
                 const file = e.target.files?.[0]
@@ -848,13 +860,13 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
             {localFunscript ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-1 text-[10px]" style={{ color: '#CECBF6' }}>
-                  <Zap size={10} fill="currentColor" /> Custom script loaded
+                  <Zap size={10} fill="currentColor" /> {t('Custom script loaded')}
                 </div>
                 <div className="flex gap-1.5">
                   <button onClick={() => funscriptInputRef.current?.click()}
                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
                     style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)' }}>
-                    <FolderOpen size={10} /> Replace
+                    <FolderOpen size={10} /> {t('Replace')}
                   </button>
                   <button onClick={() => setLocalFunscript(null)}
                     className="flex items-center justify-center px-2 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
@@ -866,13 +878,13 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {image.funscript_path
-                  ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={10} /> Script attached</div>
-                  : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">No script attached</div>
+                  ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={10} /> {t('Script attached')}</div>
+                  : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
                 }
                 <button onClick={() => funscriptInputRef.current?.click()}
                   className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[10px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  <FolderOpen size={10} /> Load .funscript
+                  <FolderOpen size={10} /> {t('Load .funscript')}
                 </button>
               </div>
             )}
@@ -881,23 +893,23 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
 
         {/* Cum counter */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Cum counter</div>
+          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Cum counter')}</div>
           <div className="flex items-center gap-2">
             <button onMouseDown={() => cumMutation.mutate()}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[12px] font-medium cursor-pointer active:scale-95 transition-transform"
                     style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.4)' }}>
-              <Droplets size={13} /> Count it
+              <Droplets size={13} /> {t('Count it')}
             </button>
             <div className="text-center min-w-[36px]">
               <div className="text-[22px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
-              <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">all time</div>
+              <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
           </div>
         </div>
 
         {/* Rating */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Rating</div>
+          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Rating')}</div>
           <div className="flex gap-0.5">
             {[1,2,3,4,5,6,7,8,9,10].map(s => (
               <button key={s}
@@ -915,21 +927,21 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
 
         {/* Info */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Info</div>
+          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Info')}</div>
           {image.width && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">Size</span>
+              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
               <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{image.width}×{image.height}</span>
             </div>
           )}
           {image.file_size && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">File</span>
+              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
               <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)} MB</span>
             </div>
           )}
           <div className="flex justify-between py-0.5">
-            <span className="text-[10px] text-[rgba(255,255,255,0.3)]">Views</span>
+            <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('Views')}</span>
             <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{liveViewCount ?? image.view_count}</span>
           </div>
         </div>
@@ -938,7 +950,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
         <TransferPanel
           imageId={image.id}
           currentGalleryId={galleryId}
-          onTransferred={() => { toast.success('Image transferred!'); onClose() }}
+          onTransferred={() => { toast.success(t('Image transferred!')); onClose() }}
         />
 
         {/* Actions */}
@@ -947,15 +959,15 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
             if (sessionActive) {
               const elapsed = endSession()
               sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-              toast.success('Session stopped')
+              toast.success(t('Session stopped'))
             } else {
               startSession()
-              toast.success('Session started ❤️')
+              toast.success(t('Session started ❤️'))
             }
           }}
                   className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[11px] font-medium cursor-pointer"
                   style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-            <Heart size={12} /> {sessionActive ? 'Stop Session' : 'Start Session'}
+            <Heart size={12} /> {sessionActive ? t('Stop Session') : t('Start Session')}
           </button>
         </div>
 
@@ -963,10 +975,11 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, onClose }) {
         <DeviceControls className="mx-2 mb-3" />
       </div>}
     </div>
-  )
+  ), document.body)
 }
 
 function SimilarCard({ g, onClick }) {
+  const t = useT()
   const [failed, setFailed] = React.useState(false)
   return (
     <div onClick={onClick}
@@ -984,7 +997,7 @@ function SimilarCard({ g, onClick }) {
       </div>
       <div className="p-2">
         <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>{g.name}</div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>{g.shared_tags} shared tags</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>{g.shared_tags} {t('shared tags')}</div>
       </div>
     </div>
   )
@@ -992,6 +1005,7 @@ function SimilarCard({ g, onClick }) {
 
 // ── Similar Galleries strip ───────────────────────────────────────────────────
 function SimilarGalleriesStrip({ galleryId }) {
+  const t = useT()
   const navigate = useNavigate()
   const { data: similar } = useQuery({
     queryKey: ['similar-galleries', galleryId],
@@ -1003,8 +1017,8 @@ function SimilarGalleriesStrip({ galleryId }) {
   return (
     <div className="mt-8 relative z-10">
       <div className="flex items-center gap-2 mb-3">
-        <span style={{ fontSize: 17, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>More Like This</span>
-        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>galleries sharing the most tags</span>
+        <span style={{ fontSize: 17, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{t('More Like This')}</span>
+        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>{t('galleries sharing the most tags')}</span>
       </div>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
         {similar.map(g => <SimilarCard key={g.id} g={g} onClick={() => navigate(`/galleries/${g.id}`)} />)}
@@ -1015,6 +1029,7 @@ function SimilarGalleriesStrip({ galleryId }) {
 
 // ── Gallery Merge Modal ───────────────────────────────────────────────────────
 function MergeModal({ gallery, onClose, onMerged }) {
+  const t = useT()
   const qc = useQueryClient()
   const [search, setSearch]             = useState('')
   const [targetId, setTargetId]         = useState(null)
@@ -1062,13 +1077,13 @@ function MergeModal({ gallery, onClose, onMerged }) {
       const totalMoved = (d.moved ?? 0) + (d.renamed ?? 0) + (d.replaced ?? 0) + (d.db_only ?? 0)
       if (totalMoved > 0) parts.push(`${totalMoved} images merged`)
       if (d.skipped > 0)  parts.push(`${d.skipped} skipped`)
-      toast.success(parts.join(', ') || 'Merged')
+      toast.success(parts.join(', ') || t('Merged'))
       qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
       qc.invalidateQueries({ queryKey: ['gallery', String(targetId)] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onMerged(d)
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Merge failed')
+      toast.error(err?.response?.data?.detail || t('Merge failed'))
       setMerging(false)
     }
   }
@@ -1090,7 +1105,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
           <div className="flex items-center gap-2">
             <GitMerge size={16} style={{ color: '#CECBF6' }} />
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Merge gallery</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t('Merge gallery')}</span>
           </div>
           <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
             <X size={16} />
@@ -1103,18 +1118,18 @@ function MergeModal({ gallery, onClose, onMerged }) {
               {/* Source info */}
               <div className="rounded-[8px] px-3 py-2.5"
                    style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>Merging FROM (will be absorbed)</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>{t('Merging FROM (will be absorbed)')}</div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{gallery.name}</div>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{gallery.image_count ?? 0} images</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{gallery.image_count ?? 0} {t('images')}</div>
               </div>
 
               {/* Target picker */}
               <div>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Merge INTO (target gallery, keeps its name)</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{t('Merge INTO (target gallery, keeps its name)')}</div>
                 <input
                   value={search}
                   onChange={e => { setSearch(e.target.value); setTargetId(null); setTargetGallery(null) }}
-                  placeholder="Search galleries…"
+                  placeholder={t('Search galleries…')}
                   className="w-full rounded-[8px] px-3 py-2 outline-none"
                   style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }}
                 />
@@ -1138,7 +1153,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.1)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <span>{g.name}</span>
-                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} imgs</span>
+                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} {t('imgs')}</span>
                         </button>
                       ))}
                     </div>
@@ -1149,11 +1164,11 @@ function MergeModal({ gallery, onClose, onMerged }) {
               {/* Move files toggle */}
               <div className="flex items-start justify-between gap-3 pt-2 border-t border-[rgba(255,255,255,0.06)]">
                 <div>
-                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Move files on disk</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{t('Move files on disk')}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
                     {moveFiles
-                      ? 'Files will be physically moved into the target folder'
-                      : 'Only database records update — files stay where they are'}
+                      ? t('Files will be physically moved into the target folder')
+                      : t('Only database records update — files stay where they are')}
                   </div>
                 </div>
                 <button onClick={() => setMoveFiles(v => !v)} className="flex-shrink-0 mt-0.5"
@@ -1165,7 +1180,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
               {/* Collision strategy — only when moving files */}
               {moveFiles && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>If a filename already exists in the target folder</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{t('If a filename already exists in the target folder')}</div>
                   <div className="flex gap-2">
                     {[
                       { key: 'rename',  label: 'Rename',  desc: 'Add _1, _2…' },
@@ -1178,15 +1193,15 @@ function MergeModal({ gallery, onClose, onMerged }) {
                                 background: collision === key ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
                                 border: `0.5px solid ${collision === key ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
-                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{label}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{desc}</div>
+                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
                   {collision === 'replace' && (
                     <div className="mt-2 px-3 py-2 rounded-[8px]"
                          style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', fontSize: 11, color: '#F4C0D1' }}>
-                      ⚠ Replace will permanently delete existing files in the target folder that share a filename with source files.
+                      {t('⚠ Replace will permanently delete existing files in the target folder that share a filename with source files.')}
                     </div>
                   )}
                 </div>
@@ -1197,9 +1212,9 @@ function MergeModal({ gallery, onClose, onMerged }) {
             <>
               <div className="rounded-[8px] px-3 py-3 flex flex-col gap-1"
                    style={{ background: 'rgba(186,117,23,0.1)', border: '1px solid rgba(186,117,23,0.35)' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>⚠ Confirm merge</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>{t('⚠ Confirm merge')}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginTop: 2 }}>
-                  <b style={{ color: 'rgba(255,255,255,0.85)' }}>{gallery.name}</b> will be merged into <b style={{ color: 'rgba(255,255,255,0.85)' }}>{targetGallery?.name}</b>.
+                  <b style={{ color: 'rgba(255,255,255,0.85)' }}>{gallery.name}</b> {t('will be merged into')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{targetGallery?.name}</b>.
                   {gallery.image_count > 0 && <> Its {gallery.image_count} images will be reassigned.</>}
                 </div>
               </div>
@@ -1207,30 +1222,30 @@ function MergeModal({ gallery, onClose, onMerged }) {
               {moveFiles ? (
                 <div className="rounded-[8px] px-3 py-2.5 flex flex-col gap-1"
                      style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#F4C0D1' }}>Files will be moved on disk</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#F4C0D1' }}>{t('Files will be moved on disk')}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-                    All images from <span style={{ color: 'rgba(255,255,255,0.7)' }}>{gallery.folder_path}</span> will be physically moved to <span style={{ color: 'rgba(255,255,255,0.7)' }}>{targetGallery?.folder_path}</span>.
-                    Filename conflicts: <b style={{ color: 'rgba(255,255,255,0.7)' }}>{collision}</b>.
+                    {t('All images from')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{gallery.folder_path}</span> {t('will be physically moved to')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{targetGallery?.folder_path}</span>.
+                    {t('Filename conflicts:')} <b style={{ color: 'rgba(255,255,255,0.7)' }}>{collision}</b>.
                   </div>
                 </div>
               ) : (
                 <div className="rounded-[8px] px-3 py-2.5"
                      style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-                  Database records only — files will stay in their current locations on disk.
+                  {t('Database records only — files will stay in their current locations on disk.')}
                 </div>
               )}
 
               {newCreators.length > 0 && (
                 <div className="rounded-[8px] px-3 py-2.5"
                      style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.3)', fontSize: 12, color: '#9FE1CB' }}>
-                  Creator{newCreators.length > 1 ? 's' : ''} <b>{newCreators.map(c => c.name).join(', ')}</b> will be added to the target gallery.
+                  {t('Creator')}{newCreators.length > 1 ? 's' : ''} <b>{newCreators.map(c => c.name).join(', ')}</b> {t('will be added to the target gallery.')}
                 </div>
               )}
 
               {collision === 'skip' && moveFiles && (
                 <div className="rounded-[8px] px-3 py-2.5"
                      style={{ background: 'rgba(186,117,23,0.08)', border: '0.5px solid rgba(186,117,23,0.3)', fontSize: 12, color: '#FAC775' }}>
-                  Skipped images will remain in the source gallery. If any are skipped, the source gallery will not be deleted.
+                  {t('Skipped images will remain in the source gallery. If any are skipped, the source gallery will not be deleted.')}
                 </div>
               )}
             </>
@@ -1243,12 +1258,12 @@ function MergeModal({ gallery, onClose, onMerged }) {
             <>
               <button onClick={onClose} className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
                       style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                Cancel
+                {t('Cancel')}
               </button>
               <button onClick={proceed} disabled={!targetId}
                       className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
                       style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                Review →
+                {t('Review →')}
               </button>
             </>
           ) : (
@@ -1256,12 +1271,12 @@ function MergeModal({ gallery, onClose, onMerged }) {
               <button onClick={() => setStep('pick')} disabled={merging}
                       className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
                       style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                ← Back
+                {t('← Back')}
               </button>
               <button onClick={doMerge} disabled={merging}
                       className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
                       style={{ background: merging ? 'rgba(127,119,221,0.15)' : 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-                {merging ? <><span className="animate-spin inline-block">⟳</span> Merging…</> : <><GitMerge size={13} /> Confirm merge</>}
+                {merging ? <><span className="animate-spin inline-block">⟳</span> {t('Merging…')}</> : <><GitMerge size={13} /> {t('Confirm merge')}</>}
               </button>
             </>
           )}
@@ -1274,6 +1289,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
 
 // ── Transfer images to an existing gallery modal ─────────────────────────────
 function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred }) {
+  const t = useT()
   const [search, setSearch] = useState('')
   const [targetGallery, setTargetGallery] = useState(null)
   const [transferring, setTransferring] = useState(false)
@@ -1307,7 +1323,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
       toast.success(`${images.length} image${images.length !== 1 ? 's' : ''} → "${targetGallery.name}"`)
       onTransferred(targetGallery.id, images.map(i => i.id))
     } catch {
-      toast.error('Transfer failed')
+      toast.error(t('Transfer failed'))
       setTransferring(false)
     }
   }
@@ -1324,7 +1340,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
           <div className="flex items-center gap-2">
             <FolderInput size={16} style={{ color: '#FAC775' }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-              Move {images.length === 1 ? 'image' : `${images.length} images`} to gallery
+              {t('Move')} {images.length === 1 ? t('image') : `${images.length} images`} {t('to gallery')}
             </span>
           </div>
           <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1335,13 +1351,13 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
         <div className="px-5 py-4 flex flex-col gap-3">
           {/* Search */}
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>Search by gallery name</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{t('Search by gallery name')}</div>
             <input
               ref={inputRef}
               value={search}
               onChange={e => { setSearch(e.target.value); setTargetGallery(null) }}
               onKeyDown={e => { if (e.key === 'Escape') onClose() }}
-              placeholder="Type to search galleries…"
+              placeholder={t('Type to search galleries…')}
               className="w-full rounded-[8px] px-3 py-2 outline-none"
               style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.9)' }}
             />
@@ -1353,7 +1369,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
                  style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.4)' }}>
               <div>
                 <div style={{ fontSize: 13, color: '#FAC775', fontWeight: 600 }}>{targetGallery.name}</div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{targetGallery.image_count ?? 0} images currently</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{targetGallery.image_count ?? 0} {t('images currently')}</div>
               </div>
               <button onClick={() => { setTargetGallery(null); setSearch('') }}
                       className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.3)' }}>
@@ -1371,7 +1387,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(186,117,23,0.1)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <span>{g.name}</span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} imgs</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} {t('imgs')}</span>
                   </button>
                 ))}
               </div>
@@ -1379,7 +1395,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
           )}
 
           {search.length > 0 && filtered.length === 0 && !targetGallery && (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '8px 0' }}>No galleries found</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '8px 0' }}>{t('No galleries found')}</div>
           )}
         </div>
 
@@ -1388,14 +1404,14 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
           <button onClick={onClose} disabled={transferring}
                   className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
                   style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button onClick={doTransfer} disabled={!targetGallery || transferring}
                   className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
                   style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
             {transferring
-              ? <><span className="animate-spin inline-block">⟳</span> Moving…</>
-              : <><FolderInput size={13} /> Move {images.length === 1 ? 'image' : `${images.length} images`}</>
+              ? <><span className="animate-spin inline-block">⟳</span> {t('Moving…')}</>
+              : <><FolderInput size={13} /> {t('Move')} {images.length === 1 ? t('image') : `${images.length} images`}</>
             }
           </button>
         </div>
@@ -1407,6 +1423,7 @@ function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred
 
 // ── Extract images to new gallery modal ──────────────────────────────────────
 function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted }) {
+  const t = useT()
   const [folderName, setFolderName] = useState('')
   const qc = useQueryClient()
   const inputRef = useRef(null)
@@ -1444,7 +1461,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onExtracted(g)
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'Extract failed'),
+    onError: (err) => toast.error(err?.response?.data?.detail || t('Extract failed')),
   })
 
   const canSubmit = folderName.trim().length > 0 && !extractMutation.isPending
@@ -1460,7 +1477,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
           <div className="flex items-center gap-2">
             <FolderOutput size={16} style={{ color: '#9FE1CB' }} />
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Extract to new gallery</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t('Extract to new gallery')}</span>
           </div>
           <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
             <X size={16} />
@@ -1475,23 +1492,23 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
             <FolderOutput size={18} style={{ color: '#9FE1CB', flexShrink: 0 }} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#9FE1CB' }}>
-                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                {selectedImages.length} {t('image')}{selectedImages.length !== 1 ? 's' : ''} {t('selected')}
               </div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-                Will be moved out of <span style={{ color: 'rgba(255,255,255,0.65)' }}>{gallery.name}</span> into a new gallery
+                {t('Will be moved out of')} <span style={{ color: 'rgba(255,255,255,0.65)' }}>{gallery.name}</span> {t('into a new gallery')}
               </div>
             </div>
           </div>
 
           {/* Folder name input */}
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>New gallery folder name</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{t('New gallery folder name')}</div>
             <input
               ref={inputRef}
               value={folderName}
               onChange={e => setFolderName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && canSubmit) extractMutation.mutate(); if (e.key === 'Escape') onClose() }}
-              placeholder="e.g. Cosplay Set 01"
+              placeholder={t('e.g. Cosplay Set 01')}
               className="w-full rounded-[8px] px-3 py-2 outline-none"
               style={{ fontSize: 14, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.9)' }}
             />
@@ -1504,7 +1521,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
             )}
             {noFolder && (
               <div className="mt-1.5" style={{ fontSize: 11, color: '#FAC775' }}>
-                ⚠ This gallery has no folder path. The new gallery will be database-only (no files moved).
+                {t('⚠ This gallery has no folder path. The new gallery will be database-only (no files moved).')}
               </div>
             )}
           </div>
@@ -1513,14 +1530,14 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           {creators.length > 0 && (
             <div className="rounded-[8px] px-3 py-2.5"
                  style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.3)', fontSize: 12, color: '#9FE1CB', lineHeight: 1.5 }}>
-              Creator association{creators.length > 1 ? 's' : ''} (<b>{creators.map(c => c.name).join(', ')}</b>) will be copied to the new gallery.
+              {t('Creator association')}{creators.length > 1 ? 's' : ''} (<b>{creators.map(c => c.name).join(', ')}</b>) {t('will be copied to the new gallery.')}
             </div>
           )}
 
           {/* What happens note */}
           <div className="rounded-[8px] px-3 py-2.5"
                style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-            The selected images will be <b style={{ color: 'rgba(255,255,255,0.6)' }}>physically moved</b> to the new folder on disk. The remaining images stay in <span style={{ color: 'rgba(255,255,255,0.6)' }}>{gallery.name}</span>.
+            {t('The selected images will be')} <b style={{ color: 'rgba(255,255,255,0.6)' }}>{t('physically moved')}</b> {t('to the new folder on disk. The remaining images stay in')} <span style={{ color: 'rgba(255,255,255,0.6)' }}>{gallery.name}</span>.
           </div>
         </div>
 
@@ -1529,14 +1546,14 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           <button onClick={onClose} disabled={extractMutation.isPending}
                   className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
                   style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button onClick={() => extractMutation.mutate()} disabled={!canSubmit}
                   className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
                   style={{ background: 'rgba(159,225,203,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(159,225,203,0.3)' }}>
             {extractMutation.isPending
-              ? <><span className="animate-spin inline-block">⟳</span> Extracting…</>
-              : <><FolderOutput size={13} /> Extract {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''}</>
+              ? <><span className="animate-spin inline-block">⟳</span> {t('Extracting…')}</>
+              : <><FolderOutput size={13} /> {t('Extract')} {selectedImages.length} {t('image')}{selectedImages.length !== 1 ? 's' : ''}</>
             }
           </button>
         </div>
@@ -1547,6 +1564,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
 
 
 export default function GalleryView() {
+  const t = useT()
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -1563,11 +1581,21 @@ export default function GalleryView() {
   const [deletedIds, setDeletedIds] = useState(new Set())
   const [periodMonth, setPeriodMonth] = useState(null)
   const [periodYear, setPeriodYear] = useState(null)
-  const [thumbSizeIdx, setThumbSizeIdx] = useState(2) // default: 160px
+  const [thumbSizeIdx, setThumbSizeIdx] = useState(() => { // default: 160px (idx 2)
+    try {
+      const v = parseInt(localStorage.getItem('vault_galleryview_thumb_idx') ?? '2', 10)
+      return (Number.isInteger(v) && v >= 0 && v < THUMB_SIZES.length) ? v : 2
+    } catch { return 2 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault_galleryview_thumb_idx', String(thumbSizeIdx)) } catch {}
+  }, [thumbSizeIdx])
   // Bulk select + extract
   const [bulkMode, setBulkMode]   = useState(() => new URLSearchParams(window.location.search).get('select') === 'true')
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExtract, setShowExtract] = useState(false)
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
+  const [bulkAssignSearch, setBulkAssignSearch] = useState('')
   const lastSelectIdxRef = useRef(null)
   // Image context menu
   const [imgCtx, setImgCtx] = useState(null) // { image, x, y }
@@ -1604,6 +1632,8 @@ export default function GalleryView() {
     queryFn: () => galleriesApi.get(id).then(r => r.data),
   })
 
+  const { data: allCreatorsForAssign } = useAllCreators()
+
   const { data: images } = useQuery({
     queryKey: ['gallery-images', id, sortBy, randomSeed],
     queryFn: ({ queryKey }) => {
@@ -1613,12 +1643,17 @@ export default function GalleryView() {
     gcTime: 5 * 60 * 1000,  // cache for 5 min — returning to a gallery is instant
   })
 
-  // Auto-open image from ?openImage= query param (e.g. from HOF click)
+  // Auto-open image from ?openImage= query param (e.g. from HOF / creator profile click)
+  const openImageHandled = useRef(false)
   useEffect(() => {
+    if (openImageHandled.current) return
     const openImageId = searchParams.get('openImage')
-    if (openImageId && images?.length) {
-      const idx = images.findIndex(img => img.id === parseInt(openImageId))
-      if (idx !== -1) setViewerIdx(idx)
+    if (!openImageId || !images?.length) return
+    const targetId = parseInt(openImageId, 10)
+    const idx = images.findIndex(img => img.id === targetId || String(img.id) === openImageId)
+    if (idx !== -1) {
+      setViewerIdx(idx)
+      openImageHandled.current = true
     }
   }, [images, searchParams])
 
@@ -1630,13 +1665,13 @@ export default function GalleryView() {
   const renameMutation = useMutation({
     mutationFn: (newName) => galleriesApi.update(id, { name: newName }),
     onSuccess: () => {
-      toast.success('Gallery renamed')
+      toast.success(t('Gallery renamed'))
       qc.invalidateQueries({ queryKey: ['gallery', id] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
       setIsRenaming(false)
     },
     onError: () => {
-      toast.error('Rename failed')
+      toast.error(t('Rename failed'))
       setIsRenaming(false)
     }
   })
@@ -1668,18 +1703,18 @@ export default function GalleryView() {
       qc.invalidateQueries({ queryKey: ['gallery', id] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
     },
-    onError: () => toast.error('Rating failed'),
+    onError: () => toast.error(t('Rating failed')),
   })
 
   const periodMutation = useMutation({
     mutationFn: ({ month, year }) => galleriesApi.update(id, { period_month: month || null, period_year: year || null }),
     onSuccess: () => {
-      toast.success('Period saved')
+      toast.success(t('Period saved'))
       qc.invalidateQueries({ queryKey: ['gallery', id] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
       setShowPeriodPicker(false)
     },
-    onError: () => toast.error('Failed to save period'),
+    onError: () => toast.error(t('Failed to save period')),
   })
 
   // Sync picker state when gallery loads
@@ -1718,7 +1753,7 @@ export default function GalleryView() {
         }
       }, 1500)
     } catch (e) {
-      toast.error('Tagger error — is a model downloaded?')
+      toast.error(t('Tagger error — is a model downloaded?'))
       setRetagging(false)
     }
   }
@@ -1730,7 +1765,7 @@ export default function GalleryView() {
         <button onClick={() => navigate(-1)}
                 className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-[7px] cursor-pointer"
                 style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-          <ArrowLeft size={13} /> Back
+          <ArrowLeft size={13} /> {t('Back')}
         </button>
         <div className="min-w-0 flex-1">
           {isRenaming ? (
@@ -1747,18 +1782,18 @@ export default function GalleryView() {
           ) : (
             <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={() => { setEditName(gallery?.name || ''); setIsRenaming(true) }}>
               <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] truncate">{gallery?.name ?? '...'}</div>
-              <button className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title="Rename gallery"><Pencil size={13} /></button>
+              <button className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title={t('Rename gallery')}><Pencil size={13} /></button>
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-[rgba(255,255,255,0.35)]">
-              {gallery?.image_count ?? 0} photos
+              {gallery?.image_count ?? 0} {t('photos')}
             </span>
             {gallery?.folder_path && !gallery.folder_path.startsWith('__manual__') && (
               <button
                 type="button"
                 title={`${gallery.folder_path}\n\nClick to copy`}
-                onClick={() => { navigator.clipboard.writeText(gallery.folder_path).catch(() => {}); toast.success('Path copied') }}
+                onClick={() => { navigator.clipboard.writeText(gallery.folder_path).catch(() => {}); toast.success(t('Path copied')) }}
                 className="flex items-center gap-1 cursor-pointer group/path"
                 style={{ maxWidth: '55ch', minWidth: 0 }}>
                 <FolderOpen size={10} style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
@@ -1787,7 +1822,7 @@ export default function GalleryView() {
                 onClick={() => setShowPeriodPicker(p => !p)}
                 className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer opacity-40 hover:opacity-70"
                 style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                + period
+                {t('+ period')}
               </button>
             )}
           </div>
@@ -1800,9 +1835,9 @@ export default function GalleryView() {
                 onChange={e => setPeriodMonth(e.target.value ? parseInt(e.target.value) : null)}
                 className="text-[11px] rounded-[6px] px-2 py-1 outline-none cursor-pointer"
                 style={{ background: '#1a1a1a', color: 'rgba(255,255,255,0.8)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                <option value="">Month</option>
+                <option value="">{t('Month')}</option>
                 {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
-                  <option key={i+1} value={i+1}>{m}</option>
+                  <option key={i+1} value={i+1}>{t(m)}</option>
                 ))}
               </select>
               <select
@@ -1810,7 +1845,7 @@ export default function GalleryView() {
                 onChange={e => setPeriodYear(e.target.value ? parseInt(e.target.value) : null)}
                 className="text-[11px] rounded-[6px] px-2 py-1 outline-none cursor-pointer"
                 style={{ background: '#1a1a1a', color: 'rgba(255,255,255,0.8)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                <option value="">Year</option>
+                <option value="">{t('Year')}</option>
                 {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map(y => (
                   <option key={y} value={y}>{y}</option>
                 ))}
@@ -1820,7 +1855,7 @@ export default function GalleryView() {
                 disabled={periodMutation.isPending}
                 className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer"
                 style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-                Save
+                {t('Save')}
               </button>
               <button
                 onClick={() => setShowPeriodPicker(false)}
@@ -1886,7 +1921,7 @@ export default function GalleryView() {
             />
           </div>
           <button onClick={handleRetag} disabled={retagging}
-                  title="AI-tag all images in this gallery"
+                  title={t('AI-tag all images in this gallery')}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50 transition-all"
                   style={{
                     background: retagging ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.1)',
@@ -1894,17 +1929,17 @@ export default function GalleryView() {
                     border: `0.5px solid ${retagging ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
             <Sparkles size={12} className={retagging ? 'animate-pulse' : ''} />
-            {retagging ? 'Tagging…' : 'AI Tag'}
+            {retagging ? t('Tagging…') : t('AI Tag')}
           </button>
           <button onClick={() => setShowMergeModal(true)}
-                  title="Merge this gallery into another"
+                  title={t('Merge this gallery into another')}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
             <GitMerge size={12} />
-            Merge
+            {t('Merge')}
           </button>
           <button onClick={() => { setBulkMode(b => !b); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
-                  title="Select images to extract or delete"
+                  title={t('Select images to extract or delete')}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{
                     background: bulkMode ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
@@ -1912,7 +1947,7 @@ export default function GalleryView() {
                     border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
             <CheckSquare size={12} />
-            {bulkMode ? `${selectedIds.size} selected` : 'Select'}
+            {bulkMode ? `${selectedIds.size} selected` : t('Select')}
           </button>
         </div>
       </div>
@@ -1931,37 +1966,102 @@ export default function GalleryView() {
       {bulkMode && selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] mb-3 animate-slide-up relative z-10"
              style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>{selectedIds.size} selected</span>
+          <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>{selectedIds.size} {t('selected')}</span>
           <button type="button"
                   onMouseDown={() => setSelectedIds(s => s.size === images?.filter(i => !deletedIds.has(i.id)).length ? new Set() : new Set(images?.filter(i => !deletedIds.has(i.id)).map(i => i.id) ?? []))}
                   className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {selectedIds.size === images?.filter(i => !deletedIds.has(i.id)).length ? 'Deselect all' : 'Select all'}
+            {selectedIds.size === images?.filter(i => !deletedIds.has(i.id)).length ? t('Deselect all') : t('Select all')}
           </button>
           <button type="button" onMouseDown={() => setShowExtract(true)}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-            <FolderOutput size={12} /> Extract to gallery
+            <FolderOutput size={12} /> {t('Extract to gallery')}
           </button>
           <button type="button"
                   onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)) })}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-            <FolderInput size={12} /> Move to gallery
+            <FolderInput size={12} /> {t('Move to gallery')}
           </button>
-          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
+          <button type="button"
+                  onMouseDown={() => setBulkAssignOpen(v => !v)}
+                  className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: bulkAssignOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+            <UserPlus size={12} /> {t('Assign creator')}
+          </button>
+          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); setBulkAssignOpen(false); lastSelectIdxRef.current = null }}
                   className="ml-auto text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer">
             <X size={14} />
           </button>
         </div>
       )}
 
+      {/* Bulk assign creator picker */}
+      {bulkMode && bulkAssignOpen && (
+        <div className="mb-3 rounded-[10px] overflow-hidden relative z-10"
+             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+          <div style={{ padding: '8px 12px 6px' }}>
+            <input
+              autoFocus
+              value={bulkAssignSearch}
+              onChange={e => setBulkAssignSearch(e.target.value)}
+              placeholder={t('Search creators to assign…')}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '6px 10px', borderRadius: 6, fontSize: 13,
+                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)',
+                border: '0.5px solid rgba(255,255,255,0.12)', outline: 'none',
+              }}
+            />
+          </div>
+          <div style={{ maxHeight: 180, overflowY: 'auto', padding: '2px 0 6px' }}>
+            {(allCreatorsForAssign ?? [])
+              .filter(c => c.name.toLowerCase().includes(bulkAssignSearch.toLowerCase()))
+              .map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={async () => {
+                    const targets = images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? []
+                    try {
+                      await Promise.all(targets.map(img => imagesApi.addCreator(img.id, c.id)))
+                      toast.success(`Creator assigned to ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
+                      qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
+                      setBulkAssignOpen(false)
+                      setBulkAssignSearch('')
+                    } catch {
+                      toast.error(t('Failed to assign creator'))
+                    }
+                  }}
+                  className="w-full text-left flex items-center gap-2 cursor-pointer"
+                  style={{
+                    padding: '6px 14px', fontSize: 13, color: 'rgba(255,255,255,0.8)',
+                    background: 'transparent', transition: 'background 0.08s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.15)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  {c.avatar_path
+                    ? <img src={`/api/creators/${c.id}/avatar`} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={e => { e.target.style.display = 'none' }} />
+                    : <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: 'rgba(127,119,221,0.3)' }} />
+                  }
+                  {c.name}
+                </button>
+              ))}
+            {(allCreatorsForAssign ?? []).filter(c => c.name.toLowerCase().includes(bulkAssignSearch.toLowerCase())).length === 0 && (
+              <div style={{ padding: '8px 14px', fontSize: 12, color: 'rgba(255,255,255,0.25)' }}>{t('No creators found')}</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Image grid */}
       <div className="relative z-10" />
       {!images
-        ? <div className="text-center py-12 text-[rgba(255,255,255,0.3)] text-[13px]">Loading...</div>
+        ? <div className="text-center py-12 text-[rgba(255,255,255,0.3)] text-[13px]">{t('Loading...')}</div>
         : images.length === 0
-          ? <div className="text-center py-16 text-[rgba(255,255,255,0.25)] text-[13px]">No images in this gallery</div>
+          ? <div className="text-center py-16 text-[rgba(255,255,255,0.25)] text-[13px]">{t('No images in this gallery')}</div>
           : <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${THUMB_SIZES[thumbSizeIdx]}px, 1fr))` }}>
               {images.filter(img => !deletedIds.has(img.id)).map((img, i) => (
                 <ImageThumb key={img.id} image={img} idx={i} onClick={setViewerIdx}
@@ -2003,6 +2103,7 @@ export default function GalleryView() {
           startIdx={viewerIdx}
           galleryId={parseInt(id)}
           galleryName={gallery?.name}
+          galleryCreators={gallery?.creators ?? []}
           onClose={() => setViewerIdx(null)}
         />
       )}
@@ -2067,8 +2168,8 @@ export default function GalleryView() {
             if (idx2 >= 0) setViewerIdx(idx2)
           }}
           onSetCover={() => galleriesApi.setCover(parseInt(id), imgCtx.image.id)
-            .then(() => { toast.success('Set as gallery cover!'); qc.invalidateQueries({ queryKey: ['gallery', String(id)] }) })
-            .catch(() => toast.error('Failed to set cover'))
+            .then(() => { toast.success(t('Set as gallery cover!')); qc.invalidateQueries({ queryKey: ['gallery', String(id)] }) })
+            .catch(() => toast.error(t('Failed to set cover')))
           }
           onSendToViewer={() => {
             const targets = imgCtx.bulkImages ?? [imgCtx.image]
@@ -2085,13 +2186,23 @@ export default function GalleryView() {
           creators={gallery?.creators ?? []}
           onSetAsAvatar={(creatorId) => {
             creatorsApi.setAvatarFromImage(creatorId, imgCtx.image.id)
-              .then(() => { toast.success('Avatar updated!'); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
-              .catch(() => toast.error('Failed to set avatar'))
+              .then(() => { toast.success(t('Avatar updated!')); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error(t('Failed to set avatar')))
           }}
           onSetAsBanner={(creatorId) => {
             creatorsApi.setBannerFromImage(creatorId, imgCtx.image.id)
-              .then(() => { toast.success('Banner updated!'); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
-              .catch(() => toast.error('Failed to set banner'))
+              .then(() => { toast.success(t('Banner updated!')); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error(t('Failed to set banner')))
+          }}
+          onAssignCreator={async (creatorId) => {
+            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            try {
+              await Promise.all(targets.map(img => imagesApi.addCreator(img.id, creatorId)))
+              toast.success(`Creator assigned to ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
+              qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
+            } catch {
+              toast.error(t('Failed to assign creator'))
+            }
           }}
           onDelete={async (mode) => {
             const targets = imgCtx.bulkImages ?? [imgCtx.image]

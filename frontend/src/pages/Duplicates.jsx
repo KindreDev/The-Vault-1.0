@@ -94,7 +94,7 @@ function HashProgress({ status, taskState, stats, onStart, onCancel, isPending }
     <div className="rounded-xl border border-white/10 p-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-white/75">Hash Index</p>
-        {isQueued && <span className="text-xs text-vault-accent/60 animate-pulse">Queued…</span>}
+        {isQueued && <span className="text-[14px] text-vault-accent/60 animate-pulse">Queued…</span>}
       </div>
       {isRunning ? (
         <button onClick={onCancel}
@@ -116,11 +116,11 @@ function HashProgress({ status, taskState, stats, onStart, onCancel, isPending }
             <div className="h-full bg-vault-accent transition-all duration-300"
                  style={{ width: pct > 0 ? `${pct}%` : '30%', opacity: pct > 0 ? 1 : 0.4 }} />
           </div>
-          <p className="text-xs text-white/40">{dedupTask?.message || 'Hashing…'} {pct > 0 && `${pct}%`}</p>
+          <p className="text-[14px] text-white/40">{dedupTask?.message || 'Hashing…'} {pct > 0 && `${pct}%`}</p>
         </>
       )}
       {!isRunning && stats && (
-        <p className="text-xs text-white/35">
+        <p className="text-[14px] text-white/35">
           {stats.hashed?.toLocaleString()} / {stats.total?.toLocaleString()} hashed
         </p>
       )}
@@ -141,13 +141,18 @@ function ImageCard({ img, isKeep, onToggle }) {
          onClick={onToggle}>
       {thumb
         ? <img src={thumb} alt={img.filename} className="w-full aspect-square object-cover" />
-        : <div className="w-full aspect-square bg-white/5 flex items-center justify-center text-white/30 text-xs">No thumb</div>
+        : <div className="w-full aspect-square bg-white/5 flex items-center justify-center text-white/30 text-[14px]">No thumb</div>
       }
       <div className="p-2" style={{ background: 'var(--c-surface, #161616)' }}>
-        <p className="text-white/80 text-xs truncate">{img.filename}</p>
-        <p className="text-white/40 text-[11px] truncate">{img.gallery_name || 'No gallery'}</p>
-        {img.creator_name && <p className="text-vault-accent/60 text-[11px] truncate">{img.creator_name}</p>}
-        <div className="flex gap-2 mt-1 text-[11px] text-white/40">
+        {img.file_path && (
+          <p className="text-white/35 text-[14px] truncate" title={img.file_path}>
+            {img.file_path.replace(/[\\/][^\\/]+$/, '')}
+          </p>
+        )}
+        <p className="text-white/80 text-sm truncate font-medium">{img.filename}</p>
+        <p className="text-white/40 text-[14px] truncate">{img.gallery_name || 'No gallery'}</p>
+        {img.creator_name && <p className="text-vault-accent/60 text-[14px] truncate">{img.creator_name}</p>}
+        <div className="flex gap-2 mt-1 text-[14px] text-white/40">
           {img.width && img.height && <span>{img.width}×{img.height}</span>}
           {img.file_size && <span>{(img.file_size / 1024 / 1024).toFixed(1)} MB</span>}
           {img.rating > 0 && <span className="text-vault-amber">★ {img.rating}</span>}
@@ -157,6 +162,296 @@ function ImageCard({ img, isKeep, onToggle }) {
       <div className={`absolute top-2 right-2 rounded-full p-1 ${isKeep ? 'bg-vault-green' : 'bg-red-500/80'}`}>
         {isKeep ? <CheckCircle size={13} className="text-white" /> : <XCircle size={13} className="text-white" />}
       </div>
+    </div>
+  )
+}
+
+// ── Image card for horizontal gallery overlap rows ─────────────────────────────
+
+function GalleryRowImageCard({ img }) {
+  const thumb = img.thumb_path ? `/thumbs/${img.thumb_path.split(/[\\/]/).pop()}` : null
+  const dirPath = img.file_path ? img.file_path.replace(/[\\/][^\\/]+$/, '') : null
+  return (
+    <div className="flex-shrink-0 w-36 rounded-lg border overflow-hidden"
+         style={{ borderColor: 'rgba(255,255,255,0.1)', background: '#161616' }}>
+      {thumb
+        ? <img src={thumb} alt={img.filename} className="w-full h-32 object-cover" loading="lazy" />
+        : <div className="w-full h-32 bg-white/5 flex items-center justify-center text-white/30 text-[14px]">No thumb</div>
+      }
+      <div className="p-1.5">
+        {dirPath && (
+          <p className="text-white/30 text-[14px] truncate" title={img.file_path}>{dirPath}</p>
+        )}
+        <p className="text-white/80 text-[14px] truncate font-medium">{img.filename}</p>
+        <div className="flex gap-1.5 mt-0.5 text-[14px] flex-wrap">
+          {img.width && img.height && (
+            <span style={{ color: 'rgba(127,119,221,0.75)' }}>{img.width}×{img.height}</span>
+          )}
+          {img.file_size && (
+            <span className="text-white/40">{(img.file_size / 1024 / 1024).toFixed(1)} MB</span>
+          )}
+          {img.rating > 0 && <span style={{ color: '#BA7517' }}>★{img.rating}</span>}
+          {img.cum_count > 0 && <span style={{ color: '#D4537E' }}>♥{img.cum_count}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Gallery pair card ──────────────────────────────────────────────────────────
+
+const GALLERY_THUMB_CAP = 20
+
+function GalleryPairCard({ pair, allDeletedIds, onDelete, onDismiss }) {
+  const [expanded,      setExpanded]      = useState(false)
+  const [confirmSide,   setConfirmSide]   = useState(null)
+  const [deleting,      setDeleting]      = useState(false)
+  const [showAllA,      setShowAllA]      = useState(false)
+  const [showAllB,      setShowAllB]      = useState(false)
+
+  const aImgs = pair.gallery_a.images.filter(img => !allDeletedIds.has(img.id))
+  const bImgs = pair.gallery_b.images.filter(img => !allDeletedIds.has(img.id))
+
+  if (aImgs.length === 0 || bImgs.length === 0) return null
+
+  const aVisible = showAllA ? aImgs : aImgs.slice(0, GALLERY_THUMB_CAP)
+  const bVisible = showAllB ? bImgs : bImgs.slice(0, GALLERY_THUMB_CAP)
+
+  async function handleDelete(side) {
+    const ids = side === 'a' ? aImgs.map(i => i.id) : bImgs.map(i => i.id)
+    setDeleting(true)
+    try {
+      await imagesApi.bulkDelete(ids)
+      toast.success(`Deleted ${ids.length} file${ids.length !== 1 ? 's' : ''}`)
+      onDelete(ids)
+    } catch (e) {
+      toast.error('Delete failed — please try again')
+    } finally {
+      setDeleting(false)
+      setConfirmSide(null)
+    }
+  }
+
+  const pctA = Math.round((aImgs.length / (pair.gallery_a.total_images || 1)) * 100)
+  const pctB = Math.round((bImgs.length / (pair.gallery_b.total_images || 1)) * 100)
+
+  return (
+    <div className="rounded-xl border overflow-hidden"
+         style={{ borderColor: 'rgba(255,255,255,0.1)', background: 'var(--c-card, #1e1e1e)' }}>
+
+      {/* ── Header — always visible ── */}
+      <div className="px-4 py-3">
+
+        {/* Gallery names row */}
+        <div className="flex items-start gap-3">
+          <button className="flex-1 min-w-0 text-left hover:opacity-80 transition"
+                  onClick={() => setExpanded(e => !e)}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-white/85 text-sm">{pair.gallery_a.name}</span>
+              {pair.gallery_a.creator_name && (
+                <span className="text-vault-accent/60 text-[14px]">{pair.gallery_a.creator_name}</span>
+              )}
+              <span className="text-white/25 text-[14px] flex-shrink-0">↔</span>
+              <span className="font-semibold text-white/85 text-sm">{pair.gallery_b.name}</span>
+              {pair.gallery_b.creator_name && (
+                <span className="text-vault-accent/60 text-[14px]">{pair.gallery_b.creator_name}</span>
+              )}
+            </div>
+            <p className="text-white/35 text-[14px] mt-0.5">
+              {aImgs.length} matched in A ({pctA}%) · {bImgs.length} matched in B ({pctB}%)
+            </p>
+          </button>
+
+          {/* Quick controls */}
+          <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+            <button onClick={() => setExpanded(e => !e)}
+                    className="text-white/30 hover:text-white/60 transition p-1" title="Inspect images">
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            <button onClick={onDismiss}
+                    className="text-white/25 hover:text-white/55 transition p-1" title="Dismiss">
+              <EyeOff size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Quick delete buttons — always visible */}
+        {confirmSide ? (
+          <div className="flex items-center gap-2 mt-2 p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 flex-wrap">
+            <AlertTriangle size={13} className="text-red-400 flex-shrink-0" />
+            <span className="text-white/70 text-[14px] flex-1 min-w-0">
+              Delete {confirmSide === 'a' ? aImgs.length : bImgs.length} files from{' '}
+              <span className="text-white/90 font-medium">
+                {confirmSide === 'a' ? pair.gallery_a.name : pair.gallery_b.name}
+              </span>? Permanent.
+            </span>
+            <button onClick={() => handleDelete(confirmSide)} disabled={deleting}
+                    className="px-3 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[14px] font-medium transition disabled:opacity-50 flex-shrink-0">
+              {deleting ? 'Deleting…' : 'Confirm'}
+            </button>
+            <button onClick={() => setConfirmSide(null)}
+                    className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 text-[14px] transition flex-shrink-0">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <button onClick={() => setConfirmSide('a')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-[14px] font-medium transition"
+                    style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <Trash2 size={13} /> Delete {aImgs.length} from A
+            </button>
+            <button onClick={() => setConfirmSide('b')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-[14px] font-medium transition"
+                    style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <Trash2 size={13} /> Delete {bImgs.length} from B
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Expanded: image rows ── */}
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-white/[0.06] pt-3">
+
+          {/* Gallery A */}
+          <div>
+            <p className="text-[14px] text-white/45 font-medium mb-1.5">
+              {pair.gallery_a.name}
+              <span className="text-white/30 font-normal ml-1">
+                — {aImgs.length} of {pair.gallery_a.total_images} files matched
+              </span>
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
+              {aVisible.map(img => <GalleryRowImageCard key={img.id} img={img} />)}
+              {!showAllA && aImgs.length > GALLERY_THUMB_CAP && (
+                <button onClick={() => setShowAllA(true)}
+                        className="flex-shrink-0 w-36 h-32 rounded-lg border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition text-[14px] font-medium"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  +{aImgs.length - GALLERY_THUMB_CAP} more
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Gallery B */}
+          <div>
+            <p className="text-[14px] text-white/45 font-medium mb-1.5">
+              {pair.gallery_b.name}
+              <span className="text-white/30 font-normal ml-1">
+                — {bImgs.length} of {pair.gallery_b.total_images} files matched
+              </span>
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
+              {bVisible.map(img => <GalleryRowImageCard key={img.id} img={img} />)}
+              {!showAllB && bImgs.length > GALLERY_THUMB_CAP && (
+                <button onClick={() => setShowAllB(true)}
+                        className="flex-shrink-0 w-36 h-32 rounded-lg border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition text-[14px] font-medium"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  +{bImgs.length - GALLERY_THUMB_CAP} more
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Gallery overlap section ────────────────────────────────────────────────────
+
+const GALLERY_PAGE_SIZE = 10
+
+function GalleryOverlapSection({ appliedThreshold }) {
+  const [localDeletedIds, setLocalDeletedIds] = useState(new Set())
+  const [dismissedKeys,   setDismissedKeys]   = useState(new Set())
+  const [page,            setPage]            = useState(1)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['dedup-gallery-overlaps', appliedThreshold],
+    queryFn:  () => dedupApi.galleryOverlaps(appliedThreshold).then(r => r.data),
+    refetchInterval: q => q.state.data?.computing ? 2000 : false,
+    staleTime: 0,
+  })
+
+  useEffect(() => { setPage(1) }, [appliedThreshold])
+
+  function handleDelete(ids) {
+    setLocalDeletedIds(prev => {
+      const n = new Set(prev)
+      ids.forEach(id => n.add(id))
+      return n
+    })
+  }
+
+  function handleDismiss(key) {
+    setDismissedKeys(prev => new Set([...prev, key]))
+  }
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-vault-card p-5 flex items-center gap-4">
+        <ScanLine size={20} className="text-vault-accent animate-spin flex-shrink-0" />
+        <p className="text-white/75 text-base font-medium">Loading…</p>
+      </div>
+    )
+  }
+
+  if (data?.computing) {
+    return (
+      <div className="text-center py-20">
+        <ScanLine size={44} className="mx-auto mb-4 text-white/20" />
+        <p className="text-white/55 text-base font-medium">Run &ldquo;Find Duplicates&rdquo; first</p>
+        <p className="text-white/30 text-sm mt-1">Gallery overlaps are derived from the image duplicate scan</p>
+      </div>
+    )
+  }
+
+  const visiblePairs = (data?.pairs ?? []).filter(pair => {
+    const key = `${pair.gallery_a.id}-${pair.gallery_b.id}`
+    if (dismissedKeys.has(key)) return false
+    const aLeft = pair.gallery_a.images.filter(img => !localDeletedIds.has(img.id)).length
+    const bLeft = pair.gallery_b.images.filter(img => !localDeletedIds.has(img.id)).length
+    return aLeft > 0 && bLeft > 0
+  })
+
+  if (visiblePairs.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <CheckCircle size={40} className="mx-auto mb-3 text-vault-green" />
+        <p className="text-white/65 text-base font-medium">No gallery overlaps found</p>
+        <p className="text-white/35 text-sm mt-1">No two galleries share duplicate images at this threshold</p>
+      </div>
+    )
+  }
+
+  const totalPages = Math.max(1, Math.ceil(visiblePairs.length / GALLERY_PAGE_SIZE))
+  const safePage   = Math.min(page, totalPages)
+  const pagePairs  = visiblePairs.slice((safePage - 1) * GALLERY_PAGE_SIZE, safePage * GALLERY_PAGE_SIZE)
+
+  return (
+    <div className="space-y-3">
+      <p className="text-white/35 text-[14px]">
+        {visiblePairs.length} gallery pair{visiblePairs.length !== 1 ? 's' : ''} with overlapping files.
+        Expand a pair to compare image quality before deleting.
+      </p>
+      {pagePairs.map(pair => {
+        const key = `${pair.gallery_a.id}-${pair.gallery_b.id}`
+        return (
+          <GalleryPairCard
+            key={key}
+            pair={pair}
+            allDeletedIds={localDeletedIds}
+            onDelete={handleDelete}
+            onDismiss={() => handleDismiss(key)}
+          />
+        )
+      })}
+      <Pagination
+        page={safePage} totalPages={totalPages}
+        onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+      />
     </div>
   )
 }
@@ -262,19 +557,19 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
           <span className="font-bold text-base flex-shrink-0" style={{ color: simColor }}>{simPct}%</span>
           <span className="text-white/40 text-sm flex-shrink-0">{remaining.length} imgs</span>
           {upscaleFactor && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold flex-shrink-0"
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[14px] font-semibold flex-shrink-0"
                   style={{ color: '#1D9E75', background: 'rgba(29,158,117,0.12)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
               <ArrowUpCircle size={10} /> {upscaleFactor}
             </span>
           )}
-          {subtitle && <span className="text-white/30 text-xs truncate">{subtitle}</span>}
+          {subtitle && <span className="text-white/30 text-[14px] truncate">{subtitle}</span>}
           {expanded ? <ChevronUp size={14} className="text-white/40 ml-auto flex-shrink-0" />
                     : <ChevronDown size={14} className="text-white/40 ml-auto flex-shrink-0" />}
         </button>
 
         <button onClick={e => { e.stopPropagation(); handleKeepBoth() }}
                 disabled={keepBothBusy}
-                className="ml-2 flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition text-xs flex-shrink-0 disabled:opacity-50"
+                className="ml-2 flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition text-[14px] flex-shrink-0 disabled:opacity-50"
                 style={{
                   color: upscaleFactor ? '#1D9E75' : 'rgba(255,255,255,0.3)',
                   background: upscaleFactor ? 'rgba(29,158,117,0.1)' : 'transparent',
@@ -285,7 +580,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
         </button>
 
         <button onClick={e => { e.stopPropagation(); onIgnore() }}
-                className="ml-1 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white/25 hover:text-white/55 hover:bg-white/5 transition text-xs flex-shrink-0"
+                className="ml-1 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white/25 hover:text-white/55 hover:bg-white/5 transition text-[14px] flex-shrink-0"
                 title="Hide for this session">
           <EyeOff size={12} /> Ignore
         </button>
@@ -293,7 +588,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
 
       {expanded && (
         <div className="px-4 pb-4">
-          <p className="text-white/35 text-xs mb-3">
+          <p className="text-white/35 text-[14px] mb-3">
             Click to mark as <span className="text-vault-green">Keep</span> — all others will be deleted.
           </p>
           <div className="grid gap-2"
@@ -305,7 +600,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
           </div>
 
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-white/35 text-xs">
+            <p className="text-white/35 text-[14px]">
               {toDelete.length} image{toDelete.length !== 1 ? 's' : ''} will be deleted from disk
             </p>
             <button disabled={deleting || toDelete.length === 0} onClick={openConfirm}
@@ -439,20 +734,20 @@ function BulkDeleteBar({ pageGroups, keepOverrides, deletedIds, onBulkDelete, bu
       </span>
       {confirm ? (
         <div className="flex items-center gap-2">
-          <span className="text-red-400 text-xs font-medium">Are you sure?</span>
+          <span className="text-red-400 text-[14px] font-medium">Are you sure?</span>
           <button onClick={() => { setConfirm(false); onBulkDelete() }}
                   disabled={busy}
-                  className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition disabled:opacity-50">
+                  className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[14px] font-semibold transition disabled:opacity-50">
             {busy ? 'Deleting…' : `Delete ${preview.total}`}
           </button>
           <button onClick={() => setConfirm(false)}
-                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 text-xs transition">
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 text-[14px] transition">
             Cancel
           </button>
         </div>
       ) : (
         <button onClick={() => setConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-xs font-semibold transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-[14px] font-semibold transition"
                 style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
           <Trash2 size={12} /> Bulk Delete
         </button>
@@ -471,6 +766,7 @@ export default function Duplicates() {
   const [appliedThreshold, setAppliedThreshold] = useState(3)
   const [deletedIds,       setDeletedIds]        = useState(new Set())
   const [bulkBusy,         setBulkBusy]          = useState(false)
+  const [activeTab,        setActiveTab]         = useState('images')
 
   // Per-group keep overrides set by user (ref so BulkDeleteBar doesn't re-render on every change)
   const keepOverrides = useRef({})
@@ -692,7 +988,7 @@ export default function Duplicates() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-lg font-bold text-white/90">Duplicate Finder</h1>
-            <p className="text-white/40 text-xs mt-0.5">
+            <p className="text-white/40 text-[14px] mt-0.5">
               {stats?.total != null ? `${stats.hashed?.toLocaleString()} / ${stats.total?.toLocaleString()} indexed (${indexedPct}%)` : 'Loading…'}
             </p>
           </div>
@@ -715,7 +1011,7 @@ export default function Duplicates() {
           <div className="rounded-xl border border-white/10 p-4 flex flex-col gap-3"
                style={{ background: 'rgba(255,255,255,0.02)' }}>
             <div>
-              <label className="block text-white/65 text-xs mb-1">
+              <label className="block text-white/65 text-[14px] mb-1">
                 Similarity — max distance:{' '}
                 <span className="text-white font-semibold">{threshold}</span>
                 <span className="text-white/35 ml-1">({Math.round((1 - threshold / 64) * 100)}%+)</span>
@@ -723,7 +1019,7 @@ export default function Duplicates() {
               <input type="range" min={0} max={30} value={threshold}
                      onChange={e => setThreshold(+e.target.value)}
                      className="w-full accent-vault-accent" />
-              <div className="flex justify-between text-[10px] text-white/25 mt-0.5">
+              <div className="flex justify-between text-[14px] text-white/25 mt-0.5">
                 <span>Identical</span><span>Near-exact</span><span>Similar</span><span>Loose</span>
               </div>
             </div>
@@ -739,12 +1035,12 @@ export default function Duplicates() {
         {baseGroups.length > 0 && (
           <div className="rounded-xl border border-white/10 p-4 flex flex-col gap-2.5"
                style={{ background: 'rgba(255,255,255,0.02)' }}>
-            <p className="text-xs font-medium text-white/40 uppercase tracking-wider">Filters</p>
+            <p className="text-[14px] font-medium text-white/40 uppercase tracking-wider">Filters</p>
             <div className="relative">
               <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
               <input type="text" placeholder="Search…" value={textSearch}
                      onChange={e => setTextSearch(e.target.value)}
-                     className="w-full pl-7 pr-7 py-2 rounded-lg text-white/80 text-xs placeholder-white/25 focus:outline-none"
+                     className="w-full pl-7 pr-7 py-2 rounded-lg text-white/80 text-[14px] placeholder-white/25 focus:outline-none"
                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
               {textSearch && (
                 <button onClick={() => setTextSearch('')}
@@ -763,7 +1059,7 @@ export default function Duplicates() {
             )}
             {activeFilters > 0 && (
               <button onClick={() => { setTextSearch(''); setCreatorFilter(''); setGalleryFilter('') }}
-                      className="flex items-center gap-1 text-xs text-white/35 hover:text-white/60 transition">
+                      className="flex items-center gap-1 text-[14px] text-white/35 hover:text-white/60 transition">
                 <X size={11} /> Clear filters
               </button>
             )}
@@ -772,7 +1068,7 @@ export default function Duplicates() {
 
         {/* Stats */}
         {baseGroups.length > 0 && (
-          <div className="text-xs text-white/30 flex flex-col gap-1 pt-1">
+          <div className="text-[14px] text-white/30 flex flex-col gap-1 pt-1">
             <span>
               {filteredGroups.length === baseGroups.length
                 ? `${baseGroups.length.toLocaleString()} groups`
@@ -807,8 +1103,30 @@ export default function Duplicates() {
           />
         )}
 
+        {/* Tab bar */}
+        <div className="flex border-b px-6" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+          {[
+            { id: 'images',    label: 'Image Duplicates' },
+            { id: 'galleries', label: 'Gallery Overlaps'  },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px"
+              style={{
+                color:       activeTab === tab.id ? '#7F77DD' : 'rgba(255,255,255,0.35)',
+                borderColor: activeTab === tab.id ? '#7F77DD' : 'transparent',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-6">
+
+          {activeTab === 'images' && (<>
 
           {/* Computing spinner */}
           {(loadingGroups || computing) && (
@@ -885,6 +1203,11 @@ export default function Duplicates() {
             page={safePage} totalPages={totalPages}
             onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           />
+          </>)}
+
+          {activeTab === 'galleries' && (
+            <GalleryOverlapSection appliedThreshold={appliedThreshold} />
+          )}
         </div>
       </div>
     </div>

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { X, Star, Heart, ListPlus, Play, Pause } from 'lucide-react'
+import { X, Star, Heart, ListPlus, Play, Pause, Download, Smartphone, Lock, Layers } from 'lucide-react'
 import { galleriesApi, imagesApi, playlistsApi } from '../lib/api.js'
 import { imageThumbUrl, imageFileUrl } from '../lib/media.js'
 import { enterImmersive, exitImmersive } from '../lib/fullscreen.js'
+import { saveImage, setWallpaper, canSetWallpaper } from '../lib/wallpaper.js'
 import { useVaultStore } from '../store/vault.js'
 import { Spinner } from '../components/ui.jsx'
+import BottomSheet from '../components/BottomSheet.jsx'
 
 // Gap between photos so a fast swipe never reveals a sliver of the neighbour —
 // you see black between them instead, like a real gallery app.
@@ -41,6 +43,7 @@ export default function ImageViewer() {
   const [chrome, setChrome] = useState(true)
   const [closing, setClosing] = useState(false)   // drives the reverse zoom-out
   const [zoomed, setZoomed] = useState(false)
+  const [menu, setMenu] = useState(false)         // long-press save / wallpaper sheet
   const [playing, setPlaying] = useState(false)   // active video play state
   const [vtime, setVtime] = useState(0)
   const [vdur, setVdur] = useState(0)
@@ -193,11 +196,13 @@ export default function ImageViewer() {
   useEffect(() => {
     const v = viewport.current
     if (!v) return
-    const g = { mode: null, sx: 0, sy: 0, dx: 0, dist0: 0, scale0: 1, tx0: 0, ty0: 0, moved: false, lastTap: 0, tapTimer: 0 }
+    const g = { mode: null, sx: 0, sy: 0, dx: 0, dist0: 0, scale0: 1, tx0: 0, ty0: 0, moved: false, lastTap: 0, tapTimer: 0, lpTimer: 0, longPressed: false }
     const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const cancelLongPress = () => { if (g.lpTimer) { clearTimeout(g.lpTimer); g.lpTimer = 0 } }
 
     const onStart = (e) => {
       g.moved = false
+      cancelLongPress()
       if (e.touches.length === 2) {
         g.mode = 'pinch'
         g.dist0 = dist(e.touches)
@@ -206,12 +211,27 @@ export default function ImageViewer() {
         const t = e.touches[0]
         g.sx = t.clientX; g.sy = t.clientY
         if (zoom.current.scale > 1.02) { g.mode = 'pan'; g.tx0 = zoom.current.tx; g.ty0 = zoom.current.ty }
-        else { g.mode = 'page'; g.dx = 0 }
+        else {
+          g.mode = 'page'; g.dx = 0
+          // Press and hold (not zoomed, not moving) opens the save / wallpaper
+          // menu for a photo — videos can't be saved or set as wallpaper.
+          g.longPressed = false
+          g.lpTimer = setTimeout(() => {
+            g.lpTimer = 0
+            const cur = imagesRef.current[idxRef.current]
+            if (cur && !cur.is_video) {
+              g.longPressed = true
+              if (navigator.vibrate) navigator.vibrate(15)
+              setMenu(true)
+            }
+          }, 450)
+        }
       }
     }
     const onMove = (e) => {
       if (!g.mode) return
       e.preventDefault()
+      cancelLongPress()
       if (g.mode === 'pinch' && e.touches.length >= 2) {
         zoom.current.scale = Math.max(1, Math.min(5, g.scale0 * dist(e.touches) / g.dist0))
         clampZoom(); applyImg(false); g.moved = true
@@ -234,6 +254,7 @@ export default function ImageViewer() {
     }
     const onEnd = (e) => {
       if (!g.mode) return
+      cancelLongPress()
       const w = W()
       if (g.mode === 'page') {
         let target = idxRef.current
@@ -249,7 +270,8 @@ export default function ImageViewer() {
         else setZoomed(true)
       }
       // Tap handling: single tap toggles the bars, double tap zooms.
-      if (!g.moved && e.touches.length === 0) {
+      // A long-press that opened the menu is neither a tap nor a swipe.
+      if (!g.moved && !g.longPressed && e.touches.length === 0) {
         const now = Date.now()
         if (now - g.lastTap < 280) {
           clearTimeout(g.tapTimer); g.lastTap = 0
@@ -293,6 +315,30 @@ export default function ImageViewer() {
     try { await imagesApi.favorite(current.id, !current.is_favorite); qc.invalidateQueries({ queryKey }) }
     catch {}
   }
+  async function doSave() {
+    if (!current) return
+    addToast('Saving…', 'info')
+    try {
+      const how = await saveImage(imageFileUrl(current))
+      addToast(how === 'saved' ? 'Saved to your photos' : how === 'shared' ? 'Shared' : 'Downloaded', 'xp')
+    } catch { addToast('Could not save image', 'info') }
+  }
+  async function doWallpaper(target) {
+    if (!current) return
+    addToast('Setting wallpaper…', 'info')
+    try {
+      await setWallpaper(imageFileUrl(current), target)
+      addToast('Wallpaper set', 'xp')
+    } catch { addToast('Could not set wallpaper', 'info') }
+  }
+  const menuActions = current ? [
+    { label: 'Save to device', icon: <Download size={22} />, onClick: doSave },
+    ...(canSetWallpaper() ? [
+      { label: 'Set as home screen', icon: <Smartphone size={22} />, onClick: () => doWallpaper('home') },
+      { label: 'Set as lock screen', icon: <Lock size={22} />, onClick: () => doWallpaper('lock') },
+      { label: 'Set as both screens', icon: <Layers size={22} />, onClick: () => doWallpaper('both') },
+    ] : []),
+  ] : []
 
   return (
     <motion.div className="fixed inset-0 z-50 bg-black overflow-hidden"
@@ -396,6 +442,9 @@ export default function ImageViewer() {
           ))}
         </div>
       </div>
+
+      <BottomSheet open={menu} onClose={() => setMenu(false)}
+                   title="Save image" actions={menuActions} />
     </motion.div>
   )
 }

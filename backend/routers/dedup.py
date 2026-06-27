@@ -48,6 +48,13 @@ def duplicate_groups(
     return dedup_svc.get_duplicate_groups(_db_factory, threshold=threshold)
 
 
+@router.get("/gallery-overlaps")
+def gallery_overlaps(
+    threshold: int = Query(10, ge=0, le=64),
+):
+    return dedup_svc.get_gallery_overlaps(_db_factory, threshold=threshold)
+
+
 @router.get("/image/{image_id}")
 def image_duplicates(
     image_id: int,

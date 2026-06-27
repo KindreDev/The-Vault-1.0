@@ -12,6 +12,25 @@ function fmtTime(s) {
   return `${m}:${String(sec).padStart(2,'0')}`
 }
 
+// Human-readable labels for T-Code axis IDs (used by the multi-axis badge row)
+const AXIS_LABELS = {
+  L0: 'Stroke', L1: 'Surge', L2: 'Sway',
+  R0: 'Twist',  R1: 'Roll',  R2: 'Pitch',
+}
+
+// Axis IDs present in a loaded funscript. Single-axis → ['L0']; multi-axis adds
+// rotation/extra axes. Derived from the funscript itself (not global state) so a
+// player only ever reflects its OWN script — safe when several are mounted.
+function axisIdsOf(data) {
+  if (!data) return []
+  const axes = data.axes && typeof data.axes === 'object' ? data.axes : null
+  if (axes) {
+    const ids = Object.keys(axes).filter(id => Array.isArray(axes[id]) && axes[id].length)
+    if (ids.length) return ids
+  }
+  return data.actions?.length ? ['L0'] : []
+}
+
 function FunscriptWaveform({ actions, duration, currentTime }) {
   if (!actions?.length || !duration) return null
 
@@ -52,6 +71,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const videoRef    = useRef(null)
   const viewTracked = useRef(false)
   const seekBarRef  = useRef(null)
+  const lastTimeRef = useRef(0)
 
   const [playing,      setPlaying]      = useState(false)
   const [time,         setTime]         = useState(0)
@@ -65,6 +85,13 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
   const deviceStatus    = useDeviceStore(s => s.status)
   const deviceConnected = deviceStatus === 'connected'
+
+  const funscriptAxes  = useDeviceStore(s => s.funscriptAxes)
+  const setDetectedAxes = useDeviceStore(s => s.setDetectedAxes)
+  const setAxisEnabled  = useDeviceStore(s => s.setAxisEnabled)
+
+  // Axes present in THIS player's script — drives the local badge row.
+  const localAxes = axisIdsOf(funscript)
 
   useImperativeHandle(ref, () => ({
     togglePlay: () => {
@@ -96,12 +123,17 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   }, [])
 
   useEffect(() => {
-    if (overrideFunscript?.actions) { setFunscript(overrideFunscript); return }
-    if (!imageId || !funscriptPath) { setFunscript(null); return }
+    const apply = (data) => {
+      setFunscript(data?.actions ? data : null)
+      setDetectedAxes(axisIdsOf(data))
+    }
+    if (overrideFunscript?.actions) { apply(overrideFunscript); return }
+    if (!imageId || !funscriptPath) { apply(null); return }
     fetch(`/api/images/${imageId}/funscript`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => setFunscript(data?.actions ? data : null))
-      .catch(() => setFunscript(null))
+      .then(apply)
+      .catch(() => apply(null))
+    return () => setDetectedAxes([])
   }, [imageId, funscriptPath, overrideFunscript])
 
   useEffect(() => {
@@ -249,11 +281,22 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
         onPlay={handlePlay}
         onPause={handlePause}
         onError={handleVideoError}
-        onTimeUpdate={() => { if (videoRef.current) setTime(videoRef.current.currentTime) }}
+        onTimeUpdate={() => {
+          const v = videoRef.current
+          if (!v) return
+          const t = v.currentTime
+          // Native `loop` seeks back to 0 without firing ended/seeked/play, so the
+          // funscript scheduler is never re-armed. Detect the backward wrap and
+          // re-arm device sync from the new position.
+          if (lastTimeRef.current - t > 0.5) deviceService.onVideoSeek()
+          lastTimeRef.current = t
+          setTime(t)
+        }}
         onLoadedMetadata={() => {
           const v = videoRef.current
           if (!v) return
           setDuration(v.duration)
+          lastTimeRef.current = 0
           setVideoError(null)   // clear any previous error if a new src loaded OK
           // Explicitly call play() — browsers occasionally ignore the autoPlay
           // attribute after rapid navigation, e.g. jumping between funscript videos.
@@ -275,6 +318,27 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
           {funscript && (
             <FunscriptWaveform actions={funscript.actions} duration={duration} currentTime={time} />
+          )}
+
+          {funscript && localAxes.length > 1 && (
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+              {localAxes.map(id => {
+                const on = funscriptAxes[id] !== false
+                return (
+                  <button key={id}
+                          onMouseDown={e => { e.stopPropagation(); setAxisEnabled(id, !on) }}
+                          title={on ? `${AXIS_LABELS[id] || id} active — click to mute this axis`
+                                    : `${AXIS_LABELS[id] || id} muted — click to enable`}
+                          className="px-2 py-0.5 rounded-full text-[12px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                          style={on
+                            ? { background: 'rgba(127,119,221,0.28)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
+                            : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                    <span className="font-mono">{id}</span>
+                    <span style={{ opacity: 0.7 }}>{AXIS_LABELS[id] || ''}</span>
+                  </button>
+                )
+              })}
+            </div>
           )}
 
           <div ref={seekBarRef}

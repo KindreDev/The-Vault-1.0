@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -14,11 +15,14 @@ import ImageContextMenu from '../components/ImageContextMenu'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
+import { useAllCreators } from '../hooks/useAllCreators'
 import TagFilterInput from '../components/TagFilterInput'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import DeviceControls from '../components/DeviceControls'
 import { SortDropdown } from '../components/SortDropdown'
 import FranchiseFilter from '../components/FranchiseFilter'
+import PeriodFilter from '../components/PeriodFilter'
+import { useT } from '../i18n'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -47,14 +51,15 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const queue = useVaultStore(s => s.multiViewerQueue)
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
+  const t = useT()
   const inQueue = queue.some(q => q.id === `img-${image.id}`)
 
   const handleSendToViewer = (e) => {
     e.stopPropagation()
     if (queue.length >= MAX) { toast.error(`Multi-viewer full (${MAX}/${MAX})`); return }
     const ok = addToMultiViewer({ id: `img-${image.id}`, type: 'image', media: image })
-    if (ok) toast.success('Sent to multi-viewer')
-    else toast('Already in multi-viewer', { icon: '✓' })
+    if (ok) toast.success(t('Sent to multi-viewer'))
+    else toast(t('Already in multi-viewer'), { icon: '✓' })
   }
 
   const handleMouseEnter = useCallback(() => {
@@ -185,7 +190,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
       {/* Send to multi-viewer */}
       <button
         onMouseDown={handleSendToViewer}
-        title="Send to multi-viewer"
+        title={t('Send to multi-viewer')}
         className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
         style={inQueue
           ? { background: 'rgba(127,119,221,0.7)', opacity: 1 }
@@ -233,6 +238,7 @@ function ImageViewer({ images, startIdx, onClose }) {
   const endSession = useVaultStore(s => s.endSession)
   const addXpToast = useVaultStore(s => s.addXpToast)
   const qc = useQueryClient()
+  const t = useT()
 
   const image = images[idx]
 
@@ -355,13 +361,13 @@ function ImageViewer({ images, startIdx, onClose }) {
   })
   const sessionMutation = useMutation({
     mutationFn: (data = {}) => sessionsApi.log({ image_id: image.id, gallery_id: image.gallery_id, ...data }).then(r => r.data),
-    onSuccess: (data) => { addXpToast(`+${data.xp_earned} XP`); toast.success('Session logged ❤️') }
+    onSuccess: (data) => { addXpToast(`+${data.xp_earned} XP`); toast.success(t('Session logged ❤️')) }
   })
 
   if (!image) return null
   const isZoomed = zoom > 1
 
-  return (
+  return createPortal((
     <div ref={viewerRef} className="fixed inset-0 z-50 flex" style={{ background: '#090909' }}
       onMouseMove={handleMouseMove}>
 
@@ -385,7 +391,7 @@ function ImageViewer({ images, startIdx, onClose }) {
             onMouseDown={() => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) }}
             className="cursor-pointer p-1 rounded transition-colors"
             style={{ color: isFavorite ? '#EF9F27' : 'rgba(255,255,255,0.3)' }}
-            title={isFavorite ? 'Remove favorite' : 'Favorite'}>
+            title={isFavorite ? t('Remove favorite') : t('Favorite')}>
             <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
           </button>
 
@@ -393,13 +399,13 @@ function ImageViewer({ images, startIdx, onClose }) {
           <div className="flex items-center gap-1 relative">
             <button type="button" onMouseDown={() => setSlideshowActive(a => !a)}
               className="cursor-pointer p-1 rounded text-[rgba(255,255,255,0.4)] hover:text-white"
-              title="Play/pause slideshow (Space)">
+              title={t('Play/pause slideshow (Space)')}>
               {slideshowActive ? <Pause size={13} /> : <Play size={13} />}
             </button>
             <button type="button" onMouseDown={() => setShowSpeedMenu(s => !s)}
               className="cursor-pointer text-[11px] px-1.5 py-0.5 rounded-full"
               style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)' }}
-              title="Slideshow speed">
+              title={t('Slideshow speed')}>
               {slideshowSpeed}s
             </button>
             {showSpeedMenu && (
@@ -530,7 +536,7 @@ function ImageViewer({ images, startIdx, onClose }) {
           {isZoomed && !image.is_video && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[12px] px-3 py-1.5 rounded-full pointer-events-none"
               style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.4)' }}>
-              Double-click or Esc to reset · Drag to pan
+              {t('Double-click or Esc to reset · Drag to pan')}
             </div>
           )}
           {slideshowActive && (
@@ -576,7 +582,7 @@ function ImageViewer({ images, startIdx, onClose }) {
         {/* Gallery link */}
         {image.gallery_name && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">Gallery</div>
+            <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">{t('Gallery')}</div>
             <button type="button" onMouseDown={() => { onClose(); navigate(`/galleries/${image.gallery_id}`) }}
               className="flex items-center gap-1 text-[13px] text-[rgba(255,255,255,0.65)] hover:text-white cursor-pointer truncate w-full text-left">
               <span className="truncate">{image.gallery_name}</span>
@@ -588,7 +594,7 @@ function ImageViewer({ images, startIdx, onClose }) {
         {/* Funscript loader — videos only */}
         {image.is_video && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Funscript</div>
+            <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Funscript')}</div>
             <input ref={funscriptInputRef} type="file" accept=".funscript" className="hidden"
               onChange={e => {
                 const file = e.target.files?.[0]
@@ -601,13 +607,13 @@ function ImageViewer({ images, startIdx, onClose }) {
             {localFunscript ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-1 text-[13px]" style={{ color: '#CECBF6' }}>
-                  <Zap size={12} fill="currentColor" /> Custom script loaded
+                  <Zap size={12} fill="currentColor" /> {t('Custom script loaded')}
                 </div>
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => funscriptInputRef.current?.click()}
                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[12px] cursor-pointer"
                     style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)' }}>
-                    <FolderOpen size={11} /> Replace
+                    <FolderOpen size={11} /> {t('Replace')}
                   </button>
                   <button type="button" onClick={() => setLocalFunscript(null)}
                     className="flex items-center justify-center px-2 py-1.5 rounded-[6px] text-[12px] cursor-pointer"
@@ -619,13 +625,13 @@ function ImageViewer({ images, startIdx, onClose }) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {image.funscript_path
-                  ? <div className="text-[12px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={11} /> Script attached</div>
-                  : <div className="text-[12px] text-[rgba(255,255,255,0.25)]">No script attached</div>
+                  ? <div className="text-[12px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={11} /> {t('Script attached')}</div>
+                  : <div className="text-[12px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
                 }
                 <button type="button" onClick={() => funscriptInputRef.current?.click()}
                   className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[12px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  <FolderOpen size={11} /> Load .funscript
+                  <FolderOpen size={11} /> {t('Load .funscript')}
                 </button>
               </div>
             )}
@@ -634,23 +640,23 @@ function ImageViewer({ images, startIdx, onClose }) {
 
         {/* Cum counter */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Cum counter</div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Cum counter')}</div>
           <div className="flex items-center gap-2">
             <button type="button" onMouseDown={() => cumMutation.mutate()}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[14px] font-medium cursor-pointer active:scale-95 transition-transform"
               style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.4)' }}>
-              <Droplets size={13} /> Count it
+              <Droplets size={13} /> {t('Count it')}
             </button>
             <div className="text-center min-w-[36px]">
               <div className="text-[26px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
-              <div className="text-[11px] text-[rgba(255,255,255,0.25)] mt-0.5">all time</div>
+              <div className="text-[11px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
           </div>
         </div>
 
         {/* Rating */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Rating</div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Rating')}</div>
           <div className="flex gap-0.5">
             {[1,2,3,4,5,6,7,8,9,10].map(s => (
               <button key={s} type="button" onMouseDown={() => { setRating(s); rateMutation.mutate(s) }}
@@ -665,21 +671,21 @@ function ImageViewer({ images, startIdx, onClose }) {
 
         {/* Info */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">Info</div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Info')}</div>
           {image.width && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[12px] text-[rgba(255,255,255,0.3)]">Size</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
               <span className="text-[12px] text-[rgba(255,255,255,0.6)]">{image.width}×{image.height}</span>
             </div>
           )}
           {image.file_size && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[12px] text-[rgba(255,255,255,0.3)]">File</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
               <span className="text-[12px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)} MB</span>
             </div>
           )}
           <div className="flex justify-between py-0.5">
-            <span className="text-[12px] text-[rgba(255,255,255,0.3)]">Views</span>
+            <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Views')}</span>
             <span className="text-[12px] text-[rgba(255,255,255,0.6)]">{liveViewCount ?? image.view_count}</span>
           </div>
         </div>
@@ -687,7 +693,7 @@ function ImageViewer({ images, startIdx, onClose }) {
         {/* Transfer to gallery */}
         <TransferPanel imageId={image.id} currentGalleryId={image.gallery_id} onTransferred={(newGalleryId) => {
           // Close viewer after transfer as the image is now in another gallery
-          toast.success('Image transferred!')
+          toast.success(t('Image transferred!'))
           onClose()
         }} />
 
@@ -700,20 +706,20 @@ function ImageViewer({ images, startIdx, onClose }) {
             if (sessionActive) {
               const elapsed = endSession()
               sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-              toast.success('Session stopped')
+              toast.success(t('Session stopped'))
             } else {
               startSession()
-              toast.success('Session started ❤️')
+              toast.success(t('Session started ❤️'))
             }
           }}
             className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer"
             style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-            <Heart size={12} /> {sessionActive ? 'Stop Session' : 'Start Session'}
+            <Heart size={12} /> {sessionActive ? t('Stop Session') : t('Start Session')}
           </button>
         </div>
       </div>}
     </div>
-  )
+  ), document.body)
 }
 
 
@@ -732,6 +738,7 @@ const CREATOR_TYPE_OPTIONS = [
 function CreatorTypeDropdown({ value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const t = useT()
   const selected = CREATOR_TYPE_OPTIONS.find(o => o.value === value) || CREATOR_TYPE_OPTIONS[0]
   const active = !!value
 
@@ -755,7 +762,7 @@ function CreatorTypeDropdown({ value, onChange }) {
         {active
           ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
           : null}
-        {selected.label}
+        {t(selected.label)}
         {active
           ? <X size={11} onMouseDown={e => { e.stopPropagation(); onChange('') }} className="cursor-pointer" />
           : <ChevronDown size={11} />}
@@ -776,7 +783,7 @@ function CreatorTypeDropdown({ value, onChange }) {
               {opt.value
                 ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
                 : <span className="w-1.5 h-1.5 flex-shrink-0" />}
-              {opt.label}
+              {t(opt.label)}
               {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
             </button>
           ))}
@@ -791,11 +798,9 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef(null)
+  const t = useT()
 
-  const { data: creators } = useQuery({
-    queryKey: ['creators-mini'],
-    queryFn: () => creatorsApi.list({ limit: 5000 }).then(r => r.data),
-  })
+  const { data: creators } = useAllCreators()
 
   const filtered = (creators || []).filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
   const selected = creators?.find(c => c.id === value)
@@ -815,7 +820,7 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
           color: value ? '#CECBF6' : 'rgba(255,255,255,0.5)',
           border: `0.5px solid ${value ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.1)'}`
         }}>
-        {selected ? selected.name : placeholder}
+        {selected ? selected.name : t(placeholder)}
         {value
           ? <X size={11} onMouseDown={e => { e.stopPropagation(); onChange(null) }} />
           : <ChevronDown size={11} />
@@ -826,7 +831,7 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
           style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
           <div className="p-2">
             <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search creators..." className="w-full px-2 py-1.5 rounded-[6px] text-[13px] outline-none"
+              placeholder={t('Search creators...')} className="w-full px-2 py-1.5 rounded-[6px] text-[13px] outline-none"
               style={{
                 background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)',
                 border: '0.5px solid rgba(255,255,255,0.1)'
@@ -835,7 +840,7 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
           <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
             <button type="button" onMouseDown={() => { onChange(null); setOpen(false) }}
               className="w-full text-left px-3 py-2 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
-              style={{ color: 'rgba(255,255,255,0.45)' }}>{placeholder}</button>
+              style={{ color: 'rgba(255,255,255,0.45)' }}>{t(placeholder)}</button>
             {filtered.map(c => (
               <button key={c.id} type="button" onMouseDown={() => { onChange(c.id); setOpen(false) }}
                 className="w-full text-left px-3 py-2 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
@@ -859,6 +864,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
   const [folderName, setFolderName] = useState('')
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const t = useT()
 
   const { data: srcGallery, isLoading: loadingSrc } = useQuery({
     queryKey: ['gallery', String(sourceGalleryId)],
@@ -885,7 +891,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
       onExtracted(g)
       navigate(`/galleries/${g.id}`)
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'Extract failed'),
+    onError: (err) => toast.error(err?.response?.data?.detail || t('Extract failed')),
   })
 
   const parentLabel = srcGallery?.folder_path
@@ -903,10 +909,10 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
         <div>
           <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2 mb-1">
             <FolderOutput size={14} style={{ color: '#7F77DD' }} />
-            Extract to new gallery
+            {t('Extract to new gallery')}
           </div>
           <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} will be moved out of
+            {selectedImages.length} {t('image')}{selectedImages.length !== 1 ? 's' : ''} {t('will be moved out of')}
             {' '}<span style={{ color: 'rgba(255,255,255,0.7)' }}>{srcGallery?.name ?? '…'}</span>
           </div>
         </div>
@@ -914,14 +920,14 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
         {noFolder ? (
           <div className="px-3 py-3 rounded-[8px] text-[13px]"
                style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', color: '#F4C0D1' }}>
-            This gallery has no real folder on disk. Extract requires a scanned gallery.
+            {t('This gallery has no real folder on disk. Extract requires a scanned gallery.')}
           </div>
         ) : (
           <>
             {/* Folder name input */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                New folder / gallery name
+                {t('New folder / gallery name')}
               </label>
               <input
                 autoFocus
@@ -931,13 +937,13 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
                   if (e.key === 'Enter' && folderName.trim()) extractMutation.mutate()
                   if (e.key === 'Escape') onClose()
                 }}
-                placeholder="e.g. Widowmaker NSFW"
+                placeholder={t('e.g. Widowmaker NSFW')}
                 className="w-full px-3 py-2 rounded-[8px] text-[14px] font-mono outline-none"
                 style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.15)' }}
               />
               {parentLabel && (
                 <div className="text-[11px] truncate" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  Will create: {parentLabel} › <span style={{ color: 'rgba(255,255,255,0.5)' }}>{folderName || '…'}</span>
+                  {t('Will create:')} {parentLabel} › <span style={{ color: 'rgba(255,255,255,0.5)' }}>{folderName || '…'}</span>
                 </div>
               )}
             </div>
@@ -945,8 +951,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
             {/* Info strip */}
             <div className="px-3 py-2 rounded-[8px] text-[12px]"
                  style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
-              Files are physically moved on disk. Creator associations are copied
-              from the source gallery. You'll be taken to the new gallery.
+              {t("Files are physically moved on disk. Creator associations are copied from the source gallery. You'll be taken to the new gallery.")}
             </div>
           </>
         )}
@@ -956,7 +961,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
           <button type="button" onMouseDown={onClose}
                   className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           {!noFolder && (
             <button type="button"
@@ -965,7 +970,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
                     className="px-4 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
                     style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
               <FolderOutput size={12} />
-              {extractMutation.isPending ? 'Extracting…' : 'Extract'}
+              {extractMutation.isPending ? t('Extracting…') : t('Extract')}
             </button>
           )}
         </div>
@@ -985,6 +990,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
   const queue = useVaultStore(s => s.multiViewerQueue)
+  const t = useT()
 
   const selectedGalleryIds = Array.from(new Set(selectedImages.map(i => i.gallery_id).filter(id => id)))
 
@@ -996,12 +1002,12 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onDone()
     },
-    onError: () => toast.error('Assignment failed')
+    onError: () => toast.error(t('Assignment failed'))
   })
 
   const handleSendToViewer = () => {
     let added = 0, skipped = 0
-    toast('Adding media...', { icon: '⏳', id: 'bulk-add' })
+    toast(t('Adding media...'), { icon: '⏳', id: 'bulk-add' })
     for (const img of selectedImages) {
       if (queue.length + added >= MAX) break
       const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
@@ -1009,18 +1015,18 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
     }
     toast.dismiss('bulk-add')
     if (added > 0) toast.success(`Sent ${added} items to viewer`)
-    if (skipped > 0) toast('Some already queued or queue full', { icon: 'ℹ️' })
+    if (skipped > 0) toast(t('Some already queued or queue full'), { icon: 'ℹ️' })
     onDone()
   }
 
   const handleAddTags = async () => {
-    const tags = tagInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    const tags = tagInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean)
     if (!tags.length) return
     setWorking(true)
     let errs = 0
     for (const img of selectedImages)
-      for (const t of tags)
-        try { await imagesApi.addTag(img.id, t) } catch { errs++ }
+      for (const tag of tags)
+        try { await imagesApi.addTag(img.id, tag) } catch { errs++ }
     setWorking(false)
     if (errs) toast.error(`Done with ${errs} errors`)
     else toast.success(`Tagged ${selectedImages.length} images`)
@@ -1046,20 +1052,20 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
     <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] flex-wrap animate-slide-up"
       style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)', position: 'relative', zIndex: 60 }}>
       <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
-        {selectedImages.length} selected
+        {selectedImages.length} {t('selected')}
       </span>
 
       {/* Send to viewer */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={working}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[rgba(127,119,221,0.2)] disabled:opacity-40"
         style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-        <LayoutGrid size={12} /> Send to viewer
+        <LayoutGrid size={12} /> {t('Send to viewer')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
       {/* Assign creator — elevated z so dropdown doesn't get clipped */}
-      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">Creator</span>
+      <span className="text-[rgba(255,255,255,0.3)] text-[13px]">{t('Creator')}</span>
       <div style={{ position: 'relative', zIndex: 80 }}>
         <CreatorFilter value={creatorId} onChange={setCreatorId} placeholder="Pick creator..." />
       </div>
@@ -1068,7 +1074,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
         disabled={!creatorId || assignMutation.isPending || working || selectedGalleryIds.length === 0}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-        <UserPlus size={12} /> {assignMutation.isPending ? 'Assigning…' : 'Assign'}
+        <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning…') : t('Assign')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
@@ -1077,11 +1083,11 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-[7px]" style={{ background: 'rgba(255,255,255,0.05)' }}>
         <Tag size={11} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
         <input value={tagInput} onChange={e => setTagInput(e.target.value)} disabled={working}
-          placeholder="tag1, tag2…"
+          placeholder={t('tag1, tag2…')}
           className="bg-transparent text-[13px] outline-none w-24 text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.3)]" />
         <button type="button" onMouseDown={handleAddTags} disabled={!tagInput.trim() || working}
           className="text-[12px] px-2 py-0.5 rounded-[4px] cursor-pointer disabled:opacity-40"
-          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6' }}>Add</button>
+          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6' }}>{t('Add')}</button>
       </div>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
@@ -1091,13 +1097,13 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
         <button onMouseDown={handleDelete} disabled={working}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer animate-pulse disabled:opacity-40"
           style={{ background: 'rgba(212,83,126,0.35)', color: '#F4C0D1' }}>
-          <Trash2 size={12} /> Confirm Delete
+          <Trash2 size={12} /> {t('Confirm Delete')}
         </button>
       ) : (
         <button onMouseDown={() => setConfirmDel(true)} disabled={working}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
           style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.25)' }}>
-          <Trash2 size={12} /> Delete
+          <Trash2 size={12} /> {t('Delete')}
         </button>
       )}
 
@@ -1111,8 +1117,8 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
             <button type="button" onMouseDown={() => setShowExtract(true)} disabled={working}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
               style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}
-              title="Move selected images to a brand-new gallery folder">
-              <FolderOutput size={12} /> Extract to gallery
+              title={t('Move selected images to a brand-new gallery folder')}>
+              <FolderOutput size={12} /> {t('Extract to gallery')}
             </button>
           </>
         )
@@ -1139,21 +1145,47 @@ const IMG_PAGE_SIZES = [25, 50, 100, 250, 500]
 
 export default function ImageList({ onlyVideos = false }) {
   const [searchParams] = useSearchParams()
-  const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState('date_added')
-  const [sortDir, setSortDir] = useState('desc')
-  const [randomSeed, setRandomSeed] = useState(0)
-  const [creatorId, setCreatorId] = useState(null)
-  const [creatorType, setCreatorType] = useState('')
-  const [favOnly, setFavOnly] = useState(false)
-  const [franchise, setFranchise] = useState('')
+
+  // Persist filter state across navigation (separate keys for Photos vs Videos).
+  // A tag link in the URL (?tag= / ?tags=) takes precedence and starts a fresh filter.
+  const IL_STATE_KEY = onlyVideos ? 'vault_videolist_state' : 'vault_imagelist_state'
+  const _ilInitial = useRef(null)
+  if (_ilInitial.current === null) {
+    const DEFAULTS = { search: '', sortBy: 'date_added', sortDir: 'desc', randomSeed: 0,
+                       creatorId: null, creatorType: '', favOnly: false, franchise: '', period: '', activeTags: [] }
+    const urlMulti = searchParams.get('tags')
+    const urlSingle = searchParams.get('tag')
+    if (urlMulti || urlSingle) {
+      const tags = urlMulti ? urlMulti.split(',').map(t => t.trim()).filter(Boolean) : [urlSingle]
+      _ilInitial.current = { ...DEFAULTS, activeTags: tags }
+    } else {
+      let saved = null
+      try { saved = JSON.parse(sessionStorage.getItem(IL_STATE_KEY) || 'null') } catch {}
+      _ilInitial.current = saved ? { ...DEFAULTS, ...saved } : DEFAULTS
+    }
+  }
+  const _init = _ilInitial.current
+
+  const [search, setSearch] = useState(_init.search)
+  const [sortBy, setSortBy] = useState(_init.sortBy)
+  const [sortDir, setSortDir] = useState(_init.sortDir)
+  const [randomSeed, setRandomSeed] = useState(_init.randomSeed)
+  const [creatorId, setCreatorId] = useState(_init.creatorId)
+  const [creatorType, setCreatorType] = useState(_init.creatorType)
+  const [favOnly, setFavOnly] = useState(_init.favOnly)
+  const [franchise, setFranchise] = useState(_init.franchise)
+  const [period, setPeriod] = useState(_init.period)
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
-  const [activeTags, setActiveTags] = useState(() => {
-    const multi = searchParams.get('tags')
-    if (multi) return multi.split(',').map(t => t.trim()).filter(Boolean)
-    const t = searchParams.get('tag')
-    return t ? [t] : []
-  })
+  const [activeTags, setActiveTags] = useState(_init.activeTags)
+
+  // Save filter state on every change so re-entry restores it (unless cleared)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(IL_STATE_KEY, JSON.stringify({
+        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, franchise, period, activeTags,
+      }))
+    } catch {}
+  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, franchise, period, activeTags])
   const [viewerIdx, setViewerIdx] = useState(null)
 
   const [bulkMode, setBulkMode] = useState(false)
@@ -1165,6 +1197,7 @@ export default function ImageList({ onlyVideos = false }) {
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
   const queue = useVaultStore(s => s.multiViewerQueue)
   const bumpAvatarBust   = useVaultStore(s => s.bumpAvatarBust)
+  const t = useT()
 
   // Persistent thumb size & layout
   const thumbSize = useVaultStore(s => onlyVideos ? s.thumbSizeVideos : s.thumbSizeImages)
@@ -1182,11 +1215,11 @@ export default function ImageList({ onlyVideos = false }) {
   const [page, setPage] = useState(1)
 
   // Reset to page 1 whenever any filter or page-size changes
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${franchise}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${franchise}|${period}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
   useEffect(() => { setPage(1) }, [filterKey])
 
   const { data: images, isLoading, isError } = useQuery({
-    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, franchise, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
+    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, franchise, period, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
     queryFn: () => imagesApi.list({
       search: search || undefined,
       sort_by: sortBy,
@@ -1194,6 +1227,7 @@ export default function ImageList({ onlyVideos = false }) {
       creator_id: creatorId || undefined,
       creator_type: creatorType || undefined,
       series: franchise || undefined,
+      period: period || undefined,
       favorite: favOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
       tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
@@ -1204,6 +1238,29 @@ export default function ImageList({ onlyVideos = false }) {
     placeholderData: keepPreviousData,
     staleTime: sortBy === 'random' ? Infinity : 1000 * 60 * 5,
   })
+
+  // Period options reflect the CURRENT filter context (creator, type, franchise,
+  // tags, video-only, etc.) but never the selected period itself.
+  const periodKey = `${search}|${creatorId}|${creatorType}|${franchise}|${favOnly}|${onlyVideos}|${activeTags.join(',')}`
+  const { data: periods = [] } = useQuery({
+    queryKey: ['image-periods', periodKey],
+    queryFn: () => imagesApi.periods({
+      search: search || undefined,
+      creator_id: creatorId || undefined,
+      creator_type: creatorType || undefined,
+      series: franchise || undefined,
+      favorite: favOnly || undefined,
+      is_video: onlyVideos ? true : false,
+      tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+    }).then(r => r.data),
+  })
+
+  // Auto-clear the selected period if the active filters no longer contain it.
+  useEffect(() => {
+    if (period && periods.length && !periods.some(p => p.value === period)) {
+      setPeriod('')
+    }
+  }, [period, periods])
 
   const toggleBtn = (active, onPress, label) => (
     <button type="button" onMouseDown={onPress}
@@ -1236,14 +1293,14 @@ export default function ImageList({ onlyVideos = false }) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <div>
-          <h1 className="text-[24px] font-medium text-[rgba(255,255,255,0.9)]">{onlyVideos ? 'Videos' : 'Photos'}</h1>
+          <h1 className="text-[24px] font-medium text-[rgba(255,255,255,0.9)]">{onlyVideos ? t('Videos') : t('Photos')}</h1>
           <div className="text-[13px] text-[rgba(255,255,255,0.3)] mt-0.5">
             {isLoading
-              ? 'Loading…'
+              ? t('Loading…')
               : isError
                 ? `Error loading ${onlyVideos ? 'videos' : 'photos'}`
                 : images?.length === 0
-                  ? 'No results'
+                  ? t('No results')
                   : `${(page - 1) * pageLimit + 1}–${(page - 1) * pageLimit + (images?.length ?? 0)} shown · page ${page}${images?.length < pageLimit ? ' (last)' : ''}`
             }
           </div>
@@ -1255,7 +1312,7 @@ export default function ImageList({ onlyVideos = false }) {
         <div className="relative flex-1 min-w-[200px] max-w-[320px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)]" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by filename…"
+            placeholder={t('Search by filename…')}
             className="w-full pl-8 pr-3 py-1.5 rounded-[8px] text-[13px] outline-none"
             style={{
               background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.8)',
@@ -1277,16 +1334,18 @@ export default function ImageList({ onlyVideos = false }) {
 
         <FranchiseFilter value={franchise} onChange={v => { setFranchise(v || ''); setPage(1) }} />
 
+        <PeriodFilter value={period} periods={periods} onChange={v => { setPeriod(v || ''); setPage(1) }} />
+
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
           activeTags={activeTags}
           onAdd={name => setActiveTags(prev => prev.includes(name) ? prev : [...prev, name])}
           onRemove={name => setActiveTags(prev => prev.filter(t => t !== name))}
-          placeholder="Filter by tag…"
+          placeholder={t('Filter by tag…')}
           rounded="lg"
         />
 
-        {toggleBtn(favOnly, () => setFavOnly(f => !f), '★ Favorites')}
+        {toggleBtn(favOnly, () => setFavOnly(f => !f), t('★ Favorites'))}
 
         {/* Masonry Toggle — Only for Images view */}
         {!onlyVideos && (
@@ -1297,8 +1356,8 @@ export default function ImageList({ onlyVideos = false }) {
               color: masonryGrid ? '#CECBF6' : 'rgba(255,255,255,0.45)',
               border: `0.5px solid ${masonryGrid ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
             }}
-            title="Toggle Masonry Grid">
-            <GripHorizontal size={11} /> Masonry
+            title={t('Toggle Masonry Grid')}>
+            <GripHorizontal size={11} /> {t('Masonry')}
           </button>
         )}
 
@@ -1309,21 +1368,21 @@ export default function ImageList({ onlyVideos = false }) {
             color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.45)',
             border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
           }}>
-          <CheckSquare size={11} /> Select
+          <CheckSquare size={11} /> {t('Select')}
         </button>
       </div>
 
       {/* Size controls */}
       <div className="flex items-center gap-3 flex-wrap mb-1">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-[rgba(255,255,255,0.3)]">Size</span>
+          <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
             onChange={e => setThumbSizeStore(Number(e.target.value))}
             className="w-24 h-1 cursor-pointer accent-[#7F77DD]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">Per page</span>
+          <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">{t('Per page')}</span>
           {IMG_PAGE_SIZES.map(n => (
             <button key={n} type="button" onMouseDown={() => setPageLimit(n)}
               className="text-[12px] px-2 py-0.5 rounded-full cursor-pointer"
@@ -1344,7 +1403,7 @@ export default function ImageList({ onlyVideos = false }) {
           <button type="button" onMouseDown={selectAll}
             className="text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            {selected.size === images?.length ? 'Deselect all' : 'Select all'}
+            {selected.size === images?.length ? t('Deselect all') : t('Select all')}
           </button>
           {selected.size > 0 && (
             <BulkActionPanel selectedImages={(images || []).filter(g => selected.has(g.id))} onDone={exitBulk} onCancel={exitBulk} />
@@ -1354,11 +1413,11 @@ export default function ImageList({ onlyVideos = false }) {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">Loading…</div>
+        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">{t('Loading…')}</div>
       ) : isError ? (
-        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">Failed to load images. Is the backend running?</div>
+        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">{t('Failed to load images. Is the backend running?')}</div>
       ) : !images || images.length === 0 ? (
-        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">No images found</div>
+        <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">{t('No images found')}</div>
       ) : (
         (!onlyVideos && masonryGrid) ? (
           <div className="grid-stagger" style={{ columns: `${thumbSize}px`, columnGap: '8px' }}>
@@ -1395,7 +1454,7 @@ export default function ImageList({ onlyVideos = false }) {
             disabled={page === 1}
             className="p-1.5 rounded-[6px] cursor-pointer disabled:opacity-30"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}
-            title="First page">
+            title={t('First page')}>
             <ChevronsLeft size={14} />
           </button>
           <button
@@ -1403,7 +1462,7 @@ export default function ImageList({ onlyVideos = false }) {
             disabled={page === 1}
             className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-            <ChevronLeft size={13} /> Prev
+            <ChevronLeft size={13} /> {t('Prev')}
           </button>
 
           {/* Page number pills — sliding window of up to 7 pages around current */}
@@ -1426,7 +1485,7 @@ export default function ImageList({ onlyVideos = false }) {
             disabled={(images?.length ?? 0) < pageLimit}
             className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-            Next <ChevronRight size={13} />
+            {t('Next')} <ChevronRight size={13} />
           </button>
         </div>
       )}
@@ -1465,13 +1524,13 @@ export default function ImageList({ onlyVideos = false }) {
           creators={imageCtxMenu.image.creators ?? []}
           onSetAsAvatar={(creatorId) => {
             creatorsApi.setAvatarFromImage(creatorId, imageCtxMenu.image.id)
-              .then(() => { toast.success('Avatar updated!'); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
-              .catch(() => toast.error('Failed to set avatar'))
+              .then(() => { toast.success(t('Avatar updated!')); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error(t('Failed to set avatar')))
           }}
           onSetAsBanner={(creatorId) => {
             creatorsApi.setBannerFromImage(creatorId, imageCtxMenu.image.id)
-              .then(() => { toast.success('Banner updated!'); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
-              .catch(() => toast.error('Failed to set banner'))
+              .then(() => { toast.success(t('Banner updated!')); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
+              .catch(() => toast.error(t('Failed to set banner')))
           }}
           onDelete={async (mode) => {
             const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]

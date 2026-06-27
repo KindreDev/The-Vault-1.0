@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -12,6 +13,7 @@ import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
 import { COUNTRIES } from '../lib/countries'
+import { useT } from '../i18n'
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
@@ -104,15 +106,23 @@ function RatingInput({ value, onChange }) {
   return (
     <div className="flex items-center gap-0.5">
       {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-        <button key={n} type="button"
+        <span key={n} role="button" tabIndex={0}
                 onClick={() => onChange(n)}
+                onKeyDown={e => e.key === 'Enter' && onChange(n)}
                 onMouseEnter={() => setHover(n)}
                 onMouseLeave={() => setHover(0)}
-                className="text-[16px] leading-none cursor-pointer transition-colors"
-                style={{ color: n <= display ? '#EF9F27' : 'rgba(255,255,255,0.12)' }}>★</button>
+                className="leading-none cursor-pointer select-none"
+                style={{
+                  fontSize: 32,
+                  display: 'inline-block',
+                  padding: '0 1px',
+                  color: n <= display ? '#EF9F27' : 'rgba(255,255,255,0.12)',
+                  textShadow: n === hover ? '0 0 10px var(--accent), 0 0 22px var(--accent)' : 'none',
+                  transition: 'color 0.1s ease, text-shadow 0.1s ease',
+                }}>★</span>
       ))}
       {value > 0 && (
-        <span className="ml-1.5 text-[11px] font-medium" style={{ color: '#EF9F27' }}>
+        <span className="ml-2 text-[18px] font-semibold" style={{ color: '#EF9F27' }}>
           {Number(value) % 1 === 0 ? `${value}.0` : value}
         </span>
       )}
@@ -154,8 +164,124 @@ function PortraitGalleryCard({ gallery, onClick }) {
   )
 }
 
+// ── Discovery row — auto-rotating random photos ───────────────────────────────
+const DISCOVERY_CARD_W = 200
+const DISCOVERY_GAP    = 10
+
+function DiscoveryRow({ creatorId, onItemClick }) {
+  const t = useT()
+  const containerRef = useRef(null)
+  const poolRef      = useRef([])
+  const [slots, setSlots] = useState([])
+  const [cardW, setCardW] = useState(DISCOVERY_CARD_W)
+
+  const { data: pool } = useQuery({
+    queryKey: ['creator-discovery', creatorId],
+    queryFn: () => imagesApi.list({
+      creator_id: creatorId,
+      is_video: false,
+      sort_by: 'random',
+      limit: 120,
+    }).then(r => r.data),
+    staleTime: 60000,
+  })
+
+  // Build slots directly from container width + pool — no intermediate count state
+  const initSlots = useCallback(() => {
+    if (!containerRef.current || !poolRef.current.length) return
+    const w = containerRef.current.offsetWidth
+    const n = Math.max(1, Math.floor((w + DISCOVERY_GAP) / (DISCOVERY_CARD_W + DISCOVERY_GAP)))
+    // Stretch cards to fill the full container width — always >= DISCOVERY_CARD_W
+    setCardW((w - (n - 1) * DISCOVERY_GAP) / n)
+    setSlots(prev => {
+      if (prev.length === n) return prev // no change needed
+      return Array.from({ length: n }, (_, i) => ({
+        img: poolRef.current[i % poolRef.current.length],
+        key: i,
+      }))
+    })
+  }, [])
+
+  // Update pool ref + re-init slots when pool data arrives
+  useEffect(() => {
+    if (!pool || pool.length === 0) return
+    poolRef.current = [...pool].sort(() => Math.random() - 0.5)
+    initSlots()
+  }, [pool, initSlots])
+
+  // ResizeObserver re-inits when container width changes
+  useEffect(() => {
+    if (!containerRef.current) return
+    const ro = new ResizeObserver(initSlots)
+    ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [initSlots])
+
+  // Per-slot independent timers — staggered so they don't all flip at once
+  useEffect(() => {
+    if (slots.length === 0 || !poolRef.current.length) return
+    const timers = slots.map((_, i) => {
+      const interval = 3200 + i * 650 + Math.random() * 900
+      return setInterval(() => {
+        setSlots(prev => {
+          if (!prev[i]) return prev
+          const p = poolRef.current
+          let candidate, tries = 0
+          do {
+            candidate = p[Math.floor(Math.random() * p.length)]
+            tries++
+          } while (candidate?.id === prev[i]?.img?.id && tries < 8)
+          const next = [...prev]
+          next[i] = { img: candidate, key: prev[i].key + 1 }
+          return next
+        })
+      }, interval)
+    })
+    return () => timers.forEach(clearInterval)
+  }, [slots.length])
+
+  if (!pool || pool.length === 0) return null
+
+  return (
+    <div className="mb-2">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          {t('Discovery')}
+        </span>
+      </div>
+      <div ref={containerRef} className="flex overflow-hidden" style={{ gap: DISCOVERY_GAP }}>
+        {slots.map((slot, i) => slot?.img && (
+          <div
+            key={i}
+            onClick={() => onItemClick(slot.img)}
+            className="cursor-pointer flex-shrink-0 rounded-[10px] overflow-hidden relative"
+            style={{ width: cardW, aspectRatio: '2/3', background: '#1a1a1a', flexShrink: 0 }}
+          >
+            <AnimatePresence>
+              <motion.img
+                key={slot.key}
+                src={`/api/images/${slot.img.id}/thumb`}
+                alt=""
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.55 }}
+                className="absolute inset-0 w-full h-full object-cover hover:scale-[1.04] transition-transform duration-300"
+                style={{ display: 'block' }}
+                onError={e => { e.currentTarget.style.display = 'none' }}
+              />
+            </AnimatePresence>
+          </div>
+        ))}
+      </div>
+      <div className="h-px mt-6" style={{ background: 'rgba(255,255,255,0.06)' }} />
+    </div>
+  )
+}
+
 // ── Horizontal gallery scroll section ────────────────────────────────────────
 function GalleryScroll({ title, icon: Icon, galleries, onGalleryClick, onViewAll }) {
+  const t = useT()
   if (!galleries || galleries.length === 0) return null
   return (
     <div className="vault-card p-4">
@@ -165,7 +291,7 @@ function GalleryScroll({ title, icon: Icon, galleries, onGalleryClick, onViewAll
         </div>
         {onViewAll && (
           <button onClick={onViewAll} className="text-[11px] cursor-pointer" style={{ color: '#7F77DD' }}>
-            view all
+            {t('view all')}
           </button>
         )}
       </div>
@@ -178,8 +304,373 @@ function GalleryScroll({ title, icon: Icon, galleries, onGalleryClick, onViewAll
   )
 }
 
+// ── Animation constants ───────────────────────────────────────────────────────
+const slideVariants = {
+  enter: (dir) => ({ x: dir > 0 ? '12%' : '-12%', opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit:  (dir) => ({ x: dir > 0 ? '-8%' : '8%',  opacity: 0 }),
+}
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
+}
+const staggerItem = {
+  hidden:  { opacity: 0, y: 18 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] } },
+}
+
+// ── Enhanced gallery card for the new grid ────────────────────────────────────
+function GalleryCard({ gallery, onClick }) {
+  const [failed, setFailed] = useState(false)
+  const cover = !failed && gallery.cover_thumb ? thumbSrc(gallery.cover_thumb) : null
+  return (
+    <motion.div
+      variants={staggerItem}
+      onClick={onClick}
+      className="cursor-pointer group"
+      style={{ borderRadius: 12, overflow: 'hidden', background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.08)' }}
+      whileHover={{ y: -5, boxShadow: '0 16px 48px rgba(0,0,0,0.7)', transition: { duration: 0.2 } }}
+    >
+      <div style={{ aspectRatio: '2/3', overflow: 'hidden', position: 'relative' }}>
+        {cover
+          ? <img src={cover} alt={gallery.name}
+                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.07]"
+                 onError={() => setFailed(true)} />
+          : <div className="w-full h-full flex items-center justify-center" style={{ opacity: 0.1 }}><Images size={36} /></div>
+        }
+        <div className="absolute inset-x-0 bottom-0 p-3 pt-14 translate-y-1 group-hover:translate-y-0 transition-transform duration-300"
+             style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%)' }}>
+          <div className="text-[14px] font-semibold text-white truncate leading-snug">{gallery.name}</div>
+          <div className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            {gallery.image_count} {gallery.is_video ? 'videos' : 'photos'}
+          </div>
+        </div>
+        {gallery.cum_count > 0 && (
+          <div className="absolute top-2 right-2 flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-full"
+               style={{ background: 'rgba(0,0,0,0.72)', color: '#ED93B1', backdropFilter: 'blur(4px)' }}>
+            <Droplets size={9} /> {gallery.cum_count}
+          </div>
+        )}
+        {gallery.is_favorite && (
+          <div className="absolute top-2 left-2"><Star size={13} fill="#FAC775" stroke="none" /></div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ── Square photo/video cell ────────────────────────────────────────────────────
+function PhotoCell({ image, onClick }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <motion.div
+      variants={staggerItem}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="cursor-pointer relative"
+      style={{ aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: '#1a1a1a' }}
+      whileHover={{ scale: 1.04, transition: { duration: 0.18 } }}
+    >
+      <img src={`/api/images/${image.id}/thumb`} alt=""
+           className="w-full h-full object-cover" style={{ display: 'block' }}
+           onError={e => { e.target.style.display = 'none' }} />
+      <motion.div
+        animate={{ opacity: hovered ? 1 : 0 }}
+        transition={{ duration: 0.15 }}
+        className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+        style={{ background: 'rgba(0,0,0,0.52)' }}
+      >
+        {image.is_video && <Play size={22} fill="white" stroke="none" />}
+        {image.cum_count > 0 && (
+          <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#ED93B1' }}>
+            <Droplets size={12} /> {image.cum_count}
+          </div>
+        )}
+        {image.is_favorite && <Star size={11} fill="#FAC775" stroke="none" />}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Loading skeletons ─────────────────────────────────────────────────────────
+function SkeletonCard() {
+  return <div className="rounded-[12px] animate-pulse" style={{ aspectRatio: '2/3', background: '#222' }} />
+}
+function SkeletonCell() {
+  return <div className="rounded-[6px] animate-pulse" style={{ aspectRatio: '1', background: '#222' }} />
+}
+
+// ── Empty state with floating icon ────────────────────────────────────────────
+function EmptyState({ icon, message }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="flex flex-col items-center justify-center py-20 gap-4"
+    >
+      <motion.div
+        animate={{ y: [0, -7, 0] }}
+        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ color: 'rgba(255,255,255,0.12)' }}
+      >
+        {icon}
+      </motion.div>
+      <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.22)' }}>{message}</div>
+    </motion.div>
+  )
+}
+
+const SORT_OPTS = [
+  { value: 'most_viewed',    label: 'Most Viewed' },
+  { value: 'recently_added', label: 'Recently Added' },
+  { value: 'random',         label: 'Random' },
+]
+
+function SortPills({ sort, onChange }) {
+  const t = useT()
+  return (
+    <div className="flex items-center gap-1.5">
+      {SORT_OPTS.map(s => (
+        <button key={s.value} onClick={() => onChange(s.value)}
+                className="text-[11px] px-2.5 py-1 rounded-full cursor-pointer transition-all"
+                style={{
+                  background: sort === s.value ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
+                  color: sort === s.value ? '#CECBF6' : 'rgba(255,255,255,0.3)',
+                  border: `0.5px solid ${sort === s.value ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                }}>
+          {t(s.label)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function applySort(items, sort, favKey = 'is_favorite') {
+  const arr = [...items]
+  if (sort === 'random') {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+  }
+  if (sort === 'recently_added') return arr.sort((a, b) => b.id - a.id)
+  // most_viewed — favorites first
+  return arr.sort((a, b) => {
+    const favA = a[favKey] ? 1 : 0
+    const favB = b[favKey] ? 1 : 0
+    if (favB !== favA) return favB - favA
+    return (b.view_count ?? 0) - (a.view_count ?? 0)
+  })
+}
+
+// ── Galleries tab ─────────────────────────────────────────────────────────────
+function GalleriesTab({ galleries, onGalleryClick, onViewAll }) {
+  const t = useT()
+  const [sort, setSort] = useState('most_viewed')
+  const [sortKey, setSortKey] = useState(0)
+
+  const handleSort = (s) => { setSort(s); setSortKey(k => k + 1) }
+
+  const sorted = useMemo(() => {
+    if (!galleries) return []
+    return applySort(galleries, sort)
+  }, [galleries, sort, sortKey])
+
+  const favorites = sorted.filter(g => g.is_favorite)
+
+  if (!galleries) {
+    return (
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+        {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Sort + header row */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          {sorted.length} {sorted.length === 1 ? t('gallery') : t('galleries')}
+        </span>
+        <div className="flex items-center gap-3">
+          <SortPills sort={sort} onChange={handleSort} />
+          <button onClick={onViewAll} className="text-[12px] cursor-pointer" style={{ color: 'var(--accent)' }}>
+            {t('View all →')}
+          </button>
+        </div>
+      </div>
+
+      {/* Favorites strip — only when sort is most_viewed */}
+      {sort === 'most_viewed' && favorites.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }} className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <Star size={13} fill="#FAC775" stroke="none" />
+            <span className="text-[13px] font-semibold" style={{ color: '#FAC775' }}>{t('Favorites')}</span>
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>· {favorites.length}</span>
+          </div>
+          <div className="flex gap-3 pb-2"
+               style={{ overflowX: 'auto', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
+            {favorites.map(g => (
+              <div key={g.id} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 280 }}>
+                <GalleryCard gallery={g} onClick={() => onGalleryClick(g.id)} />
+              </div>
+            ))}
+          </div>
+          <div className="h-px my-6" style={{ background: 'rgba(255,255,255,0.07)' }} />
+        </motion.div>
+      )}
+
+      {sorted.length === 0
+        ? <EmptyState icon={<Images size={36} />} message={t('No galleries assigned yet')} />
+        : (
+          <motion.div
+            key={sortKey}
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+          >
+            {sorted.map(g => (
+              <GalleryCard key={g.id} gallery={g} onClick={() => onGalleryClick(g.id)} />
+            ))}
+          </motion.div>
+        )
+      }
+    </div>
+  )
+}
+
+// ── Photos / Videos tab ───────────────────────────────────────────────────────
+const MEDIA_PAGE_SIZE = 48
+
+const MEDIA_SORT_MAP = {
+  most_viewed:    'view_count',
+  recently_added: 'date_added',
+  random:         'random',
+}
+
+function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
+  const t = useT()
+  const [items, setItems]   = useState([])
+  const [page, setPage]     = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [sort, setSort]     = useState('most_viewed')
+
+  const handleSort = (s) => {
+    if (s === sort) return
+    setSort(s)
+    setItems([])
+    setPage(0)
+    setHasMore(true)
+  }
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['creator-media', creatorId, isVideo, sort, page],
+    queryFn: () => imagesApi.list({
+      creator_id: creatorId,
+      is_video: isVideo,
+      sort_by: MEDIA_SORT_MAP[sort] ?? 'view_count',
+      limit: MEDIA_PAGE_SIZE,
+      skip: page * MEDIA_PAGE_SIZE,
+    }).then(r => r.data),
+  })
+
+  useEffect(() => {
+    if (!data) return
+    setItems(prev => page === 0 ? data : [...prev, ...data])
+    setHasMore(data.length === MEDIA_PAGE_SIZE)
+  }, [data])
+
+  const favorites = sort === 'most_viewed' ? items.filter(img => img.is_favorite) : []
+  const isFirstLoad = isFetching && page === 0
+
+  if (isFirstLoad) {
+    return (
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+        {Array.from({ length: 12 }).map((_, i) => <SkeletonCell key={i} />)}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Sort header */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          {items.length} {t('loaded')}
+        </span>
+        <SortPills sort={sort} onChange={handleSort} />
+      </div>
+
+      {favorites.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }} className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Star size={13} fill="#FAC775" stroke="none" />
+            <span className="text-[13px] font-semibold" style={{ color: '#FAC775' }}>{t('Favorites')}</span>
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>· {favorites.length}</span>
+          </div>
+          <div className="flex gap-3 pb-2"
+               style={{ overflowX: 'auto', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
+            {favorites.map(img => (
+              <div key={img.id} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 220 }}>
+                <PhotoCell image={img} onClick={() => onItemClick(img)} />
+              </div>
+            ))}
+          </div>
+          <div className="h-px my-5" style={{ background: 'rgba(255,255,255,0.07)' }} />
+        </motion.div>
+      )}
+
+      {items.length === 0 && !isFetching
+        ? <EmptyState icon={<ImageIcon size={40} />} message={t(emptyMessage)} />
+        : (
+          <>
+            <motion.div
+              variants={staggerContainer}
+              initial="hidden"
+              animate="visible"
+              className="grid gap-2"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
+            >
+              {items.map(img => (
+                <PhotoCell key={img.id} image={img} onClick={() => onItemClick(img)} />
+              ))}
+            </motion.div>
+
+            {/* Load more */}
+            <div className="flex flex-col items-center gap-2 mt-8 mb-4">
+              <div className="text-[12px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                {items.length} {t('loaded')}{hasMore ? '' : t(' · all caught up')}
+              </div>
+              {hasMore && (
+                <button
+                  type="button"
+                  onMouseDown={() => setPage(p => p + 1)}
+                  disabled={isFetching}
+                  className="px-6 py-2 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40 transition-all"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}
+                >
+                  {isFetching ? t('Loading…') : t('Load more')}
+                </button>
+              )}
+            </div>
+          </>
+        )
+      }
+    </div>
+  )
+}
+
 // ── Avatar picker modal ────────────────────────────────────────────────────────
 function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
+  const t = useT()
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
   const qc = useQueryClient()
@@ -188,13 +679,13 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
   const randomMutation = useMutation({
     mutationFn: () => creatorsApi.setAvatarRandom(creatorId, currentAvatarPath),
     onSuccess: () => {
-      toast.success('Avatar updated!')
+      toast.success(t('Avatar updated!'))
       qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] })
       qc.invalidateQueries({ queryKey: ['creators'] })
       bumpAvatarBust()
       onSuccess()
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'No images found — assign galleries to this creator first'),
+    onError: (err) => toast.error(err?.response?.data?.detail || t('No images found — assign galleries to this creator first')),
   })
 
   const handleFileUpload = async (e) => {
@@ -203,12 +694,12 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
     setUploading(true)
     try {
       await creatorsApi.uploadAvatar(creatorId, file)
-      toast.success('Avatar uploaded!')
+      toast.success(t('Avatar uploaded!'))
       qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] })
       qc.invalidateQueries({ queryKey: ['creators'] })
       bumpAvatarBust()
       onSuccess()
-    } catch { toast.error('Upload failed') }
+    } catch { toast.error(t('Upload failed')) }
     finally { setUploading(false) }
   }
 
@@ -219,24 +710,24 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
       <div className="rounded-[14px] w-80 overflow-hidden"
            style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.12)' }}>
         <div className="flex items-center justify-between p-4 border-b border-[rgba(255,255,255,0.07)]">
-          <div className="text-[14px] font-medium text-[rgba(255,255,255,0.9)]">Set avatar</div>
+          <div className="text-[14px] font-medium text-[rgba(255,255,255,0.9)]">{t('Set avatar')}</div>
           <button onClick={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white"><X size={16} /></button>
         </div>
         <div className="p-5 flex flex-col items-center gap-4">
           <div className="text-[12px] text-[rgba(255,255,255,0.45)] text-center">
-            Upload an image from your PC to use as avatar
+            {t('Upload an image from your PC to use as avatar')}
           </div>
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full text-[12px] font-medium cursor-pointer"
                   style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
-            <Upload size={14} /> {uploading ? 'Uploading...' : 'Pick from PC'}
+            <Upload size={14} /> {uploading ? t('Uploading...') : t('Pick from PC')}
           </button>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-          <div className="text-[10px] text-[rgba(255,255,255,0.2)]">— or —</div>
+          <div className="text-[10px] text-[rgba(255,255,255,0.2)]">{t('— or —')}</div>
           <button onClick={() => randomMutation.mutate()} disabled={randomMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 rounded-full text-[11px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            <Shuffle size={11} /> {randomMutation.isPending ? 'Setting...' : 'Random from gallery'}
+            <Shuffle size={11} /> {randomMutation.isPending ? t('Setting...') : t('Random from gallery')}
           </button>
         </div>
       </div>
@@ -258,6 +749,7 @@ function extractApiError(e, fallback = 'Something went wrong') {
 
 
 function EditCreatorModal({ creator, onClose }) {
+  const t = useT()
   let initialLinks = ''
   try {
     const pl = JSON.parse(creator.platform_links || '{}')
@@ -297,12 +789,12 @@ function EditCreatorModal({ creator, onClose }) {
       return creatorsApi.update(creator.id, payload).then(r => r.data)
     },
     onSuccess: () => {
-      toast.success('Creator updated')
+      toast.success(t('Creator updated'))
       qc.invalidateQueries({ queryKey: ['creator', String(creator.id)] })
       qc.invalidateQueries({ queryKey: ['creators'] })
       onClose()
     },
-    onError: () => toast.error('Update failed')
+    onError: () => toast.error(t('Update failed'))
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -311,22 +803,22 @@ function EditCreatorModal({ creator, onClose }) {
       <div className="rounded-[14px] p-6 w-[880px] max-h-[85vh] overflow-y-auto animate-modal-pop shadow-2xl" style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="flex items-center justify-between mb-5">
           <div className="text-[22px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2">
-            <Pencil size={20} style={{ color: '#7F77DD' }} /> Edit creator
+            <Pencil size={20} style={{ color: '#7F77DD' }} /> {t('Edit creator')}
           </div>
           <button onClick={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white"><X size={20} /></button>
         </div>
 
         <div className="mb-4">
-          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-2 uppercase tracking-wider font-semibold">Category</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-2 uppercase tracking-wider font-semibold">{t('Category')}</div>
           <div className="flex flex-wrap gap-1.5">
-            {TYPES.map(t => (
-              <button key={t} onClick={() => set('creator_type', t)}
+            {TYPES.map(tg => (
+              <button key={tg} onClick={() => set('creator_type', tg)}
                       className="text-[16px] px-3.5 py-2 rounded-full cursor-pointer capitalize transition-all"
                       style={{
-                        background: form.creator_type === t ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                        color: form.creator_type === t ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${form.creator_type === t ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                      }}>{TYPE_LABELS[t] || t}</button>
+                        background: form.creator_type === tg ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
+                        color: form.creator_type === tg ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+                        border: `0.5px solid ${form.creator_type === tg ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                      }}>{t(TYPE_LABELS[tg] || tg)}</button>
             ))}
           </div>
         </div>
@@ -340,36 +832,36 @@ function EditCreatorModal({ creator, onClose }) {
               { label: 'Real name', key: 'real_name', placeholder: 'Real name' },
             ].map(f => (
               <div key={f.key}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                 <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                       placeholder={f.placeholder}
+                       placeholder={t(f.placeholder)}
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
             ))}
 
             <div>
-              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Country</div>
-              <FormDropdown value={form.country} onChange={v => set('country', v)} options={COUNTRY_OPTIONS} placeholder="Select Country" isSearchable={true} />
+              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Country')}</div>
+              <FormDropdown value={form.country} onChange={v => set('country', v)} options={COUNTRY_OPTIONS} placeholder={t('Select Country')} isSearchable={true} />
             </div>
 
             <div>
-              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Gender</div>
-              <FormDropdown value={form.gender} onChange={v => set('gender', v)} options={GENDER_OPTIONS} placeholder="Unknown" />
+              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Gender')}</div>
+              <FormDropdown value={form.gender} onChange={v => set('gender', v)} options={GENDER_OPTIONS} placeholder={t('Unknown')} />
             </div>
 
             {form.creator_type !== 'character' && (
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Status</div>
-                <FormDropdown value={form.status} onChange={v => set('status', v)} options={STATUS_OPTIONS} placeholder="Active" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Status')}</div>
+                <FormDropdown value={form.status} onChange={v => set('status', v)} options={STATUS_OPTIONS} placeholder={t('Active')} />
               </div>
             )}
 
             {form.creator_type !== 'character' && form.status === 'Retired' && (
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Retirement Year</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Retirement Year')}</div>
                 <input value={form.retirement_year} onChange={e => set('retirement_year', e.target.value)}
-                       placeholder="e.g. 2024" type="number"
+                       placeholder={t('e.g. 2024')} type="number"
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
@@ -377,12 +869,12 @@ function EditCreatorModal({ creator, onClose }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Fake Boobs</div>
-                <FormDropdown value={form.fake_boobs} onChange={v => set('fake_boobs', v)} options={YES_NO_OPTIONS} placeholder="Not Set" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Fake Boobs')}</div>
+                <FormDropdown value={form.fake_boobs} onChange={v => set('fake_boobs', v)} options={YES_NO_OPTIONS} placeholder={t('Not Set')} />
               </div>
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Fake Ass</div>
-                <FormDropdown value={form.fake_ass} onChange={v => set('fake_ass', v)} options={YES_NO_OPTIONS} placeholder="Not Set" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Fake Ass')}</div>
+                <FormDropdown value={form.fake_ass} onChange={v => set('fake_ass', v)} options={YES_NO_OPTIONS} placeholder={t('Not Set')} />
               </div>
             </div>
           </div>
@@ -391,12 +883,12 @@ function EditCreatorModal({ creator, onClose }) {
           <div className="flex flex-col gap-4">
             <div>
               <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">
-                {form.creator_type === 'character' ? 'Age' : 'Date of Birth'}
+                {form.creator_type === 'character' ? t('Age') : t('Date of Birth')}
               </div>
               <input
                 value={form.date_of_birth}
                 onChange={e => set('date_of_birth', e.target.value)}
-                placeholder={form.creator_type === 'character' ? '17' : 'YYYY-MM or YYYY-MM-DD'}
+                placeholder={form.creator_type === 'character' ? '17' : t('YYYY-MM or YYYY-MM-DD')}
                 className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }}
               />
@@ -408,9 +900,9 @@ function EditCreatorModal({ creator, onClose }) {
               { label: 'Eye Color', key: 'eye_color', placeholder: 'Blue' },
             ].map(f => (
               <div key={f.key}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                 <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                       placeholder={f.placeholder}
+                       placeholder={t(f.placeholder)}
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
@@ -423,9 +915,9 @@ function EditCreatorModal({ creator, onClose }) {
                   { label: 'Origin', key: 'origin', placeholder: 'Origin' },
                 ].map(f => (
                   <div key={f.key}>
-                    <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                    <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                     <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                           placeholder={f.placeholder}
+                           placeholder={t(f.placeholder)}
                            className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                            style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
                   </div>
@@ -436,7 +928,7 @@ function EditCreatorModal({ creator, onClose }) {
             <div className="grid grid-cols-2 gap-4">
               {form.creator_type !== 'character' && (
                 <div>
-                  <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Monthly Price ($)</div>
+                  <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Monthly Price ($)')}</div>
                   <input value={form.patreon_price} onChange={e => set('patreon_price', e.target.value)}
                          placeholder="10.00" type="number" step="0.01" min="0"
                          className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
@@ -444,16 +936,16 @@ function EditCreatorModal({ creator, onClose }) {
                 </div>
               )}
               <div className={form.creator_type !== 'character' ? '' : 'col-span-2'}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Wiki URL</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Wiki URL')}</div>
                 <input value={form.wiki_url} onChange={e => set('wiki_url', e.target.value)}
                        placeholder="https://residentevil.fandom.com/wiki/Ada_Wong"
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[16px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
               <div className="col-span-2">
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Lore</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Lore')}</div>
                 <textarea value={form.lore} onChange={e => set('lore', e.target.value)}
-                          rows={4} placeholder="Character lore / bio — paste or import from wiki above"
+                          rows={4} placeholder={t('Character lore / bio — paste or import from wiki above')}
                           className="w-full rounded-[8px] px-3.5 py-2.5 text-[16px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
                           style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
@@ -463,7 +955,7 @@ function EditCreatorModal({ creator, onClose }) {
 
         {form.creator_type !== 'character' && (
           <div className="mt-4">
-            <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Source URLs / Links (comma or newline separated)</div>
+            <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Source URLs / Links (comma or newline separated)')}</div>
             <textarea value={form.platform_links} onChange={e => set('platform_links', e.target.value)}
                       placeholder="https://patreon.com/..., https://onlyfans.com/..." rows={2}
                       className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
@@ -472,9 +964,9 @@ function EditCreatorModal({ creator, onClose }) {
         )}
 
         <div className="mt-4 mb-6">
-          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Description</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Description')}</div>
           <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                    placeholder="Description..." rows={3}
+                    placeholder={t('Description...')} rows={3}
                     className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
         </div>
@@ -482,12 +974,12 @@ function EditCreatorModal({ creator, onClose }) {
         <div className="flex gap-4">
           <button onClick={onClose}
                   className="flex-1 py-3 rounded-[8px] text-[16px] cursor-pointer"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>Cancel</button>
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>{t('Cancel')}</button>
           <button onClick={() => mutation.mutate()}
                   disabled={!form.name.trim() || mutation.isPending}
                   className="flex-1 py-3 rounded-[8px] text-[16px] font-medium cursor-pointer transition-all"
                   style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-            {mutation.isPending ? 'Saving...' : 'Save changes'}
+            {mutation.isPending ? t('Saving...') : t('Save changes')}
           </button>
         </div>
       </div>
@@ -496,6 +988,7 @@ function EditCreatorModal({ creator, onClose }) {
 }
 // ── Main profile page ─────────────────────────────────────────────────────────
 export default function CreatorProfile() {
+  const t = useT()
   const { id } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -518,6 +1011,9 @@ export default function CreatorProfile() {
   const [bannerMenuOpen, setBannerMenuOpen] = useState(false)
   const [scrollY, setScrollY] = useState(0)
   const [folderInput, setFolderInput] = useState('')
+  const [activeTab, setActiveTab] = useState('galleries')
+  const [tabDirection, setTabDirection] = useState(1)
+  const contentRef = useRef(null)
   const bannerFileRef = useRef(null)
   const bannerMenuRef = useRef(null)
   const bannerSaveTimer = useRef(null)
@@ -572,30 +1068,16 @@ export default function CreatorProfile() {
     }, 600)
   }, [id])
 
-  const { data: galleries } = useQuery({
+  const { data: allGalleries } = useQuery({
     queryKey: ['creator-galleries', id],
-    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'cum_count', limit: 50 }).then(r => r.data),
-  })
-
-  const { data: randomGalleries } = useQuery({
-    queryKey: ['creator-random-galleries', id],
-    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'random', limit: 8 }).then(r => r.data),
-  })
-
-  const { data: recentGalleries } = useQuery({
-    queryKey: ['creator-recent-galleries', id],
-    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'date_added', limit: 8 }).then(r => r.data),
+    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'view_count', limit: 100 }).then(r => r.data),
   })
 
   const { data: topImages } = useQuery({
     queryKey: ['creator-top', id],
-    queryFn: () => creatorsApi.topImages(id, 8).then(r => r.data),
+    queryFn: () => creatorsApi.topImages(id, 3).then(r => r.data),
   })
 
-  const { data: creatorVideos } = useQuery({
-    queryKey: ['creator-videos', id],
-    queryFn: () => imagesApi.list({ creator_id: id, is_video: true, sort_by: 'random', limit: 8 }).then(r => r.data),
-  })
 
   // Auto-set banner to first top image ONLY if creator has no saved banner
   useEffect(() => {
@@ -617,7 +1099,7 @@ export default function CreatorProfile() {
         saveBanner(newId, bannerY, bannerZoom)
       }, 0)
     } catch {
-      toast.error('No images found — assign galleries to this creator first')
+      toast.error(t('No images found — assign galleries to this creator first'))
     }
   }, [id, bannerImageId, bannerY, bannerZoom, saveBanner])
 
@@ -632,7 +1114,7 @@ export default function CreatorProfile() {
       await creatorsApi.uploadBanner(id, file)
       qc.invalidateQueries({ queryKey: ['creator', id] })
     } catch {
-      toast.error('Banner upload failed')
+      toast.error(t('Banner upload failed'))
     }
   }, [id, bannerLocalUrl, qc])
 
@@ -653,20 +1135,30 @@ export default function CreatorProfile() {
       qc.invalidateQueries({ queryKey: ['creator', id] })
       qc.invalidateQueries({ queryKey: ['creators'] })
       qc.invalidateQueries({ queryKey: ['profile'] })
-      toast.success('❤️ Heart gifted!')
+      toast.success(t('❤️ Heart gifted!'))
     },
-    onError: (e) => toast.error(e?.response?.data?.detail || 'No hearts available'),
+    onError: (e) => toast.error(e?.response?.data?.detail || t('No hearts available')),
   })
   const ratingMutation = useMutation({
     mutationFn: (r) => creatorsApi.update(id, { rating: r }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['creator', id] })
   })
+
+  const TAB_ORDER = ['galleries', 'photos', 'videos']
+  const changeTab = (newTab) => {
+    const oldIdx = TAB_ORDER.indexOf(activeTab)
+    const newIdx = TAB_ORDER.indexOf(newTab)
+    setTabDirection(newIdx > oldIdx ? 1 : -1)
+    setActiveTab(newTab)
+    setTimeout(() => contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 30)
+  }
+
   const talkToCreator = async () => {
     try {
       await companionApi.updateConfig({ active_persona_id: creator.id, enabled: true })
       navigate('/erika')
     } catch {
-      toast.error('Could not open chat')
+      toast.error(t('Could not open chat'))
     }
   }
   const deleteMutation = useMutation({
@@ -676,7 +1168,7 @@ export default function CreatorProfile() {
       qc.invalidateQueries({ queryKey: ['creators'] })
       navigate('/creators')
     },
-    onError: () => toast.error('Failed to delete creator')
+    onError: () => toast.error(t('Failed to delete creator'))
   })
   const folderMutation = useMutation({
     mutationFn: (path) => creatorsApi.assignFolder(id, path || null).then(r => r.data),
@@ -684,21 +1176,21 @@ export default function CreatorProfile() {
       if (variables) {
         toast.success(`${data.assigned_count} ${data.assigned_count === 1 ? 'gallery' : 'galleries'} assigned to ${creator?.name}`)
       } else {
-        toast.success('Folder cleared')
+        toast.success(t('Folder cleared'))
       }
       qc.invalidateQueries({ queryKey: ['creator', id] })
       qc.invalidateQueries({ queryKey: ['creator-galleries', id] })
     },
-    onError: () => toast.error('Failed to set source folder')
+    onError: () => toast.error(t('Failed to set source folder'))
   })
 
   if (creatorError) return (
     <div className="p-8 flex flex-col gap-3">
-      <div className="text-[rgba(255,255,255,0.5)]">Failed to load creator.</div>
-      <button onClick={() => navigate('/creators')} className="text-[rgba(255,255,255,0.4)] text-sm underline cursor-pointer w-fit">← Back to Creators</button>
+      <div className="text-[rgba(255,255,255,0.5)]">{t('Failed to load creator.')}</div>
+      <button onClick={() => navigate('/creators')} className="text-[rgba(255,255,255,0.4)] text-sm underline cursor-pointer w-fit">{t('← Back to Creators')}</button>
     </div>
   )
-  if (!creator) return <div className="p-8 text-[rgba(255,255,255,0.3)]">Loading...</div>
+  if (!creator) return <div className="p-8 text-[rgba(255,255,255,0.3)]">{t('Loading...')}</div>
 
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
@@ -712,9 +1204,6 @@ export default function CreatorProfile() {
   const bannerSrc = bannerLocalUrl
     || (bannerImageId ? `/api/images/${bannerImageId}/file` : null)
     || (creator.banner_path ? `/api/creators/${id}/banner` : null)
-
-  // Top cum galleries and recent
-  const topGalleries = (galleries ?? []).slice(0, 8)
 
   const handleRating = (r) => { setRating(r); ratingMutation.mutate(r) }
   const isCharacter = creator.creator_type === 'character'
@@ -763,13 +1252,13 @@ export default function CreatorProfile() {
             <button onClick={() => navigate('/creators')}
                     className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-[7px] cursor-pointer"
                     style={{ color: 'rgba(255,255,255,0.8)', background: 'rgba(0,0,0,0.45)', border: '0.5px solid rgba(255,255,255,0.18)' }}>
-              <ArrowLeft size={13} /> Creators
+              <ArrowLeft size={13} /> {t('Creators')}
             </button>
             <div className="flex items-center gap-2">
               <button onClick={() => setConfirmDelete(true)}
                       className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-colors"
                       style={{ color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.2)' }}
-                      title="Delete creator">
+                      title={t('Delete creator')}>
                 <Trash2 size={14} />
               </button>
             <div ref={bannerMenuRef} className="relative">
@@ -784,17 +1273,17 @@ export default function CreatorProfile() {
                   <button onClick={() => { setShowWikiModal(true); setBannerMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
                           style={{ color: '#b8b3f0' }}>
-                    <Globe size={12} /> Wiki Import
+                    <Globe size={12} /> {t('Wiki Import')}
                   </button>
                   <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)' }} />
                   <button onClick={() => { randomizeBanner(); setBannerMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
                           style={{ color: 'rgba(255,255,255,0.75)' }}>
-                    <Shuffle size={12} /> Randomize banner
+                    <Shuffle size={12} /> {t('Randomize banner')}
                   </button>
                   <label className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                          style={{ color: 'rgba(255,255,255,0.75)', display: 'flex' }}>
-                    <Upload size={12} /> Upload banner
+                    <Upload size={12} /> {t('Upload banner')}
                     <input ref={bannerFileRef} type="file" accept="image/*" className="hidden"
                            onChange={e => { handleBannerFileUpload(e); setBannerMenuOpen(false) }} />
                   </label>
@@ -802,13 +1291,13 @@ export default function CreatorProfile() {
                     <>
                       <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)' }} />
                       <div className="px-3 py-2.5">
-                        <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">Vertical position</div>
+                        <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">{t('Vertical position')}</div>
                         <input type="range" min={0} max={100} value={bannerY}
                                onChange={e => { const v = Number(e.target.value); setBannerY(v); saveBanner(bannerImageId, v, bannerZoom) }}
                                className="w-full h-1 cursor-pointer accent-[#7F77DD]" />
                       </div>
                       <div className="px-3 pb-3">
-                        <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">Zoom</div>
+                        <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">{t('Zoom')}</div>
                         <input type="range" min={1} max={2} step={0.05} value={bannerZoom}
                                onChange={e => { const v = Number(e.target.value); setBannerZoom(v); saveBanner(bannerImageId, bannerY, v) }}
                                className="w-full h-1 cursor-pointer accent-[#7F77DD]" />
@@ -866,7 +1355,7 @@ export default function CreatorProfile() {
                   </span>
                   <span className="text-[12px] px-3 py-0.5 rounded-full font-semibold"
                         style={{ background: `${rc}22`, color: rc }}>
-                    {RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity}
+                    {t(RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity)}
                   </span>
                   {creator.series && (
                     <span className="text-[12px] px-3 py-0.5 rounded-full"
@@ -881,12 +1370,12 @@ export default function CreatorProfile() {
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {Object.values(JSON.parse(creator.platform_links)).map((link, i) => {
                       let icon = <Globe size={11} />
-                      let label = "Link"
-                      if (link.includes('patreon')) { label = "Patreon" }
-                      else if (link.includes('onlyfans')) { label = "OnlyFans" }
-                      else if (link.includes('fansly')) { label = "Fansly" }
-                      else if (link.includes('twitter') || link.includes('x.com')) { label = "Twitter" }
-                      else if (link.includes('instagram')) { label = "Instagram" }
+                      let label = t("Link")
+                      if (link.includes('patreon')) { label = t("Patreon") }
+                      else if (link.includes('onlyfans')) { label = t("OnlyFans") }
+                      else if (link.includes('fansly')) { label = t("Fansly") }
+                      else if (link.includes('twitter') || link.includes('x.com')) { label = t("Twitter") }
+                      else if (link.includes('instagram')) { label = t("Instagram") }
                       
                       return (
                         <a key={i} href={link} target="_blank" rel="noreferrer"
@@ -924,8 +1413,8 @@ export default function CreatorProfile() {
                         alignSelf: 'flex-start',
                       }}
                     >
-                      ❤️ Gift Heart
-                      <span style={{ fontSize: 12, opacity: 0.6 }}>({heartsAvailable} available)</span>
+                      {t('❤️ Gift Heart')}
+                      <span style={{ fontSize: 12, opacity: 0.6 }}>({heartsAvailable} {t('available')})</span>
                     </button>
                   </div>
                 )}
@@ -950,8 +1439,8 @@ export default function CreatorProfile() {
                 ['Height', creator.height ? `${creator.height} cm` : null],
                 ['Measurements', creator.body_measurements],
                 ['Eye Color', creator.eye_color],
-                ['Fake Boobs', creator.fake_boobs === true ? 'Yes' : creator.fake_boobs === false ? 'No' : null],
-                ['Fake Ass', creator.fake_ass === true ? 'Yes' : creator.fake_ass === false ? 'No' : null],
+                ['Fake Boobs', creator.fake_boobs === true ? t('Yes') : creator.fake_boobs === false ? t('No') : null],
+                ['Fake Ass', creator.fake_ass === true ? t('Yes') : creator.fake_ass === false ? t('No') : null],
                 ['Tier Price', creator.patreon_price > 0 ? `$${creator.patreon_price.toFixed(2)}` : null],
                 ...(creator.creator_type !== 'character' ? [
                   ['Status', creator.status],
@@ -959,7 +1448,7 @@ export default function CreatorProfile() {
                 ] : []),
               ].filter(([, v]) => v !== null && v !== '').map(([k, v]) => (
                 <div key={k}>
-                  <div className="text-[11px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-0.5">{k}</div>
+                  <div className="text-[11px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-0.5">{t(k)}</div>
                   <div className="text-[18px] font-semibold text-[rgba(255,255,255,0.95)]">{v}</div>
                 </div>
               ))}
@@ -971,12 +1460,12 @@ export default function CreatorProfile() {
             <button onClick={() => setShowEditModal(true)}
                     className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-              <Pencil size={11} /> Edit
+              <Pencil size={11} /> {t('Edit')}
             </button>
             <button onClick={talkToCreator}
                     className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
                     style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              <Sparkles size={12} /> Talk to {creator.name}
+              <Sparkles size={12} /> {t('Talk to')} {creator.name}
             </button>
             <button
               disabled={aiTagging}
@@ -984,16 +1473,16 @@ export default function CreatorProfile() {
                 setAiTagging(true)
                 try {
                   await taggerApi.start({ scope: 'creator', creator_id: parseInt(id), threshold: 0.35, retag: false })
-                  toast.success('AI tagging started for ' + creator.name)
+                  toast.success(t('AI tagging started for ') + creator.name)
                 } catch (err) {
-                  toast.error(err?.response?.data?.detail || 'Failed to start AI tagging')
+                  toast.error(err?.response?.data?.detail || t('Failed to start AI tagging'))
                 } finally {
                   setAiTagging(false)
                 }
               }}
               className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
               style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              <Sparkles size={12} /> {aiTagging ? 'Starting…' : 'AI Tag'}
+              <Sparkles size={12} /> {aiTagging ? t('Starting…') : t('AI Tag')}
             </button>
             <button onClick={() => favMutation.mutate()}
                     className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
@@ -1001,7 +1490,7 @@ export default function CreatorProfile() {
                              color: creator.is_favorite ? '#FAC775' : 'rgba(255,255,255,0.4)',
                              border: '0.5px solid rgba(255,255,255,0.1)' }}>
               <Star size={12} fill={creator.is_favorite ? '#FAC775' : 'none'} />
-              {creator.is_favorite ? 'Favorited' : 'Favorite'}
+              {creator.is_favorite ? t('Favorited') : t('Favorite')}
             </button>
           </div>
         </div>
@@ -1011,31 +1500,41 @@ export default function CreatorProfile() {
       {/* ── Body ───────────────────────────────────────────────────────────── */}
       <div className="p-5 flex flex-col gap-5">
 
-        {/* Stats row */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { emoji: '🖼️', label: 'Photos',    value: creator.image_count ?? 0 },
-            { emoji: '🗂️', label: 'Galleries', value: creator.gallery_count ?? 0 },
-            { emoji: '💦', label: 'Sessions',  value: creator.session_count ?? 0, color: '#D4537E' },
-            { emoji: '⭐', label: 'Rating',    value: creator.rating > 0 ? `${creator.rating % 1 === 0 ? creator.rating.toFixed(0) : creator.rating} / 10` : '—' },
-          ].map(s => (
-            <div key={s.label} className="rounded-[10px] p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <div className="text-[11px] mb-1">{s.emoji}</div>
-              <div className="text-[20px] font-medium" style={{ color: s.color || 'rgba(255,255,255,0.9)' }}>{s.value}</div>
-              <div className="text-[10px] text-[rgba(255,255,255,0.4)]">{s.label}</div>
+        {/* ── Info row — three separate boxes side by side ─────────────── */}
+        <div className="flex gap-3">
+
+          {/* Box 1: Stats — expands, centered */}
+          <div className="rounded-[12px] p-5 flex-1"
+               style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center justify-around h-full">
+              {[
+                { label: 'Photos',    value: creator.image_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
+                { label: 'Videos',    value: creator.video_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
+                { label: 'Galleries', value: creator.gallery_count ?? 0,   color: 'rgba(255,255,255,0.9)' },
+                { label: '💦',        value: creator.cum_count ?? 0,       color: '#D4537E' },
+                { label: 'Gooning Time', value: (() => {
+                  const secs = creator.total_view_seconds || 0
+                  if (secs === 0) return '—'
+                  const h = Math.floor(secs / 3600)
+                  const m = Math.floor((secs % 3600) / 60)
+                  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`
+                })(), color: '#D4537E' },
+                { label: 'Size',      value: creator.total_size_gb > 0 ? `${creator.total_size_gb} GB` : '—', color: 'rgba(255,255,255,0.7)' },
+              ].map(s => (
+                <div key={s.label} className="flex flex-col items-center">
+                  <div className="text-[22px] font-semibold leading-none" style={{ color: s.color }}>{s.value}</div>
+                  <div className="text-[16px] mt-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(s.label)}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Assign by Folder + Time Spent — two-column card */}
-        <div className="grid gap-3" style={{ gridTemplateColumns: '1fr auto' }}>
-
-          {/* Left: assign by folder */}
-          <div className="rounded-[12px] p-4"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider mb-3"
-                 style={{ color: 'rgba(255,255,255,0.45)' }}>
-              <FolderOpen size={12} /> Assign Galleries by Folder
+          {/* Box 2: Assign by folder — fixed width (+20%) */}
+          <div className="rounded-[12px] p-4 flex flex-col justify-center gap-1.5 flex-shrink-0"
+               style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', width: 408 }}>
+            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider"
+                 style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <FolderOpen size={11} /> {t('Assign Galleries by Folder')}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1043,243 +1542,174 @@ export default function CreatorProfile() {
                 onChange={e => setFolderInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && folderInput.trim()) folderMutation.mutate(folderInput.trim()) }}
                 placeholder={`e.g. D:\\Media\\${creator.name}`}
-                className="flex-1 rounded-[8px] px-3.5 py-2.5 text-[16px] placeholder-[rgba(255,255,255,0.2)] outline-none font-mono"
+                className="flex-1 min-w-0 rounded-[8px] px-3 py-2 text-[13px] placeholder-[rgba(255,255,255,0.18)] outline-none font-mono"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
               />
               <button
                 onClick={() => folderMutation.mutate(folderInput.trim())}
                 disabled={folderMutation.isPending || !folderInput.trim()}
-                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-[8px] cursor-pointer disabled:opacity-40 text-[15px] font-medium whitespace-nowrap"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[8px] cursor-pointer disabled:opacity-40 text-[13px] font-medium whitespace-nowrap"
                 style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                <FolderOpen size={14} /> {folderMutation.isPending ? 'Assigning…' : 'Assign Galleries'}
+                <FolderOpen size={13} /> {folderMutation.isPending ? t('Assigning…') : t('Assign')}
               </button>
               {creator.source_folder && (
                 <button onClick={() => folderMutation.mutate(null)}
                         disabled={folderMutation.isPending}
-                        title="Clear saved folder"
-                        className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-40"
+                        title={t('Clear saved folder')}
+                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-40"
                         style={{ background: 'rgba(212,83,126,0.1)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.25)' }}>
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
             {creator.source_folder && (
-              <div className="mt-2 text-[12px] font-mono truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                Saved: {creator.source_folder}
+              <div className="text-[11px] font-mono truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                {t('Saved:')} {creator.source_folder}
               </div>
             )}
           </div>
 
-          {/* Right: total time spent */}
-          <div className="rounded-[12px] p-4 flex flex-col justify-center items-center text-center"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)', minWidth: 140 }}>
-            <div className="text-[11px] font-medium uppercase tracking-wider mb-2"
-                 style={{ color: 'rgba(255,255,255,0.45)' }}>Time Spent</div>
-            {(() => {
-              const secs = creator.total_view_seconds || 0
-              if (secs === 0) return <div className="text-[22px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>—</div>
-              const h = Math.floor(secs / 3600)
-              const m = Math.floor((secs % 3600) / 60)
-              if (h > 0) return (
-                <>
-                  <div className="text-[28px] font-semibold leading-none" style={{ color: '#D4537E' }}>{h}<span className="text-[16px] ml-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>h</span></div>
-                  {m > 0 && <div className="text-[16px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{m}m</div>}
-                </>
-              )
-              return <div className="text-[28px] font-semibold leading-none" style={{ color: '#D4537E' }}>{m}<span className="text-[16px] ml-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>m</span></div>
-            })()}
-            <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.2)' }}>across {creator.session_count} session{creator.session_count !== 1 ? 's' : ''}</div>
-          </div>
-
-        </div>
-
-        {/* Collection Value & Completion */}
-        {((creator.collection_value ?? 0) > 0 || (creator.completion_pct ?? 0) > 0) && (
-          <div className="rounded-[12px] p-4 flex flex-col gap-3"
-               style={{ background: 'rgba(29,158,117,0.07)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-0.5">
-                <div className="text-[12px] uppercase tracking-wider text-[rgba(255,255,255,0.4)]">Collection Value</div>
-
-                {/* Blurred until clicked */}
-                <div
-                  onClick={() => setValueRevealed(true)}
-                  title={valueRevealed ? undefined : 'Click to reveal'}
-                  style={{
-                    cursor: valueRevealed ? 'default' : 'pointer',
-                    filter: valueRevealed ? 'none' : 'blur(7px)',
-                    transition: 'filter 0.35s ease',
-                    userSelect: valueRevealed ? 'auto' : 'none',
-                    borderRadius: 6,
-                  }}>
-                  <div className="text-[22px] font-semibold" style={{ color: '#1D9E75' }}>
-                    ${(creator.collection_value ?? 0).toFixed(2)}
-                  </div>
-                  <div className="text-[12px] text-[rgba(255,255,255,0.4)]">
-                    {creator.unique_months_total ?? 0} month{(creator.unique_months_total ?? 0) !== 1 ? 's' : ''} collected
-                    {(creator.patreon_price ?? 0) > 0 && ` · $${creator.patreon_price.toFixed(2)}/mo`}
-                    {(creator.one_time_value ?? 0) > 0 && ` · $${(creator.one_time_value ?? 0).toFixed(2)} one-time`}
-                  </div>
-                </div>
-                {!valueRevealed && (
-                  <div className="text-[9px] mt-0.5" style={{ color: 'rgba(29,158,117,0.5)' }}>🔒 click to reveal</div>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="text-[12px] uppercase tracking-wider text-[rgba(255,255,255,0.4)]">All-Time Collection</div>
-                <div className="text-[28px] font-semibold" style={{ color: (creator.completion_pct ?? 0) >= 100 ? '#BA7517' : '#1D9E75' }}>
-                  {(creator.completion_pct ?? 0).toFixed(0)}%
-                </div>
-                <div className="text-[13px] text-[rgba(255,255,255,0.45)]">
-                  {creator.months_covered_recent ?? 0} / {creator.total_months_expected || '?'} months
-                </div>
-              </div>
-            </div>
-            {/* Completion bar */}
-            <div className="h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-              <div className="h-full rounded-full transition-all duration-700"
-                   style={{
-                     width: `${Math.min(100, creator.completion_pct ?? 0)}%`,
-                     background: (creator.completion_pct ?? 0) >= 100
-                       ? 'linear-gradient(90deg, #BA7517, #EF9F27)'
-                       : 'linear-gradient(90deg, #1D9E75, #9FE1CB)',
-                   }} />
-            </div>
-            {(creator.completion_pct ?? 0) >= 100 && (
-              <div className="text-[11px] font-medium text-center py-1 rounded-[6px]"
-                   style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775' }}>
-                ✦ Complete Collection — every month since your first gallery!
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── 2-column: gallery sections left, top images right ──── */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 300px' }}>
-          {/* Left column */}
-          <div className="flex flex-col gap-4 min-w-0">
-
-            {/* Most Viewed Galleries */}
-            <GalleryScroll
-              title="Most Viewed Galleries"
-              icon={Droplets}
-              galleries={topGalleries}
-              onGalleryClick={(gid) => navigate(`/galleries/${gid}`)}
-              onViewAll={() => navigate(`/galleries?creator_id=${id}`)}
-            />
-
-            {/* Recent Galleries */}
-            <GalleryScroll
-              title="Recent Galleries"
-              icon={Images}
-              galleries={recentGalleries}
-              onGalleryClick={(gid) => navigate(`/galleries/${gid}`)}
-            />
-
-            {/* Random Videos */}
-            {(creatorVideos ?? []).length > 0 && (
-              <div className="vault-card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider flex items-center gap-1.5">
-                    <Video size={11} /> Random Videos
-                  </div>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                  {creatorVideos.map(vid => (
-                    <div key={vid.id}
-                         onClick={() => navigate(`/galleries/${vid.gallery_id}`)}
-                         className="rounded-[10px] overflow-hidden cursor-pointer group relative flex-shrink-0"
-                         style={{ width: 195, aspectRatio: '2/3', background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                      <div className="w-full h-full flex items-center justify-center"
-                           style={{ background: 'rgba(255,255,255,0.03)' }}>
-                        <img src={`/api/images/${vid.id}/thumb`} alt={vid.filename}
-                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                             onError={e => { e.target.style.display = 'none' }} />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                           style={{ background: 'rgba(0,0,0,0.4)' }}>
-                        <Play size={24} color="white" />
-                      </div>
-                      <div className="absolute inset-x-0 bottom-0 p-2 pt-6"
-                           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)' }}>
-                        <div className="text-[13px] text-white truncate leading-tight">{vid.filename}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Random Galleries */}
-            <GalleryScroll
-              title="Random Galleries"
-              icon={Shuffle}
-              galleries={randomGalleries}
-              onGalleryClick={(gid) => navigate(`/galleries/${gid}`)}
-            />
-
-            {/* Lore */}
-            {creator.lore && (
-              <div className="vault-card p-4">
-                <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] mb-2 uppercase tracking-wider">Lore</div>
-                <div className="text-[12px] text-[rgba(255,255,255,0.65)] leading-relaxed">{creator.lore}</div>
-                {creator.wiki_source && (
-                  <div className="text-[10px] mt-2 flex items-center gap-1" style={{ color: '#7F77DD' }}>
-                    <Globe size={10} /> {creator.wiki_source}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Character info */}
-            {creator.creator_type === 'character' && (
-              <div className="vault-card p-4">
-                <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider mb-2">Character Info</div>
-                {[
-                  ['Origin',    creator.origin],
-                  ['Franchise', creator.series],
-                  ['Developer', creator.developer],
-                  ['Year',      creator.release_year],
-                  ['Type',      creator.character_type],
-                  ['Voice',     creator.voice_actor],
-                ].filter(([, v]) => v).map(([k, v]) => (
-                  <div key={k} className="flex justify-between py-1 border-b border-[rgba(255,255,255,0.05)] last:border-0">
-                    <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{k}</span>
-                    <span className="text-[10px] text-[rgba(255,255,255,0.65)] text-right ml-2">{v}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Right column — Top Images (sticky) */}
-          {(topImages ?? []).length > 0 && (
-            <div className="vault-card p-4" style={{ alignSelf: 'start', position: 'sticky', top: 12 }}>
-              <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Droplets size={11} /> Top Images
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {topImages.map((img, i) => (
-                  <div key={img.id}
-                       onClick={() => navigate(`/galleries/${img.gallery_id}`)}
-                       className="rounded-[8px] overflow-hidden cursor-pointer group relative"
-                       style={{ aspectRatio: '1', background: 'rgba(255,255,255,0.05)' }}>
-                    <img src={`/api/images/${img.id}/thumb`} alt=""
-                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                         onError={e => { e.target.style.display = 'none' }} />
-                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-1.5 py-1.5"
-                         style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
-                      <span className="text-[9px] text-[rgba(255,255,255,0.4)]">#{i+1}</span>
-                      <span className="text-[10px] flex items-center gap-0.5 font-medium" style={{ color: '#D4537E' }}>
-                        <Droplets size={8} />{img.cum_count}
-                      </span>
+          {/* Box 3: Collection Value — only when data present */}
+          {((creator.collection_value ?? 0) > 0 || (creator.completion_pct ?? 0) > 0) && (
+            <div className="rounded-[12px] p-5 flex-1 flex flex-col justify-between gap-2"
+                 style={{ background: 'rgba(29,158,117,0.07)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
+              <div className="flex items-start justify-between gap-6">
+                {/* Value */}
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Collection Value')}</div>
+                  <div
+                    onClick={() => setValueRevealed(true)}
+                    title={valueRevealed ? undefined : t('Click to reveal')}
+                    style={{
+                      cursor: valueRevealed ? 'default' : 'pointer',
+                      filter: valueRevealed ? 'none' : 'blur(6px)',
+                      transition: 'filter 0.3s ease',
+                      userSelect: valueRevealed ? 'auto' : 'none',
+                    }}>
+                    <div className="text-[20px] font-semibold" style={{ color: '#1D9E75' }}>
+                      ${(creator.collection_value ?? 0).toFixed(2)}
                     </div>
                   </div>
-                ))}
+                  {!valueRevealed && (
+                    <div className="text-[9px] mt-0.5" style={{ color: 'rgba(29,158,117,0.5)' }}>{t('🔒 click to reveal')}</div>
+                  )}
+                </div>
+                {/* Completion % */}
+                <div className="text-right">
+                  <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('All-Time')}</div>
+                  <div className="text-[20px] font-semibold"
+                       style={{ color: (creator.completion_pct ?? 0) >= 100 ? '#BA7517' : '#1D9E75' }}>
+                    {(creator.completion_pct ?? 0).toFixed(0)}%
+                  </div>
+                  <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    {creator.months_covered_recent ?? 0}/{creator.total_months_expected || '?'} {t('mo')}
+                  </div>
+                </div>
+              </div>
+              {/* Completion bar */}
+              <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                <div className="h-full rounded-full transition-all duration-700"
+                     style={{
+                       width: `${Math.min(100, creator.completion_pct ?? 0)}%`,
+                       background: (creator.completion_pct ?? 0) >= 100
+                         ? 'linear-gradient(90deg,#BA7517,#EF9F27)'
+                         : 'linear-gradient(90deg,#1D9E75,#9FE1CB)',
+                     }} />
               </div>
             </div>
           )}
         </div>
+
+        {/* ── Discovery row ─────────────────────────────────────────────── */}
+        <DiscoveryRow
+          creatorId={id}
+          onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
+        />
+
+        {/* ── Instagram-style content tabs ─────────────────────────────── */}
+        <motion.div
+          ref={contentRef}
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {/* Tab bar */}
+          <div className="flex items-center mb-6"
+               style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
+            {[
+              { key: 'galleries', label: 'Galleries', count: allGalleries?.length },
+              { key: 'photos',    label: 'Photos',    count: null },
+              { key: 'videos',    label: 'Videos',    count: null },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => changeTab(tab.key)}
+                className="relative pb-3 px-6 text-[14px] font-medium cursor-pointer transition-colors"
+                style={{
+                  color: activeTab === tab.key ? '#fff' : 'rgba(255,255,255,0.38)',
+                  background: 'none', border: 'none',
+                }}
+              >
+                {t(tab.label)}
+                {tab.count != null && (
+                  <span className="ml-1.5 text-[12px]"
+                        style={{ color: activeTab === tab.key ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
+                    {tab.count}
+                  </span>
+                )}
+                {activeTab === tab.key && (
+                  <motion.div
+                    layoutId="tab-line"
+                    className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
+                    style={{ background: 'var(--accent)' }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Sliding tab content */}
+          <AnimatePresence mode="wait" custom={tabDirection}>
+            <motion.div
+              key={activeTab}
+              custom={tabDirection}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {activeTab === 'galleries' && (
+                <GalleriesTab
+                  galleries={allGalleries}
+                  onGalleryClick={(gid) => navigate(`/galleries/${gid}`)}
+                  onViewAll={() => navigate(`/galleries?creator_id=${id}`)}
+                />
+              )}
+              {activeTab === 'photos' && (
+                <MediaTab
+                  creatorId={id}
+                  isVideo={false}
+                  onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
+                  emptyMessage="No photos yet"
+                />
+              )}
+              {activeTab === 'videos' && (
+                <MediaTab
+                  creatorId={id}
+                  isVideo={true}
+                  onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
+                  emptyMessage="No videos yet"
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </motion.div>
+
+
       </div>
 
       {/* Modals */}
@@ -1330,20 +1760,20 @@ export default function CreatorProfile() {
                  style={{ background: 'rgba(212,83,126,0.15)', border: '1px solid rgba(212,83,126,0.35)' }}>
               <Trash2 size={22} style={{ color: '#ED93B1' }} />
             </div>
-            <div className="text-[17px] font-semibold text-white mb-2">Delete {creator.name}?</div>
+            <div className="text-[17px] font-semibold text-white mb-2">{t('Delete')} {creator.name}?</div>
             <div className="text-[13px] mb-6" style={{ color: 'rgba(255,255,255,0.45)', lineHeight: 1.55 }}>
-              This will permanently remove this creator and all their data from The Vault. This action is irreversible.
+              {t('This will permanently remove this creator and all their data from The Vault. This action is irreversible.')}
             </div>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(false)}
                       className="flex-1 py-2.5 rounded-[10px] text-[13px] cursor-pointer"
                       style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                Cancel
+                {t('Cancel')}
               </button>
               <button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}
                       className="flex-1 py-2.5 rounded-[10px] text-[13px] font-medium cursor-pointer"
                       style={{ background: 'rgba(212,83,126,0.25)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.45)' }}>
-                {deleteMutation.isPending ? 'Deleting...' : 'Yes, delete'}
+                {deleteMutation.isPending ? t('Deleting...') : t('Yes, delete')}
               </button>
             </div>
           </div>

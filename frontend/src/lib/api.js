@@ -72,6 +72,7 @@ export const galleriesApi = {
   hof:           (n = 10)          => api.get('/galleries/hall-of-fame', { params: { limit: n } }),
   galleryHof:    (n = 5)           => api.get('/galleries/gallery-hof', { params: { limit: n } }),
   stats:         ()                => api.get('/galleries/stats'),
+  periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
   cum:           (id)              => api.post(`/galleries/${id}/cum`),
   addCreator:    (id, creatorId)   => api.post(`/galleries/${id}/creators/${creatorId}`),
@@ -132,6 +133,7 @@ export const creatorsApi = {
 // ── Images ────────────────────────────────────────────────────────────────────
 export const imagesApi = {
   list:          (params)  => api.get('/images/', { params }),
+  periods:       (params)  => api.get('/images/periods', { params }),
   get:           (id)      => api.get(`/images/${id}`),
   update:        (id, d)   => api.patch(`/images/${id}`, d),
   delete:        (id, keepFile = false) => api.delete(`/images/${id}`, { params: { keep_file: keepFile } }),
@@ -146,6 +148,9 @@ export const imagesApi = {
   randomVideos:  (n = 8)   => api.get('/images/', { params: { sort_by: 'random', limit: n, is_video: true } }),
   transfer:           (id, galleryId) => api.patch(`/images/${id}`, { gallery_id: galleryId }),
   focalPoint:         (id, x, y) => api.patch(`/images/${id}/focal-point`, { focal_x: x, focal_y: y }),
+  addCreator:         (id, creatorId) => api.post(`/images/${id}/creators/${creatorId}`),
+  removeCreator:      (id, creatorId) => api.delete(`/images/${id}/creators/${creatorId}`),
+  clearCreators:      (id)            => api.delete(`/images/${id}/creators`),
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -187,6 +192,7 @@ export const scannerApi = {
   log:             ()     => api.get('/scanner/log'),
   browseFolder:    ()     => api.get('/scanner/browse-folder'),
   regenThumbs:     ()     => api.post('/scanner/regen-thumbs'),
+  matchFunscripts: (path) => api.post('/scanner/match-funscripts', path ? { path } : {}),
   gpuStatus:       ()     => api.get('/scanner/gpu-status'),
   gpuDownload:     ()     => api.post('/scanner/gpu-download'),
 }
@@ -265,6 +271,7 @@ export const systemApi = {
   getConfig:  () => api.get('/system/config'),
   setConfig:  (data_dir) => api.post('/system/config', { data_dir }),
   setGpuMode:   (use_gpu) => api.post('/system/config/gpu-mode', { use_gpu }),
+  setFunscriptLibrary: (funscript_library_path) => api.post('/system/config/funscript-library', { funscript_library_path }),
   getStartup:   ()        => api.get('/system/startup'),
   setStartup:   (enabled) => api.post('/system/startup', { enabled }),
   reset:        ()        => api.post('/system/reset'),
@@ -295,6 +302,7 @@ export const dedupApi = {
   cancel:               ()               => api.post('/dedup/cancel'),
   status:               ()               => api.get('/dedup/status'),
   groups:               (threshold = 10) => api.get('/dedup/groups', { params: { threshold } }),
+  galleryOverlaps:      (threshold = 10) => api.get('/dedup/gallery-overlaps', { params: { threshold } }),
   imageMatches:         (id, threshold)  => api.get(`/dedup/image/${id}`, { params: { threshold } }),
   stats:                ()               => api.get('/dedup/stats'),
   ignorePermanent:      (imageIds)       => api.post('/dedup/ignore-permanent', { image_ids: imageIds }),

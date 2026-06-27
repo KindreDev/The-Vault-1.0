@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func, nullslast
+from sqlalchemy import func, nullslast, select, or_, and_
 from typing import Optional, List
 
 from database import get_db
-from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator
+from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
 from schemas import ImageOut, ImageUpdate, CumCountUpdate
 import services.gamification as gami
 from services import dedup as dedup_svc
@@ -19,7 +19,6 @@ router = APIRouter()
 
 
 def _enrich_image(img: Image, db: Session) -> dict:
-    from sqlalchemy import select
     d = {c.name: getattr(img, c.name) for c in img.__table__.columns}
 
     # Fetch confidence + tagger_model from the junction table in one query
@@ -38,10 +37,33 @@ def _enrich_image(img: Image, db: Session) -> dict:
         }
         for t in img.tags
     ]
-    creators = []
-    if img.gallery:
-        creators = [{"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in img.gallery.creators]
-    d["creators"] = creators
+
+    # Creator resolution: file-level assignments are ADDITIVE on top of gallery-level.
+    # Gallery creators always show; file-level creators are merged in on top (deduped by ID).
+    file_creator_rows = db.execute(
+        select(image_creators.c.creator_id).where(image_creators.c.image_id == img.id)
+    ).fetchall()
+    file_creator_ids = [r.creator_id for r in file_creator_rows]
+
+    gallery_creators_list = [
+        {"id": c.id, "name": c.name, "creator_type": c.creator_type}
+        for c in (img.gallery.creators if img.gallery else [])
+    ]
+
+    if file_creator_ids:
+        file_creator_objs = db.query(Creator).filter(Creator.id.in_(file_creator_ids)).all()
+        file_creator_map = {c.id: {"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in file_creator_objs}
+        gallery_ids = {c["id"] for c in gallery_creators_list}
+        # Gallery creators first, then any file-only creators not already in the list
+        merged = gallery_creators_list + [file_creator_map[fid] for fid in file_creator_ids if fid not in gallery_ids and fid in file_creator_map]
+        d["creators"] = merged
+        d["has_image_creators"] = True
+        d["file_creator_ids"] = file_creator_ids
+    else:
+        d["creators"] = gallery_creators_list
+        d["has_image_creators"] = False
+        d["file_creator_ids"] = []
+
     d["gallery_name"] = img.gallery.name if img.gallery else None
     return d
 
@@ -51,27 +73,30 @@ def _natural_key(s: str):
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s or '')]
 
 
-@router.get("/", response_model=List[ImageOut])
-def list_images(
-    db: Session = Depends(get_db),
+def _apply_image_filters(
+    q,
+    db: Session,
+    *,
     search: Optional[str] = None,
     tag: Optional[str] = None,
+    tags: Optional[str] = None,
     creator_id: Optional[int] = None,
-    creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
-    series: Optional[str] = None,  # franchise / series filter (partial match)
+    creator_type: Optional[str] = None,
+    series: Optional[str] = None,
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
-    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
-    sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
-    tags: Optional[str] = None,  # comma-separated, AND logic
-    skip: int = 0,
-    limit: int = 200,
+    period: Optional[str] = None,
 ):
-    q = db.query(Image).options(
-        selectinload(Image.tags),
-        selectinload(Image.gallery).selectinload(Gallery.creators),
-    )
+    """Apply the standard image-list filters to a query.
+
+    Shared by the image list endpoint and the image periods endpoint so the
+    period dropdown reflects exactly the same filter context as the grid.
+    `period` is optional — the periods endpoint omits it so it can show every
+    period available under the *other* active filters. Period lives on Gallery,
+    so it is applied as a subquery over Image.gallery_id to stay agnostic of
+    whatever joins the other filters introduced.
+    """
     if search:
         q = q.filter(Image.filename.ilike(f"%{search}%"))
     # Multi-tag: comma-separated, each tag must be present (AND)
@@ -79,12 +104,32 @@ def list_images(
     for tag_name in tag_list:
         q = q.filter(Image.tags.any(Tag.name == tag_name))
     if creator_id or creator_type or series:
-        q = q.join(Gallery, Gallery.id == Image.gallery_id)\
-             .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
         if creator_id:
-            q = q.filter(gallery_creators.c.creator_id == creator_id)
-        if creator_type or series:
-            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
+            # Dual-path: images directly assigned to creator (file-level) OR gallery-assigned.
+            # Additive model — both paths contribute; OR deduplicates naturally.
+            directly_assigned = (
+                select(image_creators.c.image_id)
+                .where(image_creators.c.creator_id == creator_id)
+                .scalar_subquery()
+            )
+            gallery_assigned = (
+                select(Image.id)
+                .join(Gallery, Gallery.id == Image.gallery_id)
+                .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+                .where(gallery_creators.c.creator_id == creator_id)
+                .scalar_subquery()
+            )
+            q = q.filter(
+                or_(
+                    Image.id.in_(directly_assigned),
+                    Image.id.in_(gallery_assigned),
+                )
+            )
+        elif creator_type or series:
+            # No specific creator_id — filter by type/series via gallery join
+            q = q.join(Gallery, Gallery.id == Image.gallery_id)\
+                 .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)\
+                 .join(Creator, Creator.id == gallery_creators.c.creator_id)
             if creator_type:
                 q = q.filter(Creator.creator_type == creator_type)
             if series:
@@ -104,6 +149,46 @@ def list_images(
         q = q.filter(Image.is_video == is_video)
     if favorite is not None:
         q = q.filter(Image.is_favorite == favorite)
+    # Period lives on Gallery — match via the image's gallery (subquery keeps this
+    # independent of any join the filters above may or may not have added).
+    if period:
+        parts = period.split('-')
+        if parts[0].isdigit():
+            gp = select(Gallery.id).where(Gallery.period_year == int(parts[0]))
+            if len(parts) > 1 and parts[1].isdigit():
+                gp = gp.where(Gallery.period_month == int(parts[1]))
+            q = q.filter(Image.gallery_id.in_(gp))
+    return q
+
+
+@router.get("/", response_model=List[ImageOut])
+def list_images(
+    db: Session = Depends(get_db),
+    search: Optional[str] = None,
+    tag: Optional[str] = None,
+    creator_id: Optional[int] = None,
+    creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
+    series: Optional[str] = None,  # franchise / series filter (partial match)
+    gallery_id: Optional[int] = None,
+    is_video: Optional[bool] = None,
+    favorite: Optional[bool] = None,
+    period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
+    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
+    sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
+    tags: Optional[str] = None,  # comma-separated, AND logic
+    skip: int = 0,
+    limit: int = 200,
+):
+    q = db.query(Image).options(
+        selectinload(Image.tags),
+        selectinload(Image.gallery).selectinload(Gallery.creators),
+    )
+    q = _apply_image_filters(
+        q, db,
+        search=search, tag=tag, tags=tags, creator_id=creator_id,
+        creator_type=creator_type, series=series, gallery_id=gallery_id,
+        is_video=is_video, favorite=favorite, period=period,
+    )
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
     if sort_dir == "asc":
@@ -133,6 +218,52 @@ def list_images(
         q = q.order_by(Image.created_at.asc() if (use_asc if use_asc is not None else False) else Image.created_at.desc())
     images = q.offset(skip).limit(limit).all()
     return [_enrich_image(img, db) for img in images]
+
+
+@router.get("/periods")
+def list_image_periods(
+    db: Session = Depends(get_db),
+    search: Optional[str] = None,
+    tag: Optional[str] = None,
+    tags: Optional[str] = None,
+    creator_id: Optional[int] = None,
+    creator_type: Optional[str] = None,
+    series: Optional[str] = None,
+    gallery_id: Optional[int] = None,
+    is_video: Optional[bool] = None,
+    favorite: Optional[bool] = None,
+):
+    """Distinct collection periods (from each image's gallery) for the filter
+    dropdown in the Image/Video view, newest first. Respects the same filters as
+    the image list so the dropdown only offers periods present in the currently
+    filtered set. `period` is deliberately not a parameter — we always show every
+    period available under the *other* filters."""
+    from datetime import datetime
+    filtered_ids = _apply_image_filters(
+        db.query(Image.id), db,
+        search=search, tag=tag, tags=tags, creator_id=creator_id,
+        creator_type=creator_type, series=series, gallery_id=gallery_id,
+        is_video=is_video, favorite=favorite,
+    ).scalar_subquery()
+    rows = (
+        db.query(Gallery.period_year, Gallery.period_month, func.count(Image.id.distinct()))
+        .join(Image, Image.gallery_id == Gallery.id)
+        .filter(Image.id.in_(filtered_ids))
+        .filter(Gallery.period_year.isnot(None))
+        .group_by(Gallery.period_year, Gallery.period_month)
+        .order_by(Gallery.period_year.desc(), Gallery.period_month.desc())
+        .all()
+    )
+    out = []
+    for year, month, count in rows:
+        if month:
+            value = f"{year}-{month:02d}"
+            label = datetime(year, month, 1).strftime("%b %Y")
+        else:
+            value = str(year)
+            label = str(year)
+        out.append({"value": value, "label": label, "count": count})
+    return out
 
 
 @router.get("/{image_id}", response_model=ImageOut)
@@ -273,6 +404,54 @@ def remove_tag(image_id: int, tag_name: str, db: Session = Depends(get_db)):
         tag.use_count = max(0, tag.use_count - 1)
         db.commit()
     return {"removed": tag_name}
+
+
+@router.post("/{image_id}/creators/{creator_id}")
+def add_image_creator(image_id: int, creator_id: int, db: Session = Depends(get_db)):
+    """Assign a creator directly to this file (overrides gallery-level inheritance for this image)."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(404, "Creator not found")
+    existing = db.execute(
+        select(image_creators).where(
+            image_creators.c.image_id == image_id,
+            image_creators.c.creator_id == creator_id,
+        )
+    ).first()
+    if not existing:
+        db.execute(image_creators.insert().values(image_id=image_id, creator_id=creator_id))
+        db.commit()
+    return {"image_id": image_id, "creator_id": creator_id}
+
+
+@router.delete("/{image_id}/creators/{creator_id}")
+def remove_image_creator(image_id: int, creator_id: int, db: Session = Depends(get_db)):
+    """Remove one creator from this file's image-level assignment."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    db.execute(
+        image_creators.delete().where(
+            image_creators.c.image_id == image_id,
+            image_creators.c.creator_id == creator_id,
+        )
+    )
+    db.commit()
+    return {"removed": creator_id}
+
+
+@router.delete("/{image_id}/creators")
+def clear_image_creators(image_id: int, db: Session = Depends(get_db)):
+    """Clear all image-level creator assignments — image reverts to inheriting from gallery."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    db.execute(image_creators.delete().where(image_creators.c.image_id == image_id))
+    db.commit()
+    return {"cleared": image_id}
 
 
 @router.get("/random/pick", response_model=ImageOut)
@@ -456,10 +635,84 @@ def update_focal_point(image_id: int, data: dict, db: Session = Depends(get_db))
     return {"focal_x": img.focal_x, "focal_y": img.focal_y}
 
 
+# Filename-suffix → T-Code axis id, per the multi-axis funscript convention used
+# by MultiFunPlayer / OFS. The bare ".funscript" is always the L0 stroke track.
+#   clip.funscript        → L0  (up/down stroke)
+#   clip.surge.funscript  → L1  (forward/back)
+#   clip.sway.funscript   → L2  (left/right)
+#   clip.twist.funscript  → R0  (twist / yaw)
+#   clip.roll.funscript   → R1  (roll)
+#   clip.pitch.funscript  → R2  (pitch)
+_AXIS_SUFFIXES = {
+    "surge": "L1",
+    "sway":  "L2",
+    "twist": "R0",
+    "roll":  "R1",
+    "pitch": "R2",
+}
+
+
+def _read_funscript_json(path: str):
+    """Load a funscript JSON file, returning None on any failure (missing, malformed)."""
+    import json
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _collect_funscript_axes(main_path: str):
+    """
+    Load the main .funscript plus any sibling axis files and return
+    (axes_dict, main_json) where axes_dict maps axisId → actions[].
+
+    Sources, in order:
+      1. The main file's own `actions`            → L0
+      2. A single-file embedded `axes` array      → each {id, actions}
+      3. Sibling files (clip.roll.funscript, …)   → mapped via _AXIS_SUFFIXES
+    Missing or invalid sources are skipped silently — this never raises.
+    """
+    axes = {}
+    main = _read_funscript_json(main_path)
+    if main is None:
+        return axes, None
+
+    if isinstance(main.get("actions"), list):
+        axes["L0"] = main["actions"]
+
+    # Single-file embedded multi-axis (e.g. OFS): {"axes": [{"id": "R1", "actions": [...]}]}
+    embedded = main.get("axes")
+    if isinstance(embedded, list):
+        for ax in embedded:
+            if isinstance(ax, dict) and ax.get("id") and isinstance(ax.get("actions"), list):
+                axes[str(ax["id"]).upper()] = ax["actions"]
+
+    # Sibling axis files next to the main script
+    if main_path.lower().endswith(".funscript"):
+        base = main_path[: -len(".funscript")]
+    else:
+        base = os.path.splitext(main_path)[0]
+    for suffix, axis_id in _AXIS_SUFFIXES.items():
+        sibling = f"{base}.{suffix}.funscript"
+        if os.path.exists(sibling):
+            data = _read_funscript_json(sibling)
+            if data and isinstance(data.get("actions"), list):
+                axes[axis_id] = data["actions"]
+
+    return axes, main
+
+
 @router.get("/{image_id}/funscript")
 def get_funscript(image_id: int, db: Session = Depends(get_db)):
-    """Return the raw funscript JSON for a video that has one."""
-    import json
+    """
+    Return the funscript JSON for a video that has one.
+
+    Backward compatible: top-level `actions` is still the L0 stroke track, so
+    existing single-axis consumers (waveform viz, sync) are unaffected. A
+    normalized `axes` object ({ "L0": [...], "R1": [...], ... }) is added,
+    populated from sibling axis files and/or an embedded multi-axis array.
+    """
     img = db.query(Image).filter(Image.id == image_id).first()
     if not img:
         raise HTTPException(404, "Image not found")
@@ -467,11 +720,13 @@ def get_funscript(image_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "No funscript associated with this image")
     if not os.path.exists(img.funscript_path):
         raise HTTPException(404, "Funscript file not found on disk")
-    try:
-        with open(img.funscript_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        raise HTTPException(500, f"Failed to read funscript: {e}")
+
+    axes, main = _collect_funscript_axes(img.funscript_path)
+    if main is None:
+        raise HTTPException(500, "Failed to read funscript")
+    # Replace any raw embedded `axes` list with the normalized { axisId: actions } map.
+    main["axes"] = axes
+    return main
 
 
 @router.get("/{image_id}/file")

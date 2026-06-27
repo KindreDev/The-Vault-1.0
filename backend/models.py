@@ -17,6 +17,13 @@ image_tags = Table(
     Column("tagger_model", String,  nullable=True),   # e.g. "wd14-swinv2-v3"
 )
 
+# ── Many-to-many: images <-> creators (file-level override) ───────────────────
+image_creators = Table(
+    "image_creators", Base.metadata,
+    Column("image_id",   Integer, ForeignKey("images.id"),   primary_key=True),
+    Column("creator_id", Integer, ForeignKey("creators.id"), primary_key=True),
+)
+
 gallery_tags = Table(
     "gallery_tags", Base.metadata,
     Column("gallery_id", Integer, ForeignKey("galleries.id"), primary_key=True),
@@ -257,6 +264,7 @@ class Image(Base):
 
     gallery          = relationship("Gallery", back_populates="images")
     tags             = relationship("Tag", secondary=image_tags, back_populates="images")
+    image_creators   = relationship("Creator", secondary="image_creators")
 
 
 # ── Tag ────────────────────────────────────────────────────────────────────────

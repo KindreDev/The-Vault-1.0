@@ -1,5 +1,5 @@
 {
-  "version": "1.1.3",
+  "version": "1.1.5",
   "download_url": "https://downloads.vault-app.site/VaultSetup.exe",
-  "changelog": "- Easy Mobile connection with QR code \n- TCG Bug fixing \n- Instructions added for Erika AI installation"
+  "changelog": "Added:\n- Funscript Library Matcher — keep all your scripts in one folder and The Vault links each to the matching video by filename (Settings → Library → Match Now)\n- Smarter file-move detection — moving files between folders now keeps their ratings, tags, counts and history\n- Period filter added to the Image/Video view\n- Duplicates page now shows the file path for each entry\n\nChanged:\n- Period filter is now context-aware, only listing periods that exist within your active filters\n- More of the UI prepared for translation\n\nFixed:\n- Image viewer no longer scrolls off-screen when hovering the metadata panel\n- Creator sort/filter dropdowns no longer cut off early"
 }

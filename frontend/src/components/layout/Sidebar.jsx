@@ -12,6 +12,7 @@ import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
 import { gamiApi, companionApi } from '../../lib/api'
+import { useT } from '../../i18n'
 
 const NAV = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -90,6 +91,7 @@ function QuickConnect() {
   const status  = useDeviceStore(s => s.status)
   const mode    = useDeviceStore(s => s.mode)
   const color   = STATUS_DOT[status] || STATUS_DOT.disconnected
+  const t       = useT()
 
   const handleClick = async () => {
     if (status === 'connected') await deviceService.disconnect()
@@ -106,13 +108,14 @@ function QuickConnect() {
         )}
       </div>
       <span className="flex-1 text-left" style={{ color }}>
-        {status === 'connected' ? (mode === 'freestyle' ? 'Device · Live' : 'Device · Idle') : status === 'connecting' ? 'Connecting…' : 'Device · Off'}
+        {status === 'connected' ? (mode === 'freestyle' ? t('Device · Live') : t('Device · Idle')) : status === 'connecting' ? t('Connecting…') : t('Device · Off')}
       </span>
     </button>
   )
 }
 
 function NavItem({ to, icon: Icon, label, badge }) {
+  const t = useT()
   return (
     <NavLink
       to={to}
@@ -125,7 +128,7 @@ function NavItem({ to, icon: Icon, label, badge }) {
       }
     >
       <Icon size={20} />
-      <span className="flex-1">{label}</span>
+      <span className="flex-1">{t(label)}</span>
       {badge > 0 && (
         <span className="text-[15px] font-medium px-2 py-0.5 rounded-full flex-shrink-0"
               style={{ background: 'rgba(127,119,221,0.35)', color: '#CECBF6' }}>
@@ -137,26 +140,29 @@ function NavItem({ to, icon: Icon, label, badge }) {
 }
 
 function ActionItem({ icon: Icon, label, onClick, color = 'rgba(255,255,255,0.45)', activeColor }) {
+  const t = useT()
   return (
     <button onClick={onClick}
       className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] w-[calc(100%-16px)] transition-all hover:bg-[rgba(255,255,255,0.05)] cursor-pointer"
       style={{ color }}>
       <Icon size={20} />
-      <span className="flex-1 text-left">{label}</span>
+      <span className="flex-1 text-left">{t(label)}</span>
     </button>
   )
 }
 
 function SectionLabel({ label }) {
+  const t = useT()
   return (
     <div className="text-[17px] font-medium text-[rgba(255,255,255,0.2)] uppercase tracking-[.06em] px-5 pt-4 pb-1">
-      {label}
+      {t(label)}
     </div>
   )
 }
 
 export default function Sidebar() {
   const navigate         = useNavigate()
+  const t                = useT()
   const queueCount       = useVaultStore(s => s.multiViewerQueue.length)
   const avatarBust       = useVaultStore(s => s.avatarBust)
   const vaultName        = useVaultStore(s => s.vaultName)
@@ -255,7 +261,7 @@ export default function Sidebar() {
       <div
         className="border-t border-[rgba(255,255,255,0.07)] cursor-pointer hover:bg-[rgba(255,255,255,0.03)] transition-colors flex-shrink-0"
         onClick={() => navigate('/profile')}
-        title="View profile"
+        title={t('View profile')}
       >
         {profile ? (
           <>
@@ -297,7 +303,7 @@ export default function Sidebar() {
             </div>
           </>
         ) : (
-          <div className="p-4 text-[17px] text-[rgba(255,255,255,0.2)]">Loading...</div>
+          <div className="p-4 text-[17px] text-[rgba(255,255,255,0.2)]">{t('Loading...')}</div>
         )}
       </div>
 

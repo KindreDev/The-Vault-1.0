@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { companionApi, creatorsApi } from '../../lib/api'
+import { useAllCreators } from '../../hooks/useAllCreators'
 import CompanionChat from './CompanionChat'
 
 export default function CompanionBubble() {
@@ -16,12 +17,7 @@ export default function CompanionBubble() {
   const qc                 = useQueryClient()
 
   // Fetch creators for the persona switcher
-  const { data: creators } = useQuery({
-    queryKey: ['creators-mini'],
-    queryFn:  () => creatorsApi.list({ limit: 200 }).then(r => r.data?.items ?? r.data ?? []),
-    staleTime: 60000,
-    enabled: !!companion.enabled,
-  })
+  const { data: creators } = useAllCreators()
 
   if (!companion.enabled || !companion.config) return null
 

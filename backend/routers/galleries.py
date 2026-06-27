@@ -35,6 +35,80 @@ def _enrich(g: Gallery) -> dict:
     return d
 
 
+def _apply_gallery_filters(
+    q,
+    db: Session,
+    *,
+    creator_id: Optional[str] = None,
+    creator_type: Optional[str] = None,
+    series: Optional[str] = None,
+    search: Optional[str] = None,
+    tag: Optional[str] = None,
+    tags: Optional[str] = None,
+    favorite: Optional[bool] = None,
+    unassigned: Optional[bool] = None,
+    period: Optional[str] = None,
+):
+    """Apply the standard gallery-list filters to a query.
+
+    Shared by the gallery list endpoint and the periods endpoint so the period
+    dropdown reflects exactly the same filter context as the gallery grid.
+    `period` itself is optional — the periods endpoint omits it so it can show
+    every period available under the *other* active filters.
+    """
+    # Filter by creator via M2M — supports comma-separated IDs, creator_type, and series/franchise
+    if creator_id or creator_type or series:
+        q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        if creator_id:
+            cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
+            if len(cid_list) == 1:
+                q = q.filter(gallery_creators.c.creator_id == cid_list[0])
+            elif len(cid_list) > 1:
+                q = q.filter(gallery_creators.c.creator_id.in_(cid_list))
+        if creator_type or series:
+            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
+            if creator_type:
+                q = q.filter(Creator.creator_type == creator_type)
+            if series:
+                q = q.filter(Creator.series.ilike(f"%{series}%"))
+
+    # Unassigned: galleries with no entries in gallery_creators
+    if unassigned:
+        assigned_ids = db.query(gallery_creators.c.gallery_id).distinct()
+        q = q.filter(~Gallery.id.in_(assigned_ids))
+
+    # Multi-tag: comma-separated, each tag must be present (AND).
+    # Matches gallery-level tags OR any image in the gallery having that tag.
+    tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
+    for tag_name in tag_list:
+        # Explicit subquery: gallery IDs whose images have this tag
+        img_subq = (
+            db.query(Image.gallery_id)
+            .join(image_tags, image_tags.c.image_id == Image.id)
+            .join(Tag, Tag.id == image_tags.c.tag_id)
+            .filter(Tag.name == tag_name, Image.gallery_id.isnot(None))
+            .subquery()
+        )
+        q = q.filter(or_(
+            Gallery.tags.any(Tag.name == tag_name),
+            Gallery.id.in_(img_subq),
+        ))
+    if search:
+        q = q.filter(Gallery.name.ilike(f"%{search}%"))
+    if favorite is not None:
+        q = q.filter(Gallery.is_favorite == favorite)
+
+    # Period filter: "YYYY" matches the whole year, "YYYY-MM" matches a single month
+    if period:
+        parts = period.split('-')
+        if parts[0].isdigit():
+            q = q.filter(Gallery.period_year == int(parts[0]))
+            if len(parts) > 1 and parts[1].isdigit():
+                q = q.filter(Gallery.period_month == int(parts[1]))
+
+    return q
+
+
 @router.post("/", response_model=GalleryOut, status_code=201)
 def create_gallery(data: GalleryCreate, db: Session = Depends(get_db)):
     """Create a manual gallery (no folder scan required)."""
@@ -121,7 +195,8 @@ def list_galleries(
     tags: Optional[str] = None,  # comma-separated, AND logic
     favorite: Optional[bool] = None,
     unassigned: Optional[bool] = None,
-    sort_by: Optional[str] = "date_added",  # date_added | name | image_count | rating | cum_count | random
+    period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by collection period/term
+    sort_by: Optional[str] = "date_added",  # date_added | name | image_count | rating | cum_count | period | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
     skip: int = 0,
     limit: int = 200,
@@ -132,47 +207,12 @@ def list_galleries(
         selectinload(Gallery.creators),
     )
 
-    # Filter by creator via M2M — supports comma-separated IDs, creator_type, and series/franchise
-    if creator_id or creator_type or series:
-        q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-        if creator_id:
-            cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
-            if len(cid_list) == 1:
-                q = q.filter(gallery_creators.c.creator_id == cid_list[0])
-            elif len(cid_list) > 1:
-                q = q.filter(gallery_creators.c.creator_id.in_(cid_list))
-        if creator_type or series:
-            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
-            if creator_type:
-                q = q.filter(Creator.creator_type == creator_type)
-            if series:
-                q = q.filter(Creator.series.ilike(f"%{series}%"))
-
-    # Unassigned: galleries with no entries in gallery_creators
-    if unassigned:
-        assigned_ids = db.query(gallery_creators.c.gallery_id).distinct()
-        q = q.filter(~Gallery.id.in_(assigned_ids))
-
-    # Multi-tag: comma-separated, each tag must be present (AND).
-    # Matches gallery-level tags OR any image in the gallery having that tag.
-    tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
-    for tag_name in tag_list:
-        # Explicit subquery: gallery IDs whose images have this tag
-        img_subq = (
-            db.query(Image.gallery_id)
-            .join(image_tags, image_tags.c.image_id == Image.id)
-            .join(Tag, Tag.id == image_tags.c.tag_id)
-            .filter(Tag.name == tag_name, Image.gallery_id.isnot(None))
-            .subquery()
-        )
-        q = q.filter(or_(
-            Gallery.tags.any(Tag.name == tag_name),
-            Gallery.id.in_(img_subq),
-        ))
-    if search:
-        q = q.filter(Gallery.name.ilike(f"%{search}%"))
-    if favorite is not None:
-        q = q.filter(Gallery.is_favorite == favorite)
+    q = _apply_gallery_filters(
+        q, db,
+        creator_id=creator_id, creator_type=creator_type, series=series,
+        search=search, tag=tag, tags=tags, favorite=favorite,
+        unassigned=unassigned, period=period,
+    )
 
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
@@ -196,6 +236,12 @@ def list_galleries(
     elif sort_by == "date_modified":
         col = Gallery.updated_at
         q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
+    elif sort_by == "period":
+        # Newest/oldest period first; NULLs always sink to the bottom
+        if use_asc if use_asc is not None else False:
+            q = q.order_by(Gallery.period_year.is_(None), Gallery.period_year.asc(), Gallery.period_month.asc())
+        else:
+            q = q.order_by(Gallery.period_year.is_(None), Gallery.period_year.desc(), Gallery.period_month.desc())
     elif sort_by == "random":
         q = q.order_by(func.random())
     else:
@@ -204,6 +250,51 @@ def list_galleries(
 
     galleries = q.offset(skip).limit(limit).all()
     return [_enrich(g) for g in galleries]
+
+
+@router.get("/periods")
+def list_periods(
+    db: Session = Depends(get_db),
+    creator_id: Optional[str] = None,
+    creator_type: Optional[str] = None,
+    series: Optional[str] = None,
+    search: Optional[str] = None,
+    tag: Optional[str] = None,
+    tags: Optional[str] = None,
+    favorite: Optional[bool] = None,
+    unassigned: Optional[bool] = None,
+):
+    """Distinct collection periods (year + optional month) for the filter dropdown,
+    newest first. Returns value ("YYYY" or "YYYY-MM") + a human label + count.
+
+    Respects the same filters as the gallery list (creator, type, series, tags,
+    favorite, unassigned, search) so the dropdown only offers periods that exist
+    within the currently-filtered set. `period` is deliberately NOT a parameter
+    here — we always show every period available under the *other* filters."""
+    from datetime import datetime
+    q = db.query(Gallery.period_year, Gallery.period_month, func.count(Gallery.id.distinct()))
+    q = _apply_gallery_filters(
+        q, db,
+        creator_id=creator_id, creator_type=creator_type, series=series,
+        search=search, tag=tag, tags=tags, favorite=favorite,
+        unassigned=unassigned,
+    )
+    rows = (
+        q.filter(Gallery.period_year.isnot(None))
+        .group_by(Gallery.period_year, Gallery.period_month)
+        .order_by(Gallery.period_year.desc(), Gallery.period_month.desc())
+        .all()
+    )
+    out = []
+    for year, month, count in rows:
+        if month:
+            value = f"{year}-{month:02d}"
+            label = datetime(year, month, 1).strftime("%b %Y")
+        else:
+            value = str(year)
+            label = str(year)
+        out.append({"value": value, "label": label, "count": count})
+    return out
 
 
 @router.get("/stats")

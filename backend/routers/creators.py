@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, select, union
 from typing import List, Optional
 from PIL import Image as PILImage
 from io import BytesIO
@@ -11,7 +11,7 @@ import uuid
 import os
 
 from database import get_db, DATA_DIR
-from models import Creator, Gallery, Image, SessionLog, gallery_creators
+from models import Creator, Gallery, Image, SessionLog, gallery_creators, image_creators
 from schemas import CreatorCreate, CreatorUpdate, CreatorOut
 import services.gamification as gami
 
@@ -32,20 +32,55 @@ def _enrich(c: Creator, db: Session) -> dict:
         gallery_creators.c.creator_id == c.id
     ).count()
     d["gallery_count"] = gallery_count
-    d["image_count"] = (
-        db.query(func.sum(Gallery.image_count))
-          .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-          .filter(gallery_creators.c.creator_id == c.id)
-          .scalar() or 0
+    # Additive model: count distinct images belonging to this creator via EITHER path.
+    # UNION deduplicates so an image counted in both paths is only counted once.
+    gallery_img_ids = (
+        select(Image.id)
+        .join(Gallery, Gallery.id == Image.gallery_id)
+        .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        .where(gallery_creators.c.creator_id == c.id)
     )
+    file_img_ids = (
+        select(image_creators.c.image_id.label('id'))
+        .where(image_creators.c.creator_id == c.id)
+    )
+    all_ids_sq = union(gallery_img_ids, file_img_ids).subquery()
+    d["image_count"] = db.query(func.count()).select_from(all_ids_sq).scalar() or 0
     d["session_count"] = db.query(SessionLog).filter(SessionLog.creator_id == c.id).count()
+    all_ids_sq2 = union(gallery_img_ids, file_img_ids).subquery()
     d["total_view_seconds"] = (
         db.query(func.sum(Image.view_seconds))
-          .join(Gallery, Image.gallery_id == Gallery.id)
-          .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-          .filter(gallery_creators.c.creator_id == c.id)
+          .join(all_ids_sq2, Image.id == all_ids_sq2.c.id)
           .scalar() or 0
     )
+    # Extra stats: video count, total cum count, total file size
+    all_ids_sq3 = union(gallery_img_ids, file_img_ids).subquery()
+    img_stats = (
+        db.query(
+            func.sum(case((Image.is_video == True, 1), else_=0)).label("video_count"),
+            func.sum(Image.cum_count).label("cum_count"),
+            func.sum(Image.file_size).label("total_bytes"),
+        )
+        .join(all_ids_sq3, Image.id == all_ids_sq3.c.id)
+        .one()
+    )
+    d["video_count"] = int(img_stats.video_count or 0)
+    d["cum_count"]   = int(img_stats.cum_count or 0)
+    # file_size is null for images scanned before that column existed — fall back to os.stat
+    db_bytes = img_stats.total_bytes or 0
+    if db_bytes == 0:
+        # sum file sizes from the actual paths for images belonging to this creator
+        all_paths = (
+            db.query(Image.file_path)
+            .join(all_ids_sq3, Image.id == all_ids_sq3.c.id)
+            .all()
+        )
+        db_bytes = sum(
+            os.path.getsize(r.file_path)
+            for r in all_paths
+            if r.file_path and os.path.exists(r.file_path)
+        )
+    d["total_size_gb"] = round(db_bytes / 1_073_741_824, 2)
     d["card_rarity"] = _compute_rarity(
         image_count=d["image_count"],
         rating=float(c.rating or 0),
@@ -996,11 +1031,27 @@ def serve_creator_banner(creator_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{creator_id}/top-images")
 def top_images(creator_id: int, db: Session = Depends(get_db), limit: int = 5):
+    from sqlalchemy import or_
+    directly_assigned = (
+        select(image_creators.c.image_id)
+        .where(image_creators.c.creator_id == creator_id)
+        .scalar_subquery()
+    )
+    gallery_inherited = (
+        select(Image.id)
+        .join(Gallery, Gallery.id == Image.gallery_id)
+        .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        .where(gallery_creators.c.creator_id == creator_id)
+        .scalar_subquery()
+    )
     images = (
         db.query(Image)
-          .join(Gallery, Gallery.id == Image.gallery_id)
-          .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-          .filter(gallery_creators.c.creator_id == creator_id)
+          .filter(
+              or_(
+                  Image.id.in_(directly_assigned),
+                  Image.id.in_(gallery_inherited),
+              )
+          )
           .order_by(Image.cum_count.desc())
           .limit(limit)
           .all()

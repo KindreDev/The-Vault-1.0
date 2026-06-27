@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { companionApi, creatorsApi } from '../lib/api'
+import { useAllCreators } from '../hooks/useAllCreators'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
 import CompanionChat from '../components/companion/CompanionChat'
@@ -239,11 +240,7 @@ export default function ErikaAI() {
     enabled: !!config?.enabled,
   })
 
-  const { data: creators } = useQuery({
-    queryKey: ['creators-mini'],
-    queryFn:  () => creatorsApi.list({ limit: 200 }).then(r => r.data?.items ?? r.data ?? []),
-    staleTime: 60000,
-  })
+  const { data: creators } = useAllCreators()
 
   const patch = useMutation({
     mutationFn: (d) => companionApi.updateConfig(d),

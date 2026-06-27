@@ -12,6 +12,7 @@ import { COUNTRIES } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
 import BondHearts from '../components/BondHearts'
 import FranchiseFilter from '../components/FranchiseFilter'
+import { useT } from '../i18n'
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
@@ -133,6 +134,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
   const [hoverStar, setHoverStar] = useState(0)
   const ratingRef                 = useRef(null)
   const qc                        = useQueryClient()
+  const t                         = useT()
 
   useEffect(() => {
     if (!ratingOpen) return
@@ -144,7 +146,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
   const rateMutation = useMutation({
     mutationFn: (rating) => creatorsApi.update(creator.id, { rating }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators'] }); setRatingOpen(false) },
-    onError:   () => toast.error('Could not update rating'),
+    onError:   () => toast.error(t('Could not update rating')),
   })
 
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
@@ -211,7 +213,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
         {ratingOpen && (
           <div className="absolute top-full mt-1 left-0 rounded-[10px] p-3 shadow-2xl"
                style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', zIndex: 50, minWidth: 220 }}>
-            <div className="text-[11px] mb-2 uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.35)' }}>Rate</div>
+            <div className="text-[11px] mb-2 uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.35)' }}>{t('Rate')}</div>
             <div className="flex gap-0.5">
               {[1,2,3,4,5,6,7,8,9,10].map(n => (
                 <button
@@ -232,7 +234,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
                 onClick={e => { e.stopPropagation(); rateMutation.mutate(0) }}
                 className="mt-2 text-[11px] w-full text-center cursor-pointer"
                 style={{ color: 'rgba(255,255,255,0.3)' }}>
-                Clear rating
+                {t('Clear rating')}
               </button>
             )}
           </div>
@@ -258,19 +260,19 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
         <div className="flex items-center gap-2">
           <span className="text-[13px] px-2.5 py-0.5 rounded-full capitalize font-medium"
                 style={{ background: tc.bg, color: tc.text }}>
-            {TYPE_LABELS[creator.creator_type] || creator.creator_type}
+            {t(TYPE_LABELS[creator.creator_type] || creator.creator_type)}
           </span>
           {creator.card_rarity && creator.card_rarity !== 'common' && (
             <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                   style={{ background: `${rc}22`, color: rc, border: `0.5px solid ${rc}55` }}>
-              {RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity}
+              {t(RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity)}
             </span>
           )}
           {age !== null && (
             <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{age}y</span>
           )}
           <span className="text-[13px] ml-auto" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            {(creator.image_count ?? 0).toLocaleString()} photos
+            {(creator.image_count ?? 0).toLocaleString()} {t('photos')}
           </span>
         </div>
 
@@ -278,10 +280,10 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
         {(creator.gallery_count > 0 || creator.session_count > 0) && (
           <div className="flex items-center gap-3 text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {creator.gallery_count > 0 && (
-              <span>{creator.gallery_count} {creator.gallery_count === 1 ? 'gallery' : 'galleries'}</span>
+              <span>{creator.gallery_count} {creator.gallery_count === 1 ? t('gallery') : t('galleries')}</span>
             )}
             {creator.session_count > 0 && (
-              <span style={{ color: 'rgba(212,83,126,0.6)' }}>♥ {creator.session_count} sessions</span>
+              <span style={{ color: 'rgba(212,83,126,0.6)' }}>♥ {creator.session_count} {t('sessions')}</span>
             )}
           </div>
         )}
@@ -304,6 +306,7 @@ function JikanSearch({ onSelect }) {
   const [apiError, setApiError] = useState(false)
   const [picked, setPicked]     = useState(null)
   const debounceRef             = useRef(null)
+  const t                       = useT()
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -346,7 +349,7 @@ function JikanSearch({ onSelect }) {
   return (
     <div className="mb-5 rounded-[10px] p-4" style={{ background: 'rgba(186,117,23,0.07)', border: '0.5px solid rgba(186,117,23,0.25)' }}>
       <div className="text-[16px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: '#FAC775' }}>
-        <span className="text-[18px]">⚡</span> Import from MyAnimeList
+        <span className="text-[18px]">⚡</span> {t('Import from MyAnimeList')}
       </div>
 
       {picked ? (
@@ -363,14 +366,14 @@ function JikanSearch({ onSelect }) {
             <div className="flex gap-1.5 mt-1 flex-wrap">
               {picked.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,83,126,0.2)', color: '#ED93B1' }}>{picked.gender}</span>}
               {picked.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
-              {picked.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>Age {picked.age}</span>}
+              {picked.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={handleConfirm}
                     className="px-4 py-2 rounded-full text-[16px] font-medium cursor-pointer"
                     style={{ background: 'rgba(186,117,23,0.3)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.5)' }}>
-              Fill form
+              {t('Fill form')}
             </button>
             <button onClick={() => setPicked(null)}
                     className="px-3 py-2 rounded-full text-[16px] cursor-pointer"
@@ -385,7 +388,7 @@ function JikanSearch({ onSelect }) {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search anime character name…"
+              placeholder={t('Search anime character name…')}
               className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.25)] outline-none pr-10"
               style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(186,117,23,0.35)' }}
             />
@@ -399,7 +402,7 @@ function JikanSearch({ onSelect }) {
           {apiError && (
             <div className="mt-2 text-[14px] px-3 py-2 rounded-[8px]"
                  style={{ background: 'rgba(186,117,23,0.1)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
-              MyAnimeList API is currently unavailable — try again in a moment.
+              {t('MyAnimeList API is currently unavailable — try again in a moment.')}
             </div>
           )}
 
@@ -423,7 +426,7 @@ function JikanSearch({ onSelect }) {
                     <div className="flex gap-1.5 mt-1 flex-wrap">
                       {char.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,83,126,0.2)', color: '#ED93B1' }}>{char.gender}</span>}
                       {char.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
-                      {char.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>Age {char.age}</span>}
+                      {char.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
                     </div>
                   </div>
                   {char.favorites > 0 && (
@@ -452,6 +455,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
   })
   const pendingAvatarUrl = useRef(null)
   const qc = useQueryClient()
+  const t = useT()
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -482,7 +486,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
       }
       onSuccess(data)
     },
-    onError: () => toast.error('Failed to add creator')
+    onError: () => toast.error(t('Failed to add creator'))
   })
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -520,24 +524,24 @@ function AddCreatorModal({ onClose, onSuccess }) {
         transition={{ type: 'spring', stiffness: 480, damping: 32 }}>
 
         <div className="flex items-center justify-between mb-5">
-          <div className="text-[22px] font-medium text-[rgba(255,255,255,0.9)]">Add creator</div>
+          <div className="text-[22px] font-medium text-[rgba(255,255,255,0.9)]">{t('Add creator')}</div>
           <button onClick={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <div className="mb-4">
-          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-2 uppercase tracking-wider font-semibold">Category</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-2 uppercase tracking-wider font-semibold">{t('Category')}</div>
           <div className="flex flex-wrap gap-1.5">
-            {TYPES.map(t => (
-              <button key={t} onClick={() => set('creator_type', t)}
+            {TYPES.map(ct => (
+              <button key={ct} onClick={() => set('creator_type', ct)}
                       className="text-[16px] px-3.5 py-2 rounded-full cursor-pointer capitalize transition-all"
                       style={{
-                        background: form.creator_type === t ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                        color: form.creator_type === t ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${form.creator_type === t ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                        background: form.creator_type === ct ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
+                        color: form.creator_type === ct ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+                        border: `0.5px solid ${form.creator_type === ct ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
                       }}>
-                {TYPE_LABELS[t] || t}
+                {t(TYPE_LABELS[ct] || ct)}
               </button>
             ))}
           </div>
@@ -557,36 +561,36 @@ function AddCreatorModal({ onClose, onSuccess }) {
               { label: 'Real name', key: 'real_name', placeholder: 'Real identity if known' },
             ].map(f => (
               <div key={f.key}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                 <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                       placeholder={f.placeholder}
+                       placeholder={t(f.placeholder)}
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
             ))}
 
             <div>
-              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Country</div>
-              <FormDropdown value={form.country} onChange={v => set('country', v)} options={COUNTRY_OPTIONS} placeholder="Select Country" isSearchable={true} />
+              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Country')}</div>
+              <FormDropdown value={form.country} onChange={v => set('country', v)} options={COUNTRY_OPTIONS} placeholder={t('Select Country')} isSearchable={true} />
             </div>
 
             <div>
-              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Gender</div>
-              <FormDropdown value={form.gender} onChange={v => set('gender', v)} options={GENDER_OPTIONS} placeholder="Unknown" />
+              <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Gender')}</div>
+              <FormDropdown value={form.gender} onChange={v => set('gender', v)} options={GENDER_OPTIONS} placeholder={t('Unknown')} />
             </div>
 
             {form.creator_type !== 'character' && (
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Status</div>
-                <FormDropdown value={form.status} onChange={v => set('status', v)} options={STATUS_OPTIONS} placeholder="Active" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Status')}</div>
+                <FormDropdown value={form.status} onChange={v => set('status', v)} options={STATUS_OPTIONS} placeholder={t('Active')} />
               </div>
             )}
 
             {form.creator_type !== 'character' && form.status === 'Retired' && (
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Retirement Year</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Retirement Year')}</div>
                 <input value={form.retirement_year} onChange={e => set('retirement_year', e.target.value)}
-                       placeholder="e.g. 2024" type="number"
+                       placeholder={t('e.g. 2024')} type="number"
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
@@ -594,12 +598,12 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Fake Boobs</div>
-                <FormDropdown value={form.fake_boobs} onChange={v => set('fake_boobs', v)} options={YES_NO_OPTIONS} placeholder="Not Set" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Fake Boobs')}</div>
+                <FormDropdown value={form.fake_boobs} onChange={v => set('fake_boobs', v)} options={YES_NO_OPTIONS} placeholder={t('Not Set')} />
               </div>
               <div>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Fake Ass</div>
-                <FormDropdown value={form.fake_ass} onChange={v => set('fake_ass', v)} options={YES_NO_OPTIONS} placeholder="Not Set" />
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Fake Ass')}</div>
+                <FormDropdown value={form.fake_ass} onChange={v => set('fake_ass', v)} options={YES_NO_OPTIONS} placeholder={t('Not Set')} />
               </div>
             </div>
           </div>
@@ -608,12 +612,12 @@ function AddCreatorModal({ onClose, onSuccess }) {
           <div className="flex flex-col gap-4">
             <div>
               <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">
-                {form.creator_type === 'character' ? 'Age' : 'Date of Birth'}
+                {form.creator_type === 'character' ? t('Age') : t('Date of Birth')}
               </div>
               <input
                 value={form.date_of_birth}
                 onChange={e => set('date_of_birth', e.target.value)}
-                placeholder={form.creator_type === 'character' ? '17' : 'YYYY-MM or YYYY-MM-DD'}
+                placeholder={form.creator_type === 'character' ? '17' : t('YYYY-MM or YYYY-MM-DD')}
                 className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }}
               />
@@ -625,9 +629,9 @@ function AddCreatorModal({ onClose, onSuccess }) {
               { label: 'Eye Color', key: 'eye_color', placeholder: 'Blue' },
             ].map(f => (
               <div key={f.key}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                 <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                       placeholder={f.placeholder}
+                       placeholder={t(f.placeholder)}
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                        style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
               </div>
@@ -640,9 +644,9 @@ function AddCreatorModal({ onClose, onSuccess }) {
                   { label: 'Franchise', key: 'series', placeholder: 'Elden Ring' },
                 ].map(f => (
                   <div key={f.key}>
-                    <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{f.label}</div>
+                    <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t(f.label)}</div>
                     <input value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                           placeholder={f.placeholder}
+                           placeholder={t(f.placeholder)}
                            className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
                            style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
                   </div>
@@ -653,7 +657,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
             <div className="grid grid-cols-2 gap-4">
               {form.creator_type !== 'character' && (
                 <div>
-                  <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Monthly Price ($)</div>
+                  <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Monthly Price ($)')}</div>
                   <input value={form.patreon_price} onChange={e => set('patreon_price', e.target.value)}
                          placeholder="10.00" type="number" step="0.01" min="0"
                          className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
@@ -661,7 +665,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
                 </div>
               )}
               <div className={form.creator_type !== 'character' ? '' : 'col-span-2'}>
-                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Wiki URL</div>
+                <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Wiki URL')}</div>
                 <input value={form.wiki_url} onChange={e => set('wiki_url', e.target.value)}
                        placeholder="https://..."
                        className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none"
@@ -673,7 +677,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
         {form.creator_type !== 'character' && (
           <div className="mt-4">
-            <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Source URLs / Links (comma or newline separated)</div>
+            <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Source URLs / Links (comma or newline separated)')}</div>
             <textarea value={form.platform_links} onChange={e => set('platform_links', e.target.value)}
                       placeholder="https://patreon.com/..., https://onlyfans.com/..." rows={2}
                       className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
@@ -682,9 +686,9 @@ function AddCreatorModal({ onClose, onSuccess }) {
         )}
 
         <div className="mt-4 mb-6">
-          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">Description</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.4)] mb-1.5 font-medium">{t('Description')}</div>
           <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                    placeholder="Brief description..." rows={2}
+                    placeholder={t('Brief description...')} rows={2}
                     className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.2)] outline-none resize-none"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }} />
         </div>
@@ -693,13 +697,13 @@ function AddCreatorModal({ onClose, onSuccess }) {
           <button onClick={onClose}
                   className="flex-1 py-3 rounded-[8px] text-[16px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button onClick={() => mutation.mutate()}
                   disabled={!form.name.trim() || mutation.isPending}
                   className="flex-1 py-3 rounded-[8px] text-[16px] font-medium cursor-pointer"
                   style={{ background: !form.name.trim() ? 'rgba(127,119,221,0.1)' : 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-            {mutation.isPending ? 'Adding...' : 'Add creator +50 XP'}
+            {mutation.isPending ? t('Adding...') : t('Add creator +50 XP')}
           </button>
         </div>
       </motion.div>
@@ -736,6 +740,7 @@ export default function CreatorList() {
   const [creatorCtxMenu, setCreatorCtxMenu] = useState(null) // { creator, x, y }
 
   const qc = useQueryClient()
+  const t = useT()
   // Skip the first mount so that filter-change resets don't clobber the
   // page restored from sessionStorage when navigating back to the list.
   const _filterMountRef           = useRef(true)
@@ -785,14 +790,14 @@ export default function CreatorList() {
     <div className="p-5 pb-16">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">Creators</div>
+        <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
 
         {/* Search */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
           <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Search..."
+                 placeholder={t('Search...')}
                  className="bg-transparent border-none outline-none text-[12px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-32" />
           {search && <button onClick={() => setSearch('')} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white"><X size={11} /></button>}
         </div>
@@ -811,21 +816,21 @@ export default function CreatorList() {
         <button onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 text-[12px] font-medium px-4 py-2 rounded-full ml-auto cursor-pointer"
                 style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
-          <Plus size={13} /> Add creator
+          <Plus size={13} /> {t('Add creator')}
         </button>
       </div>
 
       {/* Controls row: type filter + per-page */}
       <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-        {TYPE_FILTER_LIST.map(t => (
-          <button key={t} onClick={() => setTypeFilter(t)}
+        {TYPE_FILTER_LIST.map(ct => (
+          <button key={ct} onClick={() => setTypeFilter(ct)}
                   className="text-[11px] px-3 py-1 rounded-full cursor-pointer capitalize"
                   style={{
-                    background: typeFilter === t ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                    color: typeFilter === t ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                    border: `0.5px solid ${typeFilter === t ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                    background: typeFilter === ct ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
+                    color: typeFilter === ct ? '#CECBF6' : 'rgba(255,255,255,0.4)',
+                    border: `0.5px solid ${typeFilter === ct ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.07)'}`,
                   }}>
-            {t === 'all' ? 'All' : (TYPE_LABELS[t] || t)}
+            {ct === 'all' ? t('All') : t(TYPE_LABELS[ct] || ct)}
           </button>
         ))}
 
@@ -844,7 +849,7 @@ export default function CreatorList() {
           <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-[rgba(255,255,255,0.3)]">Per page</span>
+            <span className="text-[11px] text-[rgba(255,255,255,0.3)]">{t('Per page')}</span>
             {PER_PAGE_OPTIONS.map(n => (
               <button key={n} onClick={() => setPerPage(n)}
                       className="text-[11px] px-2.5 py-1 rounded-[6px] cursor-pointer"
@@ -876,11 +881,11 @@ export default function CreatorList() {
         : creators?.length === 0
           ? <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div style={{ fontSize: 52, opacity: 0.12 }}>👤</div>
-              <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>No creators yet</div>
+              <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>{t('No creators yet')}</div>
               <button onClick={() => setShowModal(true)}
                       className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
                       style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
-                <Plus size={15} /> Add your first creator
+                <Plus size={15} /> {t('Add your first creator')}
               </button>
             </div>
           : <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
@@ -898,13 +903,13 @@ export default function CreatorList() {
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                   className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-30"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            ← Prev
+            ← {t('Prev')}
           </button>
-          <span className="text-[12px] text-[rgba(255,255,255,0.4)]">Page {page}</span>
+          <span className="text-[12px] text-[rgba(255,255,255,0.4)]">{t('Page')} {page}</span>
           <button onClick={() => setPage(p => p + 1)} disabled={!hasMore}
                   className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-30"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            Next →
+            {t('Next')} →
           </button>
         </div>
       )}
@@ -929,14 +934,14 @@ export default function CreatorList() {
             try {
               await creatorsApi.update(creatorCtxMenu.creator.id, { is_favorite: !creatorCtxMenu.creator.is_favorite })
               qc.invalidateQueries({ queryKey: ['creators'] })
-            } catch { toast.error('Could not update favourite') }
+            } catch { toast.error(t('Could not update favourite')) }
           }}
           onDelete={async () => {
             try {
               await creatorsApi.delete(creatorCtxMenu.creator.id)
               toast.success(`${creatorCtxMenu.creator.name} deleted`)
               qc.invalidateQueries({ queryKey: ['creators'] })
-            } catch { toast.error('Delete failed') }
+            } catch { toast.error(t('Delete failed')) }
           }}
         />
       )}

@@ -23,6 +23,8 @@ def get_profile(db: Session = Depends(get_db)):
     _, _, xp_to_next = gami._compute_level(profile.total_xp)
     d = {c.name: getattr(profile, c.name) for c in profile.__table__.columns}
     d["xp_to_next"] = xp_to_next
+    # Always derive the title from the current level so renamed titles apply immediately
+    d["level_title"] = gami._get_title(profile.level)
     return d
 
 

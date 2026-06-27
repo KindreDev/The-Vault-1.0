@@ -5,7 +5,7 @@ from typing import List, Optional
 from database import get_db, SessionLocal
 from models import LibraryRoot, Image
 from schemas import LibraryRootCreate, LibraryRootOut, ScanStatus, TaggerStatus, TaggerStartRequest, ModelStatus
-from services.scanner import scan_library, scan_folder_path, get_scan_state, cancel_scan, get_scan_log, set_scan_state, is_scan_cancelled
+from services.scanner import scan_library, scan_folder_path, get_scan_state, cancel_scan, get_scan_log, set_scan_state, is_scan_cancelled, match_funscript_library
 from services.scanner import make_thumb_path, generate_thumbnail, generate_video_thumbnail
 import services.ai_tagger as ai_tagger
 import services.gpu_setup as gpu_setup
@@ -74,6 +74,25 @@ def start_folder_scan(body: dict):
     task_queue.submit(
         'scan', label,
         start_fn=lambda: _launch_in_thread(scan_folder_path, SessionLocal(), folder_path),
+        poll_fn=get_scan_state,
+        cancel_fn=cancel_scan,
+    )
+    return {"message": "Queued", "queued": True}
+
+
+@router.post("/match-funscripts")
+def match_funscripts(body: dict = None):
+    """Match a central funscript library folder against all videos by filename."""
+    from database import _read_config
+    body = body or {}
+    path = (body.get("path") or "").strip() or _read_config().get("funscript_library_path", "").strip()
+    if not path:
+        raise HTTPException(400, "No funscript library folder configured")
+    if not os.path.isdir(path):
+        raise HTTPException(400, f"Path does not exist: {path}")
+    task_queue.submit(
+        'scan', f'Match funscripts: {os.path.basename(path) or path}',
+        start_fn=lambda: _launch_in_thread(match_funscript_library, SessionLocal(), path),
         poll_fn=get_scan_state,
         cancel_fn=cancel_scan,
     )

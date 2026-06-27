@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { SortAsc, SortDesc, ArrowUpDown } from 'lucide-react'
+import { useT } from '../i18n'
 
 export function SortDropdown({ value, onChange, options, sortDir, onSortDirChange }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   
@@ -36,7 +38,7 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
         <button type="button" onMouseDown={() => setOpen(o => !o)}
                 className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 cursor-pointer"
                 style={{ color: 'rgba(255,255,255,0.75)' }}>
-          {selected?.label}
+          {selected ? t(selected.label) : null}
           {isReversed && value !== 'random' && (
             <span className="text-[9px] px-1 py-0 rounded-full"
                   style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6' }}>
@@ -50,7 +52,7 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
             onMouseDown={(e) => { e.stopPropagation(); onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc') }}
             className="px-2 py-1.5 cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.08)]"
             style={{ borderLeft: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)' }}
-            title={`${sortDir === 'asc' ? 'Ascending' : 'Descending'} — click to flip`}>
+            title={`${sortDir === 'asc' ? t('Ascending') : t('Descending')} — ${t('click to flip')}`}>
             <SortIcon size={11} />
           </button>
         )}
@@ -62,7 +64,7 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
             <button key={o.value} type="button" onMouseDown={() => handleSelect(o.value)}
                     className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-between gap-2"
                     style={{ color: value === o.value ? '#CECBF6' : 'rgba(255,255,255,0.75)' }}>
-              <span>{o.label}</span>
+              <span>{t(o.label)}</span>
               {value === o.value && o.value !== 'random' && (
                 <ArrowUpDown size={10} style={{ color: 'rgba(127,119,221,0.6)' }} />
               )}

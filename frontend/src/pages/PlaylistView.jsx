@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Images, Play, X, ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
@@ -41,7 +42,7 @@ function Lightbox({ images, startIdx, onClose }) {
     ? `/api/images/${img.id}/file`
     : (img.thumb_path ? `/thumbs/${img.thumb_path.replace(/\\/g, '/').split('/thumbs/').pop()}` : `/api/images/${img.id}/file`)
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#070707' }}
          onClick={onClose}>
       {/* Top bar */}
@@ -82,7 +83,7 @@ function Lightbox({ images, startIdx, onClose }) {
         )}
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 // ── Image card ────────────────────────────────────────────────────────────────

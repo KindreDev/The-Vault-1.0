@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, ImagePlus, LayoutTemplate, FolderInput, FolderMinus, Trash2, UserCircle, ImageIcon, ChevronRight, MousePointer2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Eye, ImagePlus, LayoutTemplate, FolderInput, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2 } from 'lucide-react'
+import { creatorsApi } from '../lib/api'
+import { useAllCreators } from '../hooks/useAllCreators'
 
 /**
  * Right-click context menu for image / video thumbnails.
@@ -23,11 +26,20 @@ export default function ImageContextMenu({
   image, position, onClose, bulkCount,
   onView, onSetCover, onSendToViewer, onTransfer, onDelete,
   creators, onSetAsAvatar, onSetAsBanner,
-  onSelectMode,
+  onSelectMode, onAssignCreator,
 }) {
   const menuRef = useRef(null)
-  const [avatarOpen, setAvatarOpen] = useState(false)
-  const [bannerOpen, setBannerOpen] = useState(false)
+  const [avatarOpen,  setAvatarOpen]  = useState(false)
+  const [bannerOpen,  setBannerOpen]  = useState(false)
+  const [assignOpen,  setAssignOpen]  = useState(false)
+  const [assignSearch, setAssignSearch] = useState('')
+
+  const { data: allCreators } = useAllCreators()
+
+  const filteredAssign = useMemo(() => {
+    if (!allCreators) return []
+    return allCreators.filter(c => c.name.toLowerCase().includes(assignSearch.toLowerCase()))
+  }, [allCreators, assignSearch])
 
   useEffect(() => {
     const onKey  = (e) => { if (e.key === 'Escape') onClose() }
@@ -46,7 +58,11 @@ export default function ImageContextMenu({
   const creatorRowH = 32
   const expandedRows = (avatarOpen ? creators?.length ?? 0 : 0) + (bannerOpen ? creators?.length ?? 0 : 0)
   const MENU_W = 210
-  const MENU_H = 340 + (hasCreators ? 52 : 0) + expandedRows * creatorRowH
+  const MENU_H = 340
+    + (hasCreators ? 52 : 0)
+    + expandedRows * creatorRowH
+    + (onAssignCreator ? 32 : 0)
+    + (assignOpen ? 200 : 0)
 
   const x = Math.min(position.x, window.innerWidth  - MENU_W - 8)
   const y = Math.min(position.y, window.innerHeight - MENU_H - 8)
@@ -109,6 +125,64 @@ export default function ImageContextMenu({
 
         {/* Move to gallery */}
         <MenuItem icon={FolderInput} label="Move to gallery" onMouseDown={(e) => { e.stopPropagation(); onTransfer?.(); onClose() }} />
+
+        {/* Assign creator to this file (expandable) */}
+        {onAssignCreator && (
+          <>
+            <ExpandRow
+              icon={UserPlus}
+              label={bulkCount > 1 ? `Assign creator (${bulkCount})` : 'Assign creator'}
+              open={assignOpen}
+              onToggle={(e) => {
+                e.stopPropagation()
+                setAssignOpen(v => !v)
+                setAvatarOpen(false)
+                setBannerOpen(false)
+                setAssignSearch('')
+              }}
+            />
+            <AnimatePresence initial={false}>
+              {assignOpen && (
+                <motion.div
+                  key="assign-list"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div style={{ padding: '4px 8px 2px' }}>
+                    <input
+                      autoFocus
+                      value={assignSearch}
+                      onChange={e => setAssignSearch(e.target.value)}
+                      placeholder="Search creators…"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        padding: '5px 8px', borderRadius: 6, fontSize: 11,
+                        background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)',
+                        border: '0.5px solid rgba(255,255,255,0.12)', outline: 'none',
+                      }}
+                      onMouseDown={e => e.stopPropagation()}
+                    />
+                  </div>
+                  <div style={{ maxHeight: 140, overflowY: 'auto' }}>
+                    {filteredAssign.map(c => (
+                      <CreatorRow
+                        key={c.id}
+                        creator={c}
+                        onMouseDown={(e) => { e.stopPropagation(); onAssignCreator(c.id); onClose() }}
+                      />
+                    ))}
+                    {filteredAssign.length === 0 && (
+                      <div style={{ padding: '6px 14px', fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>No creators found</div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
 
         {/* Set as avatar (expandable) — only when gallery has creators and image is not a video */}
         {hasCreators && onSetAsAvatar && (

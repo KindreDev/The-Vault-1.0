@@ -446,4 +446,8 @@ export const useVaultStore = create((set, get) => ({
   setThumbSizeGalleries: (v) => { localStorage.setItem('vault_thumb_galleries', String(v)); set({ thumbSizeGalleries: v }) },
   setThumbSizeImages:    (v) => { localStorage.setItem('vault_thumb_images',    String(v)); set({ thumbSizeImages: v }) },
   setThumbSizeVideos:    (v) => { localStorage.setItem('vault_thumb_videos',    String(v)); set({ thumbSizeVideos: v }) },
+
+  // ── UI language (i18n) — English default, persisted across launches ─────────
+  locale: localStorage.getItem('vault_locale') || 'en',
+  setLocale: (v) => { localStorage.setItem('vault_locale', v); set({ locale: v }) },
 }))

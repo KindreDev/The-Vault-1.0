@@ -50,9 +50,10 @@ class DeviceService {
     this._vibrateFeatures = new Map()
 
     // Funscript
-    this._funscript      = null
-    this._funscriptTimer = null
-    this._videoEl        = null
+    this._funscript       = null
+    this._funscriptTimer  = null          // legacy single-axis timer (kept for safety)
+    this._funscriptTimers = {}            // multi-axis: { axisId: timeoutId }
+    this._videoEl         = null
 
     // The Handy REST API v2
     this._HANDY_BASE     = 'https://www.handyfeeling.com/api/handy/v2'
@@ -484,14 +485,40 @@ class DeviceService {
   _stopFunscriptPlayer() {
     clearTimeout(this._funscriptTimer)
     this._funscriptTimer = null
+    for (const t of Object.values(this._funscriptTimers || {})) clearTimeout(t)
+    this._funscriptTimers = {}
+  }
+
+  // Normalize the loaded funscript into { axisId: actions[] }. Prefers the
+  // backend's `axes` map (multi-axis); falls back to the legacy single-axis
+  // `actions` array as L0 so older / single-axis scripts behave exactly as before.
+  _getFunscriptAxes() {
+    const f = this._funscript
+    if (!f) return {}
+    if (f.axes && typeof f.axes === 'object') {
+      const out = {}
+      for (const [k, v] of Object.entries(f.axes)) {
+        if (Array.isArray(v) && v.length) out[k] = v
+      }
+      if (Object.keys(out).length) return out
+    }
+    if (Array.isArray(f.actions) && f.actions.length) return { L0: f.actions }
+    return {}
   }
 
   _scheduleFunscriptActions() {
     if (store().mode !== 'funscript' || !this._funscript || !this._videoEl) return
-    const actions = this._funscript.actions
-    const nowMs   = this._videoEl.currentTime * 1000
+    const axes    = this._getFunscriptAxes()
+    const enabled = store().funscriptAxes || {}   // { axisId: false } disables an axis; default = on
+    for (const [axisId, actions] of Object.entries(axes)) {
+      if (enabled[axisId] === false) continue
+      this._scheduleAxis(axisId, actions)
+    }
+  }
 
-    let nextIdx = actions.findIndex(a => a.at > nowMs)
+  _scheduleAxis(axisId, actions) {
+    const nowMs   = this._videoEl.currentTime * 1000
+    const nextIdx = actions.findIndex(a => a.at > nowMs)
     if (nextIdx < 0) return
 
     const scheduleNext = (idx) => {
@@ -499,10 +526,10 @@ class DeviceService {
       const curr = actions[idx]
       const next = actions[idx + 1]
       const dur  = next.at - curr.at
-      // Pass raw pos (0-100); _sendLinear applies stroke limiter universally
-      this._sendLinear(next.pos, dur)
+      // Pass raw pos (0-100); _sendAxisSerial applies the stroke limiter to L0 only.
+      this._sendAxis(axisId, next.pos, dur)
       const delay = curr.at - (this._videoEl.currentTime * 1000)
-      this._funscriptTimer = setTimeout(() => scheduleNext(idx + 1), Math.max(0, delay + dur))
+      this._funscriptTimers[axisId] = setTimeout(() => scheduleNext(idx + 1), Math.max(0, delay + dur))
     }
     scheduleNext(nextIdx)
   }
@@ -607,7 +634,15 @@ class DeviceService {
     const velocity = clamp(Math.round(distMm / durSec), 10, 400)
     this._handyCurrentPos = limited
     this._handyRequest('PUT', '/hdsp/nextXAVa', { xa: newPos, va: velocity, stopOnTarget: true })
-      .catch(() => {})
+      .then(() => {
+        if (store().errorMsg) useDeviceStore.setState({ errorMsg: null })
+      })
+      .catch(err => {
+        const msg = `Handy stroke failed: ${err.message}`
+        console.error(msg, err)
+        // Surface the error without tearing down the connection (status stays 'connected')
+        if (store().errorMsg !== msg) useDeviceStore.setState({ errorMsg: msg })
+      })
   }
 
   // ── Direct serial — FUNSR1 2.0 (T-code, Web Serial API) ────────────────────
@@ -637,7 +672,7 @@ class DeviceService {
       useDeviceStore.setState({
         status:         'connected',
         serialPortInfo: portStr,
-        devices: [{ name: 'FUNSR1 2.0 (Serial)', index: 0, canLinear: true, canVibrate: false, outputTypes: ['T-Code L0'] }],
+        devices: [{ name: 'FUNSR1 2.0 (Serial)', index: 0, canLinear: true, canVibrate: false, canMultiAxis: true, outputTypes: ['T-Code L0/L1/L2/R0/R1/R2'] }],
       })
     } catch (err) {
       useDeviceStore.setState({
@@ -665,12 +700,36 @@ class DeviceService {
   }
 
   _sendLinearSerial(posPercent, durationMs) {
+    // The stroke axis (L0) is what patterns/cum/test drive. Delegate to the
+    // generic per-axis sender so all T-Code formatting lives in one place.
+    this._sendAxisSerial('L0', posPercent, durationMs)
+  }
+
+  // ── Multi-axis output ───────────────────────────────────────────────────────
+  // axisId is a T-Code channel: L0 stroke, L1 surge, L2 sway, R0 twist,
+  // R1 roll, R2 pitch. Only the serial (T-Code) provider has physical multi-axis
+  // hardware — Handy and Intiface devices are single-axis, so non-L0 axes are
+  // simply dropped for them rather than faked.
+  _sendAxis(axisId, posPercent, durationMs) {
+    const { provider } = store()
+    if (provider === 'serial') { this._sendAxisSerial(axisId, posPercent, durationMs); return }
+    // Handy / Intiface: only the stroke axis maps to real hardware
+    if (axisId === 'L0') this._sendLinear(posPercent, durationMs)
+  }
+
+  _sendAxisSerial(axisId, posPercent, durationMs) {
     if (!this._serialWriter) return
-    const { strokeFloor, strokeCeiling } = store()
-    const limited = strokeFloor + (strokeCeiling - strokeFloor) * (posPercent / 100)
-    const pos = Math.round(clamp(limited / 100, 0, 1) * 9999)
+    let p = posPercent
+    // The stroke limiter is a stroke-window constraint — it must apply ONLY to
+    // L0. Clamping rotation/secondary axes to the stroke floor/ceiling would
+    // distort the authored choreography, so those pass through unmodified.
+    if (axisId === 'L0') {
+      const { strokeFloor, strokeCeiling } = store()
+      p = strokeFloor + (strokeCeiling - strokeFloor) * (posPercent / 100)
+    }
+    const pos = Math.round(clamp(p / 100, 0, 1) * 9999)
     const dur = Math.max(50, Math.round(durationMs))
-    const cmd = `L0${String(pos).padStart(4, '0')}I${dur}\n`
+    const cmd = `${axisId}${String(pos).padStart(4, '0')}I${dur}\n`
     const encoded = new TextEncoder().encode(cmd)
     this._serialWriter.write(encoded).catch(() => {})
   }

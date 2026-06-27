@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X,
 import { QRCodeCanvas } from 'qrcode.react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
+import { useT, LANGUAGES } from '../i18n'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
 
@@ -146,6 +147,7 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
   const [center,        setCenter]        = React.useState([0, 20])
   const [failedAvatars, setFailedAvatars] = React.useState(() => new Set())
   const accent = useVaultStore(s => s.accent)
+  const t = useT()
 
   const accentRgb = React.useMemo(() => {
     const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
@@ -167,10 +169,10 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
 
   const fillColor = count => {
     if (!count) return 'rgba(255,255,255,0.1)'
-    const t = Math.min(1, count / maxCount)
-    if (t < 0.25) return `rgba(${accentRgb},0.3)`
-    if (t < 0.5)  return `rgba(${accentRgb},0.5)`
-    if (t < 0.75) return `rgba(${accentRgb},0.7)`
+    const ct = Math.min(1, count / maxCount)
+    if (ct < 0.25) return `rgba(${accentRgb},0.3)`
+    if (ct < 0.5)  return `rgba(${accentRgb},0.5)`
+    if (ct < 0.75) return `rgba(${accentRgb},0.7)`
     return accent
   }
 
@@ -313,12 +315,12 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
         <div className="absolute top-2 left-2 px-3 py-2 rounded-[8px] pointer-events-none"
              style={{ background: 'rgba(22,22,22,0.95)', border: `0.5px solid rgba(${accentRgb},0.4)`, zIndex: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 3 }}>{tooltip.name}</div>
-          <div style={{ fontSize: 14, color: accent }}>{tooltip.count} creator{tooltip.count !== 1 ? 's' : ''}</div>
+          <div style={{ fontSize: 14, color: accent }}>{tooltip.count} {t('creator')}{tooltip.count !== 1 ? 's' : ''}</div>
           {tooltip.creators?.slice(0, 4).map(c => (
             <div key={c.id} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{c.name}</div>
           ))}
           {(tooltip.creators?.length ?? 0) > 4 && (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>+{tooltip.creators.length - 4} more</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>+{tooltip.creators.length - 4} {t('more')}</div>
           )}
         </div>
       )}
@@ -344,6 +346,7 @@ function WorldMap({ byCountry, compact = false, onCountryClick }) {
 function WorldMapModal({ byCountry, onClose }) {
   const [selected, setSelected] = React.useState(null)
   const accent = useVaultStore(s => s.accent)
+  const t = useT()
   const accentRgb = React.useMemo(() => {
     const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
     return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '127,119,221'
@@ -358,9 +361,9 @@ function WorldMapModal({ byCountry, onClose }) {
         <div className="flex items-center justify-between px-5 py-4 flex-shrink-0"
              style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center gap-2 text-[17px] font-medium" style={{ color: 'rgba(255,255,255,0.85)' }}>
-            <Globe size={16} style={{ color: accent }} /> Creator World Map
+            <Globe size={16} style={{ color: accent }} /> {t('Creator World Map')}
             <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
-              · {(byCountry || []).reduce((s, c) => s + c.count, 0)} creators across {(byCountry || []).length} countries
+              · {(byCountry || []).reduce((s, c) => s + c.count, 0)} {t('creators across')} {(byCountry || []).length} {t('countries')}
             </span>
           </div>
           <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}><X size={16} /></button>
@@ -377,7 +380,7 @@ function WorldMapModal({ byCountry, onClose }) {
                 <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{selected.name}</div>
                 <button onClick={() => setSelected(null)} style={{ color: 'rgba(255,255,255,0.3)', cursor: 'pointer' }}><X size={12} /></button>
               </div>
-              <div style={{ fontSize: 14, color: accent, marginBottom: 8 }}>{selected.count} creator{selected.count !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 14, color: accent, marginBottom: 8 }}>{selected.count} {t('creator')}{selected.count !== 1 ? 's' : ''}</div>
               {(selected.creators || []).map(c => (
                 <div key={c.id} style={{ fontSize: 15, color: 'rgba(255,255,255,0.65)', padding: '4px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
                   {c.name}
@@ -398,6 +401,7 @@ const TYPE_STYLES = {
 }
 
 function QuestCard({ quest }) {
+  const t       = useT()
   const done    = quest.status === 'completed'
   const expired = quest.status === 'expired'
   const ts      = TYPE_STYLES[quest.quest_type] || TYPE_STYLES.daily
@@ -431,7 +435,7 @@ function QuestCard({ quest }) {
           )}
         </div>
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-          <div className="text-[11px] font-medium" style={{ color: ts.color }}>+{quest.xp_reward} XP</div>
+          <div className="text-[11px] font-medium" style={{ color: ts.color }}>+{quest.xp_reward} {t('XP')}</div>
           {quest.credit_reward > 0 && (
             <div className="text-[10px] font-medium" style={{ color: '#FAC775' }}>+{quest.credit_reward} 💰</div>
           )}
@@ -442,6 +446,7 @@ function QuestCard({ quest }) {
 }
 
 function AchievementCard({ ach }) {
+  const t = useT()
   return (
     <div className="vault-card p-3 flex items-center gap-3" style={{ opacity: ach.unlocked ? 1 : 0.45 }}>
       <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
@@ -457,7 +462,7 @@ function AchievementCard({ ach }) {
       </div>
       <div className="flex flex-col items-end gap-0.5">
         <div className="text-[11px] font-medium" style={{ color: ach.unlocked ? '#7F77DD' : 'rgba(255,255,255,0.2)' }}>
-          +{ach.xp_reward} XP
+          +{ach.xp_reward} {t('XP')}
         </div>
         {ach.credit_reward > 0 && (
           <div className="text-[10px] font-medium" style={{ color: ach.unlocked ? '#FAC775' : 'rgba(255,255,255,0.15)' }}>
@@ -470,6 +475,7 @@ function AchievementCard({ ach }) {
 }
 
 function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progressPct, done, total, packLabel, packNote, claimable, onClaim, claiming }) {
+  const t = useT()
   // State: claimable = reward ready to collect | all done & not claimable = already claimed | else in progress
   const alreadyClaimed = done === total && total > 0 && !claimable
   const inProgress     = done < total || total === 0
@@ -485,16 +491,16 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
     >
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] font-medium" style={{ color: textColor }}>{label}</span>
+        <span className="text-[12px] font-medium" style={{ color: textColor }}>{t(label)}</span>
         {claimable ? (
           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium animate-pulse"
                 style={{ background: 'rgba(250,199,117,0.2)', color: '#FAC775' }}>
-            🎁 Ready!
+            🎁 {t('Ready!')}
           </span>
         ) : alreadyClaimed ? (
           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
                 style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB' }}>
-            ✓ Claimed
+            ✓ {t('Claimed')}
           </span>
         ) : (
           <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{done}/{total}</span>
@@ -511,11 +517,11 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
       <div className="flex items-center gap-1.5">
         <span style={{ fontSize: 14 }}>🎴</span>
         <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          {inProgress ? 'Complete all for' : claimable ? 'All done! Collect your' : 'Reward collected:'}
+          {inProgress ? t('Complete all for') : claimable ? t('All done! Collect your') : t('Reward collected:')}
         </span>
-        <span className="text-[11px] font-semibold" style={{ color: textColor }}>{packLabel}</span>
+        <span className="text-[11px] font-semibold" style={{ color: textColor }}>{t(packLabel)}</span>
       </div>
-      <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{packNote}</div>
+      <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{t(packNote)}</div>
 
       {/* Claim button — only shown when reward is ready */}
       {claimable && (
@@ -530,7 +536,7 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
             boxShadow: `0 0 12px ${accentColor}88`,
           }}
         >
-          {claiming ? 'Claiming…' : '🎁 Claim Packs'}
+          {claiming ? t('Claiming…') : `🎁 ${t('Claim Packs')}`}
         </button>
       )}
     </div>
@@ -538,6 +544,7 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
 }
 
 export function Quests() {
+  const t = useT()
   const qc = useQueryClient()
   const { data: quests }       = useQuery({ queryKey: ['quests'],       queryFn: () => gamiApi.quests().then(r => r.data) })
   const { data: achievements } = useQuery({ queryKey: ['achievements'], queryFn: () => gamiApi.achievements().then(r => r.data) })
@@ -547,9 +554,9 @@ export function Quests() {
     mutationFn: (type) => gamiApi.claimCompletionBonus(type),
     onSuccess: (_, type) => {
       qc.invalidateQueries({ queryKey: ['profile'] })
-      toast.success(type === 'daily' ? '🎴 Claimed 5 Booster Packs!' : '🎴 Claimed 5 Premium Packs!')
+      toast.success(type === 'daily' ? `🎴 ${t('Claimed 5 Booster Packs!')}` : `🎴 ${t('Claimed 5 Premium Packs!')}`)
     },
-    onError: () => toast.error('Could not claim reward'),
+    onError: () => toast.error(t('Could not claim reward')),
   })
 
   const daily  = quests?.filter(q => q.quest_type === 'daily')  ?? []
@@ -566,7 +573,7 @@ export function Quests() {
 
   return (
     <div className="p-5 flex flex-col gap-6" style={{ zoom: 1.2 }}>
-      <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">Quest board</div>
+      <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">{t('Quest board')}</div>
 
       {/* ── Row 1: Daily · Weekly · Rewards ─────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-5 items-start">
@@ -575,8 +582,8 @@ export function Quests() {
         <div className="vault-card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="text-[13px] font-semibold" style={{ color: '#7F77DD' }}>Daily</div>
-              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">resets midnight</div>
+              <div className="text-[13px] font-semibold" style={{ color: '#7F77DD' }}>{t('Daily')}</div>
+              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets midnight')}</div>
             </div>
             <div className="text-[11px] font-medium" style={{ color: dailyDone === daily.length && daily.length > 0 ? '#9FE1CB' : 'rgba(255,255,255,0.3)' }}>
               {dailyDone}/{daily.length}
@@ -591,8 +598,8 @@ export function Quests() {
         <div className="vault-card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="text-[13px] font-semibold" style={{ color: '#BA7517' }}>Weekly</div>
-              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">resets Monday</div>
+              <div className="text-[13px] font-semibold" style={{ color: '#BA7517' }}>{t('Weekly')}</div>
+              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets Monday')}</div>
             </div>
             <div className="text-[11px] font-medium" style={{ color: weeklyDone === weekly.length && weekly.length > 0 ? '#9FE1CB' : 'rgba(255,255,255,0.3)' }}>
               {weeklyDone}/{weekly.length}
@@ -605,7 +612,7 @@ export function Quests() {
 
         {/* Rewards */}
         <div className="vault-card p-4 flex flex-col gap-4">
-          <div className="text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>🎁 Completion Rewards</div>
+          <div className="text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>🎁 {t('Completion Rewards')}</div>
 
           {/* Daily bonus */}
           <CompletionRewardPanel
@@ -641,7 +648,7 @@ export function Quests() {
 
           {/* Bonus notes */}
           <div className="rounded-[10px] p-3 flex flex-col gap-2" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-            <div className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.45)' }}>Also earning XP from each quest</div>
+            <div className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.45)' }}>{t('Also earning XP from each quest')}</div>
             <div className="flex flex-col gap-1">
               {[
                 { label: 'Daily quest', xp: '+25–100 XP', color: '#7F77DD' },
@@ -649,8 +656,8 @@ export function Quests() {
                 { label: 'Challenge', xp: '+100–500 XP', color: '#D4537E' },
               ].map(r => (
                 <div key={r.label} className="flex items-center justify-between">
-                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{r.label}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: r.color }}>{r.xp}</span>
+                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(r.label)}</span>
+                  <span className="text-[10px] font-semibold" style={{ color: r.color }}>{t(r.xp)}</span>
                 </div>
               ))}
             </div>
@@ -661,10 +668,10 @@ export function Quests() {
       {/* ── Row 2: Challenges ────────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <div className="text-[13px] font-semibold" style={{ color: '#D4537E' }}>⚔ Challenges</div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.25)]">permanent · no expiry</div>
+          <div className="text-[13px] font-semibold" style={{ color: '#D4537E' }}>⚔ {t('Challenges')}</div>
+          <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('permanent · no expiry')}</div>
           <div className="text-[11px] ml-auto" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            {boss.filter(q => q.status === 'completed').length}/{boss.length} completed
+            {boss.filter(q => q.status === 'completed').length}/{boss.length} {t('completed')}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -674,7 +681,7 @@ export function Quests() {
 
       {/* ── Achievements ─────────────────────────────────────────────────────── */}
       <div>
-        <div className="text-[13px] font-medium text-[rgba(255,255,255,0.7)] mb-3">Achievements</div>
+        <div className="text-[13px] font-medium text-[rgba(255,255,255,0.7)] mb-3">{t('Achievements')}</div>
         <div className="grid grid-cols-2 gap-2">
           {(achievements ?? []).map(a => <AchievementCard key={a.id} ach={a} />)}
         </div>
@@ -731,6 +738,7 @@ function getLevelColor(lvl) {
 
 // ── Sessions history modal ────────────────────────────────────────────────────
 function SessionsModal({ onClose }) {
+  const t = useT()
   const { data: allSessions } = useQuery({
     queryKey: ['all-sessions'],
     queryFn: () => sessionsApi.list({ limit: 500 }).then(r => r.data),
@@ -745,8 +753,8 @@ function SessionsModal({ onClose }) {
     const result = []
     let cur = null
     for (const s of allSessions) {
-      const t = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
-      if (!cur || Math.abs(t - cur.refTime) > 5000) {
+      const tm = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
+      if (!cur || Math.abs(tm - cur.refTime) > 5000) {
         cur = { refTime: t, logged_at: s.logged_at, creators: s.creator_name ? [s.creator_name] : [], gallery_name: s.gallery_name, duration_sec: s.duration_sec }
         result.push(cur)
       } else {
@@ -764,37 +772,37 @@ function SessionsModal({ onClose }) {
   const toggle = (i) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
   const relTime = (ts) => {
-    const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
-    const d = Math.floor((Date.now() - t.getTime()) / 86400000)
-    if (d === 0) return 'Today'
-    if (d === 1) return 'Yesterday'
-    if (d < 7) return t.toLocaleDateString('en-US', { weekday: 'long' })
+    const tm = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+    const d = Math.floor((Date.now() - tm.getTime()) / 86400000)
+    if (d === 0) return t('Today')
+    if (d === 1) return t('Yesterday')
+    if (d < 7) return tm.toLocaleDateString('en-US', { weekday: 'long' })
     if (d < 30) return `${d} days ago`
-    return t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return tm.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
   const fullDate = (ts) => {
-    const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
-    return t.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
-      ' at ' + t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    const tm = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+    return tm.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+      ` ${t('at')} ` + tm.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   }
 
   const fmtDur = (sec) => {
     if (!sec) return null
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60)
     if (h > 0) return `${h}h ${m}m`
-    return m > 0 ? `${m} minute${m !== 1 ? 's' : ''}` : 'less than a minute'
+    return m > 0 ? `${m} minute${m !== 1 ? 's' : ''}` : t('less than a minute')
   }
 
   const creatorSentence = (creators, idx) => {
-    if (creators.length === 0) return <span style={{ color: 'rgba(255,255,255,0.4)' }}>an unknown session</span>
+    if (creators.length === 0) return <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('an unknown session')}</span>
     const wrap = (name) => <span style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>{name}</span>
     if (creators.length === 1) return wrap(creators[0])
-    if (creators.length === 2) return <>{wrap(creators[0])} and {wrap(creators[1])}</>
-    if (creators.length === 3) return <>{wrap(creators[0])}, {wrap(creators[1])} and {wrap(creators[2])}</>
+    if (creators.length === 2) return <>{wrap(creators[0])} {t('and')} {wrap(creators[1])}</>
+    if (creators.length === 3) return <>{wrap(creators[0])}, {wrap(creators[1])} {t('and')} {wrap(creators[2])}</>
     const extra = creators.slice(2)
     return (
-      <>{wrap(creators[0])}, {wrap(creators[1])} and{' '}
+      <>{wrap(creators[0])}, {wrap(creators[1])} {t('and')}{' '}
         <span style={{ position: 'relative', display: 'inline-block' }}>
           <span
             style={{
@@ -804,7 +812,7 @@ function SessionsModal({ onClose }) {
             }}
             onMouseEnter={() => setHoveredMore(idx)}
             onMouseLeave={() => setHoveredMore(null)}
-          >{extra.length} more</span>
+          >{extra.length} {t('more')}</span>
           <div style={{
             position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
             transform: `translateX(-50%) scale(${hoveredMore === idx ? 1 : 0.95})`,
@@ -845,7 +853,7 @@ function SessionsModal({ onClose }) {
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>Session History</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{t('Session History')}</div>
           <button
             onClick={onClose}
             style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s, background 0.15s' }}
@@ -857,15 +865,15 @@ function SessionsModal({ onClose }) {
         {/* Scrollable list */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {!allSessions
-            ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>Loading…</div>
+            ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>{t('Loading…')}</div>
             : groups.length === 0
-              ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>No sessions logged yet.</div>
+              ? <div style={{ padding: 24, color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>{t('No sessions logged yet.')}</div>
               : groups.map((g, i) => {
                   const isOpen    = expanded.has(i)
                   const isHovered = hoveredRow === i
                   const label = g.creators.length > 0
                     ? g.creators.slice(0, 3).join(', ') + (g.creators.length > 3 ? ` +${g.creators.length - 3}` : '')
-                    : (g.gallery_name || 'Unknown')
+                    : (g.gallery_name || t('Unknown'))
                   const dur = fmtDur(g.duration_sec)
                   return (
                     <div key={i} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
@@ -897,9 +905,9 @@ function SessionsModal({ onClose }) {
                         transition: 'max-height 0.25s ease, opacity 0.2s ease',
                       }}>
                         <div style={{ padding: '2px 24px 14px 52px', fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>
-                          You gooned to {creatorSentence(g.creators, i)} on{' '}
+                          {t('You gooned to')} {creatorSentence(g.creators, i)} {t('on')}{' '}
                           <span style={{ color: 'rgba(255,255,255,0.6)' }}>{fullDate(g.logged_at)}</span>
-                          {dur && <>{' '}for <span style={{ color: '#D4537E' }}>{dur}</span></>}.
+                          {dur && <>{' '}{t('for')} <span style={{ color: '#D4537E' }}>{dur}</span></>}.
                         </div>
                       </div>
                     </div>
@@ -921,6 +929,7 @@ export function Stats() {
   const sessionTotalMs = useVaultStore(s => s.sessionTotalMs)
   const profile        = useVaultStore(s => s.profile)
   const accent         = useVaultStore(s => s.accent)
+  const t = useT()
   const accentRgb      = React.useMemo(() => {
     const m = accent?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
     return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '127,119,221'
@@ -970,7 +979,7 @@ export function Stats() {
     mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
     onSuccess: (data) => {
       addXpToast(`+${data.xp_earned} XP`)
-      toast.success('Session logged ❤️')
+      toast.success(t('Session logged ❤️'))
       qc.invalidateQueries({ queryKey: ['ses-stats'] })
     },
   })
@@ -978,7 +987,7 @@ export function Stats() {
   const handleSession = () => {
     if (!sessionActive) {
       startSession()
-      toast('Session started 🔥', { icon: '🎯' })
+      toast(t('Session started 🔥'), { icon: '🎯' })
     } else {
       const elapsed = endSession()
       logMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
@@ -1079,13 +1088,13 @@ export function Stats() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="text-[21px] font-medium text-[rgba(255,255,255,0.9)]">Stats</div>
+        <div className="text-[21px] font-medium text-[rgba(255,255,255,0.9)]">{t('Stats')}</div>
         <button onClick={handleSession}
                 className="flex items-center gap-1.5 font-medium px-5 py-2.5 rounded-full cursor-pointer transition-all"
                 style={{ fontSize: 17, ...(sessionActive
                   ? { background: 'rgba(212,83,126,0.35)', color: '#FFD4E2', border: '1px solid rgba(212,83,126,0.7)', boxShadow: '0 0 12px rgba(212,83,126,0.4)' }
                   : { background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }) }}>
-          ❤️ {sessionActive ? 'End session' : 'Start session'}
+          ❤️ {sessionActive ? t('End session') : t('Start session')}
         </button>
       </div>
 
@@ -1099,35 +1108,35 @@ export function Stats() {
             <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: 320, background: `radial-gradient(circle, rgba(${accentRgb},0.12) 0%, transparent 65%)`, transform: 'translate(25%, -25%)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: 0, left: '30%', width: 200, height: 200, background: 'radial-gradient(circle, rgba(212,83,126,0.08) 0%, transparent 65%)', pointerEvents: 'none' }} />
 
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Your vault · all time</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>{t('Your vault · all time')}</div>
             <div style={{ fontSize: 58, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>
               {totalCount.toLocaleString()}
             </div>
             <div style={{ fontSize: 22, fontWeight: 500, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>
-              {totalCount === 1 ? 'session logged' : 'sessions logged'}
+              {totalCount === 1 ? t('session logged') : t('sessions logged')}
             </div>
             <div style={{ display: 'flex', gap: 28, marginTop: 18, flexWrap: 'wrap' }}>
               {stats?.total_duration_sec > 0 && (
                 <div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Session time</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Session time')}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#D4537E' }}>{fmtDuration(stats.total_duration_sec)}</div>
                 </div>
               )}
               {totalViewFmt && (
                 <div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Time spent viewing</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Time spent viewing')}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: accent }}>{totalViewFmt}</div>
                 </div>
               )}
               {stats?.total_cum_count > 0 && (
                 <div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>All-time count</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('All-time count')}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#F47AA0' }}>{stats.total_cum_count.toLocaleString()} 💦</div>
                 </div>
               )}
               {stats?.top_creator_name && (
                 <div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Goon Queen</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Goon Queen')}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: accent }}>{stats.top_creator_name}</div>
                 </div>
               )}
@@ -1138,10 +1147,10 @@ export function Stats() {
               const groups = []
               let cur = null
               for (const s of recentSessions) {
-                const t = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
-                if (!cur || Math.abs(t - cur.refTime) > 5000) {
+                const tm = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
+                if (!cur || Math.abs(tm - cur.refTime) > 5000) {
                   cur = {
-                    refTime: t, logged_at: s.logged_at,
+                    refTime: tm, logged_at: s.logged_at,
                     creators: s.creator_name ? [s.creator_name] : [],
                     gallery_name: s.gallery_name,
                     duration_sec: s.duration_sec,
@@ -1155,18 +1164,18 @@ export function Stats() {
                 }
               }
               const relTime = (ts) => {
-                const t = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
-                const d = Math.floor((Date.now() - t.getTime()) / 86400000)
-                if (d === 0) return 'Today'
-                if (d === 1) return 'Yesterday'
-                if (d < 7) return t.toLocaleDateString('en-US', { weekday: 'short' })
+                const dt = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
+                const d = Math.floor((Date.now() - dt.getTime()) / 86400000)
+                if (d === 0) return t('Today')
+                if (d === 1) return t('Yesterday')
+                if (d < 7) return dt.toLocaleDateString('en-US', { weekday: 'short' })
                 if (d < 30) return `${d}d ago`
-                return t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
               }
               const visible = groups.slice(0, 6)
               return (
                 <div style={{ marginTop: 22, borderTop: '0.5px solid rgba(255,255,255,0.07)', paddingTop: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Recent sessions</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>{t('Recent sessions')}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {visible.map((g, i) => (
                       <div key={i} style={{
@@ -1177,7 +1186,7 @@ export function Stats() {
                         <span style={{ fontSize: 14, flexShrink: 0, opacity: 0.5 }}>💧</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {g.creators.length > 0 ? g.creators.join(' · ') : (g.gallery_name || 'Unknown')}
+                            {g.creators.length > 0 ? g.creators.join(' · ') : (g.gallery_name || t('Unknown'))}
                           </div>
                           {g.gallery_name && g.creators.length > 0 && (
                             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1200,7 +1209,7 @@ export function Stats() {
                       onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
                       onMouseLeave={e => { e.currentTarget.style.opacity = '0.7' }}
                     >
-                      See more →
+                      {t('See more →')}
                     </button>
                   )}
                 </div>
@@ -1215,18 +1224,18 @@ export function Stats() {
              onClick={() => setShowMapModal(true)}>
           <div className="flex items-center justify-between px-4 pt-3 flex-shrink-0">
             <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-              <Globe size={14} style={{ color: accent }} /> Creator Origins
+              <Globe size={14} style={{ color: accent }} /> {t('Creator Origins')}
             </div>
             {(byCountry || []).length > 0 && (
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>
-                {(byCountry || []).length} countries · click to explore
+                {(byCountry || []).length} {t('countries · click to explore')}
               </span>
             )}
           </div>
           <div className="flex-1" style={{ minHeight: 170 }}>
             {(byCountry || []).length === 0 ? (
               <div className="flex items-center justify-center h-full" style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)' }}>
-                No country data yet — add it to creator profiles
+                {t('No country data yet — add it to creator profiles')}
               </div>
             ) : (
               <WorldMap byCountry={byCountry} compact={true} />
@@ -1256,7 +1265,7 @@ export function Stats() {
         ].map(s => (
           <div key={s.label} className="rounded-[10px] p-4" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div style={{ fontSize: 24, fontWeight: 600, color: s.color || 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.value}</div>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{t(s.label)}</div>
           </div>
         ))}
       </div>
@@ -1266,12 +1275,12 @@ export function Stats() {
         <div className="vault-card p-5 flex items-center gap-5">
           <div style={{ fontSize: 44, lineHeight: 1, flexShrink: 0 }}>{personality.emoji}</div>
           <div className="flex-1 min-w-0">
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 5 }}>Your gooning style</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: personality.color, marginBottom: 4 }}>{personality.label}</div>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{personality.desc}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 5 }}>{t('Your gooning style')}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: personality.color, marginBottom: 4 }}>{t(personality.label)}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{t(personality.desc)}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Peak hour</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{t('Peak hour')}</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: personality.color }}>{fmtHour(stats?.peak_hour)}</div>
           </div>
         </div>
@@ -1281,7 +1290,7 @@ export function Stats() {
       <div className="flex gap-4 flex-wrap">
         {byDay.length > 0 && (
           <div className="vault-card p-5 flex-1" style={{ minWidth: 300 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Sessions · last 7 days</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Sessions · last 7 days')}</div>
             <div className="flex items-end gap-3" style={{ height: 160 }}>
               {byDay.map(d => {
                 const pct = d.count / maxDay
@@ -1300,7 +1309,7 @@ export function Stats() {
 
         {byHour.some(h => h.count > 0) && (
           <div className="vault-card p-5 flex-1" style={{ minWidth: 300 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Activity by hour</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Activity by hour')}</div>
             <div className="flex items-end gap-px" style={{ height: 160 }}>
               {byHour.map(d => {
                 const pct = d.count / maxHour
@@ -1319,8 +1328,8 @@ export function Stats() {
               })}
             </div>
             <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-              <span style={{ fontSize: 16, color: 'rgba(186,117,23,0.8)' }}>■ AM</span>
-              <span style={{ fontSize: 16, color: 'rgba(127,119,221,0.8)' }}>■ PM</span>
+              <span style={{ fontSize: 16, color: 'rgba(186,117,23,0.8)' }}>{t('■ AM')}</span>
+              <span style={{ fontSize: 16, color: 'rgba(127,119,221,0.8)' }}>{t('■ PM')}</span>
             </div>
           </div>
         )}
@@ -1329,7 +1338,7 @@ export function Stats() {
       {/* Top creators by time spent */}
       {topByTime.length > 0 && (
         <div className="vault-card p-5">
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Top creators · time spent</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · time spent')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {topByTime.map((c, i) => (
               <CreatorBar key={c.name} rank={i + 1} name={c.name}
@@ -1344,7 +1353,7 @@ export function Stats() {
       {/* Top creators by sessions */}
       {topBySessions.length > 0 && (
         <div className="vault-card p-5">
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Top creators · session count</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · session count')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {topBySessions.map((c, i) => (
               <CreatorBar key={c.name} rank={i + 1} name={c.name}
@@ -1362,7 +1371,7 @@ export function Stats() {
 
           {/* XP bar chart — flex-col so bars fill the full card height */}
           <div className="vault-card p-5 flex flex-col" style={{ width: '42%', flexShrink: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em', flexShrink: 0 }}>XP earned · last 7 days</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em', flexShrink: 0 }}>{t('XP earned · last 7 days')}</div>
             {(() => {
               const xpDays = stats.xp_by_day
               const maxXp  = Math.max(1, ...xpDays.map(d => d.xp))
@@ -1397,7 +1406,7 @@ export function Stats() {
 
             {/* Level Progress */}
             <div className="vault-card p-4 flex flex-col">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Level</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Level')}</div>
               <div className="flex items-center gap-3 flex-1">
                 <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, color: lvlColor, letterSpacing: '-0.04em', textShadow: `0 0 28px ${lvlColor}44`, flexShrink: 0 }}>{lvl}</div>
                 <div className="flex flex-col gap-1.5 flex-1 min-w-0">
@@ -1406,7 +1415,7 @@ export function Stats() {
                     <div style={{ height: '100%', borderRadius: 99, width: `${lvlPct}%`, background: `linear-gradient(to right, ${lvlColor}88, ${lvlColor})`, transition: 'width 0.6s ease' }} />
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>
-                    {lvl < 100 ? <><span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{xpToNext.toLocaleString()} XP</span> to next</> : '✓ MAX LEVEL'}
+                    {lvl < 100 ? <><span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{xpToNext.toLocaleString()} XP</span> {t('to next')}</> : t('✓ MAX LEVEL')}
                   </div>
                 </div>
               </div>
@@ -1424,43 +1433,43 @@ export function Stats() {
                 { key: 'actress',   label: 'Actress',   color: '#378ADD' },
                 { key: 'custom',    label: 'Model/Other', color: '#888780' },
               ]
-              const entries = TYPE_META.filter(t => (byType[t.key] || 0) > 0)
-              const unassigned = totalPhotos - entries.reduce((s, t) => s + (byType[t.key] || 0), 0)
+              const entries = TYPE_META.filter(ct => (byType[ct.key] || 0) > 0)
+              const unassigned = totalPhotos - entries.reduce((s, ct) => s + (byType[ct.key] || 0), 0)
               return (
                 <div className="vault-card p-4 flex flex-col gap-3">
-                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Photo library</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Photo library')}</div>
                   <div className="flex items-baseline gap-2">
                     <span style={{ fontSize: 40, fontWeight: 900, lineHeight: 1, color: '#7F77DD', letterSpacing: '-0.03em' }}>{totalPhotos.toLocaleString()}</span>
-                    <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>photos</span>
-                    {(vaultStats?.total_videos ?? 0) > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>· {vaultStats.total_videos.toLocaleString()} videos</span>}
+                    <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('photos')}</span>
+                    {(vaultStats?.total_videos ?? 0) > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>· {vaultStats.total_videos.toLocaleString()} {t('videos')}</span>}
                   </div>
                   {entries.length > 0 && (
                     <>
                       {/* Stacked bar */}
                       <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', display: 'flex' }}>
-                        {entries.map(t => (
-                          <div key={t.key} title={`${t.label}: ${byType[t.key]}`}
-                               style={{ width: `${((byType[t.key] || 0) / Math.max(1, totalPhotos)) * 100}%`, background: t.color }} />
+                        {entries.map(ct => (
+                          <div key={ct.key} title={`${t(ct.label)}: ${byType[ct.key]}`}
+                               style={{ width: `${((byType[ct.key] || 0) / Math.max(1, totalPhotos)) * 100}%`, background: ct.color }} />
                         ))}
                         {unassigned > 0 && (
-                          <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)' }} title={`Unassigned: ${unassigned}`} />
+                          <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)' }} title={`${t('Unassigned')}: ${unassigned}`} />
                         )}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {entries.map(t => (
-                          <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: 2, background: t.color, flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t.label}</span>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: t.color }}>{(byType[t.key] || 0).toLocaleString()}</span>
+                        {entries.map(ct => (
+                          <div key={ct.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: 2, background: ct.color, flexShrink: 0 }} />
+                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t(ct.label)}</span>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: ct.color }}>{(byType[ct.key] || 0).toLocaleString()}</span>
                             <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>
-                              {Math.round(((byType[t.key] || 0) / Math.max(1, totalPhotos)) * 100)}%
+                              {Math.round(((byType[ct.key] || 0) / Math.max(1, totalPhotos)) * 100)}%
                             </span>
                           </div>
                         ))}
                         {unassigned > 0 && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)', flex: 1 }}>Unassigned</span>
+                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)', flex: 1 }}>{t('Unassigned')}</span>
                             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.3)' }}>{unassigned.toLocaleString()}</span>
                           </div>
                         )}
@@ -1483,23 +1492,23 @@ export function Stats() {
                 { key: 'actress',   label: 'Actress',   color: '#378ADD' },
                 { key: 'custom',    label: 'Model/Other', color: '#888780' },
               ]
-              const entries = TYPE_META.filter(t => (dist[t.key] || 0) > 0)
+              const entries = TYPE_META.filter(ct => (dist[ct.key] || 0) > 0)
               return (
                 <div className="vault-card p-4 flex flex-col" style={{ gridColumn: 'span 1' }}>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Creator types</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Creator types')}</div>
                   {/* Stacked bar */}
                   <div style={{ height: 10, borderRadius: 99, overflow: 'hidden', display: 'flex', marginBottom: 10 }}>
-                    {entries.map(t => (
-                      <div key={t.key} style={{ width: `${((dist[t.key] || 0) / total) * 100}%`, background: t.color, transition: 'width 0.4s ease' }} />
+                    {entries.map(ct => (
+                      <div key={ct.key} style={{ width: `${((dist[ct.key] || 0) / total) * 100}%`, background: ct.color, transition: 'width 0.4s ease' }} />
                     ))}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {entries.map(t => (
-                      <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: 2, background: t.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t.label}</span>
-                        <span style={{ fontSize: 16, fontWeight: 700, color: t.color }}>{dist[t.key] || 0}</span>
-                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>{Math.round(((dist[t.key] || 0) / total) * 100)}%</span>
+                    {entries.map(ct => (
+                      <div key={ct.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: ct.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t(ct.label)}</span>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: ct.color }}>{dist[ct.key] || 0}</span>
+                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>{Math.round(((dist[ct.key] || 0) / total) * 100)}%</span>
                       </div>
                     ))}
                   </div>
@@ -1522,7 +1531,7 @@ export function Stats() {
               const rareAbovePct = Math.round((rareAndAbove / total) * 100)
               return (
                 <div className="vault-card p-4 flex flex-col">
-                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Collection rarity</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Collection rarity')}</div>
                   {/* Stacked bar */}
                   <div style={{ height: 10, borderRadius: 99, overflow: 'hidden', display: 'flex', marginBottom: 8 }}>
                     {RARITY_META.filter(r => (dist[r.key] || 0) > 0).map(r => (
@@ -1530,13 +1539,13 @@ export function Stats() {
                     ))}
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>
-                    <span style={{ color: '#378ADD', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> Big Portfolio or above
+                    <span style={{ color: '#378ADD', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> {t('Big Portfolio or above')}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
                     {RARITY_META.filter(r => (dist[r.key] || 0) > 0).map(r => (
                       <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <div style={{ width: 8, height: 8, borderRadius: 1, background: r.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{r.label} <span style={{ color: r.color, fontWeight: 700 }}>{dist[r.key]}</span></span>
+                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t(r.label)} <span style={{ color: r.color, fontWeight: 700 }}>{dist[r.key]}</span></span>
                       </div>
                     ))}
                   </div>
@@ -1554,7 +1563,7 @@ export function Stats() {
 
           {/* Heatmap — fixed width so grid can breathe */}
           <div className="vault-card p-5 flex flex-col" style={{ width: '42%', flexShrink: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Activity · last 13 weeks</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Activity · last 13 weeks')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(13, 1fr)', gridTemplateRows: 'repeat(7, 1fr)', gridAutoFlow: 'column', gap: 4, flex: 1 }}>
               {heatmapCells.map((cell) => (
                 <div key={cell.date}
@@ -1563,11 +1572,11 @@ export function Stats() {
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>Less</span>
+              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>{t('Less')}</span>
               {[0, 0.3, 0.6, 1].map(v => (
                 <div key={v} style={{ width: 16, height: 16, borderRadius: 3, background: heatColor(v * maxHeat) }} />
               ))}
-              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>More</span>
+              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>{t('More')}</span>
             </div>
           </div>
 
@@ -1576,7 +1585,7 @@ export function Stats() {
 
             {/* Day of week */}
             <div className="vault-card p-4 flex flex-col">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em' }}>By day</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('By day')}</div>
               <div className="flex items-end gap-1 flex-1" style={{ minHeight: 90 }}>
                 {byWeekday.map(d => {
                   const pct = d.count / maxWeekday
@@ -1586,7 +1595,7 @@ export function Stats() {
                     <div key={d.label} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                       <div className="w-full rounded-t-[3px] transition-all"
                            style={{ height: `${Math.max(3, pct * 70)}px`, background: d.count > 0 ? `linear-gradient(to top, ${color}, ${gradEnd})` : 'rgba(255,255,255,0.07)' }} />
-                      <div style={{ fontSize: 16, color: d.isWeekend ? '#D4537E' : 'rgba(255,255,255,0.3)', fontWeight: d.isWeekend ? 600 : 400 }}>{d.label}</div>
+                      <div style={{ fontSize: 16, color: d.isWeekend ? '#D4537E' : 'rgba(255,255,255,0.3)', fontWeight: d.isWeekend ? 600 : 400 }}>{t(d.label)}</div>
                     </div>
                   )
                 })}
@@ -1594,14 +1603,14 @@ export function Stats() {
               {byWeekday.some(d => d.count > 0) && (() => {
                 const peak = byWeekday.reduce((a, b) => b.count > a.count ? b : a)
                 return <div style={{ marginTop: 10, fontSize: 16, color: 'rgba(255,255,255,0.28)' }}>
-                  Peak: <span style={{ color: peak.isWeekend ? '#D4537E' : '#CECBF6', fontWeight: 600 }}>{peak.label}s</span>
+                  {t('Peak:')} <span style={{ color: peak.isWeekend ? '#D4537E' : '#CECBF6', fontWeight: 600 }}>{t(peak.label)}s</span>
                 </div>
               })()}
             </div>
 
             {/* AM vs PM */}
             <div className="vault-card p-4 flex flex-col">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>AM vs PM</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('AM vs PM')}</div>
               <div className="flex items-center gap-4 flex-1">
                 <div style={{
                   width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
@@ -1613,18 +1622,18 @@ export function Stats() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 16, color: '#FAC775', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#BA7517', display: 'inline-block' }} />AM
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#BA7517', display: 'inline-block' }} />{t('AM')}
                     </span>
                     <span style={{ fontSize: 18, fontWeight: 700, color: '#FAC775' }}>{amPct}%</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 16, color: '#CECBF6', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#7F77DD', display: 'inline-block' }} />PM
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#7F77DD', display: 'inline-block' }} />{t('PM')}
                     </span>
                     <span style={{ fontSize: 18, fontWeight: 700, color: '#CECBF6' }}>{pmPct}%</span>
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
-                    {pmPct >= 70 ? 'Night person' : pmPct >= 55 ? 'Mostly evenings' : amPct >= 70 ? 'Early riser' : 'Balanced'}
+                    {pmPct >= 70 ? t('Night person') : pmPct >= 55 ? t('Mostly evenings') : amPct >= 70 ? t('Early riser') : t('Balanced')}
                   </div>
                 </div>
               </div>
@@ -1632,23 +1641,23 @@ export function Stats() {
 
             {/* Packs opened */}
             <div className="vault-card p-4 flex flex-col justify-between">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Packs opened</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Packs opened')}</div>
               <div>
                 <div style={{ fontSize: 56, fontWeight: 900, lineHeight: 1, color: '#BA7517', letterSpacing: '-0.03em', textShadow: '0 0 28px rgba(186,117,23,0.4)' }}>
                   {(profile?.total_packs_opened ?? 0).toLocaleString()}
                 </div>
                 <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>
                   {(profile?.total_packs_opened ?? 0) === 0
-                    ? 'No packs yet'
+                    ? t('No packs yet')
                     : (profile?.total_packs_opened ?? 0) >= 50
-                      ? '🔥 Pack addict'
+                      ? t('🔥 Pack addict')
                       : (profile?.total_packs_opened ?? 0) >= 10
-                        ? 'Pack junkie'
-                        : 'Building the stash'}
+                        ? t('Pack junkie')
+                        : t('Building the stash')}
                 </div>
               </div>
               <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.2)' }}>
-                ≈ {((profile?.total_packs_opened ?? 0) * 5).toLocaleString()} cards drawn
+                ≈ {((profile?.total_packs_opened ?? 0) * 5).toLocaleString()} {t('cards drawn')}
               </div>
             </div>
 
@@ -1670,8 +1679,8 @@ export function Stats() {
               return (
                 <div className="vault-card p-4 flex flex-col">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Card collection</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{totalOwned.toLocaleString()} cards</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Card collection')}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{totalOwned.toLocaleString()} {t('cards')}</div>
                   </div>
                   {entries.length > 0 ? (
                     <>
@@ -1684,7 +1693,7 @@ export function Stats() {
                         {entries.map(r => (
                           <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <div style={{ width: 8, height: 8, borderRadius: 2, background: r.color, flexShrink: 0 }} />
-                            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{r.label}</span>
+                            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t(r.label)}</span>
                             <span style={{ fontSize: 16, fontWeight: 700, color: r.color }}>{dist[r.key] || 0}</span>
                             <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>{Math.round(((dist[r.key] || 0) / total) * 100)}%</span>
                           </div>
@@ -1692,7 +1701,7 @@ export function Stats() {
                       </div>
                     </>
                   ) : (
-                    <div style={{ fontSize: 17, color: 'rgba(255,255,255,0.2)', marginTop: 'auto', marginBottom: 'auto' }}>No cards yet — open a pack!</div>
+                    <div style={{ fontSize: 17, color: 'rgba(255,255,255,0.2)', marginTop: 'auto', marginBottom: 'auto' }}>{t('No cards yet — open a pack!')}</div>
                   )}
                 </div>
               )
@@ -1706,8 +1715,8 @@ export function Stats() {
       {totalCount === 0 && !stats && (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div style={{ fontSize: 48 }}>📊</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>No sessions yet</div>
-          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>Start a session to begin tracking your stats.</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>{t('No sessions yet')}</div>
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>{t('Start a session to begin tracking your stats.')}</div>
         </div>
       )}
     </div>
@@ -1715,14 +1724,15 @@ export function Stats() {
 }
 
 export function XPHistory() {
+  const t = useT()
   return (
     <div className="p-5 flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
       <Cpu size={72} style={{ color: '#CECBF6', marginBottom: 28 }} />
       <div style={{ fontSize: 56, fontWeight: 900, color: '#ffffff', letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 1 }}>
-        Coming Soon
+        {t('Coming Soon')}
       </div>
       <div style={{ fontSize: 22, fontWeight: 700, color: '#d8d8d8', marginTop: 18, textAlign: 'center', maxWidth: 400, lineHeight: 1.6, opacity: 1 }}>
-        Device control via Intiface Central — funscript sync, intensity patterns, and live controls.
+        {t('Device control via Intiface Central — funscript sync, intensity patterns, and live controls.')}
       </div>
     </div>
   )
@@ -1731,6 +1741,7 @@ export function XPHistory() {
 // ── GPU Status Panel — detects GPU, offers on-demand DLL download ─────────────
 function GpuStatusPanel() {
   const qc = useQueryClient()
+  const t = useT()
   const { data: gpu, isLoading } = useQuery({
     queryKey: ['gpu-status'],
     queryFn: () => scannerApi.gpuStatus().then(r => r.data),
@@ -1746,7 +1757,7 @@ function GpuStatusPanel() {
   const downloadMutation = useMutation({
     mutationFn: () => scannerApi.gpuDownload(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['gpu-status'] }),
-    onError: (e) => toast.error(e?.response?.data?.detail || 'Download failed'),
+    onError: (e) => toast.error(e?.response?.data?.detail || t('Download failed')),
   })
 
   if (isLoading || !gpu) return null
@@ -1756,7 +1767,7 @@ function GpuStatusPanel() {
     return (
       <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium w-fit"
             style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.35)' }}>
-        ⚡ GPU ready (CUDA)
+        {t('⚡ GPU ready (CUDA)')}
       </span>
     )
   }
@@ -1770,7 +1781,7 @@ function GpuStatusPanel() {
       <div className="rounded-[10px] p-3" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.25)' }}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-medium" style={{ color: '#CECBF6' }}>
-            Downloading GPU support ({gpu.package_index}/{gpu.package_total}) — {gpu.package}
+            {t('Downloading GPU support')} ({gpu.package_index}/{gpu.package_total}) — {gpu.package}
           </span>
           <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {pct !== null ? `${pct}%` : '…'} · {doneMB} / {totalMB} MB
@@ -1783,7 +1794,7 @@ function GpuStatusPanel() {
           }
         </div>
         {gpu.phase === 'extracting' && (
-          <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Extracting DLLs…</div>
+          <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Extracting DLLs…')}</div>
         )}
       </div>
     )
@@ -1795,7 +1806,7 @@ function GpuStatusPanel() {
       <div className="rounded-[10px] p-3 flex items-center justify-between"
            style={{ background: 'rgba(29,158,117,0.1)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
         <span className="text-[11px]" style={{ color: '#9FE1CB' }}>
-          ✓ GPU DLLs downloaded — restart the backend to activate GPU
+          {t('✓ GPU DLLs downloaded — restart the backend to activate GPU')}
         </span>
       </div>
     )
@@ -1805,11 +1816,11 @@ function GpuStatusPanel() {
   if (gpu.phase === 'error') {
     return (
       <div className="rounded-[10px] p-3" style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-        <div className="text-[11px] mb-2" style={{ color: '#F4C0D1' }}>GPU download failed: {gpu.error}</div>
+        <div className="text-[11px] mb-2" style={{ color: '#F4C0D1' }}>{t('GPU download failed:')} {gpu.error}</div>
         <button onClick={() => downloadMutation.mutate()}
                 className="text-[11px] px-3 py-1 rounded-full cursor-pointer"
                 style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-          Retry
+          {t('Retry')}
         </button>
       </div>
     )
@@ -1821,9 +1832,9 @@ function GpuStatusPanel() {
       <div className="rounded-[10px] p-3" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[12px] font-medium mb-0.5" style={{ color: '#CECBF6' }}>⚡ NVIDIA GPU detected</div>
+            <div className="text-[12px] font-medium mb-0.5" style={{ color: '#CECBF6' }}>{t('⚡ NVIDIA GPU detected')}</div>
             <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Download GPU acceleration (~1.6 GB, one-time). Tagging will be dramatically faster.
+              {t('Download GPU acceleration (~1.6 GB, one-time). Tagging will be dramatically faster.')}
             </div>
           </div>
           <button
@@ -1831,7 +1842,7 @@ function GpuStatusPanel() {
             disabled={downloadMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium cursor-pointer flex-shrink-0"
             style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-            <Download size={11} /> Download GPU support
+            <Download size={11} /> {t('Download GPU support')}
           </button>
         </div>
       </div>
@@ -1842,7 +1853,7 @@ function GpuStatusPanel() {
   return (
     <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] w-fit"
           style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-      🖥 CPU only — no NVIDIA GPU detected
+      {t('🖥 CPU only — no NVIDIA GPU detected')}
     </span>
   )
 }
@@ -1854,6 +1865,7 @@ function GpuStatusPanel() {
 // A capture-phase scroll listener re-measures on every scroll event so the
 // list stays anchored to the button even when <main> or any parent scrolls.
 function RootDropdown({ roots, value, onChange }) {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [pos, setPos]   = React.useState(null) // plain { top, left, width }
   const btnRef  = React.useRef(null)
@@ -1886,7 +1898,7 @@ function RootDropdown({ roots, value, onChange }) {
   const selected = roots.find(r => String(r.id) === String(value))
   const label = selected
     ? (selected.label ? `${selected.label} — ${selected.path}` : selected.path)
-    : '— Select a library root —'
+    : t('— Select a library root —')
 
   const list = open && pos && ReactDOM.createPortal(
     <div
@@ -1909,7 +1921,7 @@ function RootDropdown({ roots, value, onChange }) {
         onClick={() => { onChange(''); setOpen(false) }}
         className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
         style={{ color: 'rgba(255,255,255,0.35)' }}>
-        — Select a library root —
+        {t('— Select a library root —')}
       </button>
       {roots.map(r => (
         <button
@@ -2002,6 +2014,9 @@ export function Settings() {
   const setSessionGlowColor = useVaultStore(s => s.setSessionGlowColor)
   const glassBackground     = useVaultStore(s => s.glassBackground)
   const setGlassBackground  = useVaultStore(s => s.setGlassBackground)
+  const locale              = useVaultStore(s => s.locale)
+  const setLocale           = useVaultStore(s => s.setLocale)
+  const t                   = useT()
   const [vaultNameInput, setVaultNameInput] = React.useState(vaultName)
   const [glassBgLabel, setGlassBgLabel]     = React.useState(localStorage.getItem('vault_glass_bg_label') || '')
   const glassBgFileRef = React.useRef(null)
@@ -2012,6 +2027,9 @@ export function Settings() {
   const [selectedRootId, setSelectedRootId] = React.useState('')
   const [folderScanning, setFolderScanning] = React.useState(false)
   const [regenning, setRegenning]           = React.useState(false)
+  const [fsLibPath, setFsLibPath]           = React.useState('')
+  const [fsLibDirty, setFsLibDirty]         = React.useState(false)
+  const [fsMatching, setFsMatching]         = React.useState(false)
   const [syncing, setSyncing]               = React.useState(false)
   const [restartState, setRestartState]     = React.useState('idle') // idle | restarting | done
   const [updateState, setUpdateState]       = React.useState('idle') // idle | checking | up_to_date | available | downloading | installing | error
@@ -2065,7 +2083,10 @@ export function Settings() {
   const { data: configData } = useQuery({
     queryKey: ['system-config'],
     queryFn:  () => systemApi.getConfig().then(r => r.data),
-    onSuccess: (d) => { if (!storageInput) setStorageInput(d.data_dir || d.effective_data_dir) },
+    onSuccess: (d) => {
+      if (!storageInput) setStorageInput(d.data_dir || d.effective_data_dir)
+      if (!fsLibDirty) setFsLibPath(d.funscript_library_path || '')
+    },
   })
 
   const { data: mobileLink } = useQuery({
@@ -2091,7 +2112,7 @@ export function Settings() {
   const startupMutation = useMutation({
     mutationFn: (enabled) => systemApi.setStartup(enabled).then(r => r.data),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['system-startup'] }),
-    onError:    (e) => toast.error(e?.response?.data?.detail || 'Failed to update startup setting'),
+    onError:    (e) => toast.error(e?.response?.data?.detail || t('Failed to update startup setting')),
   })
 
   // Populate input once config loads
@@ -2109,7 +2130,7 @@ export function Settings() {
       // Auto-restart so the new path takes effect immediately
       await systemApi.restart()
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Failed to save storage path.'
+      const msg = err?.response?.data?.detail || t('Failed to save storage path.')
       toast.error(msg)
       setStorageState('idle')
     }
@@ -2129,7 +2150,7 @@ export function Settings() {
     try {
       await systemApi.restore(restoreFile)
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Restore failed — file may be invalid.'
+      const msg = err?.response?.data?.detail || t('Restore failed — file may be invalid.')
       toast.error(msg)
       setRestoreState('idle')
       setRestoreFile(null)
@@ -2198,7 +2219,7 @@ export function Settings() {
         toast.success(`All up to date — ${synced_creators} creator folder${synced_creators !== 1 ? 's' : ''} checked, nothing new to assign`)
       }
     } catch {
-      toast.error('Sync failed')
+      toast.error(t('Sync failed'))
     } finally {
       setSyncing(false)
     }
@@ -2217,7 +2238,7 @@ export function Settings() {
         setUpdateState('up_to_date')
       }
     } catch (e) {
-      setUpdateError(e?.response?.data?.detail || 'Could not reach update server.')
+      setUpdateError(e?.response?.data?.detail || t('Could not reach update server.'))
       setUpdateState('error')
     }
   }
@@ -2236,7 +2257,7 @@ export function Settings() {
           if (s.status === 'downloading') setUpdateProgress(s.progress || 0)
           if (s.status === 'installing') { setUpdateState('installing'); setUpdateProgress(100) }
           if (s.status === 'error') {
-            setUpdateError(s.error || 'Installation failed.')
+            setUpdateError(s.error || t('Installation failed.'))
             setUpdateState('error')
             clearInterval(updatePollRef.current)
             updatePollRef.current = null
@@ -2244,7 +2265,7 @@ export function Settings() {
         } catch {}
       }, 500)
     } catch (e) {
-      setUpdateError(e?.response?.data?.detail || 'Update failed.')
+      setUpdateError(e?.response?.data?.detail || t('Update failed.'))
       setUpdateState('error')
     }
   }
@@ -2339,11 +2360,11 @@ export function Settings() {
   const startTagging = async () => {
     const tagFolderPath = (roots ?? []).find(r => String(r.id) === String(tagRootId))?.path ?? null
     if (tagScope === 'folder' && !tagFolderPath) {
-      toast.error('Select a library folder to tag')
+      toast.error(t('Select a library folder to tag'))
       return
     }
     if (tagScope === 'creator' && !tagCreatorId) {
-      toast.error('Select a creator to tag')
+      toast.error(t('Select a creator to tag'))
       return
     }
     setTagStarting(true)
@@ -2359,7 +2380,7 @@ export function Settings() {
       qc.invalidateQueries({ queryKey: ['ai-tag-status'] })
       qc.invalidateQueries({ queryKey: ['task-queue'] })
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to start tagging')
+      toast.error(err?.response?.data?.detail || t('Failed to start tagging'))
     } finally {
       setTagStarting(false)
     }
@@ -2371,7 +2392,7 @@ export function Settings() {
       toast.success(`Downloading ${model === 'wd14' ? 'WD14' : 'JoyTag'}…`)
       refetchTagModels()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Download failed')
+      toast.error(err?.response?.data?.detail || t('Download failed'))
     }
   }
 
@@ -2386,9 +2407,9 @@ export function Settings() {
       setNewPath('')
       setNewLabel('')
       qc.invalidateQueries({ queryKey: ['library-roots'] })
-      toast.success('Library folder added!')
+      toast.success(t('Library folder added!'))
     } catch (err) {
-      toast.error('Failed to add folder')
+      toast.error(t('Failed to add folder'))
     }
   }
 
@@ -2397,7 +2418,7 @@ export function Settings() {
       const res = await scannerApi.browseFolder()
       if (res.data?.path) setNewPath(res.data.path)
     } catch (err) {
-      toast.error('Could not open folder picker')
+      toast.error(t('Could not open folder picker'))
     }
   }
 
@@ -2406,14 +2427,14 @@ export function Settings() {
       const res = await fetch('/api/scanner/scan', { method: 'POST' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        toast.error(body.detail || 'Failed to start scan')
+        toast.error(body.detail || t('Failed to start scan'))
         return
       }
       qc.invalidateQueries({ queryKey: ['scan-status'] })
       qc.invalidateQueries({ queryKey: ['task-queue'] })
-      toast.success('Scan queued!')
+      toast.success(t('Scan queued!'))
     } catch (err) {
-      toast.error('Failed to start scan')
+      toast.error(t('Failed to start scan'))
     }
   }
 
@@ -2428,7 +2449,7 @@ export function Settings() {
       qc.invalidateQueries({ queryKey: ['scan-status'] })
       qc.invalidateQueries({ queryKey: ['task-queue'] })
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to start scan')
+      toast.error(err?.response?.data?.detail || t('Failed to start scan'))
     } finally {
       setFolderScanning(false)
     }
@@ -2446,8 +2467,8 @@ export function Settings() {
             <SlidersHorizontal size={18} style={{ color: 'var(--c-accent)' }} />
           </div>
           <div>
-            <h1 className="text-[27px] font-bold text-white/90">Settings</h1>
-            <p className="text-[18px] text-white/40">Configure your Vault experience.</p>
+            <h1 className="text-[27px] font-bold text-white/90">{t('Settings')}</h1>
+            <p className="text-[18px] text-white/40">{t('Configure your Vault experience.')}</p>
           </div>
         </div>
         <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -2461,7 +2482,7 @@ export function Settings() {
                         : { background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '0.5px solid transparent' }
                       }>
                 <Icon size={14} />
-                {label}
+                {t(label)}
               </button>
             )
           })}
@@ -2483,9 +2504,9 @@ export function Settings() {
             {/* ── Library tab ──────────────────────────── */}
             {settingsTab === 'library' && (
               <div className="space-y-3">
-                <SettingsSection title="Library folders" icon={FolderOpen} accentColor="var(--c-amber)">
+                <SettingsSection title={t('Library folders')} icon={FolderOpen} accentColor="var(--c-amber)">
                   <p className="text-[16px] text-white/45 mb-4">
-                    Add folders to scan. Each subfolder becomes a gallery.
+                    {t('Add folders to scan. Each subfolder becomes a gallery.')}
                   </p>
                   {(() => {
                     const allRoots = roots ?? []
@@ -2495,7 +2516,7 @@ export function Settings() {
                     return (
                       <>
                         {allRoots.length === 0 && (
-                          <div className="text-[16px] text-white/25 py-2">No library folders added yet.</div>
+                          <div className="text-[16px] text-white/25 py-2">{t('No library folders added yet.')}</div>
                         )}
                         {visible.map(r => (
                           <div key={r.id} className="flex items-center gap-3 py-2.5 border-b border-[rgba(255,255,255,0.06)]">
@@ -2505,7 +2526,7 @@ export function Settings() {
                             </div>
                             {r.last_scan && (
                               <div className="text-[13px] text-white/30 shrink-0">
-                                scanned {new Date(r.last_scan).toLocaleDateString()}
+                                {t('scanned')} {new Date(r.last_scan).toLocaleDateString()}
                               </div>
                             )}
                             <button onClick={async () => {
@@ -2513,7 +2534,7 @@ export function Settings() {
                               qc.invalidateQueries({ queryKey: ['library-roots'] })
                             }} className="text-[13px] px-2.5 py-1 rounded cursor-pointer shrink-0"
                                     style={{ color: 'rgba(212,83,126,0.7)', background: 'rgba(212,83,126,0.1)' }}>
-                              Remove
+                              {t('Remove')}
                             </button>
                           </div>
                         ))}
@@ -2521,7 +2542,7 @@ export function Settings() {
                           <button onClick={() => setShowAllRoots(v => !v)}
                                   className="mt-1 text-[14px] cursor-pointer"
                                   style={{ color: 'rgba(127,119,221,0.7)' }}>
-                            {showAllRoots ? '▲ Show less' : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
+                            {showAllRoots ? t('▲ Show less') : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
                           </button>
                         )}
                       </>
@@ -2537,34 +2558,33 @@ export function Settings() {
                       <button onClick={browseForFolder}
                               className="px-3 py-2 rounded-[8px] text-[16px] cursor-pointer whitespace-nowrap"
                               style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                        📁 Browse
+                        {t('📁 Browse')}
                       </button>
                     </div>
                     <div className="flex gap-2">
                       <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
-                             placeholder="Label (optional — e.g. Cosplayers)"
+                             placeholder={t('Label (optional — e.g. Cosplayers)')}
                              className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[16px] text-white/80 placeholder-[rgba(255,255,255,0.2)]"
                              style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
                              onKeyDown={e => e.key === 'Enter' && addRoot()} />
                       <button onClick={addRoot} disabled={!newPath.trim()}
                               className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40"
                               style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                        Add
+                        {t('Add')}
                       </button>
                     </div>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Creator folder sync" icon={RefreshCw} accentColor="var(--c-accent)" defaultOpen={false}>
+                <SettingsSection title={t('Creator folder sync')} icon={RefreshCw} accentColor="var(--c-accent)" defaultOpen={false}>
                   <p className="text-[16px] text-white/45 mb-4">
-                    Re-checks every creator's source folder and assigns any galleries added since it was last set.
-                    Also runs automatically on each scan — use this if you assigned a source folder after importing.
+                    {t("Re-checks every creator's source folder and assigns any galleries added since it was last set. Also runs automatically on each scan — use this if you assigned a source folder after importing.")}
                   </p>
                   <button onClick={handleSyncFolders} disabled={syncing}
                           className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer disabled:opacity-50"
                           style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
                     <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                    {syncing ? 'Syncing…' : 'Sync now'}
+                    {syncing ? t('Syncing…') : t('Sync now')}
                   </button>
                 </SettingsSection>
               </div>
@@ -2573,7 +2593,7 @@ export function Settings() {
             {/* ── Scanner tab ──────────────────────────── */}
             {settingsTab === 'scanner' && (
               <div className="space-y-3">
-                <SettingsSection title="Library scan" icon={ScanLine} accentColor="var(--c-green)">
+                <SettingsSection title={t('Library scan')} icon={ScanLine} accentColor="var(--c-green)">
                   {scanStatus?.running ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -2581,7 +2601,7 @@ export function Settings() {
                         <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[14px] cursor-pointer ml-2 flex-shrink-0"
                                 style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-                          <X size={10} /> Cancel
+                          <X size={10} /> {t('Cancel')}
                         </button>
                       </div>
                       <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
@@ -2589,7 +2609,7 @@ export function Settings() {
                              style={{ width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
                       </div>
                       <div className="text-[14px] text-white/30 mt-1">
-                        {scanStatus.progress} / {scanStatus.total} folders · {scanStatus.new_galleries} new galleries · {scanStatus.new_images} new images
+                        {scanStatus.progress} / {scanStatus.total} {t('folders')} · {scanStatus.new_galleries} {t('new galleries')} · {scanStatus.new_images} {t('new images')}
                       </div>
                     </div>
                   ) : (
@@ -2598,25 +2618,25 @@ export function Settings() {
                         <div className="text-[16px] text-white/45">{scanStatus.message}</div>
                       )}
                       <div>
-                        <div className="text-[17px] font-semibold text-white/70 mb-1">Full library scan</div>
-                        <p className="text-[15px] text-white/40 mb-3">Walks every library folder, creates Gallery records, generates thumbnails, detects funscripts.</p>
+                        <div className="text-[17px] font-semibold text-white/70 mb-1">{t('Full library scan')}</div>
+                        <p className="text-[15px] text-white/40 mb-3">{t('Walks every library folder, creates Gallery records, generates thumbnails, detects funscripts.')}</p>
                         <button onClick={startScan}
                                 className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit"
                                 style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-                          Scan entire library
+                          {t('Scan entire library')}
                         </button>
                       </div>
                       <div className="pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                        <div className="text-[17px] font-semibold text-white/70 mb-1">Rescan a single folder</div>
+                        <div className="text-[17px] font-semibold text-white/70 mb-1">{t('Rescan a single folder')}</div>
                         {(roots ?? []).length === 0 ? (
-                          <div className="text-[16px] text-white/25">No library folders added yet.</div>
+                          <div className="text-[16px] text-white/25">{t('No library folders added yet.')}</div>
                         ) : (
                           <div className="flex flex-col gap-2">
                             <RootDropdown roots={roots ?? []} value={selectedRootId} onChange={setSelectedRootId} />
                             <button onClick={startFolderScan} disabled={!selectedRootId || folderScanning}
                                     className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40 w-fit"
                                     style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                              {folderScanning ? 'Starting…' : 'Scan selected root'}
+                              {folderScanning ? t('Starting…') : t('Scan selected root')}
                             </button>
                           </div>
                         )}
@@ -2625,21 +2645,73 @@ export function Settings() {
                   )}
                 </SettingsSection>
 
-                <SettingsSection title="Regenerate thumbnails" icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
+                <SettingsSection title={t('Regenerate thumbnails')} icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
                   <p className="text-[16px] text-white/45 mb-4">
-                    Rebuilds any missing or broken thumbnails across your entire library. Runs in the background.
+                    {t('Rebuilds any missing or broken thumbnails across your entire library. Runs in the background.')}
                   </p>
                   <button disabled={regenning}
                           onClick={async () => {
                             setRegenning(true)
-                            try { await scannerApi.regenThumbs(); toast.success('Thumbnail regeneration started!') }
-                            catch { toast.error('Failed to start regeneration') }
+                            try { await scannerApi.regenThumbs(); toast.success(t('Thumbnail regeneration started!')) }
+                            catch { toast.error(t('Failed to start regeneration')) }
                             finally { setTimeout(() => setRegenning(false), 3000) }
                           }}
                           className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
                           style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-                    {regenning ? 'Starting…' : '🖼️ Regenerate missing thumbnails'}
+                    {regenning ? t('Starting…') : t('🖼️ Regenerate missing thumbnails')}
                   </button>
+                </SettingsSection>
+
+                <SettingsSection title={t('Funscript library')} icon={ScanLine} accentColor="var(--c-pink)" defaultOpen={false}>
+                  <p className="text-[16px] text-white/45 mb-4">
+                    {t('Keep all your .funscript files in one folder. The Vault matches each script to a video with the same filename anywhere in your library — handy when scripts and videos live in different folders.')}
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    <input value={fsLibPath}
+                           onChange={e => { setFsLibPath(e.target.value); setFsLibDirty(true) }}
+                           placeholder={t('Path to your funscript folder')}
+                           className="flex-1 px-3 py-2 rounded-[8px] text-[16px] bg-white/5 text-white/80 outline-none"
+                           style={{ border: '0.5px solid rgba(255,255,255,0.1)' }} />
+                    <button onClick={async () => {
+                              try {
+                                const res = await scannerApi.browseFolder()
+                                if (res.data?.path) { setFsLibPath(res.data.path); setFsLibDirty(true) }
+                              } catch { toast.error(t('Could not open folder picker')) }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-[16px] cursor-pointer flex-shrink-0"
+                            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                      <FolderOpen size={15} /> {t('Browse')}
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={async () => {
+                              try {
+                                await systemApi.setFunscriptLibrary(fsLibPath.trim())
+                                setFsLibDirty(false)
+                                qc.invalidateQueries({ queryKey: ['system-config'] })
+                                toast.success(t('Funscript folder saved!'))
+                              } catch (err) { toast.error(err?.response?.data?.detail || t('Failed to save folder')) }
+                            }}
+                            className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit"
+                            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.75)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+                      {t('Save folder')}
+                    </button>
+                    <button disabled={fsMatching || !fsLibPath.trim()}
+                            onClick={async () => {
+                              setFsMatching(true)
+                              try {
+                                await scannerApi.matchFunscripts(fsLibPath.trim())
+                                qc.invalidateQueries({ queryKey: ['scan-status'] })
+                                qc.invalidateQueries({ queryKey: ['task-queue'] })
+                                toast.success(t('Funscript matching started!'))
+                              } catch (err) { toast.error(err?.response?.data?.detail || t('Failed to start matching')) }
+                              finally { setTimeout(() => setFsMatching(false), 3000) }
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                            style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                      {fsMatching ? t('Starting…') : t('🔗 Match funscripts now')}
+                    </button>
+                  </div>
                 </SettingsSection>
               </div>
             )}
@@ -2647,9 +2719,9 @@ export function Settings() {
             {/* ── AI Tagging tab ───────────────────────── */}
             {settingsTab === 'tagging' && (
               <div className="space-y-3">
-                <SettingsSection title="AI models" icon={Download} accentColor="var(--c-accent)">
+                <SettingsSection title={t('AI models')} icon={Download} accentColor="var(--c-accent)">
                   <p className="text-[16px] text-white/45 mb-4">
-                    WD14 for anime/art, JoyTag for cosplay and real photos. Both are local ONNX models — nothing sent to the cloud.
+                    {t('WD14 for anime/art, JoyTag for cosplay and real photos. Both are local ONNX models — nothing sent to the cloud.')}
                   </p>
                   <div className="mb-4"><GpuStatusPanel /></div>
                   <div className="flex flex-col gap-2">
@@ -2663,15 +2735,15 @@ export function Settings() {
                           <div className="w-2 h-2 rounded-full flex-shrink-0"
                                style={{ background: ready ? '#1D9E75' : 'rgba(255,255,255,0.2)' }} />
                           <div>
-                            <div className="text-[16px] font-medium text-white/80">{label}</div>
-                            <div className="text-[14px] text-white/35">{ready ? `Downloaded · ${size ?? '?'} MB` : desc}</div>
+                            <div className="text-[16px] font-medium text-white/80">{t(label)}</div>
+                            <div className="text-[14px] text-white/35">{ready ? `Downloaded · ${size ?? '?'} MB` : t(desc)}</div>
                           </div>
                         </div>
                         {!ready && (
                           <button disabled={tagStatus?.running} onClick={() => downloadModel(key)}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[14px] cursor-pointer disabled:opacity-40"
                                   style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                            <Download size={12} /> Download
+                            <Download size={12} /> {t('Download')}
                           </button>
                         )}
                       </div>
@@ -2679,7 +2751,7 @@ export function Settings() {
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Run tagging" icon={Cpu} accentColor="var(--c-accent)">
+                <SettingsSection title={t('Run tagging')} icon={Cpu} accentColor="var(--c-accent)">
                   {tagStatus?.running ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -2695,13 +2767,13 @@ export function Settings() {
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
                                   style={{ background: tagStatus.device === 'gpu' ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.07)',
                                            color:      tagStatus.device === 'gpu' ? '#9FE1CB' : 'rgba(255,255,255,0.4)' }}>
-                              {tagStatus.device === 'gpu' ? '⚡ GPU' : '🖥 CPU'}
+                              {tagStatus.device === 'gpu' ? t('⚡ GPU') : t('🖥 CPU')}
                             </span>
                           )}
                           {tagStatus.total === 0 ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
                                   style={{ background: 'rgba(186,117,23,0.18)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
-                              ⬇ Downloading model
+                              {t('⬇ Downloading model')}
                             </span>
                           ) : (
                             <span className="text-[14px] text-white/55 flex-shrink-0">{tagStatus.progress} / {tagStatus.total}</span>
@@ -2710,7 +2782,7 @@ export function Settings() {
                         <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer ml-2 flex-shrink-0"
                                 style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-                          <X size={10} /> Cancel
+                          <X size={10} /> {t('Cancel')}
                         </button>
                       </div>
                       <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
@@ -2738,8 +2810,8 @@ export function Settings() {
                           <div className="mt-1 flex flex-col gap-0.5">
                             <div className="flex items-center justify-between">
                               <div className="text-[13px] text-white/30">
-                                {tagStatus.tagged} tagged · {tagStatus.skipped} skipped
-                                {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} errors</span>}
+                                {tagStatus.tagged} {t('tagged')} · {tagStatus.skipped} {t('skipped')}
+                                {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} {t('errors')}</span>}
                               </div>
                               {etaStr && <div className="text-[13px]" style={{ color: 'rgba(127,119,221,0.7)' }}>{etaStr}</div>}
                             </div>
@@ -2760,20 +2832,20 @@ export function Settings() {
                         <div className="text-[16px] text-white/45">{tagStatus.message}</div>
                       )}
                       <div>
-                        <div className="text-[15px] font-semibold text-white/55 mb-2">Scope</div>
+                        <div className="text-[15px] font-semibold text-white/55 mb-2">{t('Scope')}</div>
                         <div className="flex gap-2 flex-wrap">
                           {[{ key: 'library', label: 'Entire library' }, { key: 'folder', label: 'Specific folder' }, { key: 'creator', label: 'By creator' }].map(({ key, label }) => (
                             <button key={key} onClick={() => setTagScope(key)}
                                     className="px-3 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
                                     style={{ background: tagScope === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagScope === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagScope === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}>
-                              {label}
+                              {t(label)}
                             </button>
                           ))}
                         </div>
                         {tagScope === 'folder' && <div className="mt-2"><RootDropdown roots={roots ?? []} value={tagRootId} onChange={setTagRootId} /></div>}
                         {tagScope === 'creator' && (
                           <div className="mt-2 flex flex-col gap-1.5">
-                            <input placeholder="Search creators…" value={tagCreatorSearch}
+                            <input placeholder={t('Search creators…')} value={tagCreatorSearch}
                                    onChange={e => { setTagCreatorSearch(e.target.value); setTagCreatorId('') }}
                                    className="w-full px-3 py-2 rounded-[8px] text-[15px] outline-none"
                                    style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
@@ -2804,44 +2876,44 @@ export function Settings() {
                               </div>
                             )}
                             {!tagCreatorId && filteredTagCreators.length === 0 && tagCreatorSearch && (
-                              <div className="px-3 py-2 rounded-[8px] text-[15px]" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)' }}>No creators found</div>
+                              <div className="px-3 py-2 rounded-[8px] text-[15px]" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)' }}>{t('No creators found')}</div>
                             )}
                           </div>
                         )}
                       </div>
                       <div>
-                        <div className="text-[15px] font-semibold text-white/55 mb-2">Model</div>
+                        <div className="text-[15px] font-semibold text-white/55 mb-2">{t('Model')}</div>
                         <div className="flex gap-2">
                           {[{ key: 'auto', label: 'Auto', desc: 'Routes by creator type' }, { key: 'wd14', label: 'WD14', desc: 'Anime / art / characters', disabled: !tagModels?.wd14_downloaded }, { key: 'joytag', label: 'JoyTag', desc: 'Cosplay / real photos', disabled: !tagModels?.joytag_downloaded }].map(({ key, label, desc, disabled }) => (
                             <button key={key} disabled={disabled} onClick={() => !disabled && setTagModelOverride(key)}
                                     className="flex-1 px-2 py-1.5 rounded-[6px] text-[15px] cursor-pointer text-center disabled:opacity-30"
                                     style={{ background: tagModelOverride === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagModelOverride === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagModelOverride === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}
-                                    title={disabled ? 'Model not downloaded' : desc}>
-                              {label}
+                                    title={disabled ? t('Model not downloaded') : t(desc)}>
+                              {t(label)}
                             </button>
                           ))}
                         </div>
                         {tagModelOverride === 'auto' && (
-                          <div className="text-[14px] text-white/25 mt-1">Galleries with an assigned creator use that creator's type. Unassigned → JoyTag (or WD14 fallback).</div>
+                          <div className="text-[14px] text-white/25 mt-1">{t("Galleries with an assigned creator use that creator's type. Unassigned → JoyTag (or WD14 fallback).")}</div>
                         )}
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <div className="text-[15px] font-semibold text-white/55">Confidence threshold</div>
+                          <div className="text-[15px] font-semibold text-white/55">{t('Confidence threshold')}</div>
                           <div className="text-[15px] font-mono" style={{ color: '#CECBF6' }}>{Math.round(tagThreshold * 100)}%</div>
                         </div>
                         <input type="range" min="10" max="90" step="5" value={Math.round(tagThreshold * 100)}
                                onChange={e => setTagThreshold(Number(e.target.value) / 100)}
                                className="w-full accent-[#7F77DD] cursor-pointer" />
                         <div className="flex justify-between text-[13px] text-white/25 mt-0.5">
-                          <span>More tags (10%)</span><span>Fewer, precise (90%)</span>
+                          <span>{t('More tags (10%)')}</span><span>{t('Fewer, precise (90%)')}</span>
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-[16px] text-white/75">GPU acceleration (NVIDIA CUDA)</div>
-                          <div className="text-[14px] text-white/30 mt-0.5">{configData?.use_gpu !== false ? 'ON — using CUDA if available, CPU fallback otherwise' : 'OFF — running on CPU only'}</div>
-                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: '#BA7517' }}>⚠ No NVIDIA GPU mode — AI tagging will be slower</div>}
+                          <div className="text-[16px] text-white/75">{t('GPU acceleration (NVIDIA CUDA)')}</div>
+                          <div className="text-[14px] text-white/30 mt-0.5">{configData?.use_gpu !== false ? t('ON — using CUDA if available, CPU fallback otherwise') : t('OFF — running on CPU only')}</div>
+                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: '#BA7517' }}>{t('⚠ No NVIDIA GPU mode — AI tagging will be slower')}</div>}
                         </div>
                         <button onClick={() => gpuMutation.mutate(configData?.use_gpu === false ? true : false)}
                                 disabled={gpuMutation.isPending}
@@ -2853,8 +2925,8 @@ export function Settings() {
                       </div>
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-[16px] text-white/75">Re-tag already tagged images</div>
-                          <div className="text-[14px] text-white/30 mt-0.5">Off = skip images that already have AI tags</div>
+                          <div className="text-[16px] text-white/75">{t('Re-tag already tagged images')}</div>
+                          <div className="text-[14px] text-white/30 mt-0.5">{t('Off = skip images that already have AI tags')}</div>
                         </div>
                         <button onClick={() => setTagRetag(!tagRetag)}
                                 className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
@@ -2866,14 +2938,14 @@ export function Settings() {
                       {aiTaskQueued ? (
                         <div className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[15px] w-fit"
                              style={{ background: 'rgba(127,119,221,0.1)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
-                          <Clock size={12} style={{ color: '#7F77DD' }} /> Queued in task queue…
+                          <Clock size={12} style={{ color: '#7F77DD' }} /> {t('Queued in task queue…')}
                         </div>
                       ) : (
                         <button disabled={tagStarting || (!tagModels?.wd14_downloaded && !tagModels?.joytag_downloaded)}
                                 onClick={startTagging}
                                 className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
                                 style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                          <Cpu size={13} /> {tagStarting ? 'Starting…' : 'Start AI Tagging'}
+                          <Cpu size={13} /> {tagStarting ? t('Starting…') : t('Start AI Tagging')}
                         </button>
                       )}
                     </div>
@@ -2885,7 +2957,24 @@ export function Settings() {
             {/* ── Appearance tab ───────────────────────── */}
             {settingsTab === 'appearance' && (
               <div className="space-y-3">
-                <SettingsSection title="Theme" icon={Sparkles} accentColor="var(--c-accent)">
+                <SettingsSection title={t('Language')} icon={Globe} accentColor="var(--c-accent)">
+                  <div className="text-[14px] text-white/25 mb-3">{t('Display language')}</div>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                    {LANGUAGES.map(lang => (
+                      <button key={lang.id} onClick={() => setLocale(lang.id)}
+                              className="flex items-center gap-3 p-3 rounded-[10px] cursor-pointer text-left transition-all"
+                              style={{ background: locale === lang.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${locale === lang.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}` }}>
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <span className="text-[16px] font-medium truncate" style={{ color: locale === lang.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.7)' }}>{lang.native}</span>
+                          <span className="text-[13px] text-white/30 truncate">{lang.label}</span>
+                        </div>
+                        {locale === lang.id && <Check size={14} className="flex-shrink-0" style={{ color: 'var(--c-accent)' }} />}
+                      </button>
+                    ))}
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title={t('Theme')} icon={Sparkles} accentColor="var(--c-accent)">
                   <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
                     {PALETTES.map(p => (
                       <button key={p.id} onClick={() => setPalette(p)}
@@ -2898,14 +2987,14 @@ export function Settings() {
                           {currentPalette.id === p.id && <Check size={12} className="ml-auto flex-shrink-0" style={{ color: p.accent }} />}
                         </div>
                         <div className="w-full h-1.5 rounded-full" style={{ background: `linear-gradient(to right, ${p.bg}, ${p.card})` }} />
-                        <div className="text-[14px] font-medium" style={{ color: currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.55)' }}>{p.label}</div>
+                        <div className="text-[14px] font-medium" style={{ color: currentPalette.id === p.id ? p.accent : 'rgba(255,255,255,0.55)' }}>{t(p.label)}</div>
                       </button>
                     ))}
                   </div>
                   {currentPalette.id === 'glass' && (
                     <div className="pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                      <div className="text-[16px] font-semibold text-white/55 mb-1">Glass Background Image</div>
-                      <div className="text-[14px] text-white/25 mb-3">Pick any image from your PC to use as the background behind the glass effect.</div>
+                      <div className="text-[16px] font-semibold text-white/55 mb-1">{t('Glass Background Image')}</div>
+                      <div className="text-[14px] text-white/25 mb-3">{t('Pick any image from your PC to use as the background behind the glass effect.')}</div>
                       <input ref={glassBgFileRef} type="file" accept="image/*" style={{ display: 'none' }}
                              onChange={e => {
                                const file = e.target.files[0]; if (!file) return
@@ -2917,68 +3006,68 @@ export function Settings() {
                         <button onClick={() => glassBgFileRef.current?.click()}
                                 className="px-4 py-2 rounded-[8px] text-[15px] cursor-pointer"
                                 style={{ background: 'rgba(160,180,208,0.15)', color: '#A0B4D0', border: '0.5px solid rgba(160,180,208,0.35)' }}>
-                          Browse…
+                          {t('Browse…')}
                         </button>
                         {glassBgLabel ? <span className="text-[14px] text-white/50 truncate flex-1">{glassBgLabel}</span>
-                                      : <span className="text-[14px] text-white/20 flex-1">No image selected — using default gradient</span>}
+                                      : <span className="text-[14px] text-white/20 flex-1">{t('No image selected — using default gradient')}</span>}
                       </div>
                       {glassBackground && (
                         <button onClick={() => { setGlassBackground(''); setGlassBgLabel(''); localStorage.removeItem('vault_glass_bg_label'); if (glassBgFileRef.current) glassBgFileRef.current.value = '' }}
                                 className="mt-2 text-[14px] text-white/30 hover:text-white/60 transition-colors">
-                          Reset to default
+                          {t('Reset to default')}
                         </button>
                       )}
                     </div>
                   )}
                 </SettingsSection>
 
-                <SettingsSection title="Typography &amp; Animations" icon={Type} accentColor="rgba(255,255,255,0.4)" defaultOpen={false}>
+                <SettingsSection title={t('Typography & Animations')} icon={Type} accentColor="rgba(255,255,255,0.4)" defaultOpen={false}>
                   <div className="mb-5">
-                    <div className="text-[16px] font-semibold text-white/55 mb-2">Font</div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Font')}</div>
                     <div className="flex flex-wrap gap-2">
                       {FONTS.map(f => (
                         <button key={f.id} onClick={() => setFont(f)}
                                 className="px-4 py-2 rounded-[8px] cursor-pointer transition-all text-[15px]"
                                 style={{ fontFamily: f.family, background: currentFont.id === f.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${currentFont.id === f.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: currentFont.id === f.id ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}>
-                          {f.label}
+                          {t(f.label)}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[16px] font-semibold text-white/55 mb-2">Animations</div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Animations')}</div>
                     <div className="flex gap-2">
                       {[['full', 'Full'], ['reduced', 'Reduced'], ['off', 'Off']].map(([val, label]) => (
                         <button key={val} onClick={() => setAnimSpeed(val)}
                                 className="flex-1 py-2 rounded-[8px] text-[15px] cursor-pointer transition-all"
                                 style={{ background: animSpeed === val ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${animSpeed === val ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: animSpeed === val ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}>
-                          {label}
+                          {t(label)}
                         </button>
                       ))}
                     </div>
-                    <div className="text-[14px] text-white/20 mt-2">"Off" disables all transitions and animations — useful on low-end hardware.</div>
+                    <div className="text-[14px] text-white/20 mt-2">{t('"Off" disables all transitions and animations — useful on low-end hardware.')}</div>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Vault identity" icon={Sparkles} accentColor="var(--c-amber)" defaultOpen={false}>
+                <SettingsSection title={t('Vault identity')} icon={Sparkles} accentColor="var(--c-amber)" defaultOpen={false}>
                   <div className="mb-5">
-                    <div className="text-[16px] font-semibold text-white/55 mb-2">Vault name</div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Vault name')}</div>
                     <div className="flex gap-2">
                       <input value={vaultNameInput} onChange={e => setVaultNameInput(e.target.value)}
                              onKeyDown={e => e.key === 'Enter' && setVaultName(vaultNameInput)}
-                             placeholder="The Vault" maxLength={30}
+                             placeholder={t('The Vault')} maxLength={30}
                              className="flex-1 px-3 py-2 rounded-[8px] text-[16px] outline-none"
                              style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
                       <button onClick={() => setVaultName(vaultNameInput)}
                               className="px-4 py-2 rounded-[8px] text-[15px] cursor-pointer"
                               style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                        Save
+                        {t('Save')}
                       </button>
                     </div>
-                    <div className="text-[14px] text-white/20 mt-1.5">Shown in the sidebar. Max 30 characters.</div>
+                    <div className="text-[14px] text-white/20 mt-1.5">{t('Shown in the sidebar. Max 30 characters.')}</div>
                   </div>
                   <div>
-                    <div className="text-[16px] font-semibold text-white/55 mb-2">Session border glow</div>
+                    <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Session border glow')}</div>
                     <div className="flex gap-2 flex-wrap">
                       {[
                         { label: 'Pink',   value: 'var(--c-pink)',  swatch: '#D4537E' },
@@ -2992,19 +3081,19 @@ export function Settings() {
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[15px] cursor-pointer transition-all"
                                 style={{ background: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sessionGlowColor === opt.value ? opt.swatch : 'rgba(255,255,255,0.08)'}`, color: sessionGlowColor === opt.value ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}>
                           <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: opt.swatch }} />
-                          {opt.label}
+                          {t(opt.label)}
                         </button>
                       ))}
                     </div>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Effects &amp; Companion" icon={Sparkles} accentColor="var(--c-pink)" defaultOpen={false}>
+                <SettingsSection title={t('Effects & Companion')} icon={Sparkles} accentColor="var(--c-pink)" defaultOpen={false}>
                   <div className="flex flex-col gap-4 mb-5">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[16px] text-white/75">🎉 Confetti on level-up</div>
-                        <div className="text-[14px] text-white/30 mt-0.5">Burst of confetti every time you level up.</div>
+                        <div className="text-[16px] text-white/75">{t('🎉 Confetti on level-up')}</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">{t('Burst of confetti every time you level up.')}</div>
                       </div>
                       <button onClick={() => setConfettiEnabled(!confettiEnabled)}
                               className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
@@ -3015,8 +3104,8 @@ export function Settings() {
                     </div>
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[16px] text-white/75">Neon border effect</div>
-                        <div className="text-[14px] text-white/30 mt-0.5">Pulsing glow around screen edges during a session.</div>
+                        <div className="text-[16px] text-white/75">{t('Neon border effect')}</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">{t('Pulsing glow around screen edges during a session.')}</div>
                       </div>
                       <button onClick={() => setShowGoonBorder(!showGoonBorder)}
                               className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
@@ -3027,12 +3116,12 @@ export function Settings() {
                     </div>
                   </div>
                   <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
-                    <div className="text-[17px] font-semibold text-white/75 mb-1">Vault Companion</div>
-                    <div className="text-[15px] text-white/35 mb-4">AI companion powered by Ollama (local, private, uncensored). Requires Ollama to be installed.</div>
+                    <div className="text-[17px] font-semibold text-white/75 mb-1">{t('Vault Companion')}</div>
+                    <div className="text-[15px] text-white/35 mb-4">{t('AI companion powered by Ollama (local, private, uncensored). Requires Ollama to be installed.')}</div>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-[16px] text-white/70">{compConfig?.enabled ? `${compConfig?.name || 'Erika'} is active` : 'Companion disabled'}</div>
-                        <div className="text-[14px] text-white/30 mt-0.5">When enabled, she appears in the sidebar and as a floating chat bubble.</div>
+                        <div className="text-[16px] text-white/70">{compConfig?.enabled ? `${compConfig?.name || 'Erika'} is active` : t('Companion disabled')}</div>
+                        <div className="text-[14px] text-white/30 mt-0.5">{t('When enabled, she appears in the sidebar and as a floating chat bubble.')}</div>
                       </div>
                       <button onClick={toggleCompanion}
                               className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors"
@@ -3044,7 +3133,7 @@ export function Settings() {
                     {compConfig?.enabled && (
                       <a href="/erika" className="inline-flex items-center gap-1.5 mt-3 text-[15px] px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
                          style={{ color: '#A89FE8', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                        <Sparkles size={12} /> Open {compConfig?.name || 'Erika'} →
+                        <Sparkles size={12} /> {t('Open')} {compConfig?.name || 'Erika'} →
                       </a>
                     )}
                   </div>
@@ -3055,41 +3144,41 @@ export function Settings() {
             {/* ── Backup tab ───────────────────────────── */}
             {settingsTab === 'backup' && (
               <div className="space-y-3">
-                <SettingsSection title="Backup &amp; Restore" icon={Archive} accentColor="var(--c-green)">
+                <SettingsSection title={t('Backup & Restore')} icon={Archive} accentColor="var(--c-green)">
                   <div className="flex items-center justify-between py-3">
                     <div>
-                      <div className="text-[17px] font-semibold text-white/80">Backup database</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">Downloads a snapshot of <code className="text-white/50">vault.db</code> — all galleries, creators, sessions, and cards.</div>
+                      <div className="text-[17px] font-semibold text-white/80">{t('Backup database')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Downloads a snapshot of')} <code className="text-white/50">vault.db</code> {t('— all galleries, creators, sessions, and cards.')}</div>
                     </div>
-                    <button onClick={() => { systemApi.backup(); toast.success('Backup download started!') }}
+                    <button onClick={() => { systemApi.backup(); toast.success(t('Backup download started!')) }}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
                             style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }}>
-                      <Download size={14} /> Download backup
+                      <Download size={14} /> {t('Download backup')}
                     </button>
                   </div>
                   <div style={{ height: '0.5px', background: 'rgba(29,158,117,0.2)' }} />
                   <div className="flex items-start justify-between gap-4 pt-3">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[17px] font-semibold text-white/80">Restore backup</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">Select a <code className="text-white/50">.db</code> backup file. Your current database is saved automatically before overwriting.</div>
+                      <div className="text-[17px] font-semibold text-white/80">{t('Restore backup')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Select a')} <code className="text-white/50">.db</code> {t('backup file. Your current database is saved automatically before overwriting.')}</div>
                       {restoreState === 'confirming' && restoreFile && (
                         <div className="mt-3 p-3 rounded-[8px]"
                              style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.35)' }}>
-                          <div className="text-[15px] font-medium mb-1" style={{ color: '#F4C0D1' }}>⚠️ Replace entire database?</div>
+                          <div className="text-[15px] font-medium mb-1" style={{ color: '#F4C0D1' }}>{t('⚠️ Replace entire database?')}</div>
                           <div className="text-[14px] mb-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                            File: <span style={{ color: 'rgba(255,255,255,0.7)' }}>{restoreFile.name}</span><br />
-                            This will replace all your current data. The app will restart automatically.
+                            {t('File:')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{restoreFile.name}</span><br />
+                            {t('This will replace all your current data. The app will restart automatically.')}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={confirmRestore}
                                     className="px-4 py-1.5 rounded-[6px] text-[15px] font-medium cursor-pointer"
                                     style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
-                              Yes, restore
+                              {t('Yes, restore')}
                             </button>
                             <button onClick={() => { setRestoreState('idle'); setRestoreFile(null) }}
                                     className="px-4 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
                                     style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                              Cancel
+                              {t('Cancel')}
                             </button>
                           </div>
                         </div>
@@ -3102,19 +3191,19 @@ export function Settings() {
                             style={restoreState === 'done'
                               ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
                               : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
-                      {restoreState === 'uploading' ? <><RefreshCw size={14} className="animate-spin" /> Uploading…</>
-                       : restoreState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> Restarting…</>
-                       : restoreState === 'done' ? <><Check size={14} /> Restored!</>
-                       : <><Download size={14} style={{ transform: 'rotate(180deg)' }} /> Restore backup</>}
+                      {restoreState === 'uploading' ? <><RefreshCw size={14} className="animate-spin" /> {t('Uploading…')}</>
+                       : restoreState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> {t('Restarting…')}</>
+                       : restoreState === 'done' ? <><Check size={14} /> {t('Restored!')}</>
+                       : <><Download size={14} style={{ transform: 'rotate(180deg)' }} /> {t('Restore backup')}</>}
                     </button>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Storage location" icon={HardDrive} accentColor="var(--c-accent)" defaultOpen={false}>
-                  <p className="text-[16px] text-white/45 mb-4">Where <code className="text-white/50">vault.db</code> and the thumbnail cache are stored. Move to a larger drive if C: space is limited. The server restarts automatically when saved.</p>
-                  {configData && <div className="text-[15px] mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>Active: <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span></div>}
+                <SettingsSection title={t('Storage location')} icon={HardDrive} accentColor="var(--c-accent)" defaultOpen={false}>
+                  <p className="text-[16px] text-white/45 mb-4">{t('Where')} <code className="text-white/50">vault.db</code> {t('and the thumbnail cache are stored. Move to a larger drive if C: space is limited. The server restarts automatically when saved.')}</p>
+                  {configData && <div className="text-[15px] mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Active:')} <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span></div>}
                   {configData?.data_dir && configData.data_dir !== configData?.effective_data_dir && (
-                    <div className="text-[14px] mb-3" style={{ color: '#BA7517' }}>⚠ Configured path <span className="font-mono">{configData.data_dir}</span> was not available at startup.</div>
+                    <div className="text-[14px] mb-3" style={{ color: '#BA7517' }}>{t('⚠ Configured path')} <span className="font-mono">{configData.data_dir}</span> {t('was not available at startup.')}</div>
                   )}
                   <div className="flex gap-2">
                     <input value={storageInput} onChange={e => { setStorageInput(e.target.value); setStorageState('idle') }}
@@ -3127,9 +3216,9 @@ export function Settings() {
                             style={storageState === 'saved'
                               ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
                               : { background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                      {storageState === 'saving' ? <><RefreshCw size={12} className="animate-spin" /> Saving…</>
-                       : storageState === 'saved' ? <><Check size={12} /> Saved — restarting…</>
-                       : <><Check size={12} /> Save &amp; restart</>}
+                      {storageState === 'saving' ? <><RefreshCw size={12} className="animate-spin" /> {t('Saving…')}</>
+                       : storageState === 'saved' ? <><Check size={12} /> {t('Saved — restarting…')}</>
+                       : <><Check size={12} /> {t('Save & restart')}</>}
                     </button>
                   </div>
                 </SettingsSection>
@@ -3139,16 +3228,14 @@ export function Settings() {
             {/* ── System tab ───────────────────────────── */}
             {settingsTab === 'system' && (
               <div className="space-y-3">
-                <SettingsSection title="Connect mobile device" icon={Smartphone} accentColor="var(--c-accent)">
+                <SettingsSection title={t('Connect mobile device')} icon={Smartphone} accentColor="var(--c-accent)">
                   <div className="text-[16px] text-white/45 mb-4 leading-relaxed">
-                    Open The Vault on your phone. Put the phone on the <strong className="text-white/70">same Wi-Fi</strong> as this PC,
-                    then scan the code below or type the address into the phone's browser.
-                    Tap <strong className="text-white/70">Add to Home Screen</strong> to get a full-screen app with no browser bars.
+                    {t('Open The Vault on your phone. Put the phone on the')} <strong className="text-white/70">{t('same Wi-Fi')}</strong> {t("as this PC, then scan the code below or type the address into the phone's browser. Tap")} <strong className="text-white/70">{t('Add to Home Screen')}</strong> {t('to get a full-screen app with no browser bars.')}
                   </div>
                   {mobileLink?.found === false && (
                     <div className="flex items-center gap-2 text-[16px] mb-4 p-3 rounded-[8px]"
                          style={{ background: 'rgba(186,117,23,0.12)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
-                      <AlertCircle size={16} /> Could not find this PC's network address. Make sure you're connected to Wi-Fi or a network.
+                      <AlertCircle size={16} /> {t("Could not find this PC's network address. Make sure you're connected to Wi-Fi or a network.")}
                     </div>
                   )}
                   <div className="flex items-center gap-6 flex-wrap">
@@ -3158,32 +3245,32 @@ export function Settings() {
                       </div>
                     )}
                     <div className="flex-1 min-w-[220px]">
-                      <div className="text-[15px] text-white/35 mb-1">Address for your phone</div>
+                      <div className="text-[15px] text-white/35 mb-1">{t('Address for your phone')}</div>
                       <div className="flex items-center gap-2">
                         <code className="text-[18px] font-mono px-3 py-2 rounded-[8px] flex-1 break-all"
                               style={{ background: 'rgba(255,255,255,0.05)', color: '#D0CEFD', border: '0.5px solid rgba(255,255,255,0.08)' }}>
                           {mobileLink?.url ?? '…'}
                         </code>
-                        <button onClick={() => { if (mobileLink?.url) { navigator.clipboard?.writeText(mobileLink.url); toast.success('Address copied') } }}
+                        <button onClick={() => { if (mobileLink?.url) { navigator.clipboard?.writeText(mobileLink.url); toast.success(t('Address copied')) } }}
                                 disabled={!mobileLink?.url}
                                 className="flex items-center gap-2 px-3 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-40"
                                 style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                          <Copy size={15} /> Copy
+                          <Copy size={15} /> {t('Copy')}
                         </button>
                       </div>
                       <div className="text-[15px] text-white/30 mt-3 leading-relaxed">
-                        Keep The Vault running on this PC — your phone reads the library straight from here, so nothing is copied to the phone.
+                        {t('Keep The Vault running on this PC — your phone reads the library straight from here, so nothing is copied to the phone.')}
                       </div>
                     </div>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Startup &amp; Updates" icon={RefreshCw} accentColor="var(--c-accent)">
+                <SettingsSection title={t('Startup & Updates')} icon={RefreshCw} accentColor="var(--c-accent)">
                   <div className="flex items-center justify-between py-3 mb-4" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
                     <div>
-                      <div className="text-[17px] font-semibold text-white/80">Run on startup</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">Launch The Vault automatically when Windows starts.</div>
-                      {startupData && !startupData.available && <div className="text-[14px] mt-1 text-white/25">Only available in the installed version</div>}
+                      <div className="text-[17px] font-semibold text-white/80">{t('Run on startup')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Launch The Vault automatically when Windows starts.')}</div>
+                      {startupData && !startupData.available && <div className="text-[14px] mt-1 text-white/25">{t('Only available in the installed version')}</div>}
                     </div>
                     <button disabled={!startupData?.available || startupMutation.isPending}
                             onClick={() => startupMutation.mutate(!startupData?.enabled)}
@@ -3195,34 +3282,34 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="text-[17px] font-semibold text-white/80">App updates</div>
+                      <div className="text-[17px] font-semibold text-white/80">{t('App updates')}</div>
                       <div className="text-[16px] text-white/35 mt-0.5">
-                        Current version: <span className="font-mono text-white/50">v{versionData?.version ?? '…'}</span>
-                        {versionData && !versionData.is_installed && <span className="ml-2 text-white/25">(dev mode)</span>}
+                        {t('Current version:')} <span className="font-mono text-white/50">v{versionData?.version ?? '…'}</span>
+                        {versionData && !versionData.is_installed && <span className="ml-2 text-white/25">{t('(dev mode)')}</span>}
                       </div>
                     </div>
                     <button onClick={handleCheckUpdate}
                             disabled={['checking','downloading','installing'].includes(updateState)}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-50"
                             style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                      {updateState === 'checking' ? <><RefreshCw size={14} className="animate-spin" /> Checking…</> : <><RefreshCw size={14} /> Check for updates</>}
+                      {updateState === 'checking' ? <><RefreshCw size={14} className="animate-spin" /> {t('Checking…')}</> : <><RefreshCw size={14} /> {t('Check for updates')}</>}
                     </button>
                   </div>
-                  {updateState === 'up_to_date' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#9FE1CB' }}><CheckCircle2 size={14} /> You're on the latest version.</div>}
+                  {updateState === 'up_to_date' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#9FE1CB' }}><CheckCircle2 size={14} /> {t("You're on the latest version.")}</div>}
                   {updateState === 'available' && updateInfo && (
                     <div className="rounded-[8px] p-4 space-y-2" style={{ background: 'rgba(127,119,221,0.1)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-                      <div className="text-[17px] font-semibold" style={{ color: '#D0CEFD' }}>v{updateInfo.latest_version} available</div>
+                      <div className="text-[17px] font-semibold" style={{ color: '#D0CEFD' }}>v{updateInfo.latest_version} {t('available')}</div>
                       {updateInfo.changelog && <div className="text-[16px] whitespace-pre-line text-white/45">{updateInfo.changelog}</div>}
                       <button onClick={handleInstallUpdate}
                               className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer mt-1"
                               style={{ background: 'rgba(127,119,221,0.3)', color: '#D0CEFD', border: '0.5px solid rgba(127,119,221,0.5)' }}>
-                        <Download size={14} /> Download &amp; Install
+                        <Download size={14} /> {t('Download & Install')}
                       </button>
                     </div>
                   )}
                   {(updateState === 'downloading' || updateState === 'installing') && (
                     <div className="space-y-2">
-                      <div className="text-[16px] text-white/50">{updateState === 'installing' ? 'Launching installer — the app will close and restart…' : `Downloading… ${updateProgress}%`}</div>
+                      <div className="text-[16px] text-white/50">{updateState === 'installing' ? t('Launching installer — the app will close and restart…') : `Downloading… ${updateProgress}%`}</div>
                       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${updateProgress}%`, background: 'rgba(127,119,221,0.7)' }} />
                       </div>
@@ -3231,11 +3318,11 @@ export function Settings() {
                   {updateState === 'error' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#F4C0D1' }}><AlertCircle size={13} /> {updateError}</div>}
                 </SettingsSection>
 
-                <SettingsSection title="Server" icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
+                <SettingsSection title={t('Server')} icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-[17px] font-semibold text-white/80">Restart server</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">Restarts the Python backend. The page will reconnect automatically — takes about 3–5 seconds.</div>
+                      <div className="text-[17px] font-semibold text-white/80">{t('Restart server')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Restarts the Python backend. The page will reconnect automatically — takes about 3–5 seconds.')}</div>
                     </div>
                     <button onClick={restartState === 'idle' ? handleRestart : undefined}
                             disabled={restartState === 'restarting'}
@@ -3243,23 +3330,23 @@ export function Settings() {
                             style={restartState === 'done'
                               ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
                               : { background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.4)' }}>
-                      {restartState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> Restarting…</>
-                       : restartState === 'done' ? <><Check size={14} /> Back online</>
-                       : <><RefreshCw size={14} /> Restart server</>}
+                      {restartState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> {t('Restarting…')}</>
+                       : restartState === 'done' ? <><Check size={14} /> {t('Back online')}</>
+                       : <><RefreshCw size={14} /> {t('Restart server')}</>}
                     </button>
                   </div>
                 </SettingsSection>
 
-                <SettingsSection title="Factory reset" icon={AlertCircle} accentColor="var(--c-pink)" defaultOpen={false}>
+                <SettingsSection title={t('Factory reset')} icon={AlertCircle} accentColor="var(--c-pink)" defaultOpen={false}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-[17px] font-semibold" style={{ color: 'rgba(244,192,209,0.9)' }}>Restore defaults</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">Wipe all galleries, creators, sessions, and cards for a clean start.</div>
+                      <div className="text-[17px] font-semibold" style={{ color: 'rgba(244,192,209,0.9)' }}>{t('Restore defaults')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Wipe all galleries, creators, sessions, and cards for a clean start.')}</div>
                     </div>
                     <button onClick={() => setShowResetModal(true)}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
                             style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
-                      <AlertCircle size={14} /> Reset collection
+                      <AlertCircle size={14} /> {t('Reset collection')}
                     </button>
                   </div>
                 </SettingsSection>
@@ -3279,29 +3366,29 @@ export function Settings() {
                style={{ background: '#1a1a1a', border: '1px solid rgba(212,83,126,0.4)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
                onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#F4C0D1', marginBottom: 10 }}>Wipe entire collection?</div>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: 16 }}>This will permanently delete:</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#F4C0D1', marginBottom: 10 }}>{t('Wipe entire collection?')}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: 16 }}>{t('This will permanently delete:')}</div>
             <ul style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.8, marginBottom: 20, paddingLeft: 20 }}>
-              <li>All galleries and images</li>
-              <li>All creators and characters</li>
-              <li>All session history and stats</li>
-              <li>All cards, packs, and TCG progress</li>
-              <li>All XP, levels, and achievements</li>
+              <li>{t('All galleries and images')}</li>
+              <li>{t('All creators and characters')}</li>
+              <li>{t('All session history and stats')}</li>
+              <li>{t('All cards, packs, and TCG progress')}</li>
+              <li>{t('All XP, levels, and achievements')}</li>
             </ul>
             <div className="p-3 rounded-[8px] mb-6" style={{ background: 'rgba(212,83,126,0.12)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#F4C0D1', marginBottom: 4 }}>This cannot be undone.</div>
-              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>The only way to recover your data is from a backup file. Use <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Download backup</strong> first if you want to keep a copy.</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#F4C0D1', marginBottom: 4 }}>{t('This cannot be undone.')}</div>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>{t('The only way to recover your data is from a backup file. Use')} <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{t('Download backup')}</strong> {t('first if you want to keep a copy.')}</div>
             </div>
             <div className="flex gap-3">
               <button onClick={resetState === 'idle' ? handleReset : undefined} disabled={resetState !== 'idle'}
                       className="flex items-center gap-2 px-5 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-50"
                       style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
-                {resetState === 'resetting' ? <><RefreshCw size={15} className="animate-spin" /> Wiping &amp; restarting…</> : '💣 Yes, wipe everything'}
+                {resetState === 'resetting' ? <><RefreshCw size={15} className="animate-spin" /> {t('Wiping & restarting…')}</> : t('💣 Yes, wipe everything')}
               </button>
               <button onClick={() => setShowResetModal(false)} disabled={resetState === 'resetting'}
                       className="flex-1 px-4 py-3 rounded-[8px] text-[15px] cursor-pointer disabled:opacity-40"
                       style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                Cancel
+                {t('Cancel')}
               </button>
             </div>
           </div>
@@ -3313,11 +3400,12 @@ export function Settings() {
 }
 
 export function MultiPanel() {
+  const t = useT()
   return (
     <div className="p-5 flex items-center justify-center h-full">
       <div className="text-center">
-        <div className="text-[rgba(255,255,255,0.3)] text-[14px] mb-2">Multi-panel viewer</div>
-        <div className="text-[rgba(255,255,255,0.15)] text-[12px]">Coming in Phase 2 — the UI mockup is ready to implement!</div>
+        <div className="text-[rgba(255,255,255,0.3)] text-[14px] mb-2">{t('Multi-panel viewer')}</div>
+        <div className="text-[rgba(255,255,255,0.15)] text-[12px]">{t('Coming in Phase 2 — the UI mockup is ready to implement!')}</div>
       </div>
     </div>
   )
@@ -3336,6 +3424,7 @@ export function ScanLog() {
     refetchInterval: scanStatus?.running ? 1500 : false,
   })
   const qc = useQueryClient()
+  const t = useT()
 
   const log = data?.log ?? []
 
@@ -3343,23 +3432,23 @@ export function ScanLog() {
     <div className="p-5 flex flex-col gap-4 h-full">
       <div className="flex items-center gap-3">
         <ScrollText size={15} style={{ color: '#7F77DD' }} />
-        <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">Scan Log</div>
+        <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">{t('Scan Log')}</div>
         {scanStatus?.running && (
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px]"
                style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#1D9E75' }} />
-            Scanning…
+            {t('Scanning…')}
           </div>
         )}
         {scanStatus?.running && (
           <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] cursor-pointer"
                   style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-            <X size={10} /> Cancel scan
+            <X size={10} /> {t('Cancel scan')}
           </button>
         )}
         <button onClick={() => refetch()} className="ml-auto text-[10px] cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
-          Refresh
+          {t('Refresh')}
         </button>
       </div>
 
@@ -3370,7 +3459,7 @@ export function ScanLog() {
             <div className="h-full rounded-full transition-all" style={{ background: '#1D9E75', width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
           </div>
           <div className="text-[9px] text-[rgba(255,255,255,0.3)] mt-1">
-            {scanStatus.progress} / {scanStatus.total} folders
+            {scanStatus.progress} / {scanStatus.total} {t('folders')}
           </div>
         </div>
       )}
@@ -3378,9 +3467,9 @@ export function ScanLog() {
       <div className="flex-1 rounded-[10px] overflow-y-auto font-mono text-[11px]"
            style={{ background: '#0d0d0d', border: '0.5px solid rgba(255,255,255,0.08)', padding: '12px' }}>
         {isLoading ? (
-          <div className="text-[rgba(255,255,255,0.2)]">Loading log…</div>
+          <div className="text-[rgba(255,255,255,0.2)]">{t('Loading log…')}</div>
         ) : log.length === 0 ? (
-          <div className="text-[rgba(255,255,255,0.2)]">No log entries yet. Start a scan to see output here.</div>
+          <div className="text-[rgba(255,255,255,0.2)]">{t('No log entries yet. Start a scan to see output here.')}</div>
         ) : (
           [...log].reverse().map((line, i) => (
             <div key={i} className="py-0.5 leading-relaxed"

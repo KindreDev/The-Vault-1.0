@@ -129,6 +129,20 @@ export const useDeviceStore = create((set, get) => ({
   setStrokeFloor:   (v) => set({ strokeFloor: Math.min(v, get().strokeCeiling - 5) }),
   setStrokeCeiling: (v) => set({ strokeCeiling: Math.max(v, get().strokeFloor + 5) }),
 
+  // ── Multi-axis funscript ────────────────────────────────────────────────────
+  // detectedAxes: axisIds present in the currently-loaded script, e.g. ['L0','R1'].
+  //   Set by the video player on load; drives the axis-badge UI. Single-axis
+  //   scripts yield ['L0'] (or []), so the badge row stays hidden.
+  // funscriptAxes: per-axis enable map. An axis is ON unless explicitly set false,
+  //   so the default ("play them all") needs no entries.
+  detectedAxes:  [],
+  funscriptAxes: {},
+  setDetectedAxes: (axes) => set({ detectedAxes: Array.isArray(axes) ? axes : [] }),
+  setAxisEnabled: (axisId, on) => set(s => ({
+    funscriptAxes: { ...s.funscriptAxes, [axisId]: on },
+  })),
+  isAxisEnabled: (axisId) => get().funscriptAxes[axisId] !== false,
+
   // ── Ramp mode ───────────────────────────────────────────────────────────────
   rampEnabled:      false,
   rampDurationMin:  20,          // minutes

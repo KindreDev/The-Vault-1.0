@@ -95,6 +95,9 @@ class CreatorOut(CreatorBase):
     created_at: datetime
     gallery_count: Optional[int] = 0
     image_count: Optional[int] = 0
+    video_count: Optional[int] = 0
+    cum_count: Optional[int] = 0
+    total_size_gb: Optional[float] = 0.0
     session_count: Optional[int] = 0
     total_view_seconds: Optional[int] = 0
     collection_value: Optional[float] = 0.0
@@ -191,6 +194,8 @@ class ImageOut(BaseModel):
     sort_order: int
     tags: List[ImageTagOut] = []
     creators: List[dict] = []
+    has_image_creators: bool = False
+    file_creator_ids: List[int] = []
     gallery_name: Optional[str] = None
     class Config:
         from_attributes = True
