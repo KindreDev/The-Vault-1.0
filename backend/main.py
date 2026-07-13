@@ -421,7 +421,7 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.1.5")
+app = FastAPI(title="The Vault", version="1.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -436,6 +436,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -789,18 +790,11 @@ if __name__ == "__main__":
             )
             _api._win = _win   # back-reference so the API can reach the window
 
-            def _on_loaded():
-                # Inject F5 → reload (Ctrl+F5 still does browser default)
-                _win.evaluate_js(
-                    "document.addEventListener('keydown', function(e) {"
-                    "  if (e.key === 'F5' && !e.ctrlKey) {"
-                    "    location.reload();"
-                    "    e.preventDefault();"
-                    "  }"
-                    "});"
-                )
-
-            webview.start(_on_loaded, debug=False, private_mode=False, storage_path=_wv_storage)
+            # F5 → reload is handled inside the React app (App.jsx) so the listener
+            # is re-attached on every page load. Injecting it once here via
+            # evaluate_js only worked until the first reload, which replaced the
+            # document and discarded the listener.
+            webview.start(debug=False, private_mode=False, storage_path=_wv_storage)
             # webview.start() blocks until the window is closed.
             # os._exit() is a hard exit — it kills all threads (including uvicorn's
             # asyncio ThreadPoolExecutor non-daemon threads) instead of waiting for

@@ -84,6 +84,8 @@ class CreatorCreate(CreatorBase):
 
 class CreatorUpdate(CreatorBase):
     name: Optional[str] = None
+    personality_type: Optional[str] = None
+    companion_prompt: Optional[str] = None
 
 class CreatorOut(CreatorBase):
     id: int
@@ -112,6 +114,7 @@ class CreatorOut(CreatorBase):
     bond_excluded: Optional[bool] = False
     bond_gifts: int = 0
     personality_type: Optional[str] = None
+    companion_prompt: Optional[str] = None
     companion_bond_xp: Optional[int] = 0
     class Config:
         from_attributes = True

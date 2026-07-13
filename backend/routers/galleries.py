@@ -1,6 +1,7 @@
 import re
 import os
-from fastapi import APIRouter, Depends, HTTPException, Query
+import random
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, or_
 from typing import List, Optional
@@ -186,6 +187,7 @@ def create_random_mix(data: dict, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[GalleryOut])
 def list_galleries(
+    response: Response,
     db: Session = Depends(get_db),
     creator_id: Optional[str] = None,  # single id or comma-separated ids
     creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
@@ -213,6 +215,10 @@ def list_galleries(
         search=search, tag=tag, tags=tags, favorite=favorite,
         unassigned=unassigned, period=period,
     )
+
+    # Total count under the current filters, exposed so the frontend can
+    # compute the real last page instead of guessing with a fixed window.
+    response.headers["X-Total-Count"] = str(q.order_by(None).count())
 
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
@@ -536,9 +542,13 @@ def random_gallery(db: Session = Depends(get_db)):
 
 @router.get("/{gallery_id}/similar")
 def similar_galleries(gallery_id: int, limit: int = 6, db: Session = Depends(get_db)):
-    """Galleries sharing the most image-level tags with this gallery."""
+    """Galleries sharing image-level tags with this gallery. Pulls a wider
+    relevant pool (capped, ordered by overlap) and weight-samples `limit` of
+    them at random each call, so the strip stays tag-relevant but isn't the
+    exact same 6 galleries every time the page is opened."""
     if not db.query(Gallery).filter(Gallery.id == gallery_id).first():
         raise HTTPException(404, "Gallery not found")
+    pool_size = max(limit * 5, 30)
     rows = db.execute(text("""
         SELECT g.id, g.name, g.cover_thumb, g.image_count,
                g.cum_count, g.view_count,
@@ -555,11 +565,19 @@ def similar_galleries(gallery_id: int, limit: int = 6, db: Session = Depends(get
           AND g.id != :gid
         GROUP BY g.id
         ORDER BY shared_tags DESC
-        LIMIT :limit
-    """), {"gid": gallery_id, "limit": limit}).fetchall()
+        LIMIT :pool_size
+    """), {"gid": gallery_id, "pool_size": pool_size}).fetchall()
+
+    # Weighted random sample without replacement (Efraimidis-Spirakis): higher
+    # shared_tags counts are more likely to be picked, but not guaranteed —
+    # gives variety while still favoring the more relevant matches.
+    keyed = [(random.random() ** (1.0 / r[6]), r) for r in rows if r[6] > 0]
+    keyed.sort(key=lambda x: x[0], reverse=True)
+    picked = [r for _, r in keyed[:limit]]
+
     return [{"id": r[0], "name": r[1], "cover_thumb": r[2], "image_count": r[3],
              "cum_count": r[4], "view_count": r[5], "shared_tags": r[6]}
-            for r in rows]
+            for r in picked]
 
 
 @router.get("/{gallery_id}", response_model=GalleryOut)

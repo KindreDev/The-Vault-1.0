@@ -7,7 +7,7 @@ import {
   Search, Droplets, Star, Images, Filter, SortAsc, X,
   CheckSquare, Square, UserPlus, UserMinus, ChevronDown, AlertCircle,
   Pencil, FolderPlus, Check, LayoutTemplate, Trash2, GitMerge,
-  ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw, FolderSymlink, Archive,
+  RotateCcw, FolderSymlink, Archive,
 } from 'lucide-react'
 import { galleriesApi, creatorsApi, imagesApi } from '../lib/api'
 import TagFilterInput from '../components/TagFilterInput'
@@ -18,6 +18,7 @@ import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useAllCreators } from '../hooks/useAllCreators'
 import GalleryContextMenu from '../components/GalleryContextMenu'
+import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 
 const TYPE_COLORS = {
@@ -1389,11 +1390,31 @@ export default function GalleryList() {
     skip: (page - 1) * pageSize,
   }
 
-  const { data: galleries, isLoading, isFetching } = useQuery({
+  const { data: galleryPage, isLoading, isFetching } = useQuery({
     queryKey: ['galleries', filterKey, page, pageSize],
-    queryFn: () => galleriesApi.list(params).then(r => r.data),
+    queryFn: () => galleriesApi.list(params).then(r => ({
+      items: r.data,
+      total: parseInt(r.headers['x-total-count'] ?? '0', 10),
+    })),
     placeholderData: keepPreviousData,
   })
+  const galleries   = galleryPage?.items
+  const totalCount   = galleryPage?.total ?? 0
+  const totalPages   = Math.max(1, Math.ceil(totalCount / pageSize))
+
+  // If the current page no longer exists under this filter/page-size (e.g. a
+  // filter just shrank the result set, or the user typed a stale page in the
+  // URL), snap back to the real last page instead of showing a dead end.
+  useEffect(() => {
+    if (!isLoading && totalCount > 0 && page > totalPages) setPage(totalPages)
+  }, [isLoading, totalCount, totalPages, page, setPage])
+
+  // Scroll the page back to the top whenever the page number changes, so
+  // browsing always resumes from the first card instead of wherever the
+  // previous page happened to be scrolled to.
+  useEffect(() => {
+    document.querySelector('main')?.scrollTo({ top: 0, behavior: 'auto' })
+  }, [page])
 
   // Keep galleriesRef fresh so toggleSelect can read the current list without
   // being recreated on every fetch (which would bust GalleryCard memo)
@@ -1708,8 +1729,13 @@ export default function GalleryList() {
         </div>
       ) : (
         <>
+          {totalPages > 1 && (
+            <div className="mb-3">
+              <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="top" />
+            </div>
+          )}
           <div className="text-[13px] text-[rgba(255,255,255,0.3)] mb-2">
-            {`${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + (galleries?.length ?? 0)} shown · page ${page}${galleries?.length < pageSize ? ' (last)' : ''}`}
+            {`${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + (galleries?.length ?? 0)} shown of ${totalCount} · page ${page} of ${totalPages}`}
           </div>
           <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
             {galleries.map(g => (
@@ -1727,45 +1753,8 @@ export default function GalleryList() {
             ))}
           </div>
           {/* Pagination controls */}
-          <div className="flex items-center justify-center gap-2 mt-6">
-            <button
-              onClick={() => setPage(1)}
-              disabled={page === 1}
-              className="p-1.5 rounded-[6px] cursor-pointer disabled:opacity-30"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}
-              title={t('First page')}>
-              <ChevronsLeft size={14} />
-            </button>
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-              <ChevronLeft size={13} /> {t('Prev')}
-            </button>
-
-            {/* Page number pills — sliding window of up to 7 pages around current */}
-            {Array.from({ length: 7 }, (_, i) => Math.max(1, page - 3) + i).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className="w-8 h-8 rounded-[6px] text-[13px] font-medium cursor-pointer"
-                style={{
-                  background: p === page ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
-                  color: p === page ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                  border: `0.5px solid ${p === page ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                }}>
-                {p}
-              </button>
-            ))}
-
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={(galleries?.length ?? 0) < pageSize}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-              {t('Next')} <ChevronRight size={13} />
-            </button>
+          <div className="mt-6">
+            <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="bottom" />
           </div>
         </>
       )}

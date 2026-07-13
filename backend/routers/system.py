@@ -270,7 +270,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.2.0"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:

@@ -755,7 +755,7 @@ function SessionsModal({ onClose }) {
     for (const s of allSessions) {
       const tm = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
       if (!cur || Math.abs(tm - cur.refTime) > 5000) {
-        cur = { refTime: t, logged_at: s.logged_at, creators: s.creator_name ? [s.creator_name] : [], gallery_name: s.gallery_name, duration_sec: s.duration_sec }
+        cur = { refTime: tm, logged_at: s.logged_at, creators: s.creator_name ? [s.creator_name] : [], gallery_name: s.gallery_name, duration_sec: s.duration_sec }
         result.push(cur)
       } else {
         if (s.creator_name && !cur.creators.includes(s.creator_name)) cur.creators.push(s.creator_name)
@@ -2645,21 +2645,46 @@ export function Settings() {
                   )}
                 </SettingsSection>
 
-                <SettingsSection title={t('Regenerate thumbnails')} icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
+                <SettingsSection title={t('Thumbnails')} icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>
                   <p className="text-[16px] text-white/45 mb-4">
-                    {t('Rebuilds any missing or broken thumbnails across your entire library. Runs in the background.')}
+                    {t('Purge deletes existing thumbnails; regenerate rebuilds any that are missing. To fully rebuild a type, purge it first, then regenerate. Everything runs in the background.')}
                   </p>
-                  <button disabled={regenning}
-                          onClick={async () => {
-                            setRegenning(true)
-                            try { await scannerApi.regenThumbs(); toast.success(t('Thumbnail regeneration started!')) }
-                            catch { toast.error(t('Failed to start regeneration')) }
-                            finally { setTimeout(() => setRegenning(false), 3000) }
-                          }}
-                          className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                          style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-                    {regenning ? t('Starting…') : t('🖼️ Regenerate missing thumbnails')}
-                  </button>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      { label: '🗑️ Purge image thumbnails', fn: () => scannerApi.purgeThumbs('images'), danger: true },
+                      { label: '🗑️ Purge video thumbnails', fn: () => scannerApi.purgeThumbs('videos'), danger: true },
+                    ].map(b => (
+                      <button key={b.label} disabled={regenning}
+                              onClick={async () => {
+                                setRegenning(true)
+                                try { await b.fn(); toast.success(t('Purge started!')) }
+                                catch { toast.error(t('Failed to start')) }
+                                finally { setTimeout(() => setRegenning(false), 3000) }
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                              style={{ background: 'rgba(212,83,126,0.15)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                        {t(b.label)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '🖼️ Regenerate image thumbnails', fn: () => scannerApi.regenThumbs('images') },
+                      { label: '🎬 Regenerate video thumbnails', fn: () => scannerApi.regenThumbs('videos') },
+                    ].map(b => (
+                      <button key={b.label} disabled={regenning}
+                              onClick={async () => {
+                                setRegenning(true)
+                                try { await b.fn(); toast.success(t('Regeneration started!')) }
+                                catch { toast.error(t('Failed to start')) }
+                                finally { setTimeout(() => setRegenning(false), 3000) }
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                              style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+                        {t(b.label)}
+                      </button>
+                    ))}
+                  </div>
                 </SettingsSection>
 
                 <SettingsSection title={t('Funscript library')} icon={ScanLine} accentColor="var(--c-pink)" defaultOpen={false}>

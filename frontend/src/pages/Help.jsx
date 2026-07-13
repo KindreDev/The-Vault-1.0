@@ -120,16 +120,16 @@ const STREAK_MULTIPLIERS = [
 ]
 
 const LEVEL_TIERS = [
-  { range: 'Lv 1–5',   color: '#888780', titles: 'Lurker, Wanderer' },
-  { range: 'Lv 6–10',  color: '#1D9E75', titles: 'Seeker, Delver' },
-  { range: 'Lv 11–20', color: '#4682DC', titles: 'Collector, Acolyte' },
-  { range: 'Lv 21–30', color: '#7F77DD', titles: 'Devotee, Archivist' },
-  { range: 'Lv 31–40', color: '#D4537E', titles: 'Disciple, Connoisseur' },
-  { range: 'Lv 41–50', color: '#BA7517', titles: 'Curator, Zealot' },
-  { range: 'Lv 51–60', color: '#E24B4A', titles: 'Degenerate, Gooner' },
-  { range: 'Lv 61–70', color: '#FF6B35', titles: 'Sovereign, Corruptor' },
-  { range: 'Lv 71–80', color: '#C084FC', titles: 'Obsessed, Legendary Collector' },
-  { range: 'Lv 81–100',color: '#FFD700', titles: 'Transcendent Hoarder → God Emperor Of The Vault' },
+  { range: 'Lv 1–10',   color: '#888780', titles: 'Lurker, Wanderer' },
+  { range: 'Lv 11–20',  color: '#1D9E75', titles: 'Seeker, Delver' },
+  { range: 'Lv 21–30',  color: '#4682DC', titles: 'Collector, Acolyte' },
+  { range: 'Lv 31–40',  color: '#7F77DD', titles: 'Devotee, Archivist' },
+  { range: 'Lv 41–50',  color: '#D4537E', titles: 'Disciple, Connoisseur' },
+  { range: 'Lv 51–60',  color: '#BA7517', titles: 'Curator, Zealot' },
+  { range: 'Lv 61–70',  color: '#E24B4A', titles: 'Degenerate, Gooner' },
+  { range: 'Lv 71–80',  color: '#FF6B35', titles: 'Sovereign, Corruptor' },
+  { range: 'Lv 81–90',  color: '#C084FC', titles: 'Obsessed, Legendary Collector' },
+  { range: 'Lv 91–100', color: '#FFD700', titles: 'Transcendent Hoarder, God Emperor Of The Vault' },
 ]
 
 const RARITY_DATA = [

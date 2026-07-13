@@ -777,16 +777,33 @@ def set_avatar_random(creator_id: int, data: dict = Body(default={}), db: Sessio
           .filter(Image.thumb_path.isnot(None))
     )
 
+    # Prefer photos — only fall back to videos when the creator has nothing else
+    photo_q = base_q.filter(Image.is_video == False)
+    pick_q = photo_q if db.query(photo_q.exists()).scalar() else base_q
+
     exclude_path = data.get("exclude_path")
-    if exclude_path and base_q.count() > 1:
-        candidate = base_q.filter(Image.file_path != exclude_path).order_by(func.random()).first()
+    if exclude_path and pick_q.count() > 1:
+        candidate = pick_q.filter(Image.file_path != exclude_path).order_by(func.random()).first()
     else:
-        candidate = base_q.order_by(func.random()).first()
+        candidate = pick_q.order_by(func.random()).first()
 
     if not candidate:
         raise HTTPException(404, "No images found for this creator — assign some galleries first")
 
-    c.avatar_path = candidate.file_path if candidate.file_path and os.path.exists(candidate.file_path) else candidate.thumb_path
+    if candidate.is_video:
+        # Never store a raw video path as avatar (it can't be served as an image).
+        # Extract a full-res frame; fall back to the scan thumbnail if ffmpeg fails.
+        from services.scanner import extract_video_frame
+        os.makedirs(THUMBS_DIR, exist_ok=True)
+        dest = os.path.join(THUMBS_DIR, f"avatar_{creator_id}_{uuid.uuid4().hex[:8]}.jpg")
+        if candidate.file_path and os.path.exists(candidate.file_path) and extract_video_frame(candidate.file_path, 5.0, dest):
+            c.avatar_path = dest
+        elif candidate.thumb_path and os.path.exists(candidate.thumb_path):
+            c.avatar_path = candidate.thumb_path
+        else:
+            raise HTTPException(500, "Could not extract a frame from the picked video")
+    else:
+        c.avatar_path = candidate.file_path if candidate.file_path and os.path.exists(candidate.file_path) else candidate.thumb_path
     db.commit()
     return {"avatar_path": c.avatar_path}
 
@@ -888,6 +905,81 @@ def set_avatar_from_image(creator_id: int, image_id: int, db: Session = Depends(
     return {"avatar_path": c.avatar_path}
 
 
+@router.post("/{creator_id}/avatar-from-video/{image_id}")
+def set_avatar_from_video(creator_id: int, image_id: int, data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Set the creator's avatar from a video: either a full-res still frame at the given
+    timestamp, or a short animated WebP clip starting there (pass {clip: true})."""
+    from services.scanner import extract_video_frame, extract_video_clip_webp
+
+    c = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not c:
+        raise HTTPException(404, "Creator not found")
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Video not found")
+    if not img.is_video:
+        raise HTTPException(400, "Not a video — use set-avatar-image for images")
+    if not img.file_path or not os.path.exists(img.file_path):
+        raise HTTPException(400, "Video file not found on disk")
+
+    try:
+        timestamp = max(0.0, float(data.get("timestamp", 0)))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid timestamp")
+    clip = bool(data.get("clip", False))
+
+    os.makedirs(THUMBS_DIR, exist_ok=True)
+    ext = ".webp" if clip else ".jpg"
+    dest = os.path.join(THUMBS_DIR, f"avatar_{creator_id}_{uuid.uuid4().hex[:8]}{ext}")
+
+    ok = (extract_video_clip_webp(img.file_path, timestamp, dest) if clip
+          else extract_video_frame(img.file_path, timestamp, dest))
+    if not ok:
+        raise HTTPException(500, "FFmpeg failed to extract from the video")
+
+    c.avatar_path = dest
+    db.commit()
+    return {"avatar_path": c.avatar_path}
+
+
+@router.post("/{creator_id}/banner-from-video/{image_id}")
+def set_banner_from_video(creator_id: int, image_id: int, data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Set the creator's banner from a video: a full-res still frame at the given
+    timestamp, or an animated WebP clip starting there (pass {clip: true})."""
+    from services.scanner import extract_video_frame, extract_video_clip_webp
+
+    c = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not c:
+        raise HTTPException(404, "Creator not found")
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Video not found")
+    if not img.is_video:
+        raise HTTPException(400, "Not a video — use set-banner-image for images")
+    if not img.file_path or not os.path.exists(img.file_path):
+        raise HTTPException(400, "Video file not found on disk")
+
+    try:
+        timestamp = max(0.0, float(data.get("timestamp", 0)))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid timestamp")
+    clip = bool(data.get("clip", False))
+
+    os.makedirs(THUMBS_DIR, exist_ok=True)
+    ext = ".webp" if clip else ".jpg"
+    dest = os.path.join(THUMBS_DIR, f"banner_{creator_id}_{uuid.uuid4().hex[:8]}{ext}")
+
+    ok = (extract_video_clip_webp(img.file_path, timestamp, dest, width=1280) if clip
+          else extract_video_frame(img.file_path, timestamp, dest))
+    if not ok:
+        raise HTTPException(500, "FFmpeg failed to extract from the video")
+
+    c.banner_path = dest
+    c.banner_image_id = None   # uploaded/extracted banner takes precedence
+    db.commit()
+    return {"banner_path": c.banner_path}
+
+
 @router.post("/{creator_id}/set-banner-image/{image_id}")
 def set_banner_from_image(creator_id: int, image_id: int, db: Session = Depends(get_db)):
     """Set creator banner to a specific gallery image (by image_id)."""
@@ -938,6 +1030,12 @@ def serve_creator_avatar_thumb(creator_id: int, size: int = 480, db: Session = D
     if os.path.splitext(c.avatar_path)[1].lower() not in _AVATAR_SERVE_EXTS:
         raise HTTPException(404, "Not a valid image")
     img = PILImage.open(c.avatar_path)
+    # Animated avatars (WebP clips, GIFs): Pillow resizing would flatten them to
+    # frame 1 — serve the original file so the animation plays in list views.
+    if getattr(img, "is_animated", False):
+        from fastapi.responses import FileResponse
+        img.close()
+        return FileResponse(c.avatar_path, headers={"Cache-Control": "public, max-age=3600"})
     if img.mode == "RGBA":
         img = img.convert("RGB")
     elif img.mode not in ("RGB", "L"):
@@ -1052,6 +1150,9 @@ def top_images(creator_id: int, db: Session = Depends(get_db), limit: int = 5):
                   Image.id.in_(gallery_inherited),
               )
           )
+          # Photos only — consumers render these in <img> tags (e.g. the profile
+          # banner fallback), which can't display a video file.
+          .filter(Image.is_video == False)
           .order_by(Image.cum_count.desc())
           .limit(limit)
           .all()

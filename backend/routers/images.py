@@ -3,7 +3,7 @@ import re
 import mimetypes
 import aiofiles
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, nullslast, select, or_, and_
@@ -163,6 +163,7 @@ def _apply_image_filters(
 
 @router.get("/", response_model=List[ImageOut])
 def list_images(
+    response: Response,
     db: Session = Depends(get_db),
     search: Optional[str] = None,
     tag: Optional[str] = None,
@@ -189,6 +190,11 @@ def list_images(
         creator_type=creator_type, series=series, gallery_id=gallery_id,
         is_video=is_video, favorite=favorite, period=period,
     )
+
+    # Total count under the current filters, exposed so the frontend can
+    # compute the real last page instead of guessing with a fixed window.
+    response.headers["X-Total-Count"] = str(q.order_by(None).count())
+
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
     if sort_dir == "asc":

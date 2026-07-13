@@ -6,12 +6,14 @@ import {
   Search, X, ChevronLeft, ChevronRight, Droplets, Heart,
   ZoomIn, ZoomOut, Maximize, Minimize, Images as ImagesIcon,
   ChevronDown, ExternalLink, Tag, Play, Pause,
-  ChevronsLeft, ChevronsRight, LayoutGrid, Star,
+  LayoutGrid, Star,
   CheckSquare, Square, UserPlus, Check, Trash2, LayoutTemplate, GripHorizontal,
   FolderOpen, Zap, FolderOutput,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
 import ImageContextMenu from '../components/ImageContextMenu'
+import AvatarFramePicker from '../components/AvatarFramePicker'
+import GalleryPagination from '../components/GalleryPagination'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
@@ -1155,9 +1157,13 @@ export default function ImageList({ onlyVideos = false }) {
                        creatorId: null, creatorType: '', favOnly: false, franchise: '', period: '', activeTags: [] }
     const urlMulti = searchParams.get('tags')
     const urlSingle = searchParams.get('tag')
+    const urlCreator = parseInt(searchParams.get('creator_id'), 10)
     if (urlMulti || urlSingle) {
       const tags = urlMulti ? urlMulti.split(',').map(t => t.trim()).filter(Boolean) : [urlSingle]
       _ilInitial.current = { ...DEFAULTS, activeTags: tags }
+    } else if (!isNaN(urlCreator)) {
+      // "View all" links from a creator profile start a fresh filter on that creator
+      _ilInitial.current = { ...DEFAULTS, creatorId: urlCreator }
     } else {
       let saved = null
       try { saved = JSON.parse(sessionStorage.getItem(IL_STATE_KEY) || 'null') } catch {}
@@ -1191,6 +1197,7 @@ export default function ImageList({ onlyVideos = false }) {
   const [bulkMode, setBulkMode] = useState(false)
   const [selected, setSelected] = useState(new Set())
   const [imageCtxMenu, setImageCtxMenu] = useState(null) // { image, x, y }
+  const [avatarFramePicker, setAvatarFramePicker] = useState(null) // { creatorId, image, mode }
 
   const queryClient = useQueryClient()
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
@@ -1216,9 +1223,9 @@ export default function ImageList({ onlyVideos = false }) {
 
   // Reset to page 1 whenever any filter or page-size changes
   const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${franchise}|${period}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
-  useEffect(() => { setPage(1) }, [filterKey])
+  const prevFilterKeyRef = useRef(filterKey)
 
-  const { data: images, isLoading, isError } = useQuery({
+  const { data: imagesPage, isLoading, isError } = useQuery({
     queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, franchise, period, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
     queryFn: () => imagesApi.list({
       search: search || undefined,
@@ -1234,10 +1241,35 @@ export default function ImageList({ onlyVideos = false }) {
       limit: pageLimit,
       skip: (page - 1) * pageLimit,
       _seed: randomSeed,
-    }).then(r => r.data),
+    }).then(r => ({
+      items: r.data,
+      total: parseInt(r.headers['x-total-count'] ?? '0', 10),
+    })),
     placeholderData: keepPreviousData,
     staleTime: sortBy === 'random' ? Infinity : 1000 * 60 * 5,
   })
+  const images     = imagesPage?.items
+  const totalCount = imagesPage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageLimit))
+
+  // Filter/page-size changes always win and go back to page 1. Otherwise, if
+  // the current page no longer exists under this filter (e.g. content was
+  // deleted, or a stale page number was restored), snap back to the real
+  // last page instead of showing a dead end.
+  useEffect(() => {
+    if (prevFilterKeyRef.current !== filterKey) {
+      prevFilterKeyRef.current = filterKey
+      setPage(1)
+    } else if (!isLoading && totalCount > 0 && page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [filterKey, isLoading, totalCount, totalPages, page])
+
+  // Scroll back to the top whenever the page number changes, so browsing
+  // always resumes from the first item instead of a mid-scroll position.
+  useEffect(() => {
+    document.querySelector('main')?.scrollTo({ top: 0, behavior: 'auto' })
+  }, [page])
 
   // Period options reflect the CURRENT filter context (creator, type, franchise,
   // tags, video-only, etc.) but never the selected period itself.
@@ -1301,7 +1333,7 @@ export default function ImageList({ onlyVideos = false }) {
                 ? `Error loading ${onlyVideos ? 'videos' : 'photos'}`
                 : images?.length === 0
                   ? t('No results')
-                  : `${(page - 1) * pageLimit + 1}–${(page - 1) * pageLimit + (images?.length ?? 0)} shown · page ${page}${images?.length < pageLimit ? ' (last)' : ''}`
+                  : `${(page - 1) * pageLimit + 1}–${(page - 1) * pageLimit + (images?.length ?? 0)} shown of ${totalCount} · page ${page} of ${totalPages}`
             }
           </div>
         </div>
@@ -1411,6 +1443,12 @@ export default function ImageList({ onlyVideos = false }) {
         </div>
       )}
 
+      {!isLoading && !isError && totalPages > 1 && (
+        <div className="mb-4">
+          <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="images-top" />
+        </div>
+      )}
+
       {/* Grid */}
       {isLoading ? (
         <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">{t('Loading…')}</div>
@@ -1447,46 +1485,9 @@ export default function ImageList({ onlyVideos = false }) {
       )}
 
       {/* Pagination controls */}
-      {!isLoading && !isError && (images?.length > 0 || page > 1) && (
-        <div className="flex items-center justify-center gap-2 mt-6">
-          <button
-            onClick={() => setPage(1)}
-            disabled={page === 1}
-            className="p-1.5 rounded-[6px] cursor-pointer disabled:opacity-30"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}
-            title={t('First page')}>
-            <ChevronsLeft size={14} />
-          </button>
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-            <ChevronLeft size={13} /> {t('Prev')}
-          </button>
-
-          {/* Page number pills — sliding window of up to 7 pages around current */}
-          {Array.from({ length: 7 }, (_, i) => Math.max(1, page - 3) + i).map(p => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className="w-8 h-8 rounded-[6px] text-[13px] font-medium cursor-pointer"
-              style={{
-                background: p === page ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
-                color: p === page ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                border: `0.5px solid ${p === page ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
-              }}>
-              {p}
-            </button>
-          ))}
-
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={(images?.length ?? 0) < pageLimit}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-30"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}>
-            {t('Next')} <ChevronRight size={13} />
-          </button>
+      {!isLoading && !isError && totalPages > 1 && (
+        <div className="mt-6">
+          <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="images-bottom" />
         </div>
       )}
 
@@ -1523,11 +1524,19 @@ export default function ImageList({ onlyVideos = false }) {
           }}
           creators={imageCtxMenu.image.creators ?? []}
           onSetAsAvatar={(creatorId) => {
+            if (imageCtxMenu.image.is_video) {
+              setAvatarFramePicker({ creatorId, image: imageCtxMenu.image, mode: 'avatar' })
+              return
+            }
             creatorsApi.setAvatarFromImage(creatorId, imageCtxMenu.image.id)
               .then(() => { toast.success(t('Avatar updated!')); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
               .catch(() => toast.error(t('Failed to set avatar')))
           }}
           onSetAsBanner={(creatorId) => {
+            if (imageCtxMenu.image.is_video) {
+              setAvatarFramePicker({ creatorId, image: imageCtxMenu.image, mode: 'banner' })
+              return
+            }
             creatorsApi.setBannerFromImage(creatorId, imageCtxMenu.image.id)
               .then(() => { toast.success(t('Banner updated!')); bumpAvatarBust(); queryClient.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
               .catch(() => toast.error(t('Failed to set banner')))
@@ -1546,6 +1555,16 @@ export default function ImageList({ onlyVideos = false }) {
             if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
             queryClient.invalidateQueries({ queryKey: ['images-list'] })
           }}
+        />
+      )}
+
+      {/* Video frame picker for avatar / banner */}
+      {avatarFramePicker && (
+        <AvatarFramePicker
+          creatorId={avatarFramePicker.creatorId}
+          image={avatarFramePicker.image}
+          mode={avatarFramePicker.mode}
+          onClose={() => setAvatarFramePicker(null)}
         />
       )}
     </div>

@@ -522,6 +522,18 @@ JOYTAG_PERSON_COUNT: dict[str, int] = {
 JOYTAG_CREATOR_TYPES = {"cosplayer", "ethot", "actress", "custom"}
 WD14_CREATOR_TYPES   = {"artist", "character"}
 
+# Per-tag threshold overrides — these tags use a lower confidence bar than the
+# global threshold.  Keeps global noise down while rescuing tags that are
+# systematically under-scored on real-photo / 3D-render content.
+# Keys are the NORMALISED tag names (as they appear in WD14_TAG_MAP values /
+# after the raw→normalised mapping step).
+TAG_THRESHOLD_OVERRIDES: dict[str, float] = {
+    "underboob": 0.05,
+    "sideboob":  0.05,
+    "backboob":  0.05,
+    "cleavage":  0.15,
+}
+
 
 # ── Tagger state (mirrors scanner._state pattern) ─────────────────────────────
 _lock = threading.Lock()
@@ -732,11 +744,16 @@ class WD14Tagger:
 
         for i, (raw_name, wd14_cat) in enumerate(self._tags):
             conf = float(probs[i])
-            # Always evaluate rating tags; others need to clear threshold
-            if conf < threshold and wd14_cat != 9:
-                continue
-
             raw_lower = raw_name.lower()
+
+            # Per-tag threshold overrides (e.g. underboob, sideboob score lower on
+            # real-photo / 3D content but are still meaningful at reduced confidence).
+            mapped_norm = WD14_TAG_MAP.get(raw_lower, (None,))[0]
+            effective_threshold = TAG_THRESHOLD_OVERRIDES.get(mapped_norm, threshold) if mapped_norm else threshold
+
+            # Always evaluate rating tags; others need to clear threshold
+            if conf < effective_threshold and wd14_cat != 9:
+                continue
 
             # Derive person_count from subject-count tags
             if raw_lower in WD14_PERSON_COUNT:
@@ -789,7 +806,16 @@ class JoyTagTagger:
             if i >= len(probs):
                 break
             conf = float(probs[i])
-            if conf < threshold:
+
+            # Resolve normalised name early so we can apply per-tag overrides.
+            raw_lower_pre = raw_name.lower().replace("_", " ")
+            raw_under_pre = raw_name.lower()
+            _jt_norm  = JOYTAG_TAG_MAP.get(raw_lower_pre, (None,))[0]
+            _wd_norm  = WD14_TAG_MAP.get(raw_under_pre, (None,))[0] if _jt_norm is None else None
+            _norm_key = _jt_norm or _wd_norm
+            effective_threshold = TAG_THRESHOLD_OVERRIDES.get(_norm_key, threshold) if _norm_key else threshold
+
+            if conf < effective_threshold:
                 continue
 
             # fancyfeast/joytag top_tags.txt uses danbooru underscore format.

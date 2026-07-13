@@ -11,6 +11,7 @@ import {
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
 import { useT } from '../i18n'
 import ImageContextMenu from '../components/ImageContextMenu'
+import AvatarFramePicker from '../components/AvatarFramePicker'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
@@ -1011,7 +1012,7 @@ function SimilarGalleriesStrip({ galleryId }) {
     queryKey: ['similar-galleries', galleryId],
     queryFn: () => galleriesApi.similar(galleryId, 6).then(r => r.data),
     enabled: !!galleryId,
-    staleTime: 120000,
+    staleTime: 0, // backend picks a fresh random-but-relevant set each call — always refetch on open
   })
   if (!similar || similar.length === 0) return null
   return (
@@ -1599,6 +1600,7 @@ export default function GalleryView() {
   const lastSelectIdxRef = useRef(null)
   // Image context menu
   const [imgCtx, setImgCtx] = useState(null) // { image, x, y }
+  const [avatarFramePicker, setAvatarFramePicker] = useState(null) // { creatorId, image, mode }
   // Transfer modal — single image (from ctx menu) or bulk
   const [transferCtx, setTransferCtx] = useState(null) // { images: [...] }
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
@@ -2185,11 +2187,19 @@ export default function GalleryView() {
           onTransfer={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}
           creators={gallery?.creators ?? []}
           onSetAsAvatar={(creatorId) => {
+            if (imgCtx.image.is_video) {
+              setAvatarFramePicker({ creatorId, image: imgCtx.image, mode: 'avatar' })
+              return
+            }
             creatorsApi.setAvatarFromImage(creatorId, imgCtx.image.id)
               .then(() => { toast.success(t('Avatar updated!')); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
               .catch(() => toast.error(t('Failed to set avatar')))
           }}
           onSetAsBanner={(creatorId) => {
+            if (imgCtx.image.is_video) {
+              setAvatarFramePicker({ creatorId, image: imgCtx.image, mode: 'banner' })
+              return
+            }
             creatorsApi.setBannerFromImage(creatorId, imgCtx.image.id)
               .then(() => { toast.success(t('Banner updated!')); bumpAvatarBust(); qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] }) })
               .catch(() => toast.error(t('Failed to set banner')))
@@ -2220,6 +2230,16 @@ export default function GalleryView() {
             if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
             qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
           }}
+        />
+      )}
+
+      {/* Video frame picker for avatar / banner */}
+      {avatarFramePicker && (
+        <AvatarFramePicker
+          creatorId={avatarFramePicker.creatorId}
+          image={avatarFramePicker.image}
+          mode={avatarFramePicker.mode}
+          onClose={() => setAvatarFramePicker(null)}
         />
       )}
     </div>

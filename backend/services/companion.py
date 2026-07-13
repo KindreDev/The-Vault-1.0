@@ -324,7 +324,15 @@ class OllamaClient:
         timeout = httpx.Timeout(connect=15.0, read=600.0, write=30.0, pool=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    try:
+                        detail = json.loads(body).get("error") or body.decode(errors="replace")
+                    except Exception:
+                        detail = body.decode(errors="replace") if body else resp.reason_phrase
+                    raise RuntimeError(
+                        f"Ollama error {resp.status_code} ({self.model}): {detail}"
+                    )
                 async for line in resp.aiter_lines():
                     if not line:
                         continue

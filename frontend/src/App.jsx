@@ -46,6 +46,22 @@ export default function App() {
     applyStoredPalette()
   }, [])
 
+  // F5 → reload. The exe runs in a PyWebView (WebView2) window that doesn't
+  // reload on F5 by default. Handling it here (rather than injecting once from
+  // Python) means the listener is part of every loaded document, so it survives
+  // every reload. Harmless in browsers (they reload on F5 natively) and on
+  // mobile (no F5 key). Ctrl+F5 is left alone for the WebView default.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'F5' && !e.ctrlKey) {
+        e.preventDefault()
+        window.location.reload()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Dev shortcut: open /?_testlevelup=1 to preview the level-up overlay
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)

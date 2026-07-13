@@ -12,6 +12,7 @@ import {
 import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
+import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 import { useT } from '../i18n'
@@ -220,10 +221,13 @@ function CreatorHofCard({ creator, onClick, avatarBust }) {
 }
 
 // ── Portrait card ─────────────────────────────────────────────────────────────
-function PortraitCard({ imgSrc, title, sub, onClick, onContextMenu, fallbackIcon }) {
+function PortraitCard({ imgSrc, title, sub, onClick, onContextMenu, fallbackIcon, videoId }) {
   const [failed, setFailed] = useState(false)
+  const [hovered, setHovered] = useState(false)
   return (
     <div onClick={onClick} onContextMenu={onContextMenu}
+         onMouseEnter={videoId ? () => setHovered(true) : undefined}
+         onMouseLeave={videoId ? () => setHovered(false) : undefined}
          className="rounded-[10px] overflow-hidden cursor-pointer group flex flex-col"
          style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', aspectRatio: '2/3' }}>
       <div className="flex-1 overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -235,6 +239,16 @@ function PortraitCard({ imgSrc, title, sub, onClick, onContextMenu, fallbackIcon
               {fallbackIcon || <Images size={28} style={{ color: 'rgba(255,255,255,0.1)' }} />}
             </div>
         }
+        {/* Videos play a live muted preview while hovered */}
+        {videoId && <HoverVideoPreview imageId={videoId} hovered={hovered} />}
+        {videoId && !hovered && !failed && imgSrc && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 1 }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center"
+                 style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.2)' }}>
+              <Play size={13} fill="white" style={{ color: 'white', marginLeft: 1 }} />
+            </div>
+          </div>
+        )}
       </div>
       <div className="p-2 flex-shrink-0">
         <div className="text-[15px] font-medium text-[rgba(255,255,255,0.85)] truncate">{title}</div>
@@ -1252,7 +1266,8 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu })
           }
           if (tab === 'videos') {
             return <PortraitCard key={item.id} imgSrc={`/api/images/${item.id}/thumb`} title={item.filename}
-                      sub={item.gallery_name} onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)}
+                      sub={item.gallery_name} videoId={item.id}
+                      onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)}
                       onContextMenu={(e) => onContextMenu?.(e, item, 'video')}
                       fallbackIcon={<Play size={28} style={{ color: 'rgba(255,255,255,0.1)' }} />} />
           }

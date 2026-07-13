@@ -52,7 +52,9 @@ export default function ImageContextMenu({
     }
   }, [onClose])
 
-  const hasCreators = creators && creators.length > 0 && !image.is_video
+  // Avatar and banner both work for videos (they open a frame picker upstream)
+  const hasCreators = creators && creators.length > 0
+  const canBanner   = hasCreators
 
   // Estimate menu height for edge collision — base + 2 expandable rows + possible creator list rows
   const creatorRowH = 32
@@ -184,12 +186,12 @@ export default function ImageContextMenu({
           </>
         )}
 
-        {/* Set as avatar (expandable) — only when gallery has creators and image is not a video */}
+        {/* Set as avatar (expandable) — videos open a frame-picker upstream */}
         {hasCreators && onSetAsAvatar && (
           <>
             <ExpandRow
               icon={UserCircle}
-              label="Set as avatar"
+              label={image.is_video ? 'Set avatar from video' : 'Set as avatar'}
               open={avatarOpen}
               onToggle={(e) => { e.stopPropagation(); setAvatarOpen(v => !v); setBannerOpen(false) }}
             />
@@ -217,11 +219,11 @@ export default function ImageContextMenu({
         )}
 
         {/* Set as banner (expandable) — only when gallery has creators and image is not a video */}
-        {hasCreators && onSetAsBanner && (
+        {canBanner && onSetAsBanner && (
           <>
             <ExpandRow
               icon={ImageIcon}
-              label="Set as banner"
+              label={image.is_video ? 'Set banner from video' : 'Set as banner'}
               open={bannerOpen}
               onToggle={(e) => { e.stopPropagation(); setBannerOpen(v => !v); setAvatarOpen(false) }}
             />

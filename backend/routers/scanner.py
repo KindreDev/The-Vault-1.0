@@ -110,9 +110,19 @@ def cancel_scan_endpoint():
     return {"message": "Cancel requested"}
 
 
-def _regen_thumbs_task(db: Session):
-    """Background task: regenerate thumbnails that are missing or whose file is gone."""
-    images = db.query(Image).filter(Image.file_path.isnot(None)).all()
+def _apply_type_filter(q, only: str | None):
+    if only == "videos":
+        return q.filter(Image.is_video == True)
+    if only == "images":
+        return q.filter(Image.is_video == False)
+    return q
+
+
+def _regen_thumbs_task(db: Session, only: str | None = None):
+    """Background task: regenerate thumbnails that are missing or whose file is gone.
+    `only` restricts the pass to 'videos' or 'images'."""
+    q = _apply_type_filter(db.query(Image).filter(Image.file_path.isnot(None)), only)
+    images = q.all()
     set_scan_state(
         running=True,
         progress=0,
@@ -138,6 +148,11 @@ def _regen_thumbs_task(db: Session):
             if ok:
                 img.thumb_path = thumb
                 fixed += 1
+            # Backfill missing video durations while we're touching every video anyway
+            # (older scans never probed it — powers the duration badge on video cells)
+            if img.is_video and img.duration is None:
+                from services.ai_tagger import _video_duration
+                img.duration = _video_duration(src)
         if fixed:
             db.commit()
         if not is_scan_cancelled():
@@ -146,12 +161,61 @@ def _regen_thumbs_task(db: Session):
         set_scan_state(running=False, current_path=None)
 
 
+def _purge_thumbs_task(db: Session, only: str | None = None):
+    """Background task: delete thumbnail files from disk (records keep their paths,
+    so a follow-up regenerate pass rebuilds them fresh)."""
+    q = _apply_type_filter(db.query(Image).filter(Image.thumb_path.isnot(None)), only)
+    images = q.all()
+    label = only or "all"
+    set_scan_state(
+        running=True, progress=0, total=len(images),
+        message=f"Purging {label} thumbnails ({len(images)})…",
+        cancelled=False, current_path=None,
+    )
+    removed = 0
+    try:
+        for idx, img in enumerate(images):
+            if is_scan_cancelled():
+                set_scan_state(message="Thumbnail purge cancelled.")
+                break
+            set_scan_state(progress=idx + 1)
+            try:
+                if img.thumb_path and os.path.exists(img.thumb_path):
+                    os.remove(img.thumb_path)
+                    removed += 1
+            except OSError:
+                pass
+        if not is_scan_cancelled():
+            set_scan_state(message=f"Done — {removed} thumbnail(s) purged.")
+    finally:
+        set_scan_state(running=False, current_path=None)
+
+
+def _thumb_type(body: dict | None) -> str | None:
+    t = (body or {}).get("type")
+    return t if t in ("videos", "images") else None
+
+
 @router.post("/regen-thumbs")
-def regen_thumbs():
-    """Regenerate missing thumbnails for all images in the library."""
+def regen_thumbs(body: dict = None):
+    """Regenerate missing thumbnails. Pass {"type": "videos"|"images"} to restrict."""
+    only = _thumb_type(body)
     task_queue.submit(
-        'regen_thumbs', 'Regenerate thumbnails',
-        start_fn=lambda: _launch_in_thread(_regen_thumbs_task, SessionLocal()),
+        'regen_thumbs', f"Regenerate {only or 'all'} thumbnails",
+        start_fn=lambda: _launch_in_thread(_regen_thumbs_task, SessionLocal(), only),
+        poll_fn=get_scan_state,
+        cancel_fn=cancel_scan,
+    )
+    return {"message": "Queued", "queued": True}
+
+
+@router.post("/purge-thumbs")
+def purge_thumbs(body: dict = None):
+    """Delete thumbnail files from disk. Pass {"type": "videos"|"images"} to restrict."""
+    only = _thumb_type(body)
+    task_queue.submit(
+        'purge_thumbs', f"Purge {only or 'all'} thumbnails",
+        start_fn=lambda: _launch_in_thread(_purge_thumbs_task, SessionLocal(), only),
         poll_fn=get_scan_state,
         cancel_fn=cancel_scan,
     )

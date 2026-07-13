@@ -118,7 +118,7 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
                 "-ss", "5",
                 "-i", file_path,
                 "-vframes", "1",
-                "-vf", "scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2:black",
+                "-vf", "scale=640:640:force_original_aspect_ratio=increase,crop=640:640",
                 "-q:v", "3",
                 thumb_path,
             ],
@@ -135,7 +135,7 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
                 ffmpeg, "-y",
                 "-i", file_path,
                 "-vframes", "1",
-                "-vf", "scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2:black",
+                "-vf", "scale=640:640:force_original_aspect_ratio=increase,crop=640:640",
                 "-q:v", "3",
                 thumb_path,
             ],
@@ -145,6 +145,60 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
             creationflags=_NO_WINDOW,
         )
         return result2.returncode == 0 and os.path.exists(thumb_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return False
+
+
+def extract_video_frame(video_path: str, timestamp: float, dest_path: str) -> bool:
+    """Extract a single full-resolution frame from a video at the given timestamp (seconds)."""
+    try:
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        ffmpeg = _get_ffmpeg_exe()
+        result = subprocess.run(
+            [
+                ffmpeg, "-y",
+                "-ss", f"{max(0.0, timestamp):.3f}",
+                "-i", video_path,
+                "-vframes", "1",
+                "-q:v", "2",
+                dest_path,
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            creationflags=_NO_WINDOW,
+        )
+        return result.returncode == 0 and os.path.exists(dest_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return False
+
+
+def extract_video_clip_webp(video_path: str, timestamp: float, dest_path: str,
+                            duration: float = 3.0, width: int = 720, fps: int = 12) -> bool:
+    """Extract a short looping animated WebP clip from a video, for use as an animated avatar."""
+    try:
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        ffmpeg = _get_ffmpeg_exe()
+        result = subprocess.run(
+            [
+                ffmpeg, "-y",
+                "-ss", f"{max(0.0, timestamp):.3f}",
+                "-t", f"{duration:.1f}",
+                "-i", video_path,
+                "-vf", f"fps={fps},scale={width}:-2:flags=lanczos",
+                "-an",
+                "-c:v", "libwebp",
+                "-lossless", "0",
+                "-q:v", "80",
+                "-loop", "0",
+                dest_path,
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=90,
+            creationflags=_NO_WINDOW,
+        )
+        return result.returncode == 0 and os.path.exists(dest_path)
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         return False
 
@@ -768,10 +822,14 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
             file_mtime = None
 
         funscript_path = None
+        duration = None
         if is_video:
             fs_path = os.path.splitext(file_path)[0] + ".funscript"
             if os.path.exists(fs_path):
                 funscript_path = fs_path
+            # Probe duration so video cells can show a length badge
+            from services.ai_tagger import _video_duration
+            duration = _video_duration(file_path)
 
         img = Image(
             filename=filename,
@@ -783,6 +841,7 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
             file_size=file_size,
             is_video=is_video,
             funscript_path=funscript_path,
+            duration=duration,
             sort_order=new_image_count,
             file_modified_at=file_mtime,
         )

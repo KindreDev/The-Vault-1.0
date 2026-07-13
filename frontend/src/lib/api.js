@@ -116,6 +116,10 @@ export const creatorsApi = {
     return api.post(`/creators/${id}/avatar-upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   setAvatarFromImage:(id, imageId) => api.post(`/creators/${id}/set-avatar-image/${imageId}`),
+  setAvatarFromVideo:(id, imageId, timestamp, clip = false) =>
+    api.post(`/creators/${id}/avatar-from-video/${imageId}`, { timestamp, clip }, { timeout: 120000 }),
+  setBannerFromVideo:(id, imageId, timestamp, clip = false) =>
+    api.post(`/creators/${id}/banner-from-video/${imageId}`, { timestamp, clip }, { timeout: 120000 }),
   setBannerFromImage:(id, imageId) => api.post(`/creators/${id}/set-banner-image/${imageId}`),
   setAvatarFromUrl:  (id, url)     => api.post(`/creators/${id}/avatar-from-url`, { url }),
   randomPicks:       (n = 8) => api.get('/creators/', { params: { sort_by: 'random', limit: n } }),
@@ -191,7 +195,8 @@ export const scannerApi = {
   cancel:          ()     => api.post('/scanner/cancel'),
   log:             ()     => api.get('/scanner/log'),
   browseFolder:    ()     => api.get('/scanner/browse-folder'),
-  regenThumbs:     ()     => api.post('/scanner/regen-thumbs'),
+  regenThumbs:     (type = null) => api.post('/scanner/regen-thumbs', type ? { type } : {}),
+  purgeThumbs:     (type = null) => api.post('/scanner/purge-thumbs', type ? { type } : {}),
   matchFunscripts: (path) => api.post('/scanner/match-funscripts', path ? { path } : {}),
   gpuStatus:       ()     => api.get('/scanner/gpu-status'),
   gpuDownload:     ()     => api.post('/scanner/gpu-download'),

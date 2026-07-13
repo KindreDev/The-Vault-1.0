@@ -3,11 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Star, Globe, Droplets, Images, Columns3, Shuffle,
+  ArrowLeft, Star, StarOff, Globe, Droplets, Images, Columns3, Shuffle,
   Upload, Camera, X, Image as ImageIcon, Play, Video, MoreHorizontal,
   Pencil, Trash2, Sparkles, FolderOpen,
+  ExternalLink, Eye, LayoutTemplate, FolderMinus, UserCircle,
 } from 'lucide-react'
 import BondHearts from '../components/BondHearts'
+import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
+import AvatarFramePicker from '../components/AvatarFramePicker'
+import HoverVideoPreview from '../components/HoverVideoPreview'
 import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -168,7 +172,7 @@ function PortraitGalleryCard({ gallery, onClick }) {
 const DISCOVERY_CARD_W = 200
 const DISCOVERY_GAP    = 10
 
-function DiscoveryRow({ creatorId, onItemClick }) {
+function DiscoveryRow({ creatorId, onItemClick, onItemContextMenu }) {
   const t = useT()
   const containerRef = useRef(null)
   const poolRef      = useRef([])
@@ -245,7 +249,7 @@ function DiscoveryRow({ creatorId, onItemClick }) {
   return (
     <div className="mb-2">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
+        <span className="text-[16px] font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
           {t('Discovery')}
         </span>
       </div>
@@ -254,6 +258,7 @@ function DiscoveryRow({ creatorId, onItemClick }) {
           <div
             key={i}
             onClick={() => onItemClick(slot.img)}
+            onContextMenu={(e) => onItemContextMenu?.(e, slot.img)}
             className="cursor-pointer flex-shrink-0 rounded-[10px] overflow-hidden relative"
             style={{ width: cardW, aspectRatio: '2/3', background: '#1a1a1a', flexShrink: 0 }}
           >
@@ -320,13 +325,14 @@ const staggerItem = {
 }
 
 // ── Enhanced gallery card for the new grid ────────────────────────────────────
-function GalleryCard({ gallery, onClick }) {
+function GalleryCard({ gallery, onClick, onContextMenu }) {
   const [failed, setFailed] = useState(false)
   const cover = !failed && gallery.cover_thumb ? thumbSrc(gallery.cover_thumb) : null
   return (
     <motion.div
       variants={staggerItem}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className="cursor-pointer group"
       style={{ borderRadius: 12, overflow: 'hidden', background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.08)' }}
       whileHover={{ y: -5, boxShadow: '0 16px 48px rgba(0,0,0,0.7)', transition: { duration: 0.2 } }}
@@ -360,12 +366,21 @@ function GalleryCard({ gallery, onClick }) {
 }
 
 // ── Square photo/video cell ────────────────────────────────────────────────────
-function PhotoCell({ image, onClick }) {
+function fmtDuration(s) {
+  if (!s || !isFinite(s)) return null
+  const m = Math.floor(s / 60)
+  const sec = Math.round(s % 60)
+  return `${m}:${String(sec).padStart(2, '0')}`
+}
+
+function PhotoCell({ image, onClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false)
+  const dur = image.is_video ? fmtDuration(image.duration) : null
   return (
     <motion.div
       variants={staggerItem}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className="cursor-pointer relative"
@@ -375,20 +390,42 @@ function PhotoCell({ image, onClick }) {
       <img src={`/api/images/${image.id}/thumb`} alt=""
            className="w-full h-full object-cover" style={{ display: 'block' }}
            onError={e => { e.target.style.display = 'none' }} />
-      <motion.div
-        animate={{ opacity: hovered ? 1 : 0 }}
-        transition={{ duration: 0.15 }}
-        className="absolute inset-0 flex flex-col items-center justify-center gap-1"
-        style={{ background: 'rgba(0,0,0,0.52)' }}
-      >
-        {image.is_video && <Play size={22} fill="white" stroke="none" />}
-        {image.cum_count > 0 && (
-          <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#ED93B1' }}>
-            <Droplets size={12} /> {image.cum_count}
+
+      {/* Videos: real playback preview on hover, persistent play badge + duration */}
+      {image.is_video && <HoverVideoPreview imageId={image.id} hovered={hovered} />}
+      {image.is_video && !hovered && (
+        <>
+          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 1 }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center"
+                 style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.2)' }}>
+              <Play size={13} fill="white" style={{ color: 'white', marginLeft: 1 }} />
+            </div>
           </div>
-        )}
-        {image.is_favorite && <Star size={11} fill="#FAC775" stroke="none" />}
-      </motion.div>
+          {dur && (
+            <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[12px] font-mono font-semibold"
+                 style={{ background: 'rgba(0,0,0,0.72)', color: 'rgba(255,255,255,0.85)', zIndex: 1 }}>
+              {dur}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Photos: dark info overlay on hover (videos show the live preview instead) */}
+      {!image.is_video && (
+        <motion.div
+          animate={{ opacity: hovered ? 1 : 0 }}
+          transition={{ duration: 0.15 }}
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+          style={{ background: 'rgba(0,0,0,0.52)' }}
+        >
+          {image.cum_count > 0 && (
+            <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#ED93B1' }}>
+              <Droplets size={12} /> {image.cum_count}
+            </div>
+          )}
+          {image.is_favorite && <Star size={11} fill="#FAC775" stroke="none" />}
+        </motion.div>
+      )}
     </motion.div>
   )
 }
@@ -423,8 +460,8 @@ function EmptyState({ icon, message }) {
 }
 
 const SORT_OPTS = [
-  { value: 'most_viewed',    label: 'Most Viewed' },
   { value: 'recently_added', label: 'Recently Added' },
+  { value: 'most_viewed',    label: 'Most Viewed' },
   { value: 'random',         label: 'Random' },
 ]
 
@@ -467,12 +504,29 @@ function applySort(items, sort, favKey = 'is_favorite') {
 }
 
 // ── Galleries tab ─────────────────────────────────────────────────────────────
-function GalleriesTab({ galleries, onGalleryClick, onViewAll }) {
-  const t = useT()
-  const [sort, setSort] = useState('most_viewed')
-  const [sortKey, setSortKey] = useState(0)
+const GALLERY_RENDER_CHUNK = 48
 
-  const handleSort = (s) => { setSort(s); setSortKey(k => k + 1) }
+function GalleriesTab({ galleries, onGalleryClick, onViewAll, onGalleryContextMenu }) {
+  const t = useT()
+  const [sort, setSort] = useState('recently_added')
+  const [sortKey, setSortKey] = useState(0)
+  const [visibleCount, setVisibleCount] = useState(GALLERY_RENDER_CHUNK)
+  const ioRef = useRef(null)
+
+  const handleSort = (s) => { setSort(s); setSortKey(k => k + 1); setVisibleCount(GALLERY_RENDER_CHUNK) }
+
+  // Reveal more cards as the sentinel scrolls into view (callback ref so it
+  // re-attaches whenever the sentinel mounts/unmounts)
+  const sentinelRef = useCallback(node => {
+    ioRef.current?.disconnect()
+    if (!node) return
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) setVisibleCount(c => c + GALLERY_RENDER_CHUNK)
+    }, { rootMargin: '600px' })
+    io.observe(node)
+    ioRef.current = io
+  }, [])
+  useEffect(() => () => ioRef.current?.disconnect(), [])
 
   const sorted = useMemo(() => {
     if (!galleries) return []
@@ -517,7 +571,8 @@ function GalleriesTab({ galleries, onGalleryClick, onViewAll }) {
                style={{ overflowX: 'auto', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
             {favorites.map(g => (
               <div key={g.id} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 280 }}>
-                <GalleryCard gallery={g} onClick={() => onGalleryClick(g.id)} />
+                <GalleryCard gallery={g} onClick={() => onGalleryClick(g.id)}
+                             onContextMenu={(e) => onGalleryContextMenu?.(e, g)} />
               </div>
             ))}
           </div>
@@ -528,18 +583,27 @@ function GalleriesTab({ galleries, onGalleryClick, onViewAll }) {
       {sorted.length === 0
         ? <EmptyState icon={<Images size={36} />} message={t('No galleries assigned yet')} />
         : (
-          <motion.div
-            key={sortKey}
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-            className="grid gap-4"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
-          >
-            {sorted.map(g => (
-              <GalleryCard key={g.id} gallery={g} onClick={() => onGalleryClick(g.id)} />
-            ))}
-          </motion.div>
+          <>
+            <motion.div
+              key={sortKey}
+              variants={staggerContainer}
+              initial="hidden"
+              animate="visible"
+              className="grid gap-4"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+            >
+              {sorted.slice(0, visibleCount).map(g => (
+                <GalleryCard key={g.id} gallery={g} onClick={() => onGalleryClick(g.id)}
+                             onContextMenu={(e) => onGalleryContextMenu?.(e, g)} />
+              ))}
+            </motion.div>
+            {visibleCount < sorted.length && (
+              <div ref={sentinelRef} className="flex justify-center py-6 text-[13px]"
+                   style={{ color: 'rgba(255,255,255,0.3)' }}>
+                {t('Loading…')}
+              </div>
+            )}
+          </>
         )
       }
     </div>
@@ -555,12 +619,14 @@ const MEDIA_SORT_MAP = {
   random:         'random',
 }
 
-function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
+function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage, onItemContextMenu, onViewAll, total }) {
   const t = useT()
   const [items, setItems]   = useState([])
   const [page, setPage]     = useState(0)
   const [hasMore, setHasMore] = useState(true)
-  const [sort, setSort]     = useState('most_viewed')
+  const [sort, setSort]     = useState('recently_added')
+  const ioRef = useRef(null)
+  const stateRef = useRef({ hasMore: true, fetching: false })
 
   const handleSort = (s) => {
     if (s === sort) return
@@ -587,6 +653,23 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
     setHasMore(data.length === MEDIA_PAGE_SIZE)
   }, [data])
 
+  // Keep a ref mirror so the IntersectionObserver callback never reads stale state
+  stateRef.current = { hasMore, fetching: isFetching }
+
+  // Auto-load the next page when the sentinel scrolls into view
+  const sentinelRef = useCallback(node => {
+    ioRef.current?.disconnect()
+    if (!node) return
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && stateRef.current.hasMore && !stateRef.current.fetching) {
+        setPage(p => p + 1)
+      }
+    }, { rootMargin: '600px' })
+    io.observe(node)
+    ioRef.current = io
+  }, [])
+  useEffect(() => () => ioRef.current?.disconnect(), [])
+
   const favorites = sort === 'most_viewed' ? items.filter(img => img.is_favorite) : []
   const isFirstLoad = isFetching && page === 0
 
@@ -603,9 +686,16 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
       {/* Sort header */}
       <div className="flex items-center justify-between mb-4">
         <span className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          {items.length} {t('loaded')}
+          {total ? `${items.length} / ${total}` : `${items.length} ${t('loaded')}`}
         </span>
-        <SortPills sort={sort} onChange={handleSort} />
+        <div className="flex items-center gap-3">
+          <SortPills sort={sort} onChange={handleSort} />
+          {onViewAll && (
+            <button onClick={onViewAll} className="text-[12px] cursor-pointer" style={{ color: 'var(--accent)' }}>
+              {t('View all →')}
+            </button>
+          )}
+        </div>
       </div>
 
       {favorites.length > 0 && (
@@ -620,7 +710,8 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
                style={{ overflowX: 'auto', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
             {favorites.map(img => (
               <div key={img.id} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 220 }}>
-                <PhotoCell image={img} onClick={() => onItemClick(img)} />
+                <PhotoCell image={img} onClick={() => onItemClick(img)}
+                           onContextMenu={(e) => onItemContextMenu?.(e, img)} />
               </div>
             ))}
           </div>
@@ -640,25 +731,20 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage }) {
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
             >
               {items.map(img => (
-                <PhotoCell key={img.id} image={img} onClick={() => onItemClick(img)} />
+                <PhotoCell key={img.id} image={img} onClick={() => onItemClick(img)}
+                           onContextMenu={(e) => onItemContextMenu?.(e, img)} />
               ))}
             </motion.div>
 
-            {/* Load more */}
-            <div className="flex flex-col items-center gap-2 mt-8 mb-4">
-              <div className="text-[12px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                {items.length} {t('loaded')}{hasMore ? '' : t(' · all caught up')}
+            {/* Infinite scroll sentinel + status */}
+            <div ref={hasMore ? sentinelRef : null} className="flex flex-col items-center gap-2 mt-8 mb-4">
+              <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                {total ? `${items.length} / ${total}` : items.length}{hasMore ? '' : t(' · all caught up')}
               </div>
               {hasMore && (
-                <button
-                  type="button"
-                  onMouseDown={() => setPage(p => p + 1)}
-                  disabled={isFetching}
-                  className="px-6 py-2 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40 transition-all"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}
-                >
-                  {isFetching ? t('Loading…') : t('Load more')}
-                </button>
+                <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {isFetching ? t('Loading…') : ''}
+                </div>
               )}
             </div>
           </>
@@ -1000,6 +1086,8 @@ export default function CreatorProfile() {
   const [rating, setRating] = useState(null)
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [showAvatarZoom, setShowAvatarZoom]   = useState(false)
+  const [avatarDragOver, setAvatarDragOver]   = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [aiTagging, setAiTagging]             = useState(false)  // quick-tag this creator
   const [showEditModal, setShowEditModal]     = useState(false)
   const [confirmDelete, setConfirmDelete]     = useState(false)
@@ -1011,6 +1099,8 @@ export default function CreatorProfile() {
   const [bannerMenuOpen, setBannerMenuOpen] = useState(false)
   const [scrollY, setScrollY] = useState(0)
   const [folderInput, setFolderInput] = useState('')
+  const [ctxMenu, setCtxMenu] = useState(null)              // { type: 'gallery'|'media', item, x, y }
+  const [framePicker, setFramePicker] = useState(null)      // { image, creatorId, mode: 'avatar'|'banner' }
   const [activeTab, setActiveTab] = useState('galleries')
   const [tabDirection, setTabDirection] = useState(1)
   const contentRef = useRef(null)
@@ -1070,7 +1160,7 @@ export default function CreatorProfile() {
 
   const { data: allGalleries } = useQuery({
     queryKey: ['creator-galleries', id],
-    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'view_count', limit: 100 }).then(r => r.data),
+    queryFn: () => galleriesApi.list({ creator_id: id, sort_by: 'view_count', limit: 5000 }).then(r => r.data),
   })
 
   const { data: topImages } = useQuery({
@@ -1080,11 +1170,14 @@ export default function CreatorProfile() {
 
 
   // Auto-set banner to first top image ONLY if creator has no saved banner
+  // (neither a chosen image nor an uploaded/extracted banner_path file)
   useEffect(() => {
-    if (topImages && topImages.length > 0 && bannerImageId === null && !creator?.banner_image_id) {
+    if (!creator) return   // wait for creator — otherwise we can't know if a banner is saved
+    if (topImages && topImages.length > 0 && bannerImageId === null
+        && !creator.banner_image_id && !creator.banner_path) {
       setBannerImageId(topImages[0].id)
     }
-  }, [topImages])
+  }, [topImages, creator])
 
   const randomizeBanner = useCallback(async () => {
     try {
@@ -1118,6 +1211,23 @@ export default function CreatorProfile() {
     }
   }, [id, bannerLocalUrl, qc])
 
+  const handleAvatarDrop = useCallback(async (e) => {
+    e.preventDefault()
+    setAvatarDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setAvatarUploading(true)
+    try {
+      await creatorsApi.uploadAvatar(id, file)
+      toast.success(t('Avatar updated!'))
+      qc.invalidateQueries({ queryKey: ['creator', String(id)] })
+      qc.invalidateQueries({ queryKey: ['creators'] })
+      bumpAvatarBust()
+      setAvatarFailed(false)
+    } catch { toast.error(t('Upload failed')) }
+    finally { setAvatarUploading(false) }
+  }, [id, qc, bumpAvatarBust, t])
+
   const favMutation = useMutation({
     mutationFn: () => creatorsApi.update(id, { is_favorite: !creator?.is_favorite }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['creator', id] }); qc.invalidateQueries({ queryKey: ['favorites'] }) }
@@ -1143,6 +1253,121 @@ export default function CreatorProfile() {
     mutationFn: (r) => creatorsApi.update(id, { rating: r }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['creator', id] })
   })
+
+  // ── Right-click context menu handlers ────────────────────────────────
+  const addToMultiViewer  = useVaultStore(s => s.addToMultiViewer)
+  const multiViewerQueue  = useVaultStore(s => s.multiViewerQueue)
+  const MULTIVIEWER_MAX   = useVaultStore(s => s.MULTIVIEWER_MAX)
+
+  const openGalleryCtx = useCallback((e, gallery) => {
+    e.preventDefault()
+    setCtxMenu({ type: 'gallery', item: gallery, x: e.clientX, y: e.clientY })
+  }, [])
+  const openMediaCtx = useCallback((e, image) => {
+    e.preventDefault()
+    setCtxMenu({ type: 'media', item: image, x: e.clientX, y: e.clientY })
+  }, [])
+
+  const invalidateContent = () => {
+    qc.invalidateQueries({ queryKey: ['creator', id] })
+    qc.invalidateQueries({ queryKey: ['creator-galleries', id] })
+    qc.invalidateQueries({ queryKey: ['creator-media'] })
+    qc.invalidateQueries({ queryKey: ['creator-discovery', id] })
+  }
+
+  const ctxGalleryFav = (g) => {
+    galleriesApi.update(g.id, { is_favorite: !g.is_favorite })
+      .then(() => qc.invalidateQueries({ queryKey: ['creator-galleries', id] }))
+      .catch(() => toast.error(t('Could not update favourite')))
+  }
+  const ctxGallerySendToPanel = async (g) => {
+    if (multiViewerQueue.length >= MULTIVIEWER_MAX) { toast(t('Multi-panel queue is full'), { icon: 'ℹ️' }); return }
+    try {
+      const res = await galleriesApi.images(g.id)
+      const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
+      ok ? toast.success(t('Added to Multi-panel')) : toast(t('Already queued'), { icon: 'ℹ️' })
+    } catch { toast.error(t('Could not load gallery images')) }
+  }
+  const ctxGalleryDelete = async (g, mode) => {
+    try {
+      await galleriesApi.delete(g.id, mode === 'disk')
+      toast.success(mode === 'disk' ? t('Gallery deleted from disk') : t('Gallery removed from vault'))
+      invalidateContent()
+    } catch { toast.error(t('Deletion failed')) }
+  }
+  const ctxMediaSendToPanel = (img) => {
+    const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
+    ok ? toast.success(t('Sent to Multi-panel')) : toast(t('Already queued or queue full'), { icon: 'ℹ️' })
+  }
+  const ctxSetAvatar = (img, creatorId = parseInt(id)) => {
+    if (img.is_video) { setFramePicker({ image: img, creatorId, mode: 'avatar' }); return }
+    creatorsApi.setAvatarFromImage(creatorId, img.id)
+      .then(() => {
+        toast.success(t('Avatar updated!'))
+        qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] })
+        qc.invalidateQueries({ queryKey: ['creators'] })
+        bumpAvatarBust()
+        if (creatorId === parseInt(id)) setAvatarFailed(false)
+      })
+      .catch(() => toast.error(t('Failed to set avatar')))
+  }
+  const ctxSetBanner = (img, creatorId = parseInt(id)) => {
+    if (img.is_video) { setFramePicker({ image: img, creatorId, mode: 'banner' }); return }
+    creatorsApi.setBannerFromImage(creatorId, img.id)
+      .then(() => {
+        toast.success(t('Banner updated!'))
+        if (creatorId === parseInt(id)) {
+          setBannerLocalUrl(null)
+          setBannerImageId(img.id)
+        }
+        qc.invalidateQueries({ queryKey: ['creator', String(creatorId)] })
+      })
+      .catch(() => toast.error(t('Failed to set banner')))
+  }
+  const ctxMediaDelete = async (img, mode) => {
+    try {
+      await imagesApi.delete(img.id, mode === 'vault')
+      toast.success(mode === 'vault' ? t('Removed from vault') : t('Deleted from disk'))
+      invalidateContent()
+    } catch { toast.error(t('Deletion failed')) }
+  }
+
+  const ctxItems = ctxMenu?.type === 'gallery'
+    ? [
+        { icon: ExternalLink,   label: t('Open'),                 action: () => navigate(`/galleries/${ctxMenu.item.id}`) },
+        { icon: ctxMenu.item.is_favorite ? StarOff : Star,
+          label: ctxMenu.item.is_favorite ? t('Unfavorite') : t('Favorite'),
+          action: () => ctxGalleryFav(ctxMenu.item),
+          style: ctxMenu.item.is_favorite ? 'normal' : 'amber' },
+        { icon: LayoutTemplate, label: t('Send to Multi-panel'),  action: () => ctxGallerySendToPanel(ctxMenu.item), style: 'accent' },
+        DIVIDER,
+        { icon: FolderMinus,    label: t('Remove from vault'),    action: () => ctxGalleryDelete(ctxMenu.item, 'vault') },
+        { icon: Trash2,         label: t('Delete from disk'),     action: () => ctxGalleryDelete(ctxMenu.item, 'disk'), style: 'danger' },
+      ]
+    : ctxMenu?.type === 'media'
+    ? (() => {
+        const img = ctxMenu.item
+        // When the file belongs to several creators, expand into a picker submenu
+        const imgCreators = (img.creators?.length ? img.creators : [{ id: parseInt(id), name: creator?.name }])
+        const multi = imgCreators.length > 1
+        const avatarLabel = img.is_video ? t('Set avatar from video…') : t('Set as avatar')
+        const bannerLabel = img.is_video ? t('Set banner from video…') : t('Set as banner')
+        return [
+          { icon: Eye,            label: t('View'),                 action: () => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`) },
+          { icon: LayoutTemplate, label: t('Send to Multi-panel'),  action: () => ctxMediaSendToPanel(img), style: 'accent' },
+          DIVIDER,
+          multi
+            ? { icon: UserCircle, label: avatarLabel, children: imgCreators.map(c => ({ label: c.name, action: () => ctxSetAvatar(img, c.id) })) }
+            : { icon: UserCircle, label: avatarLabel, action: () => ctxSetAvatar(img, imgCreators[0].id), style: 'accent' },
+          multi
+            ? { icon: ImageIcon,  label: bannerLabel, children: imgCreators.map(c => ({ label: c.name, action: () => ctxSetBanner(img, c.id) })) }
+            : { icon: ImageIcon,  label: bannerLabel, action: () => ctxSetBanner(img, imgCreators[0].id), style: 'accent' },
+          DIVIDER,
+          { icon: FolderMinus,    label: t('Remove from vault'),    action: () => ctxMediaDelete(img, 'vault') },
+          { icon: Trash2,         label: t('Delete from disk'),     action: () => ctxMediaDelete(img, 'disk'), style: 'danger' },
+        ]
+      })()
+    : null
 
   const TAB_ORDER = ['galleries', 'photos', 'videos']
   const changeTab = (newTab) => {
@@ -1203,7 +1428,7 @@ export default function CreatorProfile() {
   const bannerHeight = Math.max(MIN_BANNER, MAX_BANNER - scrollY * 0.8)
   const bannerSrc = bannerLocalUrl
     || (bannerImageId ? `/api/images/${bannerImageId}/file` : null)
-    || (creator.banner_path ? `/api/creators/${id}/banner` : null)
+    || (creator.banner_path ? `/api/creators/${id}/banner?v=${new Date(creator.updated_at || 0).getTime()}_${avatarBust}` : null)
 
   const handleRating = (r) => { setRating(r); ratingMutation.mutate(r) }
   const isCharacter = creator.creator_type === 'character'
@@ -1316,15 +1541,31 @@ export default function CreatorProfile() {
         <div className="flex items-start gap-5">
           {/* Avatar — tall vertical portrait */}
           <div className="relative flex-shrink-0 z-10" style={{ marginTop: -300 }}>
-            <div className="rounded-[20px] overflow-hidden flex items-center justify-center group/avatar cursor-zoom-in"
-                 onClick={() => (!avatarFailed && creator.avatar_path) && setShowAvatarZoom(true)}
-                 style={{ width: 300, height: 450, background: '#111', border: `3px solid ${rc}`, boxShadow: `0 0 60px ${rc}66` }}>
+            <div className="rounded-[20px] overflow-hidden flex items-center justify-center group/avatar cursor-zoom-in relative"
+                 onClick={() => (!avatarFailed && creator.avatar_path) && !avatarDragOver && setShowAvatarZoom(true)}
+                 onDragOver={e => { e.preventDefault(); setAvatarDragOver(true) }}
+                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAvatarDragOver(false) }}
+                 onDrop={handleAvatarDrop}
+                 style={{ width: 300, height: 450, background: '#111', border: `3px solid ${avatarDragOver ? '#fff' : rc}`, boxShadow: `0 0 60px ${rc}66`, transition: 'border-color 0.15s' }}>
               {!avatarFailed && creator.avatar_path
                 ? <img src={`/api/creators/${id}/avatar?v=${new Date(creator.updated_at || 0).getTime()}_${avatarBust}`} alt={creator.name}
                        className="w-full h-full object-cover transition-transform duration-300 group-hover/avatar:scale-105"
                        onError={() => setAvatarFailed(true)} />
                 : <span className="font-semibold select-none" style={{ fontSize: 110, color: tc.text, background: tc.bg, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</span>
               }
+              {/* drag-and-drop overlay */}
+              {(avatarDragOver || avatarUploading) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[17px]"
+                     style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)', pointerEvents: 'none' }}>
+                  {avatarUploading
+                    ? <span className="text-[16px] font-medium text-white/80">Uploading…</span>
+                    : <>
+                        <Upload size={36} style={{ color: '#fff', opacity: 0.9 }} />
+                        <span className="text-[16px] font-medium text-white/90">Drop to set avatar</span>
+                      </>
+                  }
+                </div>
+              )}
             </div>
             <button onClick={() => setShowAvatarModal(true)}
                     className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
@@ -1448,7 +1689,7 @@ export default function CreatorProfile() {
                 ] : []),
               ].filter(([, v]) => v !== null && v !== '').map(([k, v]) => (
                 <div key={k}>
-                  <div className="text-[11px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-0.5">{t(k)}</div>
+                  <div className="text-[16px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-0.5">{t(k)}</div>
                   <div className="text-[18px] font-semibold text-[rgba(255,255,255,0.95)]">{v}</div>
                 </div>
               ))}
@@ -1532,9 +1773,9 @@ export default function CreatorProfile() {
           {/* Box 2: Assign by folder — fixed width (+20%) */}
           <div className="rounded-[12px] p-4 flex flex-col justify-center gap-1.5 flex-shrink-0"
                style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', width: 408 }}>
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider"
+            <div className="flex items-center gap-2 text-[16px] font-medium uppercase tracking-wider"
                  style={{ color: 'rgba(255,255,255,0.4)' }}>
-              <FolderOpen size={11} /> {t('Assign Galleries by Folder')}
+              <FolderOpen size={14} /> {t('Assign Galleries by Folder')}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1576,7 +1817,7 @@ export default function CreatorProfile() {
               <div className="flex items-start justify-between gap-6">
                 {/* Value */}
                 <div>
-                  <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Collection Value')}</div>
+                  <div className="text-[16px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Collection Value')}</div>
                   <div
                     onClick={() => setValueRevealed(true)}
                     title={valueRevealed ? undefined : t('Click to reveal')}
@@ -1596,12 +1837,12 @@ export default function CreatorProfile() {
                 </div>
                 {/* Completion % */}
                 <div className="text-right">
-                  <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('All-Time')}</div>
+                  <div className="text-[16px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('All-Time')}</div>
                   <div className="text-[20px] font-semibold"
                        style={{ color: (creator.completion_pct ?? 0) >= 100 ? '#BA7517' : '#1D9E75' }}>
                     {(creator.completion_pct ?? 0).toFixed(0)}%
                   </div>
-                  <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
                     {creator.months_covered_recent ?? 0}/{creator.total_months_expected || '?'} {t('mo')}
                   </div>
                 </div>
@@ -1624,6 +1865,7 @@ export default function CreatorProfile() {
         <DiscoveryRow
           creatorId={id}
           onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
+          onItemContextMenu={openMediaCtx}
         />
 
         {/* ── Instagram-style content tabs ─────────────────────────────── */}
@@ -1638,9 +1880,9 @@ export default function CreatorProfile() {
           <div className="flex items-center mb-6"
                style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
             {[
-              { key: 'galleries', label: 'Galleries', count: allGalleries?.length },
-              { key: 'photos',    label: 'Photos',    count: null },
-              { key: 'videos',    label: 'Videos',    count: null },
+              { key: 'galleries', label: 'Galleries', count: creator.gallery_count ?? allGalleries?.length },
+              { key: 'photos',    label: 'Photos',    count: creator.image_count || null },
+              { key: 'videos',    label: 'Videos',    count: creator.video_count || null },
             ].map(tab => (
               <button
                 key={tab.key}
@@ -1687,6 +1929,7 @@ export default function CreatorProfile() {
                   galleries={allGalleries}
                   onGalleryClick={(gid) => navigate(`/galleries/${gid}`)}
                   onViewAll={() => navigate(`/galleries?creator_id=${id}`)}
+                  onGalleryContextMenu={openGalleryCtx}
                 />
               )}
               {activeTab === 'photos' && (
@@ -1695,6 +1938,9 @@ export default function CreatorProfile() {
                   isVideo={false}
                   onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
                   emptyMessage="No photos yet"
+                  onItemContextMenu={openMediaCtx}
+                  onViewAll={() => navigate(`/images?creator_id=${id}`)}
+                  total={creator.image_count}
                 />
               )}
               {activeTab === 'videos' && (
@@ -1703,6 +1949,9 @@ export default function CreatorProfile() {
                   isVideo={true}
                   onItemClick={(img) => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`)}
                   emptyMessage="No videos yet"
+                  onItemContextMenu={openMediaCtx}
+                  onViewAll={() => navigate(`/videos?creator_id=${id}`)}
+                  total={creator.video_count}
                 />
               )}
             </motion.div>
@@ -1711,6 +1960,37 @@ export default function CreatorProfile() {
 
 
       </div>
+
+      {/* Right-click context menu (galleries + media) */}
+      {ctxMenu && ctxItems && (
+        <SlimContextMenu
+          title={ctxMenu.type === 'gallery' ? ctxMenu.item.name : ctxMenu.item.filename}
+          subtitle={ctxMenu.type === 'media' && ctxMenu.item.is_video ? t('Video') : null}
+          position={{ x: ctxMenu.x, y: ctxMenu.y }}
+          onClose={() => setCtxMenu(null)}
+          items={ctxItems}
+        />
+      )}
+
+      {/* Video frame picker for avatar / banner */}
+      {framePicker && (
+        <AvatarFramePicker
+          creatorId={framePicker.creatorId}
+          image={framePicker.image}
+          mode={framePicker.mode}
+          onSuccess={() => {
+            if (framePicker.creatorId !== parseInt(id)) return
+            if (framePicker.mode === 'banner') {
+              // extracted banner lives in banner_path — clear local overrides so it shows
+              setBannerLocalUrl(null)
+              setBannerImageId(null)
+            } else {
+              setAvatarFailed(false)
+            }
+          }}
+          onClose={() => setFramePicker(null)}
+        />
+      )}
 
       {/* Modals */}
       {showAvatarModal && (

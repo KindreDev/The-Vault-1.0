@@ -55,8 +55,8 @@ class DeviceService {
     this._funscriptTimers = {}            // multi-axis: { axisId: timeoutId }
     this._videoEl         = null
 
-    // The Handy REST API v2
-    this._HANDY_BASE     = 'https://www.handyfeeling.com/api/handy/v2'
+    // The Handy REST API v3 (required for Handy 2 / Handy 2 Pro; v2 devices also work via v3)
+    this._HANDY_BASE     = 'https://www.handyfeeling.com/api/handy/v3'
     this._handyCurrentPos = 50   // track position 0-100 for velocity calculation
 
     // Direct serial (Web Serial API)
