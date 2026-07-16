@@ -185,6 +185,21 @@ export const gamiApi = {
 }
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
+export const feedApi = {
+  list:      (params) => api.get('/feed/', { params }),
+  generate:  ()       => api.post('/feed/generate'),
+  like:      (id)     => api.post(`/feed/${id}/like`),
+  profile:   (id)     => api.get(`/feed/profile/${id}`),
+  stories:   ()       => api.get('/feed/stories'),
+  storySeen: (id)     => api.post(`/feed/stories/${id}/seen`),
+  dmPings:   ()       => api.get('/feed/dm'),
+  dmRead:    (id)     => api.post(`/feed/dm/${id}/read`),
+  explore:   (seedImage, limit = 15) => api.get('/feed/explore', { params: { seed_image: seedImage || undefined, limit } }),
+  exploreInteract: (imageId, strength = 1) => api.post('/feed/explore/interact', { image_id: imageId, strength }),
+  search:     (q, seed, skip = 0, limit = 30) => api.get('/feed/search', { params: { q, seed: seed || undefined, skip, limit } }),
+  searchSave: (imageId, tag) => api.post('/feed/search/save', { image_id: imageId, tag }),
+}
+
 export const scannerApi = {
   roots:           ()     => api.get('/scanner/roots'),
   addRoot:         (d)    => api.post('/scanner/roots', d),

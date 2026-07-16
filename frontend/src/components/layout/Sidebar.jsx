@@ -5,7 +5,7 @@ import {
   Columns3, Gamepad2, Trophy, Star, Map, CreditCard,
   ScanLine, Tag, Settings, Flame, Box, Film, Video, Cpu, ScrollText, Layers,
   Wifi, WifiOff, Activity, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
-  Sparkles,
+  Sparkles, Newspaper, Compass,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
@@ -20,6 +20,13 @@ const NAV = [
   { to: '/images',      icon: Film,            label: 'Photos' },
   { to: '/videos',      icon: Video,           label: 'Videos' },
   { to: '/creators',    icon: Users,           label: 'Creators' },
+]
+
+// The social-media simulation lives in its own section — keeps the library
+// block tight while giving VaultGram a home of its own
+const SOCIAL_NAV = [
+  { to: '/feed',    icon: Newspaper, label: 'Feed' },
+  { to: '/explore', icon: Compass,   label: 'Explore' },
 ]
 
 const GOON_NAV = [
@@ -218,6 +225,9 @@ export default function Sidebar() {
       <nav className="flex-1 py-2 overflow-y-auto min-h-0"
            style={{ scrollbarWidth: 'none' }}>
         {NAV.map(n => <NavItem key={n.to} {...n} />)}
+
+        <SectionLabel label="Social" />
+        {SOCIAL_NAV.map(n => <NavItem key={n.to} {...n} />)}
 
         <SectionLabel label="Goon" />
         <NavItem to="/multi-panel" icon={Columns3} label="Multi-panel" badge={queueCount} />

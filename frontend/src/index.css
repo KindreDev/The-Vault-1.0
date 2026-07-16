@@ -70,13 +70,24 @@ body {
 button {
   transition: filter 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease !important;
 }
-button:not(:disabled):hover {
+/* .fx-btn opts out of the global lift: buttons that position themselves with a
+   transform (carousel arrows) or animate via Framer Motion — the !important
+   translateY otherwise REPLACES their transform (arrow jumps down half its
+   height on hover) and overrides Framer's inline whileHover/whileTap. */
+button:not(:disabled):not(.fx-btn):hover {
   filter: brightness(1.18) !important;
   transform: translateY(-1px) !important;
 }
-button:not(:disabled):active {
+button:not(:disabled):not(.fx-btn):active {
   filter: brightness(0.9) !important;
   transform: translateY(0) scale(0.98) !important;
+}
+button.fx-btn:not(:disabled):hover { filter: brightness(1.18); }
+button.fx-btn:not(:disabled):active { filter: brightness(0.9); }
+
+/* Touch devices have no hover — keep carousel arrows visible (swipe works too) */
+@media (hover: none) {
+  .carousel-arrow { opacity: 0.85 !important; }
 }
 
 /* ── Cause font for card elements ───────────────────────────────────────── */

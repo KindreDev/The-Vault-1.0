@@ -381,6 +381,7 @@ class CompanionConfigOut(BaseModel):
     saved_models: str
     keep_alive: str = "10m"
     num_ctx: int = 16384
+    vision_enabled: bool = True
     companion_prompt: Optional[str] = None
     class Config:
         from_attributes = True
@@ -396,6 +397,7 @@ class CompanionConfigUpdate(BaseModel):
     saved_models: Optional[str] = None
     keep_alive: Optional[str] = None
     num_ctx: Optional[int] = None
+    vision_enabled: Optional[bool] = None
     companion_prompt: Optional[str] = None
 
 class CompanionMessageOut(BaseModel):

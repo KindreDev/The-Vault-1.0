@@ -752,6 +752,46 @@ def serve_image_file(image_id: int, request: Request, db: Session = Depends(get_
         return _video_response(img.file_path, request.headers.get("range"), request)
     return FileResponse(img.file_path)
 
+_PREVIEW_WIDTHS = {720, 1080, 1440}   # allowed sizes so the cache can't be spammed
+
+@router.get("/{image_id}/preview")
+def serve_preview(image_id: int, w: int = 1080, db: Session = Depends(get_db)):
+    """High-quality resized JPEG for feed/large views — generated once, cached on disk.
+    Falls back to the original file if resizing fails, and to the thumb for videos."""
+    from database import DATA_DIR
+    from PIL import Image as PILImage, ImageOps
+
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    if img.is_video:
+        return serve_thumb(image_id, db)   # poster frame — videos stream via /file
+    if not img.file_path or not os.path.exists(img.file_path):
+        raise HTTPException(404, "File not found on disk")
+
+    ext = os.path.splitext(img.file_path)[1].lower()
+    if ext == ".gif":
+        return FileResponse(img.file_path)  # keep animation intact
+
+    if w not in _PREVIEW_WIDTHS:
+        w = 1080
+    thumbs_dir = os.path.join(DATA_DIR, "thumbs")
+    cache = os.path.join(thumbs_dir, f"preview_{image_id}_{w}.jpg")
+    if not os.path.exists(cache):
+        try:
+            os.makedirs(thumbs_dir, exist_ok=True)
+            with PILImage.open(img.file_path) as im:
+                im = ImageOps.exif_transpose(im)
+                if im.mode not in ("RGB", "L"):
+                    im = im.convert("RGB")
+                if im.width > w:
+                    im.thumbnail((w, w * 10), PILImage.LANCZOS)
+                im.save(cache, "JPEG", quality=88)
+        except Exception:
+            return FileResponse(img.file_path)
+    return FileResponse(cache, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/{image_id}/thumb")
 def serve_thumb(image_id: int, db: Session = Depends(get_db)):
     img = db.query(Image).filter(Image.id == image_id).first()

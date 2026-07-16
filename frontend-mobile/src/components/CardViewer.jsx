@@ -90,6 +90,7 @@ export default function CardViewer({ cards, index, onClose, onIndexChange }) {
   return (
     <motion.div
       className="fixed inset-0 z-[60] flex flex-col"
+      data-hswipe /* card-swiping must never trigger the global swipe-to-Explore */
       style={{ background: 'rgba(6,6,10,0.86)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}

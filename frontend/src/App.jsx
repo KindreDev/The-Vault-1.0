@@ -15,6 +15,8 @@ const GalleryView   = lazy(() => import('./pages/GalleryView'))
 const CreatorList   = lazy(() => import('./pages/CreatorList'))
 const CreatorProfile = lazy(() => import('./pages/CreatorProfile'))
 const ImageList     = lazy(() => import('./pages/ImageList'))
+const Feed          = lazy(() => import('./pages/Feed'))
+const Explore       = lazy(() => import('./pages/Explore'))
 const TagManager    = lazy(() => import('./pages/TagManager'))
 const MultiPanel    = lazy(() => import('./pages/MultiPanel'))
 const DeviceControl = lazy(() => import('./pages/DeviceControl'))
@@ -112,6 +114,8 @@ export default function App() {
           {/* All routes are lazy — Suspense in Layout catches the loading state */}
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"    element={<Dashboard />} />
+          <Route path="feed"         element={<Feed />} />
+          <Route path="explore"      element={<Explore />} />
           <Route path="galleries"    element={<GalleryList />} />
           <Route path="galleries/:id" element={<GalleryView />} />
           <Route path="images"       element={<ImageList key="images" />} />

@@ -81,9 +81,10 @@ function ThinkingDots({ startedAt }) {
   )
 }
 
-// Matches /creators/... and /galleries/... paths the AI may include in text
-const VAULT_LINK_SPLIT = /(\/(?:creators|galleries)\/[^\s,;.!?'")\]]+)/
+// Matches /creators/... and /galleries/... paths + vault://photo/{id} the user pastes
+const VAULT_LINK_SPLIT = /(\/(?:creators|galleries)\/[^\s,;.!?'")\]]+|vault:\/\/photo\/\d+)/
 const VAULT_LINK_TEST  = /^\/(creators|galleries)\//
+const VAULT_PHOTO_TEST = /^vault:\/\/photo\/(\d+)$/
 const DEVICE_TAG_RE    = /<device\b([^>]*?)\/?>/gi
 
 // Inline markdown: **bold** and *italic*
@@ -125,6 +126,15 @@ function renderContent(text, navigate, creators, galleries) {
   // Split by vault links, then apply markdown to text segments
   const parts = clean.split(VAULT_LINK_SPLIT)
   return parts.map((part, i) => {
+    const photo = part.match(VAULT_PHOTO_TEST)
+    if (photo) {
+      // A vault photo the user linked — show it as a thumbnail chip
+      return (
+        <img key={i} src={`/api/images/${photo[1]}/thumb`} alt="linked photo"
+             className="inline-block rounded-lg my-1 cursor-pointer align-middle"
+             style={{ maxHeight: 120, maxWidth: '70%', border: '1px solid rgba(255,255,255,0.12)' }} />
+      )
+    }
     if (VAULT_LINK_TEST.test(part)) {
       const label = resolveVaultLinkLabel(part, creators, galleries)
       return (
@@ -180,9 +190,9 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
                color: 'rgba(255,255,255,0.85)', borderBottomLeftRadius: 6,
              }}>
-          {isUser
-            ? (msg.content || <span className="opacity-40 italic">…</span>)
-            : renderContent(msg.content, navigate, creators, galleries)}
+          {/* Render both sides through renderContent so a vault photo you paste
+              shows as a thumbnail in your own bubble too */}
+          {renderContent(msg.content, navigate, creators, galleries)}
         </div>
       </div>
     </div>
@@ -290,7 +300,9 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   }, [])
 
   const { data: bond } = useQuery({
-    queryKey: ['companion-bond'],
+    // Key on personaId so switching who you're chatting with refetches the bond
+    // (name + tier are per-persona — a shared key left both stale until refresh)
+    queryKey: ['companion-bond', personaId],
     queryFn:  () => companionApi.bond().then(r => r.data),
     staleTime: 30000,
     enabled: !!config?.enabled,
@@ -450,7 +462,9 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   const bondTier  = bond?.bond_level ?? 0
   const bondName  = bond?.bond_name  ?? 'Acquaintance'
   const hearts    = BOND_HEARTS[Math.min(bondTier, BOND_HEARTS.length - 1)]
-  const compName  = bond?.persona_name || config?.name || 'Erika'
+  // Prefer the active creator's name so the header updates the instant you switch,
+  // before the bond query refetches; fall back to bond/config for the default (Erika)
+  const compName  = activeCreator?.name || bond?.persona_name || config?.name || 'Erika'
   const erikaName = config?.name || 'Erika'  // base companion name, never the active persona's name
 
   // ── PFP helper ──────────────────────────────────────────────────────────────
@@ -762,9 +776,8 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               <RefreshCw size={15} />
             </button>
             {breakHover && (
-              <div className="absolute bottom-full left-1/2 mb-2 px-3 py-2 rounded-xl text-[13px] whitespace-nowrap pointer-events-none z-50"
+              <div className="absolute bottom-full left-0 mb-2 px-3 py-2 rounded-xl text-[13px] whitespace-nowrap pointer-events-none z-50"
                    style={{
-                     transform: 'translateX(-50%)',
                      background: '#1e1e1e',
                      border: '1px solid rgba(255,255,255,0.1)',
                      color: 'rgba(255,255,255,0.7)',

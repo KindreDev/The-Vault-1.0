@@ -190,7 +190,7 @@ if getattr(sys, 'frozen', False):
 
 from sqlalchemy.orm import Session
 from database import engine, Base, SessionLocal, get_db, DATA_DIR
-from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks
+from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
@@ -299,6 +299,10 @@ def _migrate_add_columns():
         "ALTER TABLE companion_config ADD COLUMN companion_prompt TEXT",
         "ALTER TABLE companion_messages ADD COLUMN image_data_url TEXT",
         "ALTER TABLE companion_config ADD COLUMN num_ctx INTEGER DEFAULT 16384",
+        "ALTER TABLE companion_config ADD COLUMN vision_enabled BOOLEAN DEFAULT 1",
+        "ALTER TABLE creators ADD COLUMN avatar_desc TEXT",
+        "ALTER TABLE creators ADD COLUMN avatar_desc_src VARCHAR",
+        "ALTER TABLE creators ADD COLUMN personality_assigned BOOLEAN DEFAULT 0",
         # Image file mtime — on-disk last-modified date, for sort by date_modified
         "ALTER TABLE images ADD COLUMN file_modified_at DATETIME",
         # Gamification — dismantle achievement counter
@@ -315,6 +319,31 @@ def _migrate_add_columns():
                     print(f"[migration] unexpected error running `{sql}`: {e}")
 
 _migrate_add_columns()
+
+
+def _backfill_personalities():
+    """One-time: give every creator still on the old 'bold' default a random
+    personality. Seeded by id so it's stable; guarded by personality_assigned so
+    it only runs once per creator and never overwrites a deliberate choice."""
+    try:
+        from models import Creator
+        from services.companion import assign_personality
+        db = SessionLocal()
+        try:
+            pending = db.query(Creator).filter(
+                (Creator.personality_assigned == False) | (Creator.personality_assigned == None)  # noqa: E711,E712
+            ).all()
+            if pending:
+                for c in pending:
+                    assign_personality(c)
+                db.commit()
+                print(f"[personalities] assigned random personalities to {len(pending)} creators")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[personalities] backfill skipped: {e}")
+
+_backfill_personalities()
 
 
 def _migrate_add_indexes():
@@ -585,6 +614,7 @@ app.include_router(system_router,            prefix="/api/system",        tags=[
 app.include_router(dedup.router,             prefix="/api/dedup",          tags=["dedup"])
 app.include_router(tasks.router,             prefix="/api/tasks",          tags=["tasks"])
 app.include_router(companion_router,         prefix="/api/companion",      tags=["companion"])
+app.include_router(feed.router,              prefix="/api/feed",           tags=["feed"])
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 os.makedirs(THUMBS_DIR, exist_ok=True)

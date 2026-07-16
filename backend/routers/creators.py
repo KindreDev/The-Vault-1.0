@@ -315,6 +315,9 @@ def list_creators(
 def create_creator(data: CreatorCreate, db: Session = Depends(get_db)):
     creator = Creator(**data.model_dump())
     db.add(creator)
+    db.flush()  # assign id so the personality seed is stable
+    from services.companion import assign_personality
+    assign_personality(creator)
     db.commit()
     db.refresh(creator)
     gami.notify_action(db, "creator_added")

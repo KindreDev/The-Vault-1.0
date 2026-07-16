@@ -12,6 +12,79 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Added
+- Feed: DM any creator — a Message button on her profile opens the floating AI chat scoped to her (she's the persona), without leaving the feed. She now also knows what she's been posting and can reference it in chat.
+- Feed: verified badges are now tiered and earned — no badge for creators you ignore, a blue check for ones you engage with, and a gold check for your beloved, heavily-bonded girls. Follower counts are driven by the same interaction weighting, so unknowns read as nobodies and favorites as superstars.
+- Feed: creator profiles have a Posts/Grid toggle — switch between the full post cards and an Instagram-style 3-column grid of her posts.
+- Explore: a new algorithmic wall of your entire collection that learns your taste — a masonry grid you can scroll forever; tap any image to drop into an endless seeded feed biased toward what you clicked, always mixing in random discovery so it never gets stale. Everything is one tap from opening in the Vault.
+- Feed: male creators' comments now include the full unmoderated reply-guy experience.
+- Feed: a simulated social-media timeline built entirely from your collection. Creators "post" daily — on-this-day anniversaries from gallery period metadata, throwbacks, tag theme days (e.g. lingerie day), and fresh drops for newly scanned sets. Posts persist forever, so the feed grows history over time. Includes IG-style post cards with carousels, video hover previews, likes, and jump-to-gallery.
+- Feed: tapping a creator opens their social-media profile — handle, verified badge, derived follower count that grows with your collection, bio, story-highlight circles from favorite galleries, and a Follow button (wired to favorites). New "Feed" sidebar entry and a Feed button on the creator profile.
+- Feed: Instagram-style stories — creators post daily stories that disappear after 24 hours, with gradient rings for unseen stories and a fullscreen viewer with animated progress bars, tap navigation, crossfades, and auto-advance.
+- Feed: videos in posts now autoplay muted while in view (pausing when scrolled away) with an Instagram-style corner sound toggle.
+- Feed: post images are served as high-quality 1080px previews (cached on disk) instead of small thumbnails, and post frames adapt to the image shape — landscape shots get an elegant blurred letterbox instead of a brutal crop.
+- Feed: creator profile view redesigned — banner header, large rarity-ringed avatar, richer stats row (posts/followers/following plus photos/videos/💦), and a wider layout.
+- Feed: posts now carry hashtags — the images' real tags (2–6, most frequent first), tap one to browse that tag on the Photos page.
+- Feed: new "Daily" post type ("outfit of the day", "fit check"…) and better variety — anniversaries no longer crowd out other post types.
+- Feed: the timeline reshuffles every time you return ("the algorithm"), while a creator's own feed stays chronological.
+- Feed: "Suggested for you" rail on wide screens — random creators with quick Follow, tap to open their profile.
+- Feed: story viewer is much bigger (95% of screen height), and tapping the creator's name in a story opens their profile, like Instagram.
+- Feed: tap the profile picture on a creator's feed profile to view it fullscreen.
+- Feed: posts now have fake engagement — like counts, and comments from the other creators in your vault ("ok but the last pic??? 🥵"), with the AI companion occasionally lurking in the replies (her comments use whatever name you gave her). Tap a commenter to open their profile; "View all N comments" expands longer threads.
+- Feed: comments are personality-aware — male creators comment like bros/colleagues ("insane work 🔥", "the GOAT 🐐"), and posts by artists or cosplayers attract technique talk ("render quality is insane", "this wig is PERFECT??") instead of generic gushing.
+- Feed: daily spotlight — one post slot per day goes to a creator who has never posted, so forgotten corners of the vault surface too.
+- Feed: male commenters got unmoderated-reply-guy energy ("down catastrophically bad rn", "step on me please") — this social network has no moderation team.
+- Feed: premium motion polish — posts drift up into view as you scroll, story rings spring in staggered and bounce on hover, carousel arrows fade in only while hovering the photo (Instagram-style), the like heart scales on hover/tap, and suggested-rail avatars glow on hover.
+
+### Added
+- Feed: the girls text first now — some days a creator sends you an unread DM ("can't sleep… keep me company? 🥺") shown as a glowing banner at the top of the feed; tapping Reply opens the chat with her persona, and her opener is already waiting in the conversation history.
+
+### Added
+- Feed: double-tap any post photo/video to like it — big heart burst animation, single tap still opens the file (with a short delay to tell the two apart).
+- Feed: carousel arrows stay visible on touch screens (no hover there), and swiping between carousel photos works natively.
+- Feed: creator profile header is fully responsive — smaller banner/avatar and wrapping stats on narrow windows.
+
+### Added
+- Mobile app: VaultGram arrives — Feed tab (center of the bottom bar) with stories, daily posts, comments, double-tap-to-like, and "she texted first" DMs; swipe right-to-left anywhere to reach the new Explore wall (Instagram-style), which learns your taste as you tap.
+- Mobile app: floating companion chat bubble — tap it (or Reply on a DM) for a fullscreen chat with Erika or the active persona, streaming from your PC's Ollama.
+- Mobile app: the bottom bar is now Home · Galleries · Feed · Cards · Creators; your profile moved to the Dashboard header — tap your avatar to open it.
+- Mobile app: post carousels now advance exactly one photo per swipe no matter how hard you fling (Instagram behavior), and photos support pinch-to-zoom that springs back on release.
+- Mobile app: Explore stream — double-tap now likes (single tap opens), and coming back from an opened photo returns you to the same spot in the same stream instead of resetting.
+- Mobile app: chat opens with a smooth slide-up animation, shows the correct persona name with her avatar, and tapping the name opens a persona picker (Erika + your favorite creators); sim profiles have a Message button.
+- Mobile app: Cards grid can no longer collapse to one card per row (CSS grid with a guaranteed 2-column minimum), and swiping through cards in the viewer no longer accidentally opens Explore.
+
+### Changed
+- Companion: every creator now gets her own randomly-assigned personality (warm, shy, teasing, playful, dominant, mommy, tsundere, and more) instead of all defaulting to the same blunt "bold" voice — so girls actually sound different from one another. It's stable per creator and picked once. Warm/approachable types are common; the intense anime tropes are rarer.
+- Companion: girls now have a light sense of time and continuity — they know whether it's morning or late at night and roughly how long since you last talked, and will bring it up occasionally and naturally ("been a few days, hasn't it?") without harping on the clock.
+- Companion: girls no longer talk like a dashboard — they won't recite your stats back at you (image count, level, streak) or call you by your vault rank ("Connoisseur"). They address you by your name (or just talk to you directly) and don't end every message with a probing question.
+- Feed: the "she texted first" DMs are now organic — a girl reaches out because she noticed you engaging with her (likes, views, 💦), often referencing what you're into ("you seem to like my thigh-highs sets 😏"), instead of generic lonely lines. Unread DMs can now pile up to a few at a time instead of one.
+- Mobile app: the Cards collection now lays cards out in an adaptive grid (2+ columns based on screen width) instead of stacking them vertically.
+- Sidebar: Feed and Explore moved into their own "Social" section — the library block stays tight and VaultGram gets a home.
+- Explore: liking a photo now trains the algorithm at double strength (the strength parameter was being dropped — likes counted the same as merely opening).
+- Feed: profile grid items now open as a full Instagram-style post (modal with carousel, likes, comments, hashtags) instead of jumping straight into the gallery; clicking an image inside the post opens that exact file in its own gallery — correct even when a post mixes galleries.
+- Explore: tapping a tile now opens it as a full post-style card — creator header, like button, open-in-vault — and the photo you tapped is always the first one shown (it used to land on a different image).
+- Explore: the immersive view now snaps one post into focus at a time as you scroll, instead of drifting between partial cards.
+
+### Added
+- Companion: link a vault photo into the chat — every feed post has a "copy link" button; paste it into a chat and the girl reacts to that exact photo (a vision model sees the real image), shown as a thumbnail in the message.
+- Companion: personas are self-aware — with a vision model, the first time you open a chat with a girl the app quietly looks at her profile picture once and remembers exactly what she's wearing, so she can accurately answer anything about her own look ("what colour are your gloves?" → "Red. No pants. Just the bodysuit."). It's cached (regenerated only if her avatar changes), never blocks her reply, and she only brings it up when asked. Toggleable via the vision setting; you can still attach your own images from your device as before.
+- Explore search (desktop + mobile): a smart search bar that auto-detects creators and tags. Typing a name surfaces matching creator profiles; typing a tag (e.g. #underboob) generates a wall of content from your collection with that tag. Tag results are seed-randomized so each search of the same tag gives fresh picks, and they're ephemeral — tapping ♥ on one inside its post view saves it permanently into your feed (a "Saved" post attributed to its creator).
+
+### Fixed
+- Companion chat: a girl now correctly links her OWN galleries when you ask to see her sets — previously she could hand you a different creator's gallery. She's given her own gallery list and profile, and can still recommend other creators (just won't pass off their work as hers).
+- Companion chat: the first message right after a session reset could come back empty (the model returns nothing on its very first response while cold-loading from disk) — it now retries once automatically so you always get a reply.
+- Companion chat: the "new session" tooltip on the reset button no longer gets clipped off the edge of the chat panel — it's anchored to the button instead of centered.
+- Companion chat: switching the creator you're chatting with now updates the name and bond tier immediately, matching the avatar — previously the name stayed on the previous creator until you refreshed the page (the bond query wasn't keyed on the active persona).
+- Mobile app: gallery/creator links the AI drops in chat now render as tappable chips (labeled with the actual gallery/creator name) that open the right page — previously they showed as raw paths like /galleries/32. Also remaps the desktop-style paths to the mobile routes (/gallery/:id, /creator/:id).
+- Mobile app: the Follow button on a creator's feed profile was hidden behind the banner — the Follow/Message buttons now sit in their own row below the banner so both are always visible.
+- Mobile app: the companion chat persona picker can now search across every creator (predictive search box) instead of only listing favorites.
+- Mobile app: the companion chat showed raw stream data (`{"text": "…"}` fragments) instead of the reply — the streaming parser never decoded the JSON events. It now parses the server-sent events exactly like the desktop chat, so replies render as clean text.
+- Mobile app: the Explore feed no longer stays frozen on the same posts until a manual refresh — it now keeps your place for 30 seconds after you leave (so opening a photo and coming back is seamless), then serves a fresh feed on your next visit or after an app restart.
+- Explore: the immersive post view could appear completely blank or half-faded with unreadable, unclickable headers — heavy image decoding starved the animation loop, freezing entrance/exit fades mid-flight (and the mode-switch waited on a frozen exit animation forever). The view now renders instantly with no entrance animations, and the blurred backdrop no longer bleeds over the post header.
+- Explore: videos in the immersive view now autoplay muted when in view with the corner sound toggle (same as feed posts), instead of only playing on hover.
+- Feed: creator profiles with a broken/stale avatar path showed an empty circle — the profile now verifies the file exists and falls back to the app logo instead of hiding.
+- Feed: carousel arrows no longer jump downward on hover — a global button hover effect was overriding their vertical centering (the same fix unlocks proper hover/tap animations on any custom-animated button app-wide via the new fx-btn opt-out).
+
 ## [1.2.0] - 2026-07-12
 
 ### Added

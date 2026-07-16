@@ -122,6 +122,9 @@ class Creator(Base):
     personality_type    = Column(String, default='bold')   # shy | bold | dominant | playful | cold
     companion_bond_xp   = Column(Integer, default=0)
     companion_bond_level = Column(Integer, default=0)
+    avatar_desc        = Column(Text, nullable=True)      # cached vision description of her PFP (so she knows her own look)
+    avatar_desc_src    = Column(String, nullable=True)    # the avatar_path the desc was generated from (invalidates on change)
+    personality_assigned = Column(Boolean, default=False) # True once a personality has been chosen (auto-random or by user)
 
     # 100% collection completion reward tracking — reset to None when completion drops
     completion_rewarded_at = Column(DateTime, nullable=True)
@@ -504,6 +507,7 @@ class CompanionConfig(Base):
     saved_models      = Column(Text, default='[]')   # JSON array of model name strings
     keep_alive        = Column(String, default='10m') # Ollama keep_alive: "5m", "30m", "-1" (forever), "0" (immediate)
     num_ctx           = Column(Integer, default=16384) # Ollama context window size (tokens)
+    vision_enabled    = Column(Boolean, default=True)  # feed persona avatar / linked vault photos to a vision model
     companion_prompt  = Column(Text, nullable=True)  # custom system prompt for Erika; null = auto-generate
     created_at        = Column(DateTime, default=func.now())
 
@@ -531,3 +535,66 @@ class CreditEvent(Base):
     amount     = Column(Integer, nullable=False)
     logged_at  = Column(DateTime, default=func.now())
 
+
+
+# ── Feed: simulated social-media posts generated from the collection ──────────
+class FeedPost(Base):
+    __tablename__ = "feed_posts"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    creator_id = Column(Integer, ForeignKey("creators.id", ondelete="CASCADE"), index=True)
+    post_type  = Column(String, default="throwback")   # on_this_day | throwback | theme_day | fresh_drop
+    gallery_id = Column(Integer, nullable=True)
+    image_ids  = Column(Text, default="[]")            # JSON array of image ids, display order
+    caption    = Column(Text, default="")
+    theme_tag  = Column(String, nullable=True)         # set for theme_day posts
+    liked      = Column(Boolean, default=False)
+    posted_at  = Column(DateTime, index=True)
+
+    creator    = relationship("Creator")
+
+
+# ── Feed: 24h ephemeral stories ───────────────────────────────────────────────
+class FeedStory(Base):
+    __tablename__ = "feed_stories"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    creator_id = Column(Integer, ForeignKey("creators.id", ondelete="CASCADE"), index=True)
+    image_id   = Column(Integer, nullable=False)
+    viewed     = Column(Boolean, default=False)
+    posted_at  = Column(DateTime, index=True)
+
+    creator    = relationship("Creator")
+
+
+# ── Feed: fake engagement — comments from other creators & Erika ─────────────
+class FeedComment(Base):
+    __tablename__ = "feed_comments"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    post_id     = Column(Integer, ForeignKey("feed_posts.id", ondelete="CASCADE"), index=True)
+    creator_id  = Column(Integer, nullable=True)   # null → Erika
+    author_name = Column(String, default="")
+    text        = Column(Text, default="")
+    created_at  = Column(DateTime, default=func.now())
+
+
+# ── Explore: learned tag affinity powering the algorithmic wall ───────────────
+class ExploreAffinity(Base):
+    __tablename__ = "explore_affinity"
+
+    tag_id = Column(Integer, primary_key=True)
+    weight = Column(Float, default=0.0)
+
+
+# ── Feed: a girl occasionally texts first — unread DM pings ──────────────────
+class FeedDMPing(Base):
+    __tablename__ = "feed_dm_pings"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    creator_id = Column(Integer, ForeignKey("creators.id", ondelete="CASCADE"), index=True)
+    message    = Column(Text, default="")
+    read       = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())
+
+    creator    = relationship("Creator")

@@ -57,4 +57,10 @@ export const useVaultStore = create((set, get) => ({
   playlistTarget: null, // null | number[]
   openPlaylistPicker: (imageIds) => set({ playlistTarget: imageIds }),
   closePlaylistPicker: () => set({ playlistTarget: null }),
+
+  // Floating companion chat bubble
+  chatOpen: false,
+  setChatOpen: (v) => set({ chatOpen: v }),
+  chatConfigBust: 0,
+  bumpChatConfig: () => set(s => ({ chatConfigBust: s.chatConfigBust + 1 })),
 }))

@@ -62,6 +62,7 @@ export const galleriesApi = {
 // ── Creators ────────────────────────────────────────────────────────────────
 export const creatorsApi = {
   list:      (params) => api.get('/creators/', { params }),
+  update:    (id, d)  => api.patch(`/creators/${id}`, d),
   get:       (id)     => api.get(`/creators/${id}`),
   favorites: ()       => api.get('/creators/favorites'),
   franchises:()       => api.get('/creators/franchises'),
@@ -144,6 +145,31 @@ export const systemApi = {
   health:     () => api.get('/health', { timeout: 6000 }),
   restart:    () => api.post('/system/restart'),
   getVersion: () => api.get('/system/version'),
+}
+
+// ── Feed / Explore (VaultGram social) ───────────────────────────────────────
+export const feedApi = {
+  list:      (params) => api.get('/feed/', { params }),
+  generate:  ()       => api.post('/feed/generate'),
+  like:      (id)     => api.post(`/feed/${id}/like`),
+  profile:   (id)     => api.get(`/feed/profile/${id}`),
+  stories:   ()       => api.get('/feed/stories'),
+  storySeen: (id)     => api.post(`/feed/stories/${id}/seen`),
+  dmPings:   ()       => api.get('/feed/dm'),
+  dmRead:    (id)     => api.post(`/feed/dm/${id}/read`),
+  explore:   (seedImage, limit = 15) => api.get('/feed/explore', { params: { seed_image: seedImage || undefined, limit } }),
+  exploreInteract: (imageId, strength = 1) => api.post('/feed/explore/interact', { image_id: imageId, strength }),
+  search:     (q, seed, skip = 0, limit = 30) => api.get('/feed/search', { params: { q, seed: seed || undefined, skip, limit } }),
+  searchSave: (imageId, tag) => api.post('/feed/search/save', { image_id: imageId, tag }),
+}
+
+// ── Companion chat (floating bubble) ────────────────────────────────────────
+export const companionApi = {
+  config:       ()  => api.get('/companion/config'),
+  updateConfig: (d) => api.patch('/companion/config', d),
+  history:      (personaId) => api.get('/companion/history', { params: { limit: 60, persona_id: personaId ?? undefined } }),
+  chatUrl:      ()  => abs('/api/companion/chat'),
+  avatarUrl:    ()  => abs('/api/companion/avatar'),
 }
 
 export default api

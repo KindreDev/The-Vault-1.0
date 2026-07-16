@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Flame, Images, Users, Film, Droplet, ListMusic, ChevronRight, Plus, Shuffle, Play } from 'lucide-react'
-import { galleriesApi, imagesApi, creatorsApi, playlistsApi } from '../lib/api.js'
+import { galleriesApi, imagesApi, creatorsApi, playlistsApi, gamiApi } from '../lib/api.js'
 import { useVaultStore } from '../store/vault.js'
 import { coverUrl, imageThumbUrl, creatorAvatarUrl } from '../lib/media.js'
 import { Spinner } from '../components/ui.jsx'
@@ -134,14 +134,23 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Profile header */}
+      {/* Profile header — tap the PFP (or name) to open your profile,
+          since Profile left the bottom bar to make room for Feed */}
       <div className="px-4 pt-[calc(var(--sat)+16px)] pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[15px]" style={{ color: 'rgba(255,255,255,0.5)' }}>Level {profile?.level ?? 1}</div>
-            <div className="text-2xl font-bold">{profile?.selected_title || profile?.level_title || 'The Lurker'}</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0" onClick={() => nav('/profile')}>
+            <img src={gamiApi.avatarUrl(profile?.level)} alt=""
+                 onError={e => { e.target.style.visibility = 'hidden' }}
+                 className="w-14 h-14 rounded-full object-cover shrink-0"
+                 style={{ border: '2.5px solid var(--accent)' }} />
+            <div className="min-w-0">
+              <div className="text-[15px] truncate" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {profile?.username || 'Vault Master'} · Level {profile?.level ?? 1}
+              </div>
+              <div className="text-2xl font-bold truncate">{profile?.selected_title || profile?.level_title || 'The Lurker'}</div>
+            </div>
           </div>
-          <span className="flex items-center gap-1 text-[15px]" style={{ color: 'var(--c-amber)' }}>
+          <span className="flex items-center gap-1 text-[15px] shrink-0" style={{ color: 'var(--c-amber)' }}>
             <Flame size={18} /> {profile?.streak_days ?? 0}
           </span>
         </div>

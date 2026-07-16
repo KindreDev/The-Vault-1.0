@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -10,23 +10,31 @@ import CardViewer from '../components/CardViewer.jsx'
 const FILTERS = ['', 'common', 'uncommon', 'rare', 'epic', 'legendary', 'relic', 'celestial']
 const PAGE_SIZE = 10   // cap rendered cards per page so the holo foil never tanks performance
 
-// Track viewport width so the 2-up grid sizes its fixed-width cards correctly.
-function useColumnWidth(cols = 2, sidePad = 32, gap = 12) {
-  const calc = () => Math.floor((window.innerWidth - sidePad - gap * (cols - 1)) / cols)
-  const [w, setW] = useState(calc)
+// Adaptive grid measured from the real container (window.innerWidth lies in
+// some WebViews) — CSS grid guarantees the column count, so it can NEVER
+// collapse to one card per row. Min 2 columns always.
+function useCardGrid(gap = 10, minCard = 140, maxCard = 200) {
+  const ref = useRef(null)
+  const [layout, setLayout] = useState({ cols: 2, width: 150 })
   useEffect(() => {
-    const onResize = () => setW(calc())
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const measure = () => {
+      const w = ref.current?.clientWidth || (window.innerWidth - 32)
+      const cols = Math.max(2, Math.floor((w + gap) / (minCard + gap)))
+      setLayout({ cols, width: Math.min(maxCard, Math.floor((w - gap * (cols - 1)) / cols)) })
+    }
+    measure()
+    const t = setTimeout(measure, 50)   // re-measure after first paint
+    window.addEventListener('resize', measure)
+    return () => { clearTimeout(t); window.removeEventListener('resize', measure) }
   }, [])
-  return w
+  return { ref, ...layout, gap }
 }
 
 export default function Cards() {
   const [rarity, setRarity] = useState('')
   const [page, setPage] = useState(0)
   const [viewerIdx, setViewerIdx] = useState(null)
-  const cardW = useColumnWidth(2)
+  const grid = useCardGrid()
 
   const { data: dist } = useQuery({ queryKey: ['rarity-dist'], queryFn: () => cardsApi.rarityDistribution().then(r => r.data) })
   const { data, isLoading } = useQuery({
@@ -71,9 +79,10 @@ export default function Cards() {
         <Empty icon={<Layers size={40} />} text="No cards in this category" />
       ) : (
         <>
-          <div className="flex flex-wrap gap-3 px-4 justify-center">
+          <div ref={grid.ref} className="px-4"
+               style={{ display: 'grid', gridTemplateColumns: `repeat(${grid.cols}, 1fr)`, gap: grid.gap, justifyItems: 'center' }}>
             {pageItems.map((card, idx) => (
-              <VaultCard key={card.inventory_id} card={card} width={cardW}
+              <VaultCard key={card.inventory_id} card={card} width={grid.width}
                          onClick={() => setViewerIdx(idx)} />
             ))}
           </div>

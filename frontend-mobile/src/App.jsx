@@ -22,6 +22,8 @@ import Cards from './pages/Cards.jsx'
 import Playlists from './pages/Playlists.jsx'
 import PlaylistView from './pages/PlaylistView.jsx'
 import Profile from './pages/Profile.jsx'
+import Feed from './pages/Feed.jsx'
+import Explore from './pages/Explore.jsx'
 
 export default function App() {
   // 'verifying' → checking the saved address is reachable; 'setup' → ask for it;
@@ -111,6 +113,8 @@ function AnimatedRoutes() {
       <Route path="/playlists"              element={<Playlists />} />
       <Route path="/playlist/:id"           element={<PlaylistView />} />
       <Route path="/profile"                element={<Profile />} />
+      <Route path="/feed"                   element={<Feed />} />
+      <Route path="/explore"                element={<Explore />} />
     </Routes>
   )
 

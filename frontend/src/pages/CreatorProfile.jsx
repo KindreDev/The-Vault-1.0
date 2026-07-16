@@ -6,7 +6,7 @@ import {
   ArrowLeft, Star, StarOff, Globe, Droplets, Images, Columns3, Shuffle,
   Upload, Camera, X, Image as ImageIcon, Play, Video, MoreHorizontal,
   Pencil, Trash2, Sparkles, FolderOpen,
-  ExternalLink, Eye, LayoutTemplate, FolderMinus, UserCircle,
+  ExternalLink, Eye, LayoutTemplate, FolderMinus, UserCircle, Newspaper,
 } from 'lucide-react'
 import BondHearts from '../components/BondHearts'
 import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
@@ -1702,6 +1702,11 @@ export default function CreatorProfile() {
                     className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
               <Pencil size={11} /> {t('Edit')}
+            </button>
+            <button onClick={() => navigate(`/feed?creator_id=${id}`)}
+                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(212,83,126,0.15)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+              <Newspaper size={12} /> {t('Feed')}
             </button>
             <button onClick={talkToCreator}
                     className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"

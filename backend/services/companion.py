@@ -259,6 +259,36 @@ _PERSONALITY_STYLE = {
     ),
 }
 
+# ── Personality assignment ───────────────────────────────────────────────────
+# The vault can't know a creator's real personality, so each girl gets one at
+# random (stable per creator id). Warm/approachable types are weighted common;
+# the intense anime tropes are rarer spice.
+_PERSONALITY_POOL = (
+    ['warm'] * 5 + ['teasing'] * 5 + ['playful'] * 5 + ['shy'] * 4 +
+    ['bold'] * 3 + ['dominant'] * 3 + ['mommy'] * 3 + ['deredere'] * 3 +
+    ['kuudere'] * 2 + ['tsundere'] * 2 + ['dandere'] * 2 + ['cold'] * 2 +
+    ['yandere'] * 1
+)
+
+
+def assign_personality(creator, force: bool = False) -> str:
+    """Give a creator a stable, seeded-random personality. No-op if she already
+    has one assigned (or a deliberately-chosen non-default one), unless force."""
+    import random as _random
+    if not force:
+        if getattr(creator, 'personality_assigned', False):
+            return creator.personality_type or 'warm'
+        cur = getattr(creator, 'personality_type', None)
+        if cur and cur != 'bold':      # preserve a personality the user set on purpose
+            creator.personality_assigned = True
+            return cur
+    seed = getattr(creator, 'id', None) or _random.randrange(1 << 30)
+    pt = _random.Random(seed).choice(_PERSONALITY_POOL)
+    creator.personality_type = pt
+    creator.personality_assigned = True
+    return pt
+
+
 # Map vault bond level (0-5) to a companion XP floor so that vault engagement
 # is reflected immediately when a creator is used as a persona.
 _VAULT_BOND_TO_COMPANION_XP = [0, 250, 500, 1500, 4000, 10000]
@@ -469,15 +499,59 @@ def build_vault_context(db: Session) -> str:
     )
 
 
+def _persona_appearance(c) -> str:
+    """A block telling her what her own profile picture looks like (cached desc)."""
+    desc = (getattr(c, 'avatar_desc', None) or "").strip()
+    if not desc:
+        return ""
+    return (
+        "\n\nYour profile picture — what you actually look like right now: " + desc +
+        "\nYou know exactly what you look like. When he asks about your pfp, your outfit, or your "
+        "appearance, describe it accurately from this. Never invent a different outfit or guess."
+    )
+
+
+def _persona_own_galleries(db: Session, c) -> str:
+    """Her own galleries with IDs so she links HER sets, never another creator's."""
+    from models import Gallery
+    gals = (db.query(Gallery)
+              .filter(Gallery.creator_id == c.id)
+              .order_by(Gallery.view_count.desc(), Gallery.id.desc())
+              .limit(8).all())
+    block = f"\n\nYour own profile page is /creators/{c.id}."
+    if gals:
+        gl = "\n".join(f"  - /galleries/{g.id} — {g.name}" for g in gals)
+        block += (
+            "\nThese are YOUR OWN galleries. When he wants to see YOUR sets, link one of these by "
+            "its /galleries/<id>. You can still recommend other creators you like — just don't call "
+            "someone else's gallery your own.\n" + gl
+        )
+    else:
+        block += (
+            "\nYou have no galleries of your own to link. If he asks for YOUR sets, be honest and "
+            "playful about it — don't pass off another creator's gallery as yours (recommending "
+            "other creators is fine)."
+        )
+    return block
+
+
 def build_persona_prompt(db: Session, config) -> str:
     from models import Creator
 
     if config.active_persona_id:
         c = db.query(Creator).filter(Creator.id == config.active_persona_id).first()
         if c:
+            # What she's been posting lately — so she can reference her own feed
+            try:
+                from services.feed import persona_feed_context
+                feed_ctx = persona_feed_context(db, c.id)
+            except Exception:
+                feed_ctx = ""
+            look = _persona_appearance(c)
+            own  = _persona_own_galleries(db, c)
             # Use custom prompt if the user wrote one
             if getattr(c, 'companion_prompt', None):
-                return c.companion_prompt
+                return c.companion_prompt + look + own + feed_ctx
             # Auto-generate from creator data
             lines = [f"You are roleplaying as {c.name} ({c.creator_type})."]
             if c.description:
@@ -487,7 +561,7 @@ def build_persona_prompt(db: Session, config) -> str:
             if getattr(c, 'series', None):
                 lines.append(f"From: {c.series}")
             lines.append(f"Stay in character as {c.name} at all times. Respond as they would.")
-            return "\n".join(lines)
+            return "\n".join(lines) + look + own + feed_ctx
 
     # Custom prompt saved by user takes priority — substitute {name} dynamically
     if getattr(config, 'companion_prompt', None):
@@ -563,6 +637,37 @@ Adjust as mood shifts — if he asks for something different, adapt the values t
 """
 
 
+def _continuity_note(db: Session, persona_id) -> str:
+    """Time of day + how long since the last chat, so she can reference it
+    occasionally — like a partner would, not a clock read out every message."""
+    from models import CompanionMessage
+    from datetime import datetime
+    now = datetime.now()
+    h = now.hour
+    tod = ("the middle of the night" if h < 5 else "the morning" if h < 12
+           else "the afternoon" if h < 17 else "the evening" if h < 22 else "late at night")
+    q = db.query(CompanionMessage).filter(CompanionMessage.role != 'break')
+    q = q.filter(CompanionMessage.persona_id == persona_id) if persona_id is not None \
+        else q.filter(CompanionMessage.persona_id == None)  # noqa: E711
+    last = q.order_by(CompanionMessage.created_at.desc()).first()
+    gap = None
+    if last and last.created_at:
+        secs = (now - last.created_at).total_seconds()
+        days = (now - last.created_at).days
+        if secs < 3 * 3600:   gap = "a little earlier today"
+        elif days == 0:       gap = "earlier today"
+        elif days == 1:       gap = "yesterday"
+        elif days < 7:        gap = f"{days} days ago"
+        elif days < 21:       gap = "about a week or two ago"
+        else:                 gap = "quite a while ago"
+    note = f"\n=== CONTINUITY ===\nRight now it's {tod}."
+    if gap:
+        note += f" The last time you two talked was {gap}."
+    note += ("\nYou may bring up the time of day or how long it's been — but only once in a while, "
+             "when it fits naturally. Never remark on the clock or the gap in every message.")
+    return note
+
+
 def build_system_prompt(db: Session, config, device_connected: bool = False) -> str:
     from models import Creator
 
@@ -582,6 +687,22 @@ def build_system_prompt(db: Session, config, device_connected: bool = False) -> 
     persona_prompt = build_persona_prompt(db, config)
     voice_style    = _PERSONALITY_STYLE.get(personality_type, _PERSONALITY_STYLE['bold'])
 
+    # How to address him — his name if he set one, otherwise just talk to him directly.
+    # NEVER his vault rank/level title (that's what made her sound like a dashboard).
+    from models import UserProfile
+    _profile = db.query(UserProfile).first()
+    _uname = (getattr(_profile, 'username', None) or "").strip() if _profile else ""
+    if _uname and _uname.lower() not in ("vault master", "vault", "user"):
+        address_rule = (
+            f"- His name is {_uname}. Use it occasionally and naturally, the way you'd say a partner's "
+            f"name — not every message. NEVER address him by a vault rank or level title.\n"
+        )
+    else:
+        address_rule = (
+            "- Talk to him directly (\"you\"). Don't invent a nickname and NEVER address him by a "
+            "vault rank or level title.\n"
+        )
+
     device_section = (
         DEVICE_SYSTEM_SECTION if device_connected
         else "\n=== DEVICE CONTROL ===\nNo device connected — do not emit <device> tags.\n"
@@ -597,15 +718,25 @@ def build_system_prompt(db: Session, config, device_connected: bool = False) -> 
         "and your own internal thoughts. Do not narrate or speak for him.\n"
     ) if bond_tier >= 2 else ""
 
+    continuity = _continuity_note(db, config.active_persona_id)
+
     return (
         f"{persona_prompt}\n\n"
         f"{voice_style}\n\n"
         f"{bond_instructions}\n\n"
         f"{vault_context}\n"
+        f"{continuity}\n"
         f"{device_section}\n"
         f"=== RULES ===\n"
         f"- Most conversations are casual — he wants to talk, decompress, or share what he's been watching. "
         f"You genuinely enjoy that too. Don't force sexual tension into every exchange; let it arise naturally.\n"
+        f"- The VAULT STATE section is private background so you know his taste — it is NOT a scoreboard to read "
+        f"back to him. Never recite his stats (image counts, level, streak, XP, ratings) or quote numbers at him "
+        f"like a dashboard or analyst. Weave a detail in only when it's genuinely relevant, the way a partner "
+        f"would remember what he likes.\n"
+        f"{address_rule}"
+        f"- Don't end every message with a probing question, and drop the 'efficient / saves time' framing. "
+        f"Sometimes just react, agree, tease, or share a thought. Let the conversation breathe.\n"
         f"- Keep responses to 2-4 sentences unless the moment calls for more.\n"
         f"- Never break character. Never acknowledge being an AI or a language model.\n"
         f"- When linking to content use the numeric ID from the collection list above: /creators/{{id}} or /galleries/{{id}}. Never use names as paths.\n"
