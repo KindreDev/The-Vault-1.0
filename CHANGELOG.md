@@ -36,6 +36,7 @@ A ground-up rework of the trading-card system:
 - Creator Showcase: every creator profile now has 5 card display slots in the hero (her creator/HOF card, one of her 10 rarest gallery cards, a goon card of her content, one of her 10 rarest photos, and a wildcard for any Legendary-grade+ card). A card can only sit in one showcase at a time. Fill all 5 for MASTERY — a golden badge, a one-time bond surge… and she notices (check your DMs). The Edit/Feed/Talk/AI Tag/Favorite buttons moved to the bottom edge of the hero to make room.
 - Hall of Fame cards: any creator who ever enters the Hall of Fame gets a permanent HOF memento card minted into the pool (kept forever, even if later drops out) — Legendary, with the top 3 minted Celestial. Generous pull odds in both packs.
 - Every card now carries a rarity score (tier × prestige × level) so the rarest cards in the collection can be ranked.
+- Help: the in-app **Cards** reference tab was rewritten for the reworked system — the four tiers, R/SR/SSR/UR True Rarity classes, Prestige crafting, card visuals, level & CXP, the two packs, currencies, and the Forge.
 
 ### Added
 - Intake: duplicate awareness — incoming images are pHash-compared against the vault (videos by byte-size match), flagged with a DUP badge, and sorting flagged files opens a conflict dialog: skip them, keep both, or delete the duplicates from disk.

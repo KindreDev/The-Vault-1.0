@@ -132,14 +132,12 @@ const LEVEL_TIERS = [
   { range: 'Lv 91–100', color: '#FFD700', titles: 'Transcendent Hoarder, God Emperor Of The Vault' },
 ]
 
+// 2026-07 rework: 4 tiers, fixed at birth. Rarity never transmutes.
 const RARITY_DATA = [
-  { label: 'Core',      color: '#888',    shard: 5,    bg: 'rgba(136,136,136,0.12)', note: 'Standard image cards' },
-  { label: 'Uncommon',  color: '#1D9E75', shard: 10,   bg: 'rgba(29,158,117,0.12)',  note: 'Gallery cards' },
-  { label: 'Rare',      color: '#4682DC', shard: 25,   bg: 'rgba(70,130,220,0.12)',  note: 'Creator cards + shimmer effect' },
-  { label: 'Epic',      color: '#9F8FEF', shard: 75,   bg: 'rgba(127,119,221,0.15)', note: 'Goon cards (≥20 orgasms) + glow' },
-  { label: 'Legendary', color: '#ff8800', shard: 200,  bg: 'rgba(255,136,0,0.12)',   note: 'Variant cards + flame particles' },
-  { label: 'Relic',     color: '#FFD700', shard: 1000, bg: 'rgba(255,215,0,0.12)',   note: 'Ultra rare upgrades' },
-  { label: 'Celestial', color: '#E8E8FF', shard: 5000, bg: 'rgba(200,200,255,0.1)', note: 'Rarest tier. 0.1% chance' },
+  { label: 'Core',      color: '#9F8FEF', shard: 10,   bg: 'rgba(127,119,221,0.15)', note: 'Photo & gallery cards — the foundation the collection is built on' },
+  { label: 'Epic',      color: '#ff8800', shard: 75,   bg: 'rgba(255,136,0,0.12)',   note: 'Creator & collab cards' },
+  { label: 'Legendary', color: '#FFD700', shard: 300,  bg: 'rgba(255,215,0,0.12)',   note: 'Goon, variant & Hall of Fame cards' },
+  { label: 'Celestial', color: '#E8E8FF', shard: 2500, bg: 'rgba(200,200,255,0.1)',  note: 'The pinnacle — top goon image, My Queen creators, top-3 HOF' },
 ]
 
 // ── Tab contents ──────────────────────────────────────────────────────────────
@@ -646,8 +644,11 @@ function AchievementsContent() {
 function CardsContent() {
   return (
     <div className="space-y-3">
-      <Section title="Card rarities" icon={Sparkles} defaultOpen accentColor="#FFD700">
+      <Section title="The four tiers" icon={Sparkles} defaultOpen accentColor="#FFD700">
         <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            A card's tier is <strong className="text-white/75">fixed at birth</strong> — cards never transmute rarity. The tier sets the frame, colour, and its own visual effect. Progression happens on two other axes instead: the card's <strong className="text-white/75">Class</strong> (see below) and its <strong className="text-white/75">Level</strong> (grown by CXP).
+          </p>
           <div className="space-y-2">
             {RARITY_DATA.map(({ label, color, shard, bg, note }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-lg"
@@ -658,20 +659,47 @@ function CardsContent() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/30">Shard values shown are what you receive when dismantling a card of that rarity. Higher rarities yield exponentially more shards.</p>
+          <p className="mt-3 text-[15px] text-white/30">Shard values are what you receive when dismantling a card of that tier. Prestige cards pay 3× shards.</p>
         </SectionBody>
       </Section>
 
-      <Section title="Card types" icon={CreditCard} defaultOpen={false} accentColor="var(--c-accent)">
+      <Section title="True Rarity — R / SR / SSR / UR" icon={Diamond} defaultOpen accentColor="#55C2FF">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            On top of the tier, every card gets a <strong className="text-white/75">Class</strong> shown as a corner badge — how rare that card is <em>within its own tier</em>. Classes are ranked <strong>per tier</strong>, so every tier has its own chase: a <strong className="text-white/75">Core-UR</strong> is a real, special thing.
+          </p>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {[
+              { c: 'R',   color: '#888780', pct: 'common' },
+              { c: 'SR',  color: '#4682DC', pct: 'scarcer' },
+              { c: 'SSR', color: '#9F8FEF', pct: 'rare' },
+              { c: 'UR',  color: '#FFD700', pct: 'the chase' },
+            ].map(({ c, color, pct }) => (
+              <div key={c} className="px-3 py-3 rounded-lg text-center" style={{ background: `${color}12`, border: `0.5px solid ${color}40` }}>
+                <div className="text-[22px] font-extrabold" style={{ color }}>{c}</div>
+                <div className="text-[14px] text-white/40 mt-0.5">{pct}</div>
+              </div>
+            ))}
+          </div>
+          <div className="p-3 rounded-lg text-[16px] text-white/50 flex gap-2"
+               style={{ background: 'rgba(85,194,255,0.08)', border: '0.5px solid rgba(85,194,255,0.25)' }}>
+            <Info size={14} style={{ color: '#55C2FF' }} className="flex-shrink-0 mt-0.5" />
+            <span>The class comes from a <strong className="text-white/70">Collection Rarity Score</strong> that's <strong className="text-white/70">love-gated</strong> — a card only counts as rare if you actually engage with its creator (Os, watch time, ratings, sessions). So a huge but unwatched collection can't mint an undeserved chase card. Sort your collection by <strong className="text-white/70">Rarity</strong> to rank by this score.</span>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Card types & pack odds" icon={CreditCard} defaultOpen={false} accentColor="var(--c-accent)">
         <SectionBody>
           <div className="grid grid-cols-2 gap-2 text-[17px]">
             {[
-              { label: 'Image card',   rarity: 'Core',    desc: 'Generated from random images in your vault. 67% of pack drops.' },
-              { label: 'Gallery card', rarity: 'Uncommon',  desc: 'One gallery becomes a card. 19% of drops. Shows gallery cover art.' },
-              { label: 'Creator card', rarity: 'Rare',      desc: 'A creator or character from your roster. 7% of drops.' },
-              { label: 'Goon card',    rarity: 'Epic',      desc: 'Images with 20+ orgasms logged. Only 1% of drops — rare by design.' },
-              { label: 'Variant card', rarity: 'Legendary', desc: 'Crafted via the Forge. One creator + one character = unique variant. Cap of 3 per pair.' },
-              { label: 'Collab card',  rarity: 'Rare+',     desc: 'Special crossover cards. 5% of drops. Rarity varies.' },
+              { label: 'Photo card',   rarity: 'Core',      desc: 'From an image in your vault. 58% of drops — biased toward what you actually watch.' },
+              { label: 'Gallery card', rarity: 'Core',      desc: 'A whole gallery as a card. 17% of drops. 9★+ galleries are born Epic.' },
+              { label: 'Creator card', rarity: 'Epic',      desc: 'A creator from your roster. 7% of drops. Up to 5 permanent art versions each.' },
+              { label: 'Goon card',    rarity: 'Legendary', desc: 'An image with 10+ Os logged. 5% of drops. The single most-gooned image is Celestial.' },
+              { label: 'Variant card', rarity: 'Legendary', desc: 'A creator × character (e.g. a cosplayer as a character). 1% of drops, or craft one in the Forge. Cap 3 per pair.' },
+              { label: 'Collab card',  rarity: 'Epic',      desc: 'Multi-creator crossovers. 5% of drops.' },
+              { label: 'HOF card',     rarity: 'Legendary', desc: 'A Hall of Fame memento — minted forever when a creator enters the HOF. 7% of drops; top-3 are Celestial.' },
             ].map(({ label, rarity, desc }) => {
               const r = RARITY_DATA.find(x => x.label === rarity)
               return (
@@ -688,14 +716,83 @@ function CardsContent() {
         </SectionBody>
       </Section>
 
-      <Section title="Economy: shards, credits & catalyst tokens" icon={Package} defaultOpen={false} accentColor="var(--c-amber)">
+      <Section title="Prestige (crafted premium cards)" icon={Crown} defaultOpen={false} accentColor="#ff5db1">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-3">
+            Prestige is the premium holo treatment (formerly "Foil"). It is <strong className="text-white/75">crafted, never pulled from packs</strong>. A Prestige card gets a signature look — a breathing rainbow halo, a golden flower field, and a <strong className="text-white/75">PRESTIGE</strong> label — on any tier, and pays <strong className="text-white/75">3× shards</strong> when dismantled.
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-[16px]">
+            {[
+              { label: 'Craft with duplicates', desc: 'Spend spare copies of the card + 1,000 credits: Core 6 · Epic 4 · Legendary 2 · Celestial 1 copies.' },
+              { label: 'Craft with a token',    desc: 'Or spend 1 Catalyst Token to Prestige a card instantly (the rarer path).' },
+            ].map(({ label, desc }) => (
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,93,177,0.08)', border: '0.5px solid rgba(255,93,177,0.25)' }}>
+                <div className="font-semibold text-[#ff9dd0] mb-1">{label}</div>
+                <p className="text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Card visuals (VFX)" icon={Sparkles} defaultOpen={false} accentColor="#C084FC">
+        <SectionBody>
+          <div className="space-y-2 text-[16px] text-white/55">
+            <p><strong className="text-white/75">Tier</strong> sets the base effect on every card — Core a soft glare, Epic a sliding rainbow sheen, Legendary floating hearts, Celestial a white flower field + prism.</p>
+            <p><strong className="text-white/75">UR</strong> cards (any tier) upgrade to that tier's premium animated texture — Core starfield, Epic iris/glitter, Legendary gold hearts, Celestial cosmos.</p>
+            <p><strong className="text-white/75">Prestige</strong> cards wear the celestial flower-field + prism + rainbow halo on any tier — and go golden & denser when the card is also a UR.</p>
+            <p><strong className="text-white/75">Video cards</strong> animate: a short looping preview stitched from clips near the start, middle, and end of the video.</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Card Level & CXP" icon={TrendingUp} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-3">
+            Rarity never changes — instead a card grows in <strong className="text-white/75">Level (1→10)</strong> by earning CXP. Level nudges the card's rarity score, so a maxed card ranks higher. CXP comes from two places:
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-[16px]">
+            <div className="p-3 rounded-lg" style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.25)' }}>
+              <div className="font-semibold text-[var(--c-green)] mb-1">Sessions</div>
+              <p className="text-white/45 leading-snug">Logging a session tied to that card's creator/gallery grants CXP.</p>
+            </div>
+            <div className="p-3 rounded-lg" style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.25)' }}>
+              <div className="font-semibold text-[var(--c-green)] mb-1">Feeding duplicates</div>
+              <p className="text-white/45 leading-snug">Feed a spare copy (or goon/variant cards) into a card to pour in CXP. Overflow past max level converts to Vault Credits.</p>
+            </div>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="The two packs" icon={Package} defaultOpen={false} accentColor="var(--c-amber)">
+        <SectionBody>
+          <div className="grid grid-cols-2 gap-3 text-[16px]">
+            <div className="p-4 rounded-lg" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[18px] font-bold text-[#CECBF6]">Booster</span>
+                <Pill color="#9F8FEF">400 cr</Pill>
+              </div>
+              <p className="text-white/50 leading-snug">Your history — pulls lean into what you've actually watched, gooned, and rated. The pack that surfaces your favourites.</p>
+            </div>
+            <div className="p-4 rounded-lg" style={{ background: 'rgba(255,136,0,0.08)', border: '0.5px solid rgba(255,136,0,0.3)' }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[18px] font-bold text-[#ffb347]">Premium</span>
+                <Pill color="#ff8800">800 cr</Pill>
+              </div>
+              <p className="text-white/50 leading-snug">The high table — guaranteed Epic+, with heavy goon / collab / Hall-of-Fame rates. The tier hunter's pack.</p>
+            </div>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Currencies" icon={CreditCard} defaultOpen={false} accentColor="#FFD700">
         <SectionBody>
           <div className="space-y-2.5 text-[17px]">
             {[
-              { name: 'Vault Credits', color: '#FFD700', desc: 'Primary currency. Earned from actions, quests, and achievements. Used to buy card packs (250 credits each).' },
-              { name: 'Shards',        color: '#9F8FEF', desc: 'Dismantling currency. Destroy cards to earn shards. Spend 150 shards to craft a Catalyst Token. Also needed for Forge.' },
-              { name: 'Catalyst Tokens',color: 'var(--c-amber)', desc: 'Rare crafting material. 1 token costs 150 shards. Required for forging a Variant card (500 shards + 1 token).' },
-              { name: 'CXP',           color: 'var(--c-green)', desc: 'Card Experience. Feed duplicate cards to a target card to gain CXP. Reach the threshold to evolve the card to the next rarity tier.' },
+              { name: 'Vault Credits', color: '#FFD700', desc: 'Primary currency, from actions/quests/achievements. Buys packs (Booster 400 / Premium 800) and Prestige crafts (1,000).' },
+              { name: 'Shards',        color: '#9F8FEF', desc: 'Dismantling currency. Destroy cards for shards (Core 10 · Epic 75 · Legendary 300 · Celestial 2,500; ×3 for Prestige). Spent on catalyst tokens and the Forge.' },
+              { name: 'Catalyst Tokens',color: 'var(--c-amber)', desc: 'Rare crafting material — 400 shards each, plus one every 5 levels you gain. Used to forge Variant cards or to Prestige a card.' },
+              { name: 'Hearts',        color: 'var(--c-pink)', desc: 'Earned by dismantling Epic+ cards (Epic 2 · Legendary 3 · Celestial 5). Gift them to a creator to boost her bond.' },
             ].map(({ name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
@@ -707,14 +804,14 @@ function CardsContent() {
         </SectionBody>
       </Section>
 
-      <Section title="Card actions: dismantle, fuse, evolve, forge" icon={Trash2} defaultOpen={false} accentColor="var(--c-pink)">
+      <Section title="The Forge — dismantle, feed, craft" icon={Hammer} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
           <div className="space-y-3 text-[17px]">
             {[
-              { action: 'Dismantle', color: 'var(--c-pink)',  desc: 'Destroy a card to receive shards. Value scales by rarity. Auto-dismantle duplicates in one click.' },
-              { action: 'Fuse',      color: '#9F8FEF',        desc: 'Combine duplicate copies of the same card to increase its quantity counter. Useful for set collecting.' },
-              { action: 'Evolve',    color: 'var(--c-green)', desc: 'When a card reaches its CXP threshold, spend shards to evolve it to the next rarity tier permanently.' },
-              { action: 'Forge',     color: 'var(--c-amber)', desc: 'Craft a unique Variant card for any creator+character pair. Costs 500 shards + 1 catalyst token. Limited to 3 per pair.' },
+              { action: 'Dismantle', color: 'var(--c-pink)',  desc: 'Destroy a card for shards (and Hearts on Epic+). One-click auto-dismantle of all duplicates.' },
+              { action: 'Feed',      color: '#9F8FEF',        desc: 'Sacrifice duplicate copies into a card to pour in CXP and grow its Level.' },
+              { action: 'Craft Variant', color: 'var(--c-amber)', desc: 'Forge a creator × character card for any pair that share a gallery. Costs 500 shards + 1 catalyst token. Cap 3 per pair.' },
+              { action: 'Craft Prestige', color: '#ff5db1',   desc: 'Upgrade a card to Prestige — duplicates (6/4/2/1 by tier) + 1,000 credits, or 1 catalyst token.' },
             ].map(({ action, color, desc }) => (
               <div key={action} className="flex gap-3 items-start px-4 py-3 rounded-lg"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
