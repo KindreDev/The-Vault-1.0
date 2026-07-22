@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, nullslast, select, or_, and_
 from typing import Optional, List
 
-from database import get_db
+from database import get_db, _read_config
 from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
 from schemas import ImageOut, ImageUpdate, CumCountUpdate
 import services.gamification as gami
@@ -733,6 +733,103 @@ def get_funscript(image_id: int, db: Session = Depends(get_db)):
     # Replace any raw embedded `axes` list with the normalized { axisId: actions } map.
     main["axes"] = axes
     return main
+
+
+def _unique_funscript_dest(dest_dir: str, filename: str, old_path: Optional[str] = None) -> str:
+    """
+    Return a non-colliding path in dest_dir for `filename`.
+    If the only collision is with `old_path` (this video's current linked
+    script), reuse that exact path so it gets overwritten in place.
+    `anran.funscript` -> `anran (2).funscript` on unrelated collisions.
+    """
+    base, ext = os.path.splitext(filename)
+    candidate = os.path.join(dest_dir, filename)
+    if old_path and os.path.abspath(candidate) == os.path.abspath(old_path):
+        return candidate
+    if not os.path.exists(candidate):
+        return candidate
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(dest_dir, f"{base} ({n}){ext}")
+        n += 1
+    return candidate
+
+
+@router.post("/{image_id}/funscript")
+def link_funscript(image_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Permanently link a funscript to a video. If a central funscript library
+    folder is configured (`funscript_library_path`), the script is written
+    there as `<videoname>.funscript` so `match_funscript_library` can re-link
+    it later; otherwise it falls back to writing beside the video as before.
+    `funscript_path` is persisted either way. Body: { "content": "<raw funscript JSON>" }.
+    """
+    import json as _json
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    if not img.is_video:
+        raise HTTPException(400, "Funscripts can only be linked to videos")
+    if not img.file_path or not os.path.exists(img.file_path):
+        raise HTTPException(404, "Video file not found on disk")
+
+    content = body.get("content") or ""
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(400, "Funscript too large")
+    try:
+        parsed = _json.loads(content)
+    except Exception:
+        raise HTTPException(400, "Not valid JSON")
+    if not isinstance(parsed.get("actions"), list) or not parsed["actions"]:
+        raise HTTPException(400, "Not a valid funscript (no actions)")
+
+    video_base = os.path.splitext(os.path.basename(img.file_path))[0]
+    filename = video_base + ".funscript"
+
+    library_path = (_read_config().get("funscript_library_path") or "").strip()
+    if library_path and os.path.isdir(library_path):
+        dest = _unique_funscript_dest(library_path, filename, old_path=img.funscript_path)
+    else:
+        dest = os.path.splitext(img.file_path)[0] + ".funscript"
+
+    replaced = os.path.exists(dest)
+    try:
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        raise HTTPException(500, f"Could not write funscript: {e}")
+
+    img.funscript_path = dest
+
+    # Tag as funscripted, same as the scanner does on detection.
+    tag = db.query(Tag).filter(Tag.name == "funscripted").first()
+    if not tag:
+        tag = Tag(name="funscripted", category="type", source=TagSource.manual)
+        db.add(tag)
+        db.flush()
+    if tag not in img.tags:
+        img.tags.append(tag)
+    db.commit()
+    return {"funscript_path": dest, "replaced_existing": replaced,
+            "actions": len(parsed["actions"])}
+
+
+@router.delete("/{image_id}/funscript")
+def unlink_funscript(image_id: int, delete_file: bool = False, db: Session = Depends(get_db)):
+    """Unlink a funscript from a video; optionally delete the file from disk."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    if not img.funscript_path:
+        raise HTTPException(404, "No funscript linked")
+    if delete_file and os.path.exists(img.funscript_path):
+        try:
+            os.remove(img.funscript_path)
+        except OSError:
+            pass
+    img.funscript_path = None
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/{image_id}/file")

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock } from 'lucide-react'
 import { galleriesApi, creatorsApi } from '../lib/api'
+import CreatorCollageBackground from '../components/CreatorCollageBackground'
+import CreatorStatsModal from '../components/CreatorStatsModal'
 
 // ── Color maps ────────────────────────────────────────────────────────────────
 const TYPE_COLORS = {
@@ -37,10 +39,10 @@ const PODIUM_META = [
 ]
 
 // Cache-busting avatar URL — avatar_path stores a UUID filename that changes on each upload
-function creatorAvatarUrl(creator) {
+function creatorAvatarUrl(creator, size = 480) {
   if (!creator.avatar_path) return null
   const bust = encodeURIComponent(creator.avatar_path.split(/[\\/]/).pop() || '')
-  return `/api/creators/${creator.id}/avatar?v=${bust}`
+  return `/api/creators/${creator.id}/avatar-thumb?size=${size}&v=${bust}`
 }
 
 // ── Shared stat row ───────────────────────────────────────────────────────────
@@ -195,7 +197,9 @@ function CreatorHero({ creator, onClick }) {
   const [imgFailed, setImgFailed] = useState(false)
   const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc  = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
-  const url = creatorAvatarUrl(creator)
+  // #1 is the biggest, most prominent portrait — give it near-full resolution so
+  // it never looks pixelated. It's a single image, so the cost is negligible.
+  const url = creatorAvatarUrl(creator, 1600)
   const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
@@ -300,7 +304,7 @@ function CreatorHero({ creator, onClick }) {
 function PodiumCard({ creator, rank, meta, onClick }) {
   const [imgFailed, setImgFailed] = useState(false)
   const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
-  const url = creatorAvatarUrl(creator)
+  const url = creatorAvatarUrl(creator, 640)
   const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
@@ -352,7 +356,7 @@ function CreatorGridCard({ creator, rank, onClick }) {
   const [imgFailed, setImgFailed] = useState(false)
   const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc  = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
-  const url = creatorAvatarUrl(creator)
+  const url = creatorAvatarUrl(creator, 360)
   const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
@@ -376,17 +380,18 @@ function CreatorGridCard({ creator, rank, onClick }) {
         </div>
       </div>
       <div className="p-2.5">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-[13px] font-medium text-[rgba(255,255,255,0.75)] truncate flex-1">{creator.name}</span>
+        {/* Name on its own row so a long rarity label can never cover it */}
+        <div className="text-[13px] font-medium text-[rgba(255,255,255,0.75)] truncate mb-1">{creator.name}</div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <StatRow views={creator.total_views} cum={creator.total_cum} />
           <RarityPill rarity={creator.card_rarity} />
         </div>
-        <StatRow views={creator.total_views} cum={creator.total_cum} />
       </div>
     </div>
   )
 }
 
-function CreatorSection({ creators, onNavigate }) {
+function CreatorSection({ creators, onCreatorClick }) {
   if (!creators || creators.length === 0) return null
   const top3 = creators.slice(0, 3)
   const rest = creators.slice(3)
@@ -407,7 +412,7 @@ function CreatorSection({ creators, onNavigate }) {
         </div>
       </div>
 
-      <CreatorHero creator={top3[0]} onClick={() => onNavigate(`/creators/${top3[0].id}`)} />
+      <CreatorHero creator={top3[0]} onClick={() => onCreatorClick(top3[0].id)} />
 
       {top3.length > 1 && (
         <div className="grid gap-6 mt-4"
@@ -418,7 +423,7 @@ function CreatorSection({ creators, onNavigate }) {
             const meta = PODIUM_META.find(m => m.rank === rankMap[i])
             return (
               <PodiumCard key={c.id} creator={c} rank={rankMap[i]} meta={meta}
-                          onClick={() => onNavigate(`/creators/${c.id}`)} />
+                          onClick={() => onCreatorClick(c.id)} />
             )
           })}
         </div>
@@ -430,7 +435,7 @@ function CreatorSection({ creators, onNavigate }) {
           <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
             {rest.map((c, i) => (
               <CreatorGridCard key={c.id} creator={c} rank={i + 4}
-                               onClick={() => onNavigate(`/creators/${c.id}`)} />
+                               onClick={() => onCreatorClick(c.id)} />
             ))}
           </div>
         </>
@@ -494,6 +499,10 @@ function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
     return () => clearTimeout(timerRef.current)
   }, [hoverVideo, item.id])
 
+  const stillSrc = imgHeight >= 300
+    ? `/api/images/${item.id}/preview?w=700`
+    : `/api/images/${item.id}/thumb`
+
   return (
     <div
       onMouseEnter={handleMouseEnter}
@@ -504,7 +513,7 @@ function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
     >
       <div className="relative overflow-hidden" style={{ height: imgHeight, background: 'rgba(255,255,255,0.03)' }}>
         <img
-          src={`/api/images/${item.id}/thumb`} alt=""
+          src={stillSrc} alt=""
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           style={{ transform: hoverVideo ? 'scale(1)' : undefined }}
           onError={e => { e.target.style.display = 'none' }}
@@ -633,14 +642,33 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
 // ══════════════════════════════════════════════════════════════════════════════
 export default function HallOfFame() {
   const navigate = useNavigate()
+  const [statsId, setStatsId] = useState(null)
 
   const { data: imageHof }   = useQuery({ queryKey: ['hof',         30], queryFn: () => galleriesApi.hof(30).then(r => r.data),   staleTime: 0 })
   const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30], queryFn: () => galleriesApi.galleryHof(30).then(r => r.data), staleTime: 0 })
   const { data: creatorHof } = useQuery({ queryKey: ['creator-hof', 30], queryFn: () => creatorsApi.hof(30).then(r => r.data),   staleTime: 0, refetchInterval: 15000 })
 
+  const topCreatorId = creatorHof?.[0]?.id ?? null
+
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: '#0e0e0e' }}>
-      <div className="max-w-[1400px] mx-auto px-8 py-10">
+    <div className="flex-1" style={{ background: '#0e0e0e', position: 'relative', minHeight: '100%' }}>
+      {/* No own overflow here — Layout's <main> is the scroll container. A local
+          overflow-y-auto would trap position:sticky, so the pinned backdrop
+          below anchors to <main>, not this div. */}
+      {/* Living collage backdrop. A zero-height sticky anchor pins a viewport-tall
+          layer that stays put while you scroll — so the blurred tiles never
+          repaint on scroll (that was the jank). It drifts via CSS and swaps
+          identity when your #1 creator changes. */}
+      <div aria-hidden style={{ position: 'sticky', top: 0, height: 0, zIndex: 0 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '100vh',
+                      overflow: 'hidden', pointerEvents: 'none' }}>
+          <CreatorCollageBackground creatorId={topCreatorId} />
+        </div>
+      </div>
+
+      <CreatorStatsModal creatorId={statsId} onClose={() => setStatsId(null)} />
+
+      <div className="max-w-[1400px] mx-auto px-8 py-10" style={{ position: 'relative', zIndex: 1 }}>
 
         <div className="flex items-center gap-4 mb-14">
           <div className="flex items-center justify-center w-14 h-14 rounded-[14px]"
@@ -658,7 +686,7 @@ export default function HallOfFame() {
 
         <div className="flex flex-col gap-20">
 
-          <CreatorSection creators={creatorHof} onNavigate={navigate} />
+          <CreatorSection creators={creatorHof} onCreatorClick={setStatsId} />
 
           <TieredSection
             icon={Film}

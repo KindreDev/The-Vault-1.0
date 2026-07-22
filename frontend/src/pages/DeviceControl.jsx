@@ -650,8 +650,27 @@ function FreestyleSection() {
   const savePattern   = useDeviceStore(s => s.savePattern)
   const deletePattern = useDeviceStore(s => s.deleteSavedPattern)
 
+  const finisherPattern    = useDeviceStore(s => s.finisherPatternName)
+  const finisherHotkey     = useDeviceStore(s => s.finisherHotkey)
+  const finisherActive     = useDeviceStore(s => s.finisherActive)
+  const setFinisherPattern = useDeviceStore(s => s.setFinisherPattern)
+  const setFinisherHotkey  = useDeviceStore(s => s.setFinisherHotkey)
+
   const [saveName, setSaveName] = useState('')
+  const [capturingKey, setCapturingKey] = useState(false)
   const isFreestyle = mode === 'freestyle'
+
+  // Capture the next keypress as the finisher hotkey (Esc cancels).
+  useEffect(() => {
+    if (!capturingKey) return
+    const onKey = (e) => {
+      e.preventDefault()
+      if (e.key !== 'Escape') setFinisherHotkey(e.key)
+      setCapturingKey(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [capturingKey, setFinisherHotkey])
 
   // Display intensity as a multiplier (e.g. "1.5×") so the value is intuitive
   const intensityPct = Math.round(intensity * 100)
@@ -820,6 +839,70 @@ function FreestyleSection() {
               </div>
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Finisher — bind a saved pattern to a hotkey/button that overrides the device */}
+      <Card title="Finisher">
+        <div className="space-y-3">
+          <div className="text-[12px] text-[rgba(255,255,255,0.45)] leading-relaxed">
+            Bind a saved pattern to a hotkey. Press it during a funscript video to instantly
+            override the device and loop that pattern until you stop it.
+          </div>
+          {savedPatterns.length === 0 ? (
+            <div className="text-[12px] text-[rgba(255,255,255,0.35)]">
+              Save a custom pattern above first — the finisher plays one of your saved patterns.
+            </div>
+          ) : (
+            <>
+              <div>
+                <div className="text-[11px] text-[rgba(255,255,255,0.3)] mb-1.5">Finisher pattern</div>
+                <select
+                  value={finisherPattern}
+                  onChange={e => setFinisherPattern(e.target.value)}
+                  className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-[13px] text-[rgba(255,255,255,0.85)]">
+                  <option value="">— none —</option>
+                  {savedPatterns.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <div className="text-[11px] text-[rgba(255,255,255,0.3)] mb-1.5">Hotkey</div>
+                  <button
+                    onClick={() => setCapturingKey(true)}
+                    className="w-full text-left bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-[13px] text-[rgba(255,255,255,0.85)] hover:border-[rgba(255,255,255,0.18)] transition-all">
+                    {capturingKey
+                      ? 'Press any key…  (Esc to cancel)'
+                      : finisherHotkey
+                        ? `Key: ${finisherHotkey.length === 1 ? finisherHotkey.toUpperCase() : finisherHotkey}`
+                        : 'Click to set a key'}
+                  </button>
+                </div>
+                {finisherHotkey && (
+                  <button
+                    onClick={() => setFinisherHotkey('')}
+                    title="Clear hotkey"
+                    className="p-2 rounded-lg bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.4)] hover:text-[#D4537E] transition-all">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+
+              <button
+                disabled={!finisherPattern}
+                onClick={() => deviceService.toggleFinisher(finisherPattern)}
+                className="w-full py-2.5 rounded-lg font-semibold text-[13px] transition-all disabled:opacity-40"
+                style={{
+                  background: finisherActive ? 'rgba(212,83,126,0.3)' : 'rgba(212,83,126,0.15)',
+                  border: '1px solid rgba(212,83,126,0.35)', color: '#D4537E',
+                }}>
+                {finisherActive
+                  ? <span className="inline-flex items-center gap-1.5"><Square size={11} /> Stop finisher</span>
+                  : '🏁 Test finisher'}
+              </button>
+            </>
+          )}
         </div>
       </Card>
     </div>

@@ -279,11 +279,18 @@ export default function FeedPost({ post, onCreatorClick }) {
               </button>
             )}
             {visible.map(cm => (
-              <div key={cm.id} className="text-[14px] leading-snug" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              <div key={cm.id} className="text-[14px] leading-snug"
+                   style={{
+                     color: 'rgba(255,255,255,0.75)',
+                     paddingLeft: cm.reply_to ? 16 : 0,
+                     borderLeft: cm.reply_to ? '2px solid rgba(255,255,255,0.08)' : 'none',
+                   }}>
                 <span className="font-semibold" style={{ color: cm.is_erika ? '#CE93F8' : 'rgba(255,255,255,0.92)' }}
                       onClick={() => !cm.is_erika && cm.creator_id && onCreatorClick?.(cm.creator_id)}>
                   {cm.is_erika ? `✦ ${cm.handle}` : cm.handle}
-                </span>{' '}{cm.text}
+                </span>{' '}
+                {cm.reply_to && <span style={{ color: 'var(--accent, #7F77DD)', opacity: 0.85 }}>@{cm.reply_to} </span>}
+                {cm.text}
               </div>
             ))}
           </div>

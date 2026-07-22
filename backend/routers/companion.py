@@ -86,8 +86,20 @@ from services.companion import (
     build_persona_prompt, get_bond_tier, get_bond_prompt, bond_xp_for_next,
     get_effective_companion_xp, BOND_LEVELS
 )
+from services.access import is_personal_mode
 
 router = APIRouter()
+
+_SIMULATION_FIELDS = {
+    "simulation_enabled", "simulation_intensity",
+    "simulation_time_budget_sec", "simulation_time_used_sec",
+    "simulation_boost_until",
+}
+
+
+def _require_personal_mode():
+    if not is_personal_mode():
+        raise HTTPException(404, "Not found")
 
 AVATARS_DIR = os.path.join(DATA_DIR, "companion_avatars")
 os.makedirs(AVATARS_DIR, exist_ok=True)
@@ -105,17 +117,24 @@ def _get_or_create_config(db: Session) -> CompanionConfig:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-@router.get("/config", response_model=CompanionConfigOut)
+@router.get("/config")
 def get_config(db: Session = Depends(get_db)):
-    return _get_or_create_config(db)
+    out = CompanionConfigOut.model_validate(_get_or_create_config(db)).model_dump()
+    if not is_personal_mode():
+        for f in _SIMULATION_FIELDS:
+            out.pop(f, None)
+    return out
 
 
-@router.patch("/config", response_model=CompanionConfigOut)
+@router.patch("/config")
 def update_config(data: CompanionConfigUpdate, background_tasks: BackgroundTasks,
                   db: Session = Depends(get_db)):
     config = _get_or_create_config(db)
     prev_persona = config.active_persona_id
+    personal = is_personal_mode()
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field in _SIMULATION_FIELDS and not personal:
+            continue  # locked — silently ignore rather than error, so it's not distinguishable
         setattr(config, field, value)
     db.commit()
     db.refresh(config)
@@ -123,7 +142,53 @@ def update_config(data: CompanionConfigUpdate, background_tasks: BackgroundTasks
     # the background so she knows her own pfp by the time the first message is sent.
     if config.active_persona_id and config.active_persona_id != prev_persona:
         background_tasks.add_task(_bg_avatar_desc, config.active_persona_id)
-    return config
+    out = CompanionConfigOut.model_validate(config).model_dump()
+    if not personal:
+        for f in _SIMULATION_FIELDS:
+            out.pop(f, None)
+    return out
+
+
+# ── Simulation ("Drama") Mode ─────────────────────────────────────────────────
+
+@router.get("/simulation/status", dependencies=[Depends(_require_personal_mode)])
+def simulation_status(db: Session = Depends(get_db)):
+    from services.simulation import budget_available
+    cfg = _get_or_create_config(db)
+    boost_left = 0
+    if cfg.simulation_boost_until:
+        from datetime import datetime
+        boost_left = max(0, int((cfg.simulation_boost_until - datetime.now()).total_seconds()))
+    return {
+        "enabled": bool(cfg.simulation_enabled),
+        "intensity": cfg.simulation_intensity or 60,
+        "time_budget_sec": cfg.simulation_time_budget_sec or 0,
+        "time_used_sec": cfg.simulation_time_used_sec or 0,
+        "generated_today": cfg.simulation_generated_today or 0,
+        "budget_available": budget_available(cfg),
+        "boost_seconds_left": boost_left,
+        "last_run": cfg.simulation_last_run.isoformat() if cfg.simulation_last_run else None,
+    }
+
+
+@router.post("/simulation/boost", dependencies=[Depends(_require_personal_mode)])
+def simulation_boost(minutes: int = 30, db: Session = Depends(get_db)):
+    """'Run longer' — ignore the daily time budget for the next `minutes`."""
+    from datetime import datetime, timedelta
+    cfg = _get_or_create_config(db)
+    minutes = max(1, min(minutes, 480))
+    cfg.simulation_boost_until = datetime.now() + timedelta(minutes=minutes)
+    db.commit()
+    return {"boosted_until": cfg.simulation_boost_until.isoformat(), "minutes": minutes}
+
+
+@router.post("/simulation/stir", dependencies=[Depends(_require_personal_mode)])
+async def simulation_stir(db: Session = Depends(get_db)):
+    """Manually generate one scene right now (ignores budget) — for a nudge or a test."""
+    from services.simulation import run_one_scene
+    cfg = _get_or_create_config(db)
+    n = await run_one_scene(db, cfg)
+    return {"generated": n}
 
 
 # ── Avatar ────────────────────────────────────────────────────────────────────

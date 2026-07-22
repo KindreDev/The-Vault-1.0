@@ -228,18 +228,18 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
                style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75), transparent)' }}>
 
             {/* Item counter */}
-            <span className="text-[9px] text-[rgba(255,255,255,0.4)] tabular-nums">
+            <span className="text-[13px] text-[rgba(255,255,255,0.4)] tabular-nums">
               {idx + 1}/{items.length}
             </span>
 
             {/* Play/pause slideshow */}
             {!item?.is_video && items.length > 1 && (
               <button onMouseDown={(e) => { e.stopPropagation(); setPlaying(p => !p) }}
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer"
                       style={playing
                         ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
                         : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
-                {playing ? <Pause size={9} /> : <Play size={9} />}
+                {playing ? <Pause size={14} /> : <Play size={14} />}
                 <span>{playing ? 'Pause' : 'Play'}</span>
               </button>
             )}
@@ -248,9 +248,9 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
             {!item?.is_video && items.length > 1 && (
               <div ref={speedRef} className="relative">
                 <button onMouseDown={(e) => { e.stopPropagation(); setShowSpeed(s => !s) }}
-                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] cursor-pointer"
+                        className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-[13px] cursor-pointer"
                         style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
-                  <Timer size={9} />{speed}s
+                  <Timer size={14} />{speed}s
                 </button>
                 {showSpeed && (
                   <div className="absolute bottom-full mb-1 left-0 rounded-[7px] overflow-hidden shadow-xl z-30"
@@ -258,7 +258,7 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
                     {SPEEDS.map(s => (
                       <button key={s}
                               onMouseDown={(e) => { e.stopPropagation(); setSpeed(s); setShowSpeed(false) }}
-                              className="w-full text-left px-2.5 py-1 text-[10px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
+                              className="w-full text-left px-2.5 py-1 text-[14px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                               style={{ color: s === speed ? '#CECBF6' : 'rgba(255,255,255,0.6)' }}>
                         {s}s
                       </button>

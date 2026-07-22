@@ -378,7 +378,6 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
   const [localCreators, setLocalCreators] = useState([])
   const [hasImageCreators, setHasImageCreators] = useState(false)
   const [fileCreatorIds, setFileCreatorIds] = useState([])
-  const [localFunscript, setLocalFunscript] = useState(null)
 
   const dragStart          = useRef({ x: 0, y: 0 })
   const stageRef           = useRef(null)
@@ -430,7 +429,6 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
 
   const resetZoom = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
   useEffect(() => { resetZoom() }, [idx])
-  useEffect(() => { setLocalFunscript(null) }, [idx])
   // Reset LQIP state whenever the image changes
   useEffect(() => { setFullLoaded(false) }, [idx])
 
@@ -479,11 +477,13 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
     const handler = (e) => {
       if (e.target.tagName === 'INPUT') return
       if (e.key === 'Escape') {
-        if (window.pywebview?.api && isFullscreenRef.current) {
-          window.pywebview.api.toggle_fullscreen()
+        if (isFullscreenRef.current) {
+          if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
+          else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
           isFullscreenRef.current = false
           setIsFullscreen(false)
           setShowFilmstrip(true)
+          return
         }
         if (zoom > 1) resetZoom(); else onClose()
         return
@@ -695,8 +695,8 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
               src={`/api/images/${image.id}/file`}
               imageId={image.id}
               funscriptPath={image.funscript_path}
-              overrideFunscript={localFunscript}
               onViewTracked={() => imagesApi.view(image.id).then(r => setLiveViewCount(r.data.view_count)).catch(() => {})}
+              onFunscriptChange={() => qc.invalidateQueries({ queryKey: ['gallery-images'] })}
               videoZoom={zoom}
               videoPan={pan}
               isFullscreen={isFullscreen}
@@ -853,42 +853,52 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
               onChange={e => {
                 const file = e.target.files?.[0]
                 if (!file) return
-                file.text().then(text => {
-                  try { const d = JSON.parse(text); if (d?.actions) setLocalFunscript(d) } catch {}
-                })
+                videoPlayerRef.current?.promptLinkFunscript(file)
                 e.target.value = ''
               }} />
-            {localFunscript ? (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-1 text-[10px]" style={{ color: '#CECBF6' }}>
-                  <Zap size={10} fill="currentColor" /> {t('Custom script loaded')}
-                </div>
+            <div className="flex flex-col gap-1.5">
+              {image.funscript_path
+                ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={10} /> {t('Script attached')}</div>
+                : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
+              }
+              <button onClick={() => funscriptInputRef.current?.click()}
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[10px] cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                <FolderOpen size={10} /> {t('Load .funscript')}
+              </button>
+              {image.funscript_path && (
                 <div className="flex gap-1.5">
-                  <button onClick={() => funscriptInputRef.current?.click()}
+                  <button onClick={async () => {
+                      try {
+                        await imagesApi.unlinkFunscript(image.id)
+                        toast.success(t('Funscript unlinked'))
+                        qc.invalidateQueries({ queryKey: ['gallery-images'] })
+                      } catch (err) {
+                        toast.error(err?.response?.data?.detail || t('Could not unlink funscript'))
+                      }
+                    }}
                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
-                    style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)' }}>
-                    <FolderOpen size={10} /> {t('Replace')}
+                    style={{ background: 'rgba(212,83,126,0.14)', color: 'var(--c-pink)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                    <X size={10} /> {t('Unlink script')}
                   </button>
-                  <button onClick={() => setLocalFunscript(null)}
+                  <button onClick={async () => {
+                      if (!window.confirm(t('Delete the funscript file from disk too? This cannot be undone.'))) return
+                      try {
+                        await imagesApi.unlinkFunscript(image.id, true)
+                        toast.success(t('Funscript unlinked and deleted'))
+                        qc.invalidateQueries({ queryKey: ['gallery-images'] })
+                      } catch (err) {
+                        toast.error(err?.response?.data?.detail || t('Could not unlink funscript'))
+                      }
+                    }}
+                    title={t('Unlink & delete file')}
                     className="flex items-center justify-center px-2 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
-                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                    <X size={10} />
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                    <Trash2 size={10} />
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {image.funscript_path
-                  ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={10} /> {t('Script attached')}</div>
-                  : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
-                }
-                <button onClick={() => funscriptInputRef.current?.click()}
-                  className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[10px] cursor-pointer"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  <FolderOpen size={10} /> {t('Load .funscript')}
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, select, union
+from sqlalchemy import func, case, select, union, or_
 from typing import List, Optional
 from PIL import Image as PILImage
 from io import BytesIO
@@ -11,7 +11,11 @@ import uuid
 import os
 
 from database import get_db, DATA_DIR
-from models import Creator, Gallery, Image, SessionLog, gallery_creators, image_creators
+from models import (
+    Creator, Gallery, Image, SessionLog, Tag, UserProfile,
+    Card, CardInventory, CreatorShowcase, CompanionMessage,
+    gallery_creators, image_creators, image_tags,
+)
 from schemas import CreatorCreate, CreatorUpdate, CreatorOut
 import services.gamification as gami
 
@@ -1162,3 +1166,295 @@ def top_images(creator_id: int, db: Session = Depends(get_db), limit: int = 5):
     )
     return [{"id": i.id, "filename": i.filename, "thumb_path": i.thumb_path,
              "cum_count": i.cum_count, "gallery_id": i.gallery_id} for i in images]
+
+
+def _creator_image_ids_subq(creator_id: int):
+    """A fresh UNION subquery of every image id belonging to this creator, via
+    either path (gallery membership OR direct image→creator link). Rebuilt per
+    call — a SQLAlchemy subquery can't be safely reused across statements."""
+    gallery_img_ids = (
+        select(Image.id)
+        .join(Gallery, Gallery.id == Image.gallery_id)
+        .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        .where(gallery_creators.c.creator_id == creator_id)
+    )
+    file_img_ids = (
+        select(image_creators.c.image_id.label("id"))
+        .where(image_creators.c.creator_id == creator_id)
+    )
+    return union(gallery_img_ids, file_img_ids).subquery()
+
+
+@router.get("/{creator_id}/collage")
+def creator_collage(creator_id: int, db: Session = Depends(get_db), limit: int = 30):
+    """Photo ids for the Hall of Fame living background. Photos only (the collage
+    renders them in <img> tags), biased toward her best/most-loved shots but with
+    a random tiebreak so the pool feels fresh on every open."""
+    sq = _creator_image_ids_subq(creator_id)
+    rows = (
+        db.query(Image.id, Image.focal_x, Image.focal_y, Image.width, Image.height)
+          .join(sq, Image.id == sq.c.id)
+          .filter(Image.is_video == False)  # noqa: E712
+          .order_by(
+              (func.coalesce(Image.rating, 0) * 2
+               + func.coalesce(Image.cum_count, 0)
+               + func.coalesce(Image.view_count, 0) * 0.1).desc(),
+              func.random(),
+          )
+          .limit(max(1, min(limit, 60)))
+          .all()
+    )
+    return [
+        {"id": r.id, "focal_x": r.focal_x if r.focal_x is not None else 0.5,
+         "focal_y": r.focal_y if r.focal_y is not None else 0.0,
+         "portrait": bool(r.height and r.width and r.height >= r.width)}
+        for r in rows
+    ]
+
+
+@router.get("/{creator_id}/stats")
+def creator_stats(creator_id: int, db: Session = Depends(get_db)):
+    """The deep-dive stats bundle powering the Hall of Fame creator overview.
+    Builds on _enrich (counts, view seconds, cum, size, bond, value, months) and
+    layers on engagement ratios, timelines, taste profile, cards, and bond flavor."""
+    c = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not c:
+        raise HTTPException(404, "Creator not found")
+
+    d = _enrich(c, db)
+
+    image_count = int(d.get("image_count") or 0)
+    video_count = int(d.get("video_count") or 0)
+    d["photo_count"] = max(0, image_count - video_count)
+
+    # ── Aggregate image stats over her whole footprint ──────────────────────────
+    sq = _creator_image_ids_subq(creator_id)
+    agg = (
+        db.query(
+            func.sum(Image.view_count).label("views"),
+            func.sum(case((Image.is_video == True, func.coalesce(Image.duration, 0)), else_=0)).label("runtime"),  # noqa: E712
+            func.avg(case((Image.rating > 0, Image.rating), else_=None)).label("avg_rating"),
+            func.sum(case((Image.rating > 0, 1), else_=0)).label("rated"),
+            func.sum(case((Image.is_favorite == True, 1), else_=0)).label("favs"),  # noqa: E712
+            func.min(Image.created_at).label("first_at"),
+            func.max(Image.last_viewed_at).label("last_view"),
+        )
+        .join(sq, Image.id == sq.c.id)
+        .one()
+    )
+    d["total_views"]          = int(agg.views or 0)
+    d["total_runtime_sec"]    = int(agg.runtime or 0)
+    d["avg_image_rating"]     = round(float(agg.avg_rating), 2) if agg.avg_rating else 0.0
+    d["rated_image_count"]    = int(agg.rated or 0)
+    d["favorite_image_count"] = int(agg.favs or 0)
+    d["first_media_at"]       = agg.first_at.isoformat() if agg.first_at else None
+    d["last_viewed_at"]       = agg.last_view.isoformat() if agg.last_view else None
+    d["rated_pct"]  = round(100 * d["rated_image_count"] / image_count, 1) if image_count else 0.0
+
+    # Days known — compute in Python (portable across SQLite/PG)
+    from datetime import datetime
+    d["days_in_collection"] = (datetime.now() - agg.first_at).days if agg.first_at else 0
+
+    # Tagged coverage — distinct images carrying at least one tag
+    sq_t = _creator_image_ids_subq(creator_id)
+    tagged = (
+        db.query(func.count(func.distinct(image_tags.c.image_id)))
+          .join(sq_t, image_tags.c.image_id == sq_t.c.id)
+          .scalar()
+    ) or 0
+    d["tagged_image_count"] = int(tagged)
+    d["tagged_pct"] = round(100 * int(tagged) / image_count, 1) if image_count else 0.0
+
+    # ── Gallery-level stats ─────────────────────────────────────────────────────
+    gstats = (
+        db.query(
+            func.avg(case((Gallery.rating > 0, Gallery.rating), else_=None)),
+            func.sum(Gallery.view_count),
+        )
+        .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+        .filter(gallery_creators.c.creator_id == creator_id)
+        .one()
+    )
+    d["avg_gallery_rating"] = round(float(gstats[0]), 2) if gstats[0] else 0.0
+    gallery_count = int(d.get("gallery_count") or 0)
+    cum_count     = int(d.get("cum_count") or 0)
+    view_secs     = int(d.get("total_view_seconds") or 0)
+
+    # ── Engagement ratios (the degenerate KPIs) ─────────────────────────────────
+    d["os_per_gallery"]    = round(cum_count / gallery_count, 2) if gallery_count else 0.0
+    d["views_per_gallery"] = round(d["total_views"] / gallery_count, 1) if gallery_count else 0.0
+    d["os_per_hour"]       = round(cum_count / (view_secs / 3600), 2) if view_secs else 0.0
+
+    # Share of your entire lifetime attention
+    prof = db.query(UserProfile).first()
+    total_cum_all = int(prof.total_cum_count or 0) if prof else 0
+    total_secs_all = int(db.query(func.sum(Image.view_seconds)).scalar() or 0)
+    d["share_of_total_cum"]  = round(100 * cum_count / total_cum_all, 1) if total_cum_all else 0.0
+    d["share_of_total_time"] = round(100 * view_secs / total_secs_all, 1) if total_secs_all else 0.0
+
+    # ── Standout media (ids + thumbs) ───────────────────────────────────────────
+    def _top_image(order_col):
+        sqi = _creator_image_ids_subq(creator_id)
+        row = (db.query(Image.id, Image.filename, Image.cum_count, Image.view_count,
+                        Image.rating, Image.gallery_id, Image.is_video)
+                 .join(sqi, Image.id == sqi.c.id)
+                 .order_by(order_col.desc())
+                 .first())
+        if not row or (order_col is Image.cum_count and (row.cum_count or 0) == 0):
+            return None
+        return {"id": row.id, "filename": row.filename, "cum_count": row.cum_count,
+                "view_count": row.view_count, "rating": row.rating,
+                "gallery_id": row.gallery_id, "is_video": bool(row.is_video)}
+    d["most_gooned_image"] = _top_image(Image.cum_count)
+    d["most_viewed_image"] = _top_image(Image.view_count)
+
+    top_gallery = (
+        db.query(Gallery.id, Gallery.name, Gallery.view_count, Gallery.cum_count,
+                 Gallery.rating, Gallery.cover_thumb)
+          .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+          .filter(gallery_creators.c.creator_id == creator_id)
+          .order_by(Gallery.view_count.desc())
+          .first()
+    )
+    d["most_viewed_gallery"] = (
+        {"id": top_gallery.id, "name": top_gallery.name, "view_count": top_gallery.view_count,
+         "cum_count": top_gallery.cum_count, "rating": top_gallery.rating,
+         "cover_thumb": top_gallery.cover_thumb} if top_gallery else None
+    )
+
+    # ── Timelines (grouped by month) ────────────────────────────────────────────
+    sq_a = _creator_image_ids_subq(creator_id)
+    acq_rows = (
+        db.query(func.strftime("%Y-%m", Image.created_at).label("m"), func.count().label("n"))
+          .join(sq_a, Image.id == sq_a.c.id)
+          .group_by("m").order_by("m").all()
+    )
+    d["acquisition_timeline"] = [{"month": r.m, "count": int(r.n)} for r in acq_rows if r.m]
+
+    sess_rows = (
+        db.query(func.strftime("%Y-%m", SessionLog.logged_at).label("m"), func.count().label("n"))
+          .filter(SessionLog.creator_id == creator_id)
+          .group_by("m").order_by("m").all()
+    )
+    d["activity_timeline"] = [{"month": r.m, "sessions": int(r.n)} for r in sess_rows if r.m]
+
+    # ── Taste profile: top tags + orientation ───────────────────────────────────
+    sq_tg = _creator_image_ids_subq(creator_id)
+    tag_rows = (
+        db.query(Tag.name, Tag.category, Tag.source,
+                 func.count(image_tags.c.image_id).label("n"))
+          .join(image_tags, image_tags.c.tag_id == Tag.id)
+          .join(sq_tg, image_tags.c.image_id == sq_tg.c.id)
+          .group_by(Tag.id)
+          .order_by(func.count(image_tags.c.image_id).desc())
+          .limit(18).all()
+    )
+    d["top_tags"] = [
+        {"name": r.name, "category": r.category,
+         "source": (r.source.value if hasattr(r.source, "value") else str(r.source)),
+         "count": int(r.n)}
+        for r in tag_rows
+    ]
+    d["ai_tag_count"]     = sum(t["count"] for t in d["top_tags"] if t["source"] == "ai")
+    d["manual_tag_count"] = sum(t["count"] for t in d["top_tags"] if t["source"] == "manual")
+
+    sq_o = _creator_image_ids_subq(creator_id)
+    orient = (
+        db.query(
+            func.sum(case((Image.width > Image.height, 1), else_=0)),
+            func.sum(case((Image.height > Image.width, 1), else_=0)),
+            func.sum(case((Image.width == Image.height, 1), else_=0)),
+        )
+        .join(sq_o, Image.id == sq_o.c.id)
+        .filter(Image.is_video == False, Image.width.isnot(None), Image.height.isnot(None))  # noqa: E712
+        .one()
+    )
+    d["orientation"] = {"landscape": int(orient[0] or 0),
+                        "portrait": int(orient[1] or 0),
+                        "square": int(orient[2] or 0)}
+
+    # ── TCG / cards featuring her ───────────────────────────────────────────────
+    # A card belongs to her through ANY path — not just a dedicated creator card:
+    # her creator card, a variant linking her, OR any image/gallery card whose
+    # source asset is hers.
+    from services import cards as card_svc
+    her_gal_ids = select(gallery_creators.c.gallery_id).where(gallery_creators.c.creator_id == creator_id)
+    her_img_sq = _creator_image_ids_subq(creator_id)
+    her_cards = or_(
+        Card.source_creator_id == creator_id,
+        Card.linked_character_id == creator_id,
+        Card.source_gallery_id.in_(her_gal_ids),
+        Card.source_image_id.in_(select(her_img_sq.c.id)),
+    )
+    inv_rows = (
+        db.query(CardInventory)
+          .join(Card, Card.id == CardInventory.card_id)
+          .filter(her_cards)
+          .all()
+    )
+
+    def _ctype(iv):
+        ct = iv.card.card_type
+        return ct.value if hasattr(ct, "value") else str(ct)
+
+    owned = sum(int(iv.quantity or 1) for iv in inv_rows)
+    variant_owned = sum(int(iv.quantity or 1) for iv in inv_rows if _ctype(iv) == "variant")
+    total_cxp = sum(int(iv.card.cxp or 0) for iv in inv_rows)
+
+    # Rank by rarity for "rarest" + the (max 5) previews to render
+    ranked = sorted(inv_rows, key=lambda iv: card_svc.rarity_score(iv.card), reverse=True)
+    best = None
+    if ranked:
+        top = ranked[0].card
+        best = {"rarity": top.rarity.value if hasattr(top.rarity, "value") else str(top.rarity),
+                "foil": bool(top.foil), "type": _ctype(ranked[0])}
+
+    def _preview(iv):
+        cd = card_svc._card_to_dict(db, iv.card)
+        cd["inventory_id"] = iv.id
+        cd["quantity"] = iv.quantity
+        return cd
+
+    d["cards"] = {
+        "owned_count": int(owned),
+        "variant_count": int(variant_owned),
+        "total_cxp": int(total_cxp),
+        "rarest": best,
+        "previews": [_preview(iv) for iv in ranked[:5]],
+        "showcase_slots_filled": db.query(CreatorShowcase).filter(CreatorShowcase.creator_id == creator_id).count(),
+        "showcase_mastery": c.showcase_mastery_at is not None,
+    }
+
+    # ── Bond flavor ─────────────────────────────────────────────────────────────
+    d["messages_exchanged"] = db.query(CompanionMessage).filter(
+        CompanionMessage.persona_id == creator_id
+    ).count()
+
+    # ── Rank among all creators (same composite score as the HoF list) ──────────
+    score_rows = (
+        db.query(
+            gallery_creators.c.creator_id,
+            func.sum(Gallery.view_count),
+            func.sum(Gallery.cum_count),
+        )
+        .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+        .group_by(gallery_creators.c.creator_id).all()
+    )
+    vs_rows = (
+        db.query(gallery_creators.c.creator_id, func.sum(Image.view_seconds))
+          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+          .group_by(gallery_creators.c.creator_id).all()
+    )
+    vs_map = {cid: int(s or 0) for cid, s in vs_rows}
+    se_rows = (
+        db.query(SessionLog.creator_id, func.count(SessionLog.id))
+          .group_by(SessionLog.creator_id).all()
+    )
+    se_map = {cid: int(n or 0) for cid, n in se_rows}
+    def _score(cid, v, cm):
+        return vs_map.get(cid, 0) + int(cm or 0) * 120 + se_map.get(cid, 0) * 300 + int(v or 0) * 5
+    all_scores = sorted(((_score(cid, v, cm), cid) for cid, v, cm in score_rows), reverse=True)
+    d["total_creators"] = len(all_scores)
+    d["rank"] = next((i + 1 for i, (_, cid) in enumerate(all_scores) if cid == creator_id), None)
+
+    return d

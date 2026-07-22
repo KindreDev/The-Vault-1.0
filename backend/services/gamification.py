@@ -286,7 +286,9 @@ def award_xp(db: Session, reason: str, override_amount: Optional[int] = None) ->
             if not mats:
                 mats = CraftingMaterials()
                 db.add(mats)
-            mats.catalyst_tokens += (new_level - old_level)
+            # Catalyst tokens are meant to be rare — grant 1 only every 5 levels
+            # crossed, not one per level.
+            mats.catalyst_tokens += (new_level // 5 - old_level // 5)
             db.commit()
         except Exception:
             pass

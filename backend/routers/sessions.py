@@ -61,6 +61,14 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(session)
 
+    # Spending "quality time" with one creator can make a bonded girl jealous.
+    if data.creator_id:
+        try:
+            from services.simulation import on_user_engagement
+            on_user_engagement(db, data.creator_id, "goon")
+        except Exception:
+            pass
+
     # Achievements are idempotent — safe to call for every session row
     gami.unlock_achievement(db, "first_session")
     # Night owl check — uses the server's local time so "after midnight" means

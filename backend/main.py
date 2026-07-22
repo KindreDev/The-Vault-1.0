@@ -190,10 +190,12 @@ if getattr(sys, 'frozen', False):
 
 from sqlalchemy.orm import Session
 from database import engine, Base, SessionLocal, get_db, DATA_DIR
-from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed
+from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
+from routers.group_chat import router as group_chat_router
+from routers.showcase import router as showcase_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -303,10 +305,41 @@ def _migrate_add_columns():
         "ALTER TABLE creators ADD COLUMN avatar_desc TEXT",
         "ALTER TABLE creators ADD COLUMN avatar_desc_src VARCHAR",
         "ALTER TABLE creators ADD COLUMN personality_assigned BOOLEAN DEFAULT 0",
+        "ALTER TABLE companion_config ADD COLUMN simulation_enabled BOOLEAN DEFAULT 0",
+        "ALTER TABLE companion_config ADD COLUMN simulation_intensity INTEGER DEFAULT 60",
+        "ALTER TABLE companion_config ADD COLUMN simulation_daily_cap INTEGER DEFAULT 150",
+        "ALTER TABLE companion_config ADD COLUMN simulation_generated_today INTEGER DEFAULT 0",
+        "ALTER TABLE companion_config ADD COLUMN simulation_last_run DATETIME",
+        # Time-based generation budget (primary throttle) + manual "run longer" boost
+        "ALTER TABLE companion_config ADD COLUMN simulation_time_budget_sec INTEGER DEFAULT 1800",
+        "ALTER TABLE companion_config ADD COLUMN simulation_time_used_sec INTEGER DEFAULT 0",
+        "ALTER TABLE companion_config ADD COLUMN simulation_boost_until DATETIME",
+        "ALTER TABLE companion_config ADD COLUMN simulation_budget_date VARCHAR",
+        # Per-creator baseline dirty-mouth level (0-100)
+        "ALTER TABLE creators ADD COLUMN vulgarity INTEGER",
+        # Feed comments: drama threading + engine marker
+        "ALTER TABLE feed_comments ADD COLUMN reply_to_name VARCHAR",
+        "ALTER TABLE feed_comments ADD COLUMN sim BOOLEAN DEFAULT 0",
+        "ALTER TABLE feed_comments ADD COLUMN is_user BOOLEAN DEFAULT 0",
         # Image file mtime — on-disk last-modified date, for sort by date_modified
         "ALTER TABLE images ADD COLUMN file_modified_at DATETIME",
         # Gamification — dismantle achievement counter
         "ALTER TABLE user_profile ADD COLUMN total_cards_dismantled INTEGER DEFAULT 0",
+        # Group chat DMs — drama-spawned groups surface as DM pings that open the group
+        "ALTER TABLE feed_dm_pings ADD COLUMN group_id INTEGER",
+        # TCG rarity rework — foil variant flag (replaces tier-upgrade lottery)
+        "ALTER TABLE cards ADD COLUMN foil BOOLEAN DEFAULT 0",
+        # Creator Showcase — one-time Mastery timestamp
+        "ALTER TABLE creators ADD COLUMN showcase_mastery_at DATETIME",
+        # Intake — duplicate awareness (pHash vs vault + video size match)
+        "ALTER TABLE intake_items ADD COLUMN phash VARCHAR",
+        "ALTER TABLE intake_items ADD COLUMN duplicate_of INTEGER",
+        # Creator Showcase — enforce one card per (creator, slot); prevents the
+        # duplicate/orphan rows that could shadow a real card in a slot.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_creator_showcase_creator_slot ON creator_showcase(creator_id, slot)",
+        # Collection Rarity Score — scarcity-aware ranking + R/SR/SSR/UR class
+        "ALTER TABLE cards ADD COLUMN crs FLOAT DEFAULT 0",
+        "ALTER TABLE cards ADD COLUMN rarity_class VARCHAR DEFAULT 'R'",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -321,23 +354,118 @@ def _migrate_add_columns():
 _migrate_add_columns()
 
 
+def _migrate_card_rarity_rework():
+    """One-time 2026-07 rework migration: 7 rarity tiers → 4 (common/epic/legendary/
+    celestial). Rarity is recomputed from what the card IS (its type), not remapped
+    string-for-string; anything that had been lottery-upgraded above its old type
+    baseline — or was relic-flagged — becomes a FOIL instead, so no card loses its
+    specialness. Runs only while legacy tier strings exist; no-op forever after.
+    Touches ONLY the cards table — media files and all other data untouched."""
+    import sqlalchemy
+    with engine.connect() as conn:
+        legacy = conn.execute(sqlalchemy.text(
+            "SELECT COUNT(*) FROM cards WHERE rarity IN ('uncommon','rare','relic')"
+        )).scalar()
+        if not legacy:
+            return
+        # Foil: was upgraded above its old type baseline, or carried the relic flag
+        conn.execute(sqlalchemy.text("""
+            UPDATE cards SET foil = 1, is_relic = 1 WHERE is_relic = 1 OR rarity = 'relic'
+               OR (card_type = 'image'   AND rarity NOT IN ('common'))
+               OR (card_type = 'gallery' AND rarity NOT IN ('common','uncommon'))
+               OR (card_type = 'creator' AND rarity NOT IN ('common','uncommon','rare'))
+        """))
+        # Rarity: recomputed from card type under the new birth rules
+        conn.execute(sqlalchemy.text("""
+            UPDATE cards SET rarity = CASE
+                WHEN rarity = 'celestial'                 THEN 'celestial'
+                WHEN card_type IN ('goon','variant')      THEN 'legendary'
+                WHEN card_type IN ('creator','collab')    THEN 'epic'
+                ELSE 'common'
+            END
+        """))
+        conn.commit()
+        print(f"[migration] card rarity rework: remapped {legacy} legacy-tier cards to the 4-tier system")
+    # Python refinement pass (ORM-safe now): birth bonuses on existing cards
+    try:
+        from database import SessionLocal as _SL
+        from services.cards import apply_birth_bonuses
+        _db = _SL()
+        try:
+            n = apply_birth_bonuses(_db)
+            if n:
+                print(f"[migration] card rarity rework: {n} cards promoted by birth bonuses")
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] card birth-bonus pass failed: {e}")
+
+
+_migrate_card_rarity_rework()
+
+
+def _backfill_creator_card_art():
+    """Pin permanent art on creator cards that still track the live avatar.
+    Idempotent and cheap — runs every boot, no-op once all mints have art."""
+    try:
+        from database import SessionLocal as _SL
+        from services.cards import backfill_creator_card_art
+        _db = _SL()
+        try:
+            n = backfill_creator_card_art(_db)
+            if n:
+                print(f"[migration] pinned permanent art on {n} creator cards")
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] creator card art backfill failed: {e}")
+
+
+_backfill_creator_card_art()
+
+
+def _compute_collection_rarity():
+    """Score every card's Collection Rarity Score + R/SR/SSR/UR class at boot.
+    Cheap (a few aggregate queries + a pass over the cards). Never blocks boot."""
+    try:
+        from database import SessionLocal as _SL
+        from services.rarity import compute_rarity
+        _db = _SL()
+        try:
+            n = compute_rarity(_db)
+            print(f"[startup] scored collection rarity for {n} cards")
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[startup] collection rarity scoring failed: {e}")
+
+
+_compute_collection_rarity()
+
+
 def _backfill_personalities():
-    """One-time: give every creator still on the old 'bold' default a random
-    personality. Seeded by id so it's stable; guarded by personality_assigned so
-    it only runs once per creator and never overwrites a deliberate choice."""
+    """One-time per creator: give everyone a random personality (seeded, stable) and
+    a baseline vulgarity ('dirty mouth') level. Guarded so it never overwrites a
+    deliberate choice and only fills what's missing."""
     try:
         from models import Creator
-        from services.companion import assign_personality
+        from services.companion import assign_personality, seed_vulgarity
         db = SessionLocal()
         try:
+            # Personality for anyone still unassigned (old 'bold' default)
             pending = db.query(Creator).filter(
                 (Creator.personality_assigned == False) | (Creator.personality_assigned == None)  # noqa: E711,E712
             ).all()
-            if pending:
-                for c in pending:
-                    assign_personality(c)
+            for c in pending:
+                assign_personality(c)
+            # Vulgarity for anyone still missing it (covers already-personalized creators)
+            vpending = db.query(Creator).filter(Creator.vulgarity == None).all()  # noqa: E711
+            for c in vpending:
+                c.vulgarity = seed_vulgarity(c)
+            if pending or vpending:
                 db.commit()
-                print(f"[personalities] assigned random personalities to {len(pending)} creators")
+                print(f"[personalities] assigned {len(pending)} personalities, "
+                      f"{len(vpending)} vulgarity baselines")
         finally:
             db.close()
     except Exception as e:
@@ -450,7 +578,7 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.2.0")
+app = FastAPI(title="The Vault", version="1.6.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -599,6 +727,14 @@ async def _on_startup():
     _log_direct("INFO",
         f"The Vault started — Python {platform.python_version()} · {platform.system()}"
     )
+    # Launch the Simulation ("Drama") Mode background engine. It's a cheap no-op
+    # while the toggle is off; only spends GPU when simulation_enabled is true.
+    try:
+        import asyncio
+        from services.simulation import sim_engine_loop
+        asyncio.create_task(sim_engine_loop())
+    except Exception as e:
+        _log_direct("WARN", f"simulation engine not started: {e}")
 
 app.include_router(galleries.router,     prefix="/api/galleries",     tags=["galleries"])
 app.include_router(creators.router,      prefix="/api/creators",      tags=["creators"])
@@ -607,6 +743,7 @@ app.include_router(tags.router,          prefix="/api/tags",          tags=["tag
 app.include_router(sessions.router,      prefix="/api/sessions",      tags=["sessions"])
 app.include_router(gamification.router,  prefix="/api/gamification",  tags=["gamification"])
 app.include_router(scanner.router,       prefix="/api/scanner",       tags=["scanner"])
+app.include_router(intake.router,        prefix="/api/intake",        tags=["intake"])
 app.include_router(playlists.router,     prefix="/api/playlists",     tags=["playlists"])
 app.include_router(cards_router)
 app.include_router(economy_router)
@@ -614,6 +751,8 @@ app.include_router(system_router,            prefix="/api/system",        tags=[
 app.include_router(dedup.router,             prefix="/api/dedup",          tags=["dedup"])
 app.include_router(tasks.router,             prefix="/api/tasks",          tags=["tasks"])
 app.include_router(companion_router,         prefix="/api/companion",      tags=["companion"])
+app.include_router(group_chat_router,        prefix="/api/companion/groups", tags=["group-chat"])
+app.include_router(showcase_router,          prefix="/api/creators",       tags=["showcase"])
 app.include_router(feed.router,              prefix="/api/feed",           tags=["feed"])
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")

@@ -20,6 +20,7 @@ export default function DMPingBanner({ ping, onDismiss }) {
   const [opening, setOpening] = useState(false)
   const setCompanionConfig = useVaultStore(s => s.setCompanionConfig)
   const setCompanionOpen   = useVaultStore(s => s.setCompanionOpen)
+  const setCompanionGroup  = useVaultStore(s => s.setCompanionGroup)
 
   const markRead = () => {
     feedApi.dmRead(ping.id).catch(() => {})
@@ -31,10 +32,20 @@ export default function DMPingBanner({ ping, onDismiss }) {
     if (opening) return
     setOpening(true)
     try {
-      const res = await companionApi.updateConfig({ active_persona_id: ping.creator.id, enabled: true })
-      if (res?.data) {
-        setCompanionConfig(res.data)
-        qc.setQueryData(['companion-config'], res.data)
+      if (ping.group_id) {
+        // "She added you to a group" — open the group chat, not her 1-on-1 DM
+        const res = await companionApi.updateConfig({ enabled: true })
+        if (res?.data) {
+          setCompanionConfig(res.data)
+          qc.setQueryData(['companion-config'], res.data)
+        }
+        setCompanionGroup(ping.group_id)
+      } else {
+        const res = await companionApi.updateConfig({ active_persona_id: ping.creator.id, enabled: true })
+        if (res?.data) {
+          setCompanionConfig(res.data)
+          qc.setQueryData(['companion-config'], res.data)
+        }
       }
       setCompanionOpen(true)
       markRead()
@@ -77,7 +88,7 @@ export default function DMPingBanner({ ping, onDismiss }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: 'rgba(255,255,255,0.92)' }}>
           <MessageCircleHeart size={15} style={{ color: '#ED93B1' }} />
-          {ping.creator.name} {t('sent you a message')}
+          {ping.creator.name} {ping.group_id ? t('added you to a group') : t('sent you a message')}
         </div>
         <div className="text-[14px] italic truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
           “{ping.message}”

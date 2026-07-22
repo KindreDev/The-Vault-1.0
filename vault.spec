@@ -102,6 +102,10 @@ a = Analysis(
         'imagehash',
         'scipy',
         'scipy.fftpack',
+        # ── py7zr (7z archive inspection + extraction in Loading Bay) ─────────
+        # Imported lazily in services/intake.py; its codec backends are pulled
+        # in dynamically, so declare the package explicitly.
+        'py7zr',
         # ── Other ────────────────────────────────────────────────────────────
         'multipart',
         'aiofiles',

@@ -12,6 +12,76 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-22
+
+### Trading-Card System Rework
+A ground-up rework of the trading-card system:
+- **True Rarity** — every card now has a scarcity-aware Collection Rarity Score, **love-gated** by how much you actually engage with its creator (Os, watch time, ratings, sessions), plus a **per-tier R / SR / SSR / UR class** shown as a corner badge — every tier has its own UR. The "Rarity" sort ranks by this score, so a scarce Core card can outrank a generic higher tier.
+- **Prestige** New Cards!—  **can be obtained via crafting**: spend duplicates (Core 6 / Epic 4 / Legendary 2 / Celestial 1) + 1,000 credits, or the rarer catalyst-token path (now 400 shards, and one token per 5 levels instead of per level). Its signature look is a breathing rainbow halo (now visible on all four sides) + a golden flower field + a PRESTIGE label beside the card type, on any tier.
+- Cards: the base rarity tier is now called **Core** (was "Common") — same cards and odds, a name that reflects that these single-photo cards are the foundation the whole collection is built on.
+- Dashboard: the Card Collection preview cards are now 2× larger and spill beyond their tile for a bolder, more eye-catching stack.
+- **VFX model** — base cards keep their tier's ambient effect; **UR** cards (any tier) wear that tier's premium texture (Core starfield, Epic iris/glitter, Legendary hearts, Celestial cosmos); **Prestige** cards wear the celestial flower-field + prism + halo, golden and denser when the card is also a UR.
+- **Video cards** — now **animate**: a looping preview stitched from ~2s clips near the start, middle, and end (animated WebP) instead of a dead still. Video thumbnails also auto-crop baked-in letterbox/pillarbox bars — fixing cards that opened to emptiness or showed black bars.
+- **Optimization** — many optimization fixes, faster loading times, less lag, faster responsiveness. 
+- **The Forge** — cards render **static** (colors only, no motion); **Craft Variant** was rebuilt as a paginated grid of large, readable boxes (creator × character, result, cost, Forge button)
+- Variant (creator×character) cards can finally be minted. The generator only recognised a creator×character link via the unused legacy `linked_character_id` column, so it saw zero pairs and every variant pull silently became a creator card. It now reads the `gallery_creators` M2M — a gallery tagged with both a cosplayer and a character — unlocking variant cards in packs and the forge (230 pairs detected on the current collection).
+- Creator cards are minted permanently now: each gets a fixed art image from her galleries at mint time (changing her profile picture no longer repaints your cards), and each creator can mint up to 5 distinct art versions before pulls become dupes. Existing avatar-tracking cards were pinned automatically.
+- Each creator's FIRST card is her signature card and shows her profile photo; additional mints (up to 5) pin permanent gallery art.
+- Card grids are fast again with zero visual downgrade: off-screen cards skip their holo/foil layers and layout entirely (they light up as they scroll into view), and the cursor-tracking shine now updates once per frame instead of on every raw mouse event.
+- Pack economy rework: both packs now have distinct identities instead of premium being strictly better. Booster (now 400cr) is "your history" — pulls lean into what you've actually watched and rated, with DOUBLE foil odds (10%): the foil hunter's pack. Premium (now 800cr) is the tier hunter's pack — guaranteed Epic+, heavy goon/collab/HOF rates, but only 5% foils. Prices raised as an inflation sink.
+- Adding files to the collection no longer prints credits (XP only) — bulk imports were minting fortunes; credits now come from sessions, quests, and play.
+- Card rarity rework: 7 tiers trimmed to 4 (Common / Epic / Legendary / Celestial) and rarity is now FIXED at birth — cards never transmute tiers, so no tier is filler. Progression moved to two new axes: card LEVEL (1–10, grown by CXP from feeding and real sessions) and FOIL variants (premium holo versions rolled in packs or crafted with a catalyst — catalysts no longer bump rarity). Existing collections migrate automatically; anything that had been lottery-upgraded or relic-flagged becomes a foil so no card loses its shine.
+- Goon cards now trigger at 10 cums on an image (was 20) and are born Legendary; the single most-gooned image in the vault is a Celestial artifact. 9★+ galleries are born Epic; My Queen-tier creators mint Celestial creator cards.
+- Card visuals reworked for the 4 tiers using the hand-made borders: purple → orange → gold → celestial, each with its own holo treatment (glare / metal shimmer / gold cosmic dust / prismatic sunpillar).
+- Creator Showcase: every creator profile now has 5 card display slots in the hero (her creator/HOF card, one of her 10 rarest gallery cards, a goon card of her content, one of her 10 rarest photos, and a wildcard for any Legendary-grade+ card). A card can only sit in one showcase at a time. Fill all 5 for MASTERY — a golden badge, a one-time bond surge… and she notices (check your DMs). The Edit/Feed/Talk/AI Tag/Favorite buttons moved to the bottom edge of the hero to make room.
+- Hall of Fame cards: any creator who ever enters the Hall of Fame gets a permanent HOF memento card minted into the pool (kept forever, even if later drops out) — Legendary, with the top 3 minted Celestial. Generous pull odds in both packs.
+- Every card now carries a rarity score (tier × prestige × level) so the rarest cards in the collection can be ranked.
+
+### Added
+- Intake: duplicate awareness — incoming images are pHash-compared against the vault (videos by byte-size match), flagged with a DUP badge, and sorting flagged files opens a conflict dialog: skip them, keep both, or delete the duplicates from disk.
+- Intake: archive peek — an eye button on zip/rar/7z files lists what's inside (with per-type counts) and shows inline image previews for zips, so you can tell which creator an archive belongs to before sorting.
+- Funscript linking: drop a `.funscript` onto any playing video (gallery viewer, image list, multi-panel) and choose "Link permanently" — the script is saved beside the video under the video's own name and synced from then on, no matter what the script file was called. The sidebar funscript loader also gained a "Link permanently" button, and scripts can be unlinked via API.
+- Intake / Triage: a new **Intake** tool on the Dashboard stages a downloads folder, then lets you bulk-sort files into creators and galleries — sorting physically moves each file (and its funscript) into place, drops it at a creator root / new folder / existing gallery / brand-new creator, and unpacks archives into their own folder. Creators with no folder set have one auto-detected from where their files already live.
+- **Intake**: a file-type filter bar (All / Images / Videos / Archives + custom extension) above the item grid, and a search box to find galleries by name when sorting into "Existing gallery" mode.
+- Funscript linking: an "Unlink script" button now appears in the gallery sidebar once a video has a linked script, with a subtle "Unlink & delete file" option behind a confirmation for permanently removing it from the funscript library.
+- Feed: comment threads — replies are indented under whoever they answer, with @mentions, so threads read like real Instagram comment sections (desktop + mobile).
+
+### Changed
+- Photos/Videos list: tiles now show the star rating as a badge next to the cum counter (bottom-right).
+- Hall of Fame: a living photo-collage background that drifts behind the page using your #1 creator's best shots, and automatically switches to whoever's on top when your rankings change.
+- Hall of Fame: clicking any creator now opens a detailed stats overview — rank, time spent, Os, engagement ratios (Os/hour, share of your total attention), collection footprint, ratings & tagging coverage, monthly acquisition/session timelines, top-tag taste profile, orientation split, trading cards, and your bond.
+- Finisher: bind a saved device pattern to a hotkey (or the in-viewer button) to instantly override the device — funscript, freestyle, anything — and loop that pattern until you stop it. Configured in Device settings.
+- Loading Bay: a sort control (Date / Size / Name, each toggling direction on repeat click) for the pending-files grid.
+- Loading Bay: a new "When an archive is extracted, the original file should:" setting — delete it, move it into the destination folder, or leave it where it is.
+- Loading Bay: 7z archives now support the same inline image-thumbnail preview as zip files.
+- Loading Bay: hovering an archive tile for a second now pops up a quick preview (counts, file names, thumbnails) without opening the full peek modal.
+- Spacebar now toggles play/pause on videos in the standalone image/video viewer (previously only toggled slideshow).
+- Unlink funscript + permanent link controls (matching the gallery viewer) are now available in the standalone image/video viewer.
+- Funscript live-stats readout now shows strokes, strokes/min, average speed, peak speed, and coverage % (previously just action count and coverage).
+- Funscript sync-offset nudge: shift a script ±2000ms relative to the video (50ms steps, per-video persistence) to correct scripts that are slightly early or late.
+- Multi-panel viewer: the queue cap was raised from 20 to 999 (effectively unlimited), and the per-panel slideshow controls (counter, Play/Pause, speed) are now noticeably larger and readable.
+- Renamed the "Intake" feature to "Loading Bay" throughout the UI (Dashboard tile, modal header, toasts) — internal code, API routes, and query keys are unchanged.
+- Loading Bay: the custom `.ext` filter input has been replaced with a proper filename search bar that composes with the All/Images/Videos/Archives type filter.
+- Funscript linking: permanently linked scripts now save into your configured funscript library folder (Settings) under the video's own filename, instead of always writing beside the video — this keeps your funscript collection centralised and re-matchable. Falls back to writing beside the video if no library folder is configured.
+- Funscript linking: the sidebar's "Load .funscript" button now opens the same "Link permanently / Just play once / Cancel" confirmation dialog used by drag-and-drop, instead of a separate loading flow.
+- Intake modal is now much bigger (roughly 80% of the screen) with a wider destination panel and larger grid tiles, tiles fade/scale in with a subtle hover lift, and the "Creator type" field in New Creator mode is now clearly labelled.
+- Funscript player: a small "FS · N actions" pill now shows next to the waveform when a script is loaded, and the waveform strip is taller and clearer.
+- Creator profile hero redesigned for a cleaner, more professional layout: avatar anchors a left identity rail (bond hearts + Gift Heart beneath it), the description sits in a labelled "About" block that stays transparent so the banner art shows through, the card showcase gets its own full-width band with larger cards, and the Edit/Feed/Talk/AI Tag/Favorite actions are anchored at the bottom-right instead of floating over empty space. Hero text bumped to the 16px minimum.
+
+### Fixed
+- Photos/Videos list: rating an image/video now sticks immediately — navigating away and back keeps the new rating instead of reverting until a page refresh (the rating update was invalidating the wrong query key).
+- Scan Folders: clicking a library to scan no longer flashes a misleading "Scan complete" the instant the job is queued — it now confirms "Added to queue" and silently refreshes galleries once the scan actually finishes.
+- Loading Bay: `.rar` archives can now be inspected, previewed, and extracted (via an installed 7-Zip) instead of failing with "No handler installed for .rar archives".
+- Archive extraction for `.7z` files, which previously failed, now works correctly.
+- Escape now only exits fullscreen in the image/video viewers (gallery and standalone) instead of also closing the viewer in the same keypress.
+- Linking or unlinking a funscript now updates the viewer immediately instead of requiring a page refresh.
+- Intake modal and the funscript drag-drop-link overlays now follow the active colour theme instead of always showing the default violet palette.
+- Intake: sorting sometimes reported "0 sorted" and left already-sorted files sitting in the feed even though they had really moved — a race between the task queue and the progress poll made the UI read a stale (or empty) result. Jobs are now matched by id, the progress bar shows real counts and flashes "Done ✓", and sorted files vanish from the feed immediately.
+
+---
+
+## [1.3.0] - 2026-07-15
+
 ### Added
 - Feed: DM any creator — a Message button on her profile opens the floating AI chat scoped to her (she's the persona), without leaving the feed. She now also knows what she's been posting and can reference it in chat.
 - Feed: verified badges are now tiered and earned — no badge for creators you ignore, a blue check for ones you engage with, and a gold check for your beloved, heavily-bonded girls. Follower counts are driven by the same interaction weighting, so unknowns read as nobodies and favorites as superstars.
@@ -35,16 +105,10 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Feed: daily spotlight — one post slot per day goes to a creator who has never posted, so forgotten corners of the vault surface too.
 - Feed: male commenters got unmoderated-reply-guy energy ("down catastrophically bad rn", "step on me please") — this social network has no moderation team.
 - Feed: premium motion polish — posts drift up into view as you scroll, story rings spring in staggered and bounce on hover, carousel arrows fade in only while hovering the photo (Instagram-style), the like heart scales on hover/tap, and suggested-rail avatars glow on hover.
-
-### Added
 - Feed: the girls text first now — some days a creator sends you an unread DM ("can't sleep… keep me company? 🥺") shown as a glowing banner at the top of the feed; tapping Reply opens the chat with her persona, and her opener is already waiting in the conversation history.
-
-### Added
 - Feed: double-tap any post photo/video to like it — big heart burst animation, single tap still opens the file (with a short delay to tell the two apart).
 - Feed: carousel arrows stay visible on touch screens (no hover there), and swiping between carousel photos works natively.
 - Feed: creator profile header is fully responsive — smaller banner/avatar and wrapping stats on narrow windows.
-
-### Added
 - Mobile app: VaultGram arrives — Feed tab (center of the bottom bar) with stories, daily posts, comments, double-tap-to-like, and "she texted first" DMs; swipe right-to-left anywhere to reach the new Explore wall (Instagram-style), which learns your taste as you tap.
 - Mobile app: floating companion chat bubble — tap it (or Reply on a DM) for a fullscreen chat with Erika or the active persona, streaming from your PC's Ollama.
 - Mobile app: the bottom bar is now Home · Galleries · Feed · Cards · Creators; your profile moved to the Dashboard header — tap your avatar to open it.
@@ -52,6 +116,9 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Mobile app: Explore stream — double-tap now likes (single tap opens), and coming back from an opened photo returns you to the same spot in the same stream instead of resetting.
 - Mobile app: chat opens with a smooth slide-up animation, shows the correct persona name with her avatar, and tapping the name opens a persona picker (Erika + your favorite creators); sim profiles have a Message button.
 - Mobile app: Cards grid can no longer collapse to one card per row (CSS grid with a guaranteed 2-column minimum), and swiping through cards in the viewer no longer accidentally opens Explore.
+- Companion: link a vault photo into the chat — every feed post has a "copy link" button; paste it into a chat and the girl reacts to that exact photo (a vision model sees the real image), shown as a thumbnail in the message.
+- Companion: personas are self-aware — with a vision model, the first time you open a chat with a girl the app quietly looks at her profile picture once and remembers exactly what she's wearing, so she can accurately answer anything about her own look ("what colour are your gloves?" → "Red. No pants. Just the bodysuit."). It's cached (regenerated only if her avatar changes), never blocks her reply, and she only brings it up when asked. Toggleable via the vision setting; you can still attach your own images from your device as before.
+- Explore search (desktop + mobile): a smart search bar that auto-detects creators and tags. Typing a name surfaces matching creator profiles; typing a tag (e.g. #underboob) generates a wall of content from your collection with that tag. Tag results are seed-randomized so each search of the same tag gives fresh picks, and they're ephemeral — tapping ♥ on one inside its post view saves it permanently into your feed (a "Saved" post attributed to its creator).
 
 ### Changed
 - Companion: every creator now gets her own randomly-assigned personality (warm, shy, teasing, playful, dominant, mommy, tsundere, and more) instead of all defaulting to the same blunt "bold" voice — so girls actually sound different from one another. It's stable per creator and picked once. Warm/approachable types are common; the intense anime tropes are rarer.

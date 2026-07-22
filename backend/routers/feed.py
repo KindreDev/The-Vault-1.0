@@ -93,6 +93,30 @@ def like_post(post_id: int, db: Session = Depends(get_db)):
     result = feed_svc.toggle_like(db, post_id)
     if "error" in result:
         raise HTTPException(404, "Post not found")
+    # Your public attention on her post — a bonded girl may notice and get jealous.
+    try:
+        from services.simulation import on_user_engagement
+        if result.get("liked") and result.get("creator_id"):
+            on_user_engagement(db, result["creator_id"], "like")
+    except Exception:
+        pass
+    return result
+
+
+@router.post("/{post_id}/comment")
+def comment_post(post_id: int, data: dict, db: Session = Depends(get_db)):
+    text = (data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Empty comment")
+    result = feed_svc.add_user_comment(db, post_id, text)
+    if "error" in result:
+        raise HTTPException(404, "Post not found")
+    try:
+        from services.simulation import on_user_engagement
+        if result.get("creator_id"):
+            on_user_engagement(db, result["creator_id"], "comment")
+    except Exception:
+        pass
     return result
 
 

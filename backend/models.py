@@ -125,6 +125,8 @@ class Creator(Base):
     avatar_desc        = Column(Text, nullable=True)      # cached vision description of her PFP (so she knows her own look)
     avatar_desc_src    = Column(String, nullable=True)    # the avatar_path the desc was generated from (invalidates on change)
     personality_assigned = Column(Boolean, default=False) # True once a personality has been chosen (auto-random or by user)
+    vulgarity          = Column(Integer, nullable=True)   # baseline dirty-mouth 0-100 (how much she swears by default)
+    showcase_mastery_at = Column(DateTime, nullable=True) # when her 5-slot card Showcase was first completed
 
     # 100% collection completion reward tracking — reset to None when completion drops
     completion_rewarded_at = Column(DateTime, nullable=True)
@@ -160,6 +162,43 @@ class LibraryRoot(Base):
     last_scan  = Column(DateTime, nullable=True)
 
     galleries  = relationship("Gallery", back_populates="library_root")
+
+
+# ── Intake: staging area between a downloads folder and the vault ─────────────
+class IntakeRoot(Base):
+    """A folder that is scanned for *candidate* files (e.g. Downloads). Kept
+    strictly separate from LibraryRoot — the library scanner never walks these,
+    so nothing here becomes a gallery until it is committed (moved into place)."""
+    __tablename__ = "intake_roots"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    path       = Column(String, nullable=False, unique=True)
+    label      = Column(String, nullable=True)
+    enabled    = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    last_scan  = Column(DateTime, nullable=True)
+
+
+class IntakeItem(Base):
+    """A single candidate file discovered in an intake root. DB-only until
+    committed — no Gallery/Image rows exist for it yet. Committing physically
+    moves the file into the vault and lets the normal scanner register it."""
+    __tablename__ = "intake_items"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    root_id       = Column(Integer, ForeignKey("intake_roots.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_path   = Column(String, nullable=False, unique=True)   # where the file lives right now
+    filename      = Column(String, nullable=False)
+    file_size     = Column(Integer, nullable=True)                 # bytes
+    is_video      = Column(Boolean, default=False)
+    is_archive    = Column(Boolean, default=False)                 # .zip/.rar/.7z — extracted into destination on commit
+    has_funscript = Column(Boolean, default=False)                 # sidecar detected alongside
+    thumb_path    = Column(String, nullable=True)                  # triage-grid preview
+    phash         = Column(String, nullable=True)                  # pHash hex ("" = hash failed, don't retry)
+    duplicate_of  = Column(Integer, nullable=True)                 # images.id of a likely vault duplicate
+    status        = Column(String, default="pending", index=True)  # pending | committed | error
+    error         = Column(Text, nullable=True)                    # last commit error message
+    discovered_at = Column(DateTime, default=func.now())
 
 
 # ── Many-to-many: mix galleries <-> images ────────────────────────────────────
@@ -414,15 +453,18 @@ class CardType(str, enum.Enum):
     goon    = "goon"      # image with cum_count >= threshold
     variant = "variant"   # creator × character intersection
     collab  = "collab"    # 2+ cosplayers in same gallery (image, gallery, or variant sub-type)
+    hof     = "hof"       # minted Hall of Fame memento — permanent, even if she drops out
 
 class CardRarity(str, enum.Enum):
+    # Live tiers (2026-07 rework): 4 tiers, fixed at birth.
     common    = "common"
-    uncommon  = "uncommon"
-    rare      = "rare"
     epic      = "epic"
     legendary = "legendary"
-    relic     = "relic"
     celestial = "celestial"
+    # Legacy tiers — kept so pre-rework rows load; migrated on startup, never created.
+    uncommon  = "uncommon"
+    rare      = "rare"
+    relic     = "relic"
 
 
 # ── TCG: Card (master record) ─────────────────────────────────────────────────
@@ -432,7 +474,8 @@ class Card(Base):
     id                 = Column(Integer, primary_key=True, index=True)
     card_type          = Column(Enum(CardType), nullable=False)
     rarity             = Column(Enum(CardRarity), default=CardRarity.common)
-    is_relic           = Column(Boolean, default=False)   # apex relic flag
+    foil               = Column(Boolean, default=False)   # premium holo variant (the chase)
+    is_relic           = Column(Boolean, default=False)   # legacy pre-rework flag — mirrors foil
     is_unique          = Column(Boolean, default=False)   # unique vs infinite
 
     # Source asset links (only the relevant one is set per card_type)
@@ -444,6 +487,12 @@ class Card(Base):
 
     # Card XP (organic grind via sessions)
     cxp               = Column(Integer, default=0)
+
+    # Collection Rarity Score — scarcity-aware ranking (services/rarity.py).
+    # crs layers per-collection scarcity on top of the tier; rarity_class is its
+    # percentile bucket: R < SR < SSR < UR.
+    crs               = Column(Float, default=0.0)
+    rarity_class      = Column(String, default="R")
 
     # Collab metadata (JSON for multi-creator/character collabs)
     collab_data       = Column(Text, nullable=True)
@@ -509,6 +558,16 @@ class CompanionConfig(Base):
     num_ctx           = Column(Integer, default=16384) # Ollama context window size (tokens)
     vision_enabled    = Column(Boolean, default=True)  # feed persona avatar / linked vault photos to a vision model
     companion_prompt  = Column(Text, nullable=True)  # custom system prompt for Erika; null = auto-generate
+    # ── Simulation ("Drama") Mode ─────────────────────────────────────────────
+    simulation_enabled   = Column(Boolean, default=False)  # master toggle for the living social world
+    simulation_intensity = Column(Integer, default=60)     # drama dial 0-100 (wholesome → unhinged)
+    simulation_daily_cap = Column(Integer, default=150)    # hard safety ceiling on interactions/day (0 = unlimited)
+    simulation_generated_today = Column(Integer, default=0)  # interactions generated today (reset daily)
+    simulation_last_run  = Column(DateTime, nullable=True) # last time the background engine ticked
+    simulation_time_budget_sec = Column(Integer, default=1800)  # primary throttle: seconds of active generation/day
+    simulation_time_used_sec   = Column(Integer, default=0)     # seconds used today (reset daily)
+    simulation_boost_until = Column(DateTime, nullable=True)  # "run longer" — ignore the budget until this time
+    simulation_budget_date = Column(String, nullable=True)   # YYYY-MM-DD the daily counters belong to
     created_at        = Column(DateTime, default=func.now())
 
     active_persona = relationship("Creator", foreign_keys=[active_persona_id])
@@ -524,6 +583,25 @@ class CompanionMessage(Base):
     bond_level     = Column(Integer, nullable=True)
     image_data_url = Column(Text, nullable=True)      # full data:image/...;base64,... for display
     created_at     = Column(DateTime, default=func.now())
+
+
+# ── Simulation ("Drama") Mode: evolving relationships between creators (and you) ─
+class SimRelationship(Base):
+    """How one creator currently feels about another creator — or about YOU.
+    Starts neutral and evolves organically as they interact in the feed. Persistent
+    (grudges stick); `heat` is the transient recent intensity that decays over time."""
+    __tablename__ = "sim_relationships"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    subject_id  = Column(Integer, ForeignKey("creators.id"), index=True, nullable=False)  # who feels it
+    target_user = Column(Boolean, default=False)                       # target is the user (you)
+    target_id   = Column(Integer, ForeignKey("creators.id"), nullable=True, index=True)  # or another creator
+    sentiment   = Column(Float, default=0.0)      # -100 (hatred) … 0 (neutral) … +100 (adores) — persistent
+    status      = Column(String, default='neutral')  # neutral|friend|rival|feud|crush|jealous
+    heat        = Column(Float, default=0.0)      # recent flare-up intensity 0-100, decays toward 0
+    last_reason = Column(Text, nullable=True)     # short note on why it last shifted
+    interactions = Column(Integer, default=0)     # how many times they've clashed/interacted
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 # ── TCG: Credit event audit log ───────────────────────────────────────────────
@@ -576,6 +654,9 @@ class FeedComment(Base):
     creator_id  = Column(Integer, nullable=True)   # null → Erika
     author_name = Column(String, default="")
     text        = Column(Text, default="")
+    reply_to_name = Column(String, nullable=True)  # @mention this comment answers (drama threading)
+    sim         = Column(Boolean, default=False)   # generated by the simulation engine
+    is_user     = Column(Boolean, default=False)   # posted by YOU (the vault owner)
     created_at  = Column(DateTime, default=func.now())
 
 
@@ -595,6 +676,56 @@ class FeedDMPing(Base):
     creator_id = Column(Integer, ForeignKey("creators.id", ondelete="CASCADE"), index=True)
     message    = Column(Text, default="")
     read       = Column(Boolean, default=False)
+    group_id   = Column(Integer, nullable=True)   # set → "she added you to a group" ping
     created_at = Column(DateTime, default=func.now())
 
     creator    = relationship("Creator")
+
+
+# ── Creator Showcase: 5 card display slots on a creator's profile ─────────────
+class CreatorShowcase(Base):
+    """One row per filled slot. Slots: creator | gallery | goon | photo | wildcard.
+    A card (inventory entry) can sit in only one showcase at a time. Filling all
+    5 = Mastery (one-time bond reward; creators.showcase_mastery_at records it)."""
+    __tablename__ = "creator_showcase"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    creator_id   = Column(Integer, ForeignKey("creators.id", ondelete="CASCADE"), index=True)
+    slot         = Column(String, nullable=False)
+    inventory_id = Column(Integer, ForeignKey("card_inventory.id", ondelete="CASCADE"))
+
+    inventory    = relationship("CardInventory")
+
+
+# ── Companion group chats: several creator-personas + you in one thread ───────
+class GroupChat(Base):
+    __tablename__ = "group_chats"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String, default="")        # e.g. "Saya, CandyBall & you"
+    origin      = Column(String, default="user")    # 'user' | 'drama' (how it was created)
+    created_at  = Column(DateTime, default=func.now())
+    last_active = Column(DateTime, default=func.now())
+    last_opened = Column(DateTime, nullable=True)   # for unread counts
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    group_id   = Column(Integer, ForeignKey("group_chats.id", ondelete="CASCADE"), index=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), index=True)
+
+    creator    = relationship("Creator")
+
+
+class GroupMessage(Base):
+    __tablename__ = "group_messages"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    group_id    = Column(Integer, ForeignKey("group_chats.id", ondelete="CASCADE"), index=True)
+    speaker_id  = Column(Integer, nullable=True)   # creator id; NULL = the user
+    is_user     = Column(Boolean, default=False)
+    author_name = Column(String, default="")       # denormalized for display
+    content     = Column(Text, default="")
+    created_at  = Column(DateTime, default=func.now())

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Check, Loader, Sparkles, BarChart2 } from 'lucide-react'
+import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Check, Loader, Sparkles, BarChart2, Search } from 'lucide-react'
 import { cardsApi, economyApi, gamiApi } from '../lib/api'
 import VaultCard, { RARITY_ORDER, RARITY_CONFIG } from '../components/VaultCard'
 import CardViewer from '../components/CardViewer'
@@ -19,9 +19,9 @@ const TABS = [
   { id: 'forge',      label: 'The Forge', icon: Hammer },
 ]
 
-const RARITY_LABELS = ['All', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Relic', 'Celestial']
-const TYPE_LABELS   = ['All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant', 'Collab']
-const TYPE_API_MAP  = { 'Photo': 'image' }
+const RARITY_LABELS = ['All', 'Core', 'Epic', 'Legendary', 'Celestial']
+const TYPE_LABELS   = ['All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant', 'Collab', 'HOF']
+const TYPE_API_MAP  = { 'Photo': 'image', 'HOF': 'hof' }
 const SORT_OPTIONS  = [
   { value: 'rarity_desc', label: 'Rarity ↓' },
   { value: 'rarity_asc',  label: 'Rarity ↑' },
@@ -29,10 +29,9 @@ const SORT_OPTIONS  = [
   { value: 'cxp',         label: 'CXP' },
 ]
 
-// ── Rarity color dots ─────────────────────────────────────────────────────────
+// ── Rarity color dots (4-tier rework: purple → orange → gold → cosmic) ────────
 const RARITY_COLORS = {
-  common: '#888', uncommon: '#1D9E75', rare: '#4682DC',
-  epic: '#7F77DD', legendary: '#ff8800', relic: '#FFD700', celestial: '#E8E8FF',
+  common: '#9F8FEF', epic: '#ff8800', legendary: '#FFD700', celestial: '#E8E8FF',
 }
 
 // ── Standard vault dropdown — matches GalleryList style exactly ──────────────
@@ -234,6 +233,19 @@ const feedDuplicateMutation = useMutation({
     onError: (e) => toast.error(e.response?.data?.detail || 'Forge failed'),
   })
 
+  const [variantSearch, setVariantSearch] = useState('')
+  const [variantPage, setVariantPage]     = useState(1)
+
+  const VARIANT_PAGE_SIZE = 12
+  const visiblePairs = useMemo(() => {
+    const q = variantSearch.trim().toLowerCase()
+    return (Array.isArray(variantPairs) ? variantPairs : [])
+      .filter(p => !q || p.creator_name?.toLowerCase().includes(q) || p.character_name?.toLowerCase().includes(q))
+      .sort((a, b) => (a.at_cap === b.at_cap) ? 0 : (a.at_cap ? 1 : -1)) // not-at-cap first
+  }, [variantPairs, variantSearch])
+  const variantTotalPages = Math.max(1, Math.ceil(visiblePairs.length / VARIANT_PAGE_SIZE))
+  const shownPairs = visiblePairs.slice((variantPage - 1) * VARIANT_PAGE_SIZE, variantPage * VARIANT_PAGE_SIZE)
+
   const [exchangeAmount, setExchangeAmount] = useState(25)
   const exchangeMutation = useMutation({
     mutationFn: () => cardsApi.shardsToCredits(exchangeAmount).then(r => r.data),
@@ -282,18 +294,19 @@ const feedDuplicateMutation = useMutation({
   }
 
   const selectRareOrBelow = () => {
-    const threshold = RARITY_ORDER.indexOf('rare')
+    // "Epic & below" under the 4-tier system (keeps legendary/celestial safe)
+    const threshold = RARITY_ORDER.indexOf('epic')
     setIsSelectAll(false)
     setSelected(items
-      .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
+      .filter(inv => !inv.foil && RARITY_ORDER.indexOf(inv.rarity) <= threshold)
       .map(inv => inv.inventory_id))
   }
 
   const selectUncommonOrBelow = () => {
-    const threshold = RARITY_ORDER.indexOf('uncommon')
+    // "Commons" under the 4-tier system (foils are never bulk-selected)
     setIsSelectAll(false)
     setSelected(items
-      .filter(inv => RARITY_ORDER.indexOf(inv.rarity) <= threshold)
+      .filter(inv => !inv.foil && inv.rarity === 'common')
       .map(inv => inv.inventory_id))
   }
 
@@ -537,7 +550,17 @@ const feedDuplicateMutation = useMutation({
                     <div
                       key={inv.inventory_id}
                       ref={(el) => { if (el) cardEls.current.set(inv.inventory_id, el) }}
-                      style={{ position: 'relative' }}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 18,
+                        // Off-screen rows skip layout+paint entirely (perf). Prestige
+                        // cards opt out: content-visibility's paint containment would
+                        // clip the rainbow halo on every side but the bottom, and a
+                        // raised z-index keeps the side glow above the neighbour cell.
+                        contentVisibility: (inv.prestige || inv.foil) ? 'visible' : 'auto',
+                        containIntrinsicSize: `${cardWidth}px ${Math.round(cardWidth * 1.45) + 40}px`,
+                        zIndex: (inv.prestige || inv.foil) ? 3 : undefined,
+                      }}
                     >
                       <VaultCard
                         card={inv}
@@ -558,11 +581,12 @@ const feedDuplicateMutation = useMutation({
                         </div>
                       )}
                       {showCxpBar && (() => {
-                        const CXP_THRESHOLDS = { common: 100, uncommon: 300, rare: 800, epic: 2000, legendary: 5000, relic: 12000 }
+                        // Level progress within the tier (rarity never changes now)
                         const cxp       = inv.cxp ?? 0
-                        const threshold = CXP_THRESHOLDS[inv.rarity]
+                        const level     = inv.level ?? 1
+                        const threshold = inv.cxp_for_next   // null at max level
+                        const isFull    = level >= (inv.level_max ?? 10)
                         const pct       = threshold ? Math.min(100, (cxp / threshold) * 100) : 100
-                        const isFull    = threshold ? cxp >= threshold : false
                         return (
                           <div style={{ marginTop: 5, padding: '0 4px' }}>
                             <div style={{ height: 7, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
@@ -581,7 +605,7 @@ const feedDuplicateMutation = useMutation({
                               }} />
                             </div>
                             <div style={{ fontSize: 9, color: isFull ? cfg.badge : 'rgba(255,255,255,0.2)', textAlign: 'right', marginTop: 2 }}>
-                              {isFull ? '✨ READY' : `${cxp} / ${threshold ?? '—'}`}
+                              {isFull ? '✨ LV MAX' : `LV ${level} · ${cxp} / ${threshold ?? '—'}`}
                             </div>
                             <style>{`
                               @keyframes cxp-bar-shine {
@@ -699,7 +723,7 @@ const feedDuplicateMutation = useMutation({
                   border: '0.5px solid rgba(255,255,255,0.1)',
                 }}
               >
-                Select Uncommon &amp; Below
+                Select Commons
               </button>
               <button
                 onClick={selectRareOrBelow}
@@ -709,7 +733,7 @@ const feedDuplicateMutation = useMutation({
                   border: '0.5px solid rgba(70,130,220,0.3)',
                 }}
               >
-                Select Rare &amp; Below
+                Select Epic &amp; Below
               </button>
               <button
                 onClick={selectAll}
@@ -763,7 +787,7 @@ const feedDuplicateMutation = useMutation({
               <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>Loading cards…</div>
             ) : (
               <>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <div className="forge-no-anim" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {forgePagedItems.map(inv => {
                     const isSel = selected.includes(inv.inventory_id)
                     return (
@@ -776,6 +800,8 @@ const feedDuplicateMutation = useMutation({
                           outline: isSel ? '2px solid #F4C0D1' : '2px solid transparent',
                           borderRadius: 14, transition: 'outline 0.15s',
                           opacity: isSel ? 0.75 : 1,
+                          contentVisibility: 'auto',
+                          containIntrinsicSize: `140px ${Math.round(140 * 1.45) + 20}px`,
                         }}
                       >
                         <VaultCard card={inv} width={140} forceEffects={false} />
@@ -986,110 +1012,141 @@ const feedDuplicateMutation = useMutation({
           {/* ── Forge Variant panel ─────────────────────────────────────── */}
           <div style={{ width: '100%', marginTop: 8 }}>
             <div style={{
-              borderTop: '0.5px solid rgba(127,119,221,0.15)',
+              borderTop: '0.5px solid color-mix(in srgb, var(--c-accent) 15%, transparent)',
               paddingTop: 20,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
                   ✦ Forge a Variant Card
                 </div>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '3px 10px', borderRadius: 20, fontSize: 11,
-                  background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.25)',
-                  color: '#CECBF6',
+                  padding: '3px 10px', borderRadius: 20, fontSize: 14,
+                  background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)',
+                  border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)',
+                  color: 'var(--c-accent)',
                 }}>
                   500 🔷 + 1 ⚗️
                 </div>
-                <div style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>
+                <div style={{ marginLeft: 'auto', fontSize: 14, color: 'rgba(255,255,255,0.25)' }}>
                   Legendary baseline · max 3 per pair
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 16, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', marginBottom: 16, lineHeight: 1.5 }}>
                 Pairs shown below are backed by real galleries where both the creator and character are linked.
                 Link a gallery to a creator <em>and</em> set its character to unlock new pairs.
               </div>
 
               {!Array.isArray(variantPairs) || variantPairs.length === 0 ? (
                 <div style={{
-                  padding: '20px 24px', borderRadius: 12, fontSize: 12,
+                  padding: '20px 24px', borderRadius: 12, fontSize: 14,
                   background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)',
                   color: 'rgba(255,255,255,0.25)', textAlign: 'center',
                 }}>
                   No eligible pairs yet. Open a gallery, assign it to a creator, and set a linked character.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {variantPairs.map(pair => {
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                    background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8, padding: '8px 12px', maxWidth: 420 }}>
+                    <Search size={16} color="rgba(255,255,255,0.4)" style={{ flexShrink: 0 }} />
+                    <input
+                      type="text"
+                      value={variantSearch}
+                      onChange={e => { setVariantSearch(e.target.value); setVariantPage(1) }}
+                      placeholder="Search creator or character…"
+                      style={{
+                        flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                        fontSize: 15, color: 'rgba(255,255,255,0.85)',
+                      }}
+                    />
+                  </div>
+                  <div className="forge-no-anim" style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
+                    gap: 14,
+                  }}>
+                  {shownPairs.map(pair => {
                     const canAfford = (materials?.shards ?? 0) >= 500 && (materials?.catalyst_tokens ?? 0) >= 1
                     const disabled  = pair.at_cap || !canAfford || forgeVariantMutation.isPending
                     return (
                       <div
                         key={`${pair.creator_id}-${pair.character_id}`}
                         style={{
-                          borderRadius: 12,
+                          borderRadius: 14,
                           border: pair.at_cap
                             ? '0.5px solid rgba(255,255,255,0.07)'
-                            : '0.5px solid rgba(127,119,221,0.3)',
+                            : '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)',
                           background: pair.at_cap
                             ? 'rgba(255,255,255,0.02)'
-                            : 'rgba(127,119,221,0.06)',
-                          padding: '14px 16px',
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          minWidth: 300, flex: '1 1 300px', maxWidth: 480,
+                            : 'color-mix(in srgb, var(--c-accent) 6%, transparent)',
+                          padding: '18px 16px',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                           opacity: pair.at_cap ? 0.5 : 1,
                         }}
                       >
                         {/* Creator avatar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                          {pair.creator_avatar ? (
-                            <img src={pair.creator_avatar} alt={pair.creator_name}
-                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
-                                border: '1.5px solid rgba(127,119,221,0.4)', flexShrink: 0 }} />
-                          ) : (
-                            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                              background: 'rgba(127,119,221,0.2)', display: 'flex', alignItems: 'center',
-                              justifyContent: 'center', fontSize: 14 }}>
-                              {pair.creator_name[0]}
-                            </div>
-                          )}
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)',
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {pair.creator_name}
-                            </div>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'capitalize' }}>
-                              {pair.creator_type}
-                            </div>
+                        {pair.creator_avatar ? (
+                          <img src={pair.creator_avatar} alt={pair.creator_name}
+                            style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover',
+                              border: '2px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+                            background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: 22 }}>
+                            {pair.creator_name[0]}
+                          </div>
+                        )}
+                        <div style={{ textAlign: 'center', width: '100%' }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {pair.creator_name}
+                          </div>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', textTransform: 'capitalize' }}>
+                            {pair.creator_type}
                           </div>
                         </div>
 
-                        {/* "as" divider */}
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', flexShrink: 0 }}>
-                          as
+                        {/* "×" divider */}
+                        <div style={{ fontSize: 18, color: 'var(--c-accent)', fontWeight: 700, flexShrink: 0 }}>
+                          ×
                         </div>
 
                         {/* Character avatar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                          {pair.character_avatar ? (
-                            <img src={pair.character_avatar} alt={pair.character_name}
-                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
-                                border: '1.5px solid rgba(212,83,126,0.4)', flexShrink: 0 }} />
-                          ) : (
-                            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                              background: 'rgba(212,83,126,0.2)', display: 'flex', alignItems: 'center',
-                              justifyContent: 'center', fontSize: 14 }}>
-                              {pair.character_name[0]}
-                            </div>
-                          )}
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)',
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {pair.character_name}
-                            </div>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
-                              {pair.existing_variants} / {pair.cap} forged
-                            </div>
+                        {pair.character_avatar ? (
+                          <img src={pair.character_avatar} alt={pair.character_name}
+                            style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover',
+                              border: '2px solid color-mix(in srgb, var(--c-pink) 40%, transparent)', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+                            background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: 22 }}>
+                            {pair.character_name[0]}
+                          </div>
+                        )}
+                        <div style={{ textAlign: 'center', width: '100%' }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {pair.character_name}
+                          </div>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
+                            {pair.existing_variants} / {pair.cap} forged
+                          </div>
+                        </div>
+
+                        {/* Result label */}
+                        <div style={{
+                          width: '100%', textAlign: 'center',
+                          fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4,
+                          marginTop: 4,
+                        }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {pair.creator_name} × {pair.character_name}
+                          </div>
+                          <div style={{ fontWeight: 700, color: 'var(--c-accent)', fontSize: 14 }}>→ Variant Card</div>
+                          <div style={{ marginTop: 4, color: 'rgba(255,255,255,0.3)' }}>
+                            Cost: 500 🔷 + 1 ⚗️
                           </div>
                         </div>
 
@@ -1101,23 +1158,23 @@ const feedDuplicateMutation = useMutation({
                           })}
                           disabled={disabled}
                           style={{
-                            flexShrink: 0,
-                            padding: '8px 14px', borderRadius: 9, fontSize: 11, cursor: disabled ? 'not-allowed' : 'pointer',
-                            fontWeight: 600,
+                            width: '100%', marginTop: 8,
+                            padding: '12px 22px', borderRadius: 10, fontSize: 15, cursor: disabled ? 'not-allowed' : 'pointer',
+                            fontWeight: 700,
                             background: pair.at_cap
                               ? 'rgba(255,255,255,0.04)'
                               : canAfford
-                              ? 'rgba(127,119,221,0.3)'
+                              ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)'
                               : 'rgba(255,255,255,0.05)',
                             color: pair.at_cap
                               ? 'rgba(255,255,255,0.2)'
                               : canAfford
-                              ? '#CECBF6'
+                              ? 'var(--c-accent)'
                               : 'rgba(255,255,255,0.2)',
                             border: pair.at_cap
                               ? '0.5px solid rgba(255,255,255,0.06)'
                               : canAfford
-                              ? '0.5px solid rgba(127,119,221,0.5)'
+                              ? '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)'
                               : '0.5px solid rgba(255,255,255,0.08)',
                           }}
                         >
@@ -1126,7 +1183,67 @@ const feedDuplicateMutation = useMutation({
                       </div>
                     )
                   })}
-                </div>
+                  </div>
+
+                  {/* Variant pairs pagination */}
+                  {variantTotalPages > 1 && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap',
+                    }}>
+                      <button
+                        onClick={() => setVariantPage(p => Math.max(1, p - 1))}
+                        disabled={variantPage === 1}
+                        style={{
+                          padding: '6px 14px', borderRadius: 8, fontSize: 13,
+                          cursor: variantPage === 1 ? 'not-allowed' : 'pointer',
+                          background: 'rgba(255,255,255,0.04)',
+                          color: variantPage === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                          border: '0.5px solid rgba(255,255,255,0.08)',
+                        }}
+                      >‹ Prev</button>
+
+                      {Array.from({ length: variantTotalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === variantTotalPages || Math.abs(p - variantPage) <= 2)
+                        .reduce((acc, p, i, arr) => {
+                          if (i > 0 && p - arr[i - 1] > 1) acc.push('…')
+                          acc.push(p)
+                          return acc
+                        }, [])
+                        .map((p, i) => p === '…' ? (
+                          <span key={`vp-${i}`} style={{ color: 'rgba(255,255,255,0.2)', fontSize: 13, padding: '0 2px' }}>…</span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setVariantPage(p)}
+                            style={{
+                              padding: '6px 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer', minWidth: 34,
+                              background: p === variantPage ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.04)',
+                              color: p === variantPage ? 'var(--c-accent)' : 'rgba(255,255,255,0.4)',
+                              border: p === variantPage ? '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
+                              fontWeight: p === variantPage ? 700 : 400,
+                            }}
+                          >{p}</button>
+                        ))
+                      }
+
+                      <button
+                        onClick={() => setVariantPage(p => Math.min(variantTotalPages, p + 1))}
+                        disabled={variantPage === variantTotalPages}
+                        style={{
+                          padding: '6px 14px', borderRadius: 8, fontSize: 13,
+                          cursor: variantPage === variantTotalPages ? 'not-allowed' : 'pointer',
+                          background: 'rgba(255,255,255,0.04)',
+                          color: variantPage === variantTotalPages ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
+                          border: '0.5px solid rgba(255,255,255,0.08)',
+                        }}
+                      >Next ›</button>
+
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
+                        {visiblePairs.length} pair{visiblePairs.length !== 1 ? 's' : ''} total
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

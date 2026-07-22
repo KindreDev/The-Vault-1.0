@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { X, RotateCcw, Crosshair, TrendingUp } from 'lucide-react'
 import VaultCard, { RARITY_CONFIG } from './VaultCard'
 import CardFeedPanel from './CardFeedPanel'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cardsApi, imagesApi } from '../lib/api'
+import { cardsApi, imagesApi, economyApi } from '../lib/api'
 import toast from 'react-hot-toast'
 
 const CARD_W_BASE = 616
@@ -13,9 +14,9 @@ const DEPTH  = 10
 // Reserve space for top controls + CXP bar + bottom buttons + gaps
 const NON_CARD_H = 210
 
-const CXP_THRESHOLDS = {
-  common: 100, uncommon: 300, rare: 800, epic: 2000, legendary: 5000, relic: 12000,
-}
+// Level steps per rarity (mirrors backend LEVEL_CXP_STEP): level = 1 + cxp // step, max 10
+const LEVEL_CXP_STEP = { common: 100, epic: 400, legendary: 1200, celestial: 3000 }
+const MAX_LEVEL = 10
 
 export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
   const [phase, setPhase]           = useState('start')
@@ -36,6 +37,27 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
 
   const isEvolving = evolvePhase !== null
 
+  // ── Progressive image load — open on the (already-cached) thumbnail
+  // immediately, then swap to the full-res image once it's actually decoded.
+  // Avoids the modal opening onto a blank/loading full-res <img>.
+  const [fullResReady, setFullResReady] = useState(false)
+  const fullResUrl = cardData.image_url || cardData.thumb_url || cardData.creator_avatar
+  useEffect(() => {
+    setFullResReady(false)
+    if (!cardData.image_url) return
+    let cancelled = false
+    const img = new Image()
+    img.src = fullResUrl
+    // decode() resolves once the image is fully decoded and paint-ready, not
+    // just downloaded — swapping it in only then means the browser doesn't
+    // stall recompositing the holo/blend stack against an undecoded bitmap
+    // (that stall is what reads as the multi-second freeze right after open).
+    const ready = () => { if (!cancelled) setFullResReady(true) }
+    if (img.decode) img.decode().then(ready, ready)
+    else img.onload = ready
+    return () => { cancelled = true }
+  }, [fullResUrl, cardData.image_url])
+
   // ── Responsive card sizing — never exceed the viewport height ─────────────
   const cardScale = Math.min(1, (window.innerHeight - NON_CARD_H) / CARD_H_BASE)
   const CARD_W    = Math.round(CARD_W_BASE * cardScale)
@@ -46,6 +68,14 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
   useEffect(() => {
     const id = requestAnimationFrame(() => requestAnimationFrame(() => setPhase('open')))
     return () => cancelAnimationFrame(id)
+  }, [])
+
+  // ── Lock page scroll while the viewer is open (it's portaled to <body>, so
+  // background scroll would otherwise keep moving the page underneath)
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
   }, [])
 
   const handleClose = useCallback(() => {
@@ -128,59 +158,58 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
     el.style.transform  = 'rotateY(0deg) rotateX(0deg) scale(1)'
   }, [is3D, isEvolving])
 
-  // ── Catalyst mutation
-  const catalystMutation = useMutation({
+  // ── Catalyst mutation — crafts the FOIL version (with the spin+flash drama)
+  const catalystApi = useMutation({
     mutationFn: () => cardsApi.applyCatalyst(inventoryId).then(r => r.data),
-    onSuccess: (data) => {
-      toast.success(`Evolved to ${data.new_rarity}! ⚗️`)
-      qc.invalidateQueries({ queryKey: ['card-inventory'] })
-      qc.invalidateQueries({ queryKey: ['forge-materials'] })
-      handleClose()
-    },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Not enough tokens'),
-  })
-
-  // ── CXP evolve mutation + animation
-  const cxpEvolveMutation = useMutation({
-    mutationFn: () => cardsApi.evolveCxp(inventoryId).then(r => r.data),
-    onSuccess: (data) => {
-      setCardData(prev => ({ ...prev, rarity: data.new_rarity, is_relic: data.is_relic }))
+    onSuccess: () => {
+      setCardData(prev => ({ ...prev, foil: true, is_relic: true }))
     },
     onError: (e) => {
-      toast.error(e.response?.data?.detail || 'Evolution failed')
+      toast.error(e.response?.data?.detail || 'Not enough tokens')
       setEvolvePhase(null)
+      setIs3D(false)
     },
   })
 
-  const handleEvolveViaCxp = () => {
-    if (isEvolving) return
-    setIs3D(true)
-    setAutoSpin(false)
-    setRotX(0)
-    setRotY(0)
-    setEvolvePhase('spinning')
-
-    // After spin completes → white flash + API call
-    setTimeout(() => {
-      setEvolvePhase('flashing')
-      cxpEvolveMutation.mutate()
-
-      // Flash holds, then begin reveal
+  const catalystMutation = {
+    isPending: catalystApi.isPending || isEvolving,
+    mutate: () => {
+      if (isEvolving) return
+      setIs3D(true)
+      setAutoSpin(false)
+      setRotX(0)
+      setRotY(0)
+      setEvolvePhase('spinning')
       setTimeout(() => {
-        setEvolvePhase('revealed')
-
-        // Fade-out done → cleanup
+        setEvolvePhase('flashing')
+        catalystApi.mutate()
         setTimeout(() => {
-          setEvolvePhase(null)
-          setIs3D(false)
-          qc.invalidateQueries({ queryKey: ['card-inventory'] })
-          qc.invalidateQueries({ queryKey: ['forge-materials'] })
-          const newRarity = cxpEvolveMutation.data?.new_rarity ?? cardData.rarity
-          toast.success(`Evolved to ${newRarity}! ✨`)
-        }, 700)
-      }, 500)
-    }, 900)
+          setEvolvePhase('revealed')
+          setTimeout(() => {
+            setEvolvePhase(null)
+            setIs3D(false)
+            qc.invalidateQueries({ queryKey: ['card-inventory'] })
+            qc.invalidateQueries({ queryKey: ['forge-materials'] })
+            toast.success('Prestige crafted! ✨')
+          }, 700)
+        }, 500)
+      }, 900)
+    },
   }
+
+  // ── Craft Prestige mutation — crafts the PRESTIGE version from dupes + credits
+  const craftPrestigeMutation = useMutation({
+    mutationFn: () => cardsApi.craftPrestige(inventoryId).then(r => r.data),
+    onSuccess: () => {
+      setCardData(prev => ({ ...prev, prestige: true, foil: true }))
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+      qc.invalidateQueries({ queryKey: ['economy-balance'] })
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      qc.invalidateQueries({ queryKey: ['forge-materials'] })
+      toast.success('✦ Prestige crafted')
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Craft failed'),
+  })
 
   // ── Fuse-all mutation
   const fuseAllMutation = useMutation({
@@ -202,6 +231,14 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
     staleTime: 5000,
   })
 
+  // ── Credit balance (for Craft Prestige affordability check)
+  const { data: balance } = useQuery({
+    queryKey: ['economy-balance'],
+    queryFn: () => economyApi.balance().then(r => r.data),
+    staleTime: 10000,
+  })
+  const credits = balance?.vault_credits ?? 0
+
   // ── Focal point mutation
   const focalMutation = useMutation({
     mutationFn: ({ x, y }) => imagesApi.focalPoint(cardData.source_image_id, x, y).then(r => r.data),
@@ -222,8 +259,8 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
   }, [focalMode, focalMutation])
 
   const handleFed = useCallback((data) => {
-    setCardData(prev => ({ ...prev, cxp: data.new_cxp }))
-    if (data.evolution_ready) toast.success('Evolution threshold reached! ✨')
+    setCardData(prev => ({ ...prev, cxp: data.new_cxp, level: undefined }))
+    if (data.evolution_ready) toast.success('Max level reached! ✨')
     qc.invalidateQueries({ queryKey: ['forge-materials'] })
   }, [qc])
 
@@ -232,23 +269,33 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
 
   if (!card) return null
 
+  // Portaled to <body>: framer-motion page transitions put a transform on the
+  // route wrapper, which breaks position:fixed for anything rendered inside it
+  // (the viewer would scroll away with the page).
   const cfg       = RARITY_CONFIG[cardData.rarity] || RARITY_CONFIG.common
   const edgeColor = `linear-gradient(to bottom, ${cfg.badge}33 0%, ${cfg.badge}88 50%, ${cfg.badge}33 100%)`
 
-  const cxpThreshold = CXP_THRESHOLDS[cardData.rarity]
+  const levelStep    = LEVEL_CXP_STEP[cardData.rarity] ?? 100
   const currentCxp   = cardData.cxp ?? 0
-  const atMaxCxp     = cxpThreshold !== undefined && currentCxp >= cxpThreshold
+  const cardLevel    = cardData.level ?? Math.min(MAX_LEVEL, 1 + Math.floor(currentCxp / levelStep))
+  const atMaxCxp     = cardLevel >= MAX_LEVEL
+  const cxpThreshold = atMaxCxp ? null : levelStep * cardLevel   // CXP for next level
   const cxpPct       = cxpThreshold ? Math.min(100, (currentCxp / cxpThreshold) * 100) : 100
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
+        // No backdrop-filter here on purpose: a full-viewport blur has to be
+        // recomposited by the browser every time ANYTHING behind it changes
+        // (any CSS animation tick, any polling query updating a number) —
+        // that's what was causing the periodic multi-hundred-ms freezes while
+        // the viewer was open. The backdrop is already 92% opaque black, so
+        // the blur was barely visible anyway — this is a no-op visually.
         background: isOpen ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0)',
-        backdropFilter: isOpen ? 'blur(12px)' : 'none',
         transition: isClosing
-          ? 'background 0.28s ease, backdrop-filter 0.28s ease'
-          : 'background 0.32s ease, backdrop-filter 0.32s ease',
+          ? 'background 0.28s ease'
+          : 'background 0.32s ease',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         gap: 24,
@@ -354,7 +401,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             <div style={{
               ...(is3D ? { backfaceVisibility: 'hidden', transform: `translateZ(${DEPTH / 2}px)` } : {}),
             }}>
-              <VaultCard card={cardData} width={vaultW} forceEffects={true} disableTilt={true} fullRes={true} />
+              <VaultCard card={cardData} width={vaultW} forceEffects={true} disableTilt={true} fullRes={fullResReady} cursorTrack={true} />
             </div>
 
             {/* Back face */}
@@ -510,12 +557,12 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
 
       </div>{/* end flex row */}
 
-      {/* CXP bar — shown when card has a threshold */}
-      {cxpThreshold !== undefined && isOpen && !isEvolving && (
+      {/* Level / CXP bar */}
+      {isOpen && !isEvolving && (
         <div style={{ width: CARD_W, opacity: isOpen ? 1 : 0, transition: 'opacity 0.25s ease' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-            <span>CXP {currentCxp.toLocaleString()} / {cxpThreshold.toLocaleString()}</span>
-            {atMaxCxp && <span style={{ color: cfg.badge, fontWeight: 700 }}>READY TO EVOLVE</span>}
+            <span>LV {cardLevel}{atMaxCxp ? ' · MAX' : ` · CXP ${currentCxp.toLocaleString()} / ${(cxpThreshold ?? 0).toLocaleString()}`}</span>
+            {atMaxCxp && <span style={{ color: cfg.badge, fontWeight: 700 }}>✨ MAX LEVEL</span>}
           </div>
           <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
             <div style={{
@@ -574,42 +621,60 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
           </button>
         )}
 
-        {/* CXP-based evolve */}
-        {inventoryId && atMaxCxp && cardData.rarity !== 'celestial' && (
-          <button
-            onClick={handleEvolveViaCxp}
-            disabled={cxpEvolveMutation.isPending}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 18px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-              cursor: 'pointer',
-              background: `linear-gradient(135deg, ${cfg.badge}44, ${cfg.badge}22)`,
-              color: cfg.badge,
-              border: `1px solid ${cfg.badge}88`,
-              boxShadow: `0 0 16px ${cfg.badge}44`,
-              opacity: cxpEvolveMutation.isPending ? 0.5 : 1,
-            }}
-          >
-            ✨ Evolve <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: 10 }}>(50 🔷)</span>
-          </button>
-        )}
-
-        {/* Catalyst evolve */}
-        {inventoryId && cardData.rarity !== 'celestial' && (
+        {/* Catalyst → craft foil (rarity is fixed; foil is the upgrade now) */}
+        {inventoryId && !cardData.foil && !cardData.is_relic && cardData.card_type !== 'hof' && (
           <button
             onClick={() => catalystMutation.mutate()}
             disabled={catalystMutation.isPending}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 16px', borderRadius: 20, fontSize: 11, cursor: 'pointer',
-              background: 'rgba(127,119,221,0.2)', color: '#CECBF6',
-              border: '0.5px solid rgba(127,119,221,0.4)',
+              padding: '7px 18px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, rgba(255,215,0,0.25), rgba(255,140,0,0.15))',
+              color: '#FFD700',
+              border: '1px solid rgba(255,215,0,0.5)',
+              boxShadow: '0 0 16px rgba(255,215,0,0.25)',
               opacity: catalystMutation.isPending ? 0.5 : 1,
             }}
           >
-            ⚗️ Evolve
+            ✨ Make Prestige <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: 10 }}>(1 ⚗️)</span>
           </button>
         )}
+
+        {/* Craft Prestige → crafted from dupes + credits, never pulled from packs */}
+        {inventoryId && !cardData.prestige && !cardData.foil && (() => {
+          const quantity      = cardData.quantity ?? 1
+          const dupesNeeded   = cardData.prestige_dupes ?? 6
+          const creditsNeeded = cardData.prestige_credits ?? 1000
+          const canCraft      = quantity >= dupesNeeded && credits >= creditsNeeded
+          return (
+            <button
+              onClick={() => canCraft && craftPrestigeMutation.mutate()}
+              disabled={craftPrestigeMutation.isPending || !canCraft}
+              title={!canCraft ? `Needs ${dupesNeeded} copies + ${creditsNeeded} cr (you have ${quantity})` : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 18px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                cursor: canCraft ? 'pointer' : 'not-allowed',
+                background: canCraft
+                  ? 'linear-gradient(135deg, rgba(255,120,120,0.25), rgba(120,180,255,0.2), rgba(200,120,255,0.25))'
+                  : 'rgba(255,255,255,0.05)',
+                backgroundSize: '200% 100%',
+                color: canCraft ? '#fff' : 'rgba(255,255,255,0.3)',
+                border: canCraft ? '1px solid rgba(255,255,255,0.5)' : '0.5px solid rgba(255,255,255,0.1)',
+                boxShadow: canCraft ? '0 0 16px rgba(200,120,255,0.3)' : 'none',
+                opacity: craftPrestigeMutation.isPending ? 0.5 : 1,
+              }}
+            >
+              ✦ Craft Prestige{' '}
+              <span style={{ color: canCraft ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)', fontWeight: 400, fontSize: 10 }}>
+                {canCraft
+                  ? `(${dupesNeeded} copies + ${creditsNeeded} cr)`
+                  : `Needs ${dupesNeeded} copies + ${creditsNeeded} cr (you have ${quantity})`}
+              </span>
+            </button>
+          )
+        })()}
       </div>
 
       {is3D && isOpen && !isEvolving && (
@@ -617,6 +682,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
           Click &amp; drag to rotate
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -383,6 +383,11 @@ class CompanionConfigOut(BaseModel):
     num_ctx: int = 16384
     vision_enabled: bool = True
     companion_prompt: Optional[str] = None
+    simulation_enabled: bool = False
+    simulation_intensity: int = 60
+    simulation_time_budget_sec: int = 1800
+    simulation_time_used_sec: int = 0
+    simulation_boost_until: Optional[datetime] = None
     class Config:
         from_attributes = True
 
@@ -399,6 +404,9 @@ class CompanionConfigUpdate(BaseModel):
     num_ctx: Optional[int] = None
     vision_enabled: Optional[bool] = None
     companion_prompt: Optional[str] = None
+    simulation_enabled: Optional[bool] = None
+    simulation_intensity: Optional[int] = None
+    simulation_time_budget_sec: Optional[int] = None
 
 class CompanionMessageOut(BaseModel):
     id: int

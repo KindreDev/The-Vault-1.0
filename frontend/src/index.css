@@ -24,6 +24,9 @@ html { zoom: 1.0; }
 
 * { box-sizing: border-box; }
 
+/* Forge tab — cards keep colors/frames/badges but all motion is frozen */
+.forge-no-anim *, .forge-no-anim *::before, .forge-no-anim *::after { animation: none !important; }
+
 body {
   background: var(--c-bg);
   color: rgba(255,255,255,0.85);
@@ -202,6 +205,20 @@ img.img-loaded:not([data-no-fade]) { opacity: 1; }
 }
 .animate-fade-in {
   animation: fade-in 0.15s ease-out forwards;
+}
+
+@keyframes intake-tile-in {
+  0%   { opacity: 0; transform: scale(0.92) translateY(4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.intake-tile {
+  animation: intake-tile-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  will-change: transform;
+}
+.intake-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
 
 @keyframes vault-fade-in {

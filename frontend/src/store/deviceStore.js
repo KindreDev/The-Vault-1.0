@@ -143,6 +143,33 @@ export const useDeviceStore = create((set, get) => ({
   })),
   isAxisEnabled: (axisId) => get().funscriptAxes[axisId] !== false,
 
+  // ── Funscript sync offset (video mode) ──────────────────────────────────────
+  // Milliseconds. +offset = the script is delayed relative to the video (its
+  // actions fire later than authored); -offset = the script plays early.
+  // In-memory only — the video player component owns per-video persistence
+  // to localStorage, since the store has no concept of "which video".
+  funscriptOffsetMs: 0,
+  setFunscriptOffset: (ms) => set({ funscriptOffsetMs: Math.max(-2000, Math.min(2000, Math.round(ms))) }),
+
+  // ── Finisher (quick-override pattern) ───────────────────────────────────────
+  // A saved pattern you can fire by hotkey or button to instantly override the
+  // device — funscript, freestyle, whatever — and loop it until you stop.
+  // Persisted so the choice + key survive reloads. finisherActive mirrors the
+  // service flag for UI highlighting.
+  finisherPatternName: localStorage.getItem('vault_finisher_pattern') || '',
+  finisherHotkey:      localStorage.getItem('vault_finisher_hotkey')  || '',
+  finisherActive:      false,
+  setFinisherPattern: (name) => {
+    const v = name || ''
+    try { localStorage.setItem('vault_finisher_pattern', v) } catch {}
+    set({ finisherPatternName: v })
+  },
+  setFinisherHotkey: (key) => {
+    const v = key || ''
+    try { localStorage.setItem('vault_finisher_hotkey', v) } catch {}
+    set({ finisherHotkey: v })
+  },
+
   // ── Ramp mode ───────────────────────────────────────────────────────────────
   rampEnabled:      false,
   rampDurationMin:  20,          // minutes

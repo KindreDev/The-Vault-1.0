@@ -103,6 +103,8 @@ export const creatorsApi = {
   hof:               (n = 5) => api.get('/creators/hall-of-fame', { params: { limit: n } }),
   distribution:      ()      => api.get('/creators/distribution'),
   topImages:         (id, n)  => api.get(`/creators/${id}/top-images`, { params: { limit: n } }),
+  stats:             (id)     => api.get(`/creators/${id}/stats`),
+  collage:           (id, n = 30) => api.get(`/creators/${id}/collage`, { params: { limit: n } }),
   setAvatarRandom:   (id, excludePath) => api.post(`/creators/${id}/set-avatar-random`, excludePath ? { exclude_path: excludePath } : {}),
   setBannerRandom:   (id, excludeId)   => api.post(`/creators/${id}/set-banner-random`,  excludeId   ? { exclude_id:   excludeId   } : {}),
   uploadBanner:      (id, file) => {
@@ -132,6 +134,11 @@ export const creatorsApi = {
   giftHeart:         (id)            => api.post(`/creators/${id}/gift-heart`),
   avatarUrl:         (id) => `/api/creators/${id}/avatar`,
   avatarThumbUrl:    (id, size = 480) => `/api/creators/${id}/avatar-thumb?size=${size}`,
+  // Showcase — 5 card display slots on the profile
+  showcase:          (id)               => api.get(`/creators/${id}/showcase`),
+  showcaseEligible:  (id, slot)         => api.get(`/creators/${id}/showcase/eligible`, { params: { slot } }),
+  showcaseSet:       (id, slot, invId)  => api.put(`/creators/${id}/showcase/${slot}`, { inventory_id: invId }),
+  showcaseClear:     (id, slot)         => api.delete(`/creators/${id}/showcase/${slot}`),
 }
 
 // ── Images ────────────────────────────────────────────────────────────────────
@@ -155,6 +162,8 @@ export const imagesApi = {
   addCreator:         (id, creatorId) => api.post(`/images/${id}/creators/${creatorId}`),
   removeCreator:      (id, creatorId) => api.delete(`/images/${id}/creators/${creatorId}`),
   clearCreators:      (id)            => api.delete(`/images/${id}/creators`),
+  linkFunscript:      (id, content)   => api.post(`/images/${id}/funscript`, { content }),
+  unlinkFunscript:    (id, deleteFile = false) => api.delete(`/images/${id}/funscript`, { params: { delete_file: deleteFile } }),
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -189,6 +198,7 @@ export const feedApi = {
   list:      (params) => api.get('/feed/', { params }),
   generate:  ()       => api.post('/feed/generate'),
   like:      (id)     => api.post(`/feed/${id}/like`),
+  comment:   (id, text) => api.post(`/feed/${id}/comment`, { text }),
   profile:   (id)     => api.get(`/feed/profile/${id}`),
   stories:   ()       => api.get('/feed/stories'),
   storySeen: (id)     => api.post(`/feed/stories/${id}/seen`),
@@ -215,6 +225,22 @@ export const scannerApi = {
   matchFunscripts: (path) => api.post('/scanner/match-funscripts', path ? { path } : {}),
   gpuStatus:       ()     => api.get('/scanner/gpu-status'),
   gpuDownload:     ()     => api.post('/scanner/gpu-download'),
+}
+
+// ── Intake / Triage ───────────────────────────────────────────────────────────
+export const intakeApi = {
+  roots:      ()                 => api.get('/intake/roots'),
+  addRoot:    (path, label)      => api.post('/intake/roots', { path, label }),
+  delRoot:    (id)               => api.delete(`/intake/roots/${id}`),
+  scan:       (rootId)           => api.post('/intake/scan', rootId ? { root_id: rootId } : {}),
+  items:      (status = 'pending') => api.get('/intake/items', { params: { status } }),
+  commit:     (itemIds, target)  => api.post('/intake/commit', { item_ids: itemIds, target }),
+  discard:    (itemIds, deleteFile = false) => api.post('/intake/discard', { item_ids: itemIds, delete_file: deleteFile }),
+  status:     ()                 => api.get('/intake/status'),
+  archiveContents:  (id)         => api.get(`/intake/items/${id}/archive`),
+  archivePreviewUrl: (id, name)  => `/api/intake/items/${id}/archive/preview?name=${encodeURIComponent(name)}`,
+  getConfig:  ()                 => api.get('/intake/config'),
+  setConfig:  (d)                => api.post('/intake/config', d),
 }
 
 // ── Playlists ─────────────────────────────────────────────────────────────────
@@ -264,6 +290,7 @@ export const cardsApi = {
   dismantle:           (invId)    => api.post(`/cards/${invId}/dismantle`),
   dismantleBatch:      (ids)      => api.post('/cards/forge/dismantle-batch', { inventory_ids: ids }),
   applyCatalyst:       (invId)    => api.post(`/cards/${invId}/apply-catalyst`),
+  craftPrestige:       (invId)    => api.post(`/cards/${invId}/craft-prestige`),
   feedDuplicate:       (invId)    => api.post(`/cards/${invId}/feed-duplicate`),
   feedCards:           (invId, sourceIds) => api.post(`/cards/${invId}/feed-cards`, { source_ids: sourceIds }),
   evolveCxp:           (invId)    => api.post(`/cards/${invId}/evolve-cxp`),
@@ -274,6 +301,7 @@ export const cardsApi = {
   craftCatalyst:       ()         => api.post('/cards/forge/craft-catalyst'),
   shardsToCredits:     (amount)   => api.post('/cards/forge/shards-to-credits', null, { params: { amount } }),
   rarityDistribution:  ()         => api.get('/cards/rarity-distribution'),
+  recomputeRarity:     ()         => api.post('/cards/recompute-rarity'),
   variantPairs:        ()         => api.get('/cards/forge/variant-pairs'),
   forgeVariant:        (creator_id, character_id) => api.post('/cards/forge/craft-variant', { creator_id, character_id }),
 }
@@ -309,6 +337,9 @@ export const systemApi = {
   checkUpdate:   () => api.get('/system/update/check'),
   installUpdate: (download_url) => api.post('/system/update/install', { download_url }),
   updateStatus:  () => api.get('/system/update/status'),
+  getPersonalMode:    () => api.get('/system/personal-mode'),
+  unlockPersonalMode: (password) => api.post('/system/personal-mode/unlock', { password }),
+  lockPersonalMode:   () => api.post('/system/personal-mode/lock'),
 }
 
 export const tasksApi = {
@@ -352,6 +383,16 @@ export const companionApi = {
     fd.append('file', file)
     return api.post('/companion/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
+  // Simulation ("Drama") Mode
+  simStatus:    ()          => api.get('/companion/simulation/status'),
+  simBoost:     (minutes=30) => api.post('/companion/simulation/boost', null, { params: { minutes } }),
+  simStir:      ()          => api.post('/companion/simulation/stir'),
+  // Group chats — send uses a long timeout: one batched LLM call can take minutes
+  groups:       ()                  => api.get('/companion/groups'),
+  createGroup:  (creatorIds, title) => api.post('/companion/groups', { creator_ids: creatorIds, title: title || undefined }),
+  group:        (id)                => api.get(`/companion/groups/${id}`),
+  groupSend:    (id, text)          => api.post(`/companion/groups/${id}/message`, { text }, { timeout: 600000 }),
+  deleteGroup:  (id)                => api.delete(`/companion/groups/${id}`),
 }
 
 export default api

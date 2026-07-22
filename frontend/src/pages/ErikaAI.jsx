@@ -5,11 +5,14 @@ import {
   ChevronDown, Check, X,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { companionApi, creatorsApi } from '../lib/api'
+import { companionApi, creatorsApi, systemApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
 import CompanionChat from '../components/companion/CompanionChat'
+import GroupChat from '../components/companion/GroupChat'
+import GroupsPanel from '../components/companion/GroupsPanel'
+import SimulationSection from '../components/companion/SimulationSection'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -195,6 +198,7 @@ function PersonalityDropdown({ value, onChange, className }) {
 
 export default function ErikaAI() {
   const [activeTab, setActiveTab]         = useState('chat')
+  const [openGroupId, setOpenGroupId]     = useState(null)
   const [customModel, setCustomModel]     = useState('')
   const [customMinutes, setCustomMinutes] = useState('')
   const [unloading, setUnloading]         = useState(false)
@@ -203,6 +207,16 @@ export default function ErikaAI() {
   const [personaEdits, setPersonaEdits]   = useState({})
   const [personaPanelOpen, setPersonaPanelOpen] = useState(false)
   const [personaPanelSearch, setPersonaPanelSearch] = useState('')
+
+  const { data: personalMode } = useQuery({
+    queryKey: ['personal-mode'],
+    queryFn:  () => systemApi.getPersonalMode().then(r => r.data.enabled),
+    initialData: false,
+  })
+
+  useEffect(() => {
+    if (!personalMode && activeTab === 'groups') setActiveTab('chat')
+  }, [personalMode, activeTab])
   const [personaPanelPos, setPersonaPanelPos] = useState({ top: 0, left: 0, width: 0, maxH: 300 })
   const [erikaPrompt, setErikaPrompt]     = useState('')
   const avatarInputRef     = useRef(null)
@@ -325,7 +339,7 @@ export default function ErikaAI() {
 
       {/* Tabs */}
       <div className="flex gap-1 px-6 pt-3 pb-0 flex-shrink-0">
-        {['chat', 'settings', 'persona'].map(tab => (
+        {['chat', ...(personalMode ? ['groups'] : []), 'settings', 'persona'].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
                   className="px-5 py-2 rounded-t-lg text-[16px] transition-all capitalize"
                   style={activeTab === tab ? {
@@ -579,6 +593,29 @@ export default function ErikaAI() {
           </div>
         )}
 
+        {/* ── Groups tab ────────────────────────────────────────────────────── */}
+        {activeTab === 'groups' && personalMode && (
+          <div className="flex h-full">
+            <div className="w-[340px] flex-shrink-0 border-r flex flex-col min-h-0"
+                 style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <GroupsPanel creators={creators || []} onOpenGroup={setOpenGroupId} />
+            </div>
+            <div className="flex-1 min-w-0 flex flex-col">
+              {openGroupId ? (
+                <GroupChat groupId={openGroupId}
+                           onDeleted={() => setOpenGroupId(null)} />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
+                  <Sparkles size={40} style={{ color: 'rgba(127,119,221,0.2)' }} />
+                  <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    Pick a group — or start one and watch them collide.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Settings tab ──────────────────────────────────────────────────── */}
         {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto p-6 flex flex-col gap-6">
@@ -812,6 +849,9 @@ export default function ErikaAI() {
                 </div>
               </div>
             </div>
+
+            {/* Simulation ("Drama") Mode */}
+            {personalMode && <SimulationSection config={config} updateField={updateField} />}
 
             {/* Danger zone */}
             <div className="pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>

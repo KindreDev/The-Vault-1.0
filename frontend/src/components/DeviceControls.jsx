@@ -194,6 +194,8 @@ export default function DeviceControls({ className = '' }) {
   const floor         = useDeviceStore(s => s.strokeFloor)
   const ceiling       = useDeviceStore(s => s.strokeCeiling)
   const savedPatterns = useDeviceStore(s => s.savedPatterns)
+  const finisherPattern = useDeviceStore(s => s.finisherPatternName)
+  const finisherActive  = useDeviceStore(s => s.finisherActive)
   const setPreset     = useDeviceStore(s => s.setActivePreset)
   const setCustom     = useDeviceStore(s => s.setCustomPattern)
   const setIntensity  = useDeviceStore(s => s.setIntensity)
@@ -233,6 +235,17 @@ export default function DeviceControls({ className = '' }) {
             style={{ background: 'rgba(212,83,126,0.2)', color: '#F4A8C0', border: '0.5px solid rgba(212,83,126,0.35)' }}>
             <Droplets size={11} />
             Cum
+          </button>
+        )}
+
+        {finisherPattern && (
+          <button
+            onClick={() => deviceService.toggleFinisher(finisherPattern)}
+            title={`Finisher: ${finisherPattern}`}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+            style={{ background: finisherActive ? 'rgba(212,83,126,0.35)' : 'rgba(212,83,126,0.15)',
+                     color: '#F4A8C0', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+            🏁 {finisherActive ? 'Stop' : 'Finish'}
           </button>
         )}
 

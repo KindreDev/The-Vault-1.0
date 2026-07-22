@@ -60,6 +60,29 @@ def health():
     return {"status": "ok"}
 
 
+@router.get("/personal-mode")
+def get_personal_mode():
+    from services.access import is_personal_mode
+    return {"enabled": is_personal_mode()}
+
+
+@router.post("/personal-mode/unlock")
+def unlock_personal_mode(body: dict):
+    from services.access import unlock
+    if not unlock(body.get("password", "")):
+        # Same generic error whether the password was wrong or the guesser is
+        # currently throttled — don't give away which.
+        raise HTTPException(status_code=403, detail="Incorrect password.")
+    return {"enabled": True}
+
+
+@router.post("/personal-mode/lock")
+def lock_personal_mode():
+    from services.access import lock
+    lock()
+    return {"enabled": False}
+
+
 @router.get("/backup")
 def backup_database():
     """
@@ -270,7 +293,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.6.0"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:
@@ -283,6 +306,18 @@ def _parse_version(v: str):
         return tuple(int(x) for x in v.strip().split('.'))
     except Exception:
         return (0, 0, 0)
+
+def _cmp_versions(a: str, b: str):
+    """Compare two version strings safely, padding to equal length.
+    '1.5' and '1.5.0' are treated as equal; avoids Python tuple
+    comparison pitfalls where (1,5) > (1,5,0) is False but (1,5) < (1,5,0)
+    is also False — both silently wrong when lengths differ."""
+    ta = _parse_version(a)
+    tb = _parse_version(b)
+    length = max(len(ta), len(tb))
+    ta = ta + (0,) * (length - len(ta))
+    tb = tb + (0,) * (length - len(tb))
+    return ta, tb
 
 
 @router.get("/version")
@@ -352,8 +387,7 @@ def check_for_updates():
     download_url   = manifest.get("download_url", "")
     changelog      = manifest.get("changelog", "")
 
-    current = _parse_version(APP_VERSION)
-    remote  = _parse_version(remote_version)
+    current, remote = _cmp_versions(APP_VERSION, remote_version)
 
     return {
         "current_version":  APP_VERSION,
@@ -404,7 +438,7 @@ def install_update(body: dict):
                 [tmp_path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
                 creationflags=subprocess.DETACHED_PROCESS | _NO_WINDOW,
             )
-            time.sleep(2)
+            time.sleep(0.1)
             os._exit(0)
         except Exception as e:
             _update_state = {"status": "error", "progress": 0, "error": str(e)}

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Loader2, Sparkles, ImagePlus, X, ChevronDown, User, Check, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { companionApi, creatorsApi, galleriesApi } from '../../lib/api'
+import { companionApi, creatorsApi, galleriesApi, systemApi } from '../../lib/api'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
 
@@ -273,6 +273,11 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   const [deviceOpen, setDeviceOpen]       = useState(true)
   const [breakHover, setBreakHover]       = useState(false)
 
+  // ── /secrets — typed in chat, never sent to the LLM. Toggles personal mode. ──
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false)
+  const [unlockPassword, setUnlockPassword]     = useState('')
+  const [unlockError, setUnlockError]           = useState(false)
+
   const bottomRef   = useRef(null)
   const inputRef    = useRef(null)
   const imageRef    = useRef(null)
@@ -313,6 +318,26 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
     queryFn:  () => galleriesApi.list({ limit: 500 }).then(r => r.data?.items ?? r.data ?? []),
     staleTime: 120000,
     enabled: !!config?.enabled,
+  })
+
+  const { data: personalMode } = useQuery({
+    queryKey: ['personal-mode'],
+    queryFn:  () => systemApi.getPersonalMode().then(r => r.data.enabled),
+    initialData: false,
+  })
+  const unlockMutation = useMutation({
+    mutationFn: (password) => systemApi.unlockPersonalMode(password).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['personal-mode'] })
+      setShowUnlockPrompt(false)
+      setUnlockPassword('')
+      setUnlockError(false)
+    },
+    onError: () => setUnlockError(true),
+  })
+  const lockMutation = useMutation({
+    mutationFn: () => systemApi.lockPersonalMode().then(r => r.data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['personal-mode'] }),
   })
 
   const sessionBreak = useMutation({
@@ -360,6 +385,13 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   }
 
   const sendMessage = useCallback(async (text) => {
+    // A slash command, not a message — never reaches Ollama.
+    if (text.trim().toLowerCase() === '/secrets') {
+      setInput('')
+      if (personalMode) lockMutation.mutate()
+      else setShowUnlockPrompt(true)
+      return
+    }
     if ((!text.trim() && !pendingImage) || streaming) return
     const imgSnap = pendingImage
     setInput('')
@@ -447,7 +479,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
       setStreaming(false)
       qc.invalidateQueries({ queryKey: ['companion-bond'] })
     }
-  }, [streaming, pendingImage, deviceConnected, deviceStore, qc])
+  }, [streaming, pendingImage, deviceConnected, deviceStore, qc, personalMode, lockMutation])
 
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
@@ -810,6 +842,42 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
           Enter to send · Shift+Enter for newline
         </p>
       </div>
+
+      {/* ── /secrets password prompt ────────────────────────────────────────── */}
+      {showUnlockPrompt && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6"
+             style={{ background: 'rgba(0,0,0,0.75)' }}
+             onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}>
+          <div className="rounded-[16px] p-7 max-w-sm w-full"
+               style={{ background: '#1a1a1a', border: '1px solid rgba(127,119,221,0.4)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+               onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}>Password</div>
+            <input
+              type="password"
+              autoFocus
+              value={unlockPassword}
+              onChange={e => { setUnlockPassword(e.target.value); setUnlockError(false) }}
+              onKeyDown={e => { if (e.key === 'Enter' && unlockPassword) unlockMutation.mutate(unlockPassword) }}
+              className="w-full px-4 py-3 rounded-[8px] text-[16px] outline-none mb-3"
+              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${unlockError ? 'rgba(212,83,126,0.5)' : 'rgba(255,255,255,0.1)'}`, color: 'rgba(255,255,255,0.9)' }}
+            />
+            {unlockError && <div style={{ fontSize: 15, color: '#F4C0D1', marginBottom: 10 }}>Incorrect.</div>}
+            <div className="flex gap-3">
+              <button onClick={() => unlockMutation.mutate(unlockPassword)}
+                      disabled={!unlockPassword || unlockMutation.isPending}
+                      className="flex-1 px-4 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-40"
+                      style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                Unlock
+              </button>
+              <button onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}
+                      className="px-4 py-3 rounded-[8px] text-[15px] cursor-pointer"
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

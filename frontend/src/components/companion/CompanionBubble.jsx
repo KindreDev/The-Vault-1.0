@@ -1,5 +1,5 @@
-import React, { useRef } from 'react'
-import { Sparkles, X, Maximize2 } from 'lucide-react'
+import React, { useRef, useState, useEffect } from 'react'
+import { Sparkles, X, Maximize2, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -7,22 +7,32 @@ import { useVaultStore } from '../../store/vault'
 import { companionApi, creatorsApi } from '../../lib/api'
 import { useAllCreators } from '../../hooks/useAllCreators'
 import CompanionChat from './CompanionChat'
+import GroupChat from './GroupChat'
+import GroupsPanel from './GroupsPanel'
 
 export default function CompanionBubble() {
   const companion          = useVaultStore(s => s.companion)
   const setOpen            = useVaultStore(s => s.setCompanionOpen)
   const setCompanionConfig = useVaultStore(s => s.setCompanionConfig)
+  const setCompanionGroup  = useVaultStore(s => s.setCompanionGroup)
   const navigate           = useNavigate()
   const bubbleRef          = useRef(null)
   const qc                 = useQueryClient()
+  const [tab, setTab]      = useState('dm')   // 'dm' | 'groups'
 
   // Fetch creators for the persona switcher
   const { data: creators } = useAllCreators()
+
+  // A drama-spawned group opened from a ping banner lands here with groupId set
+  useEffect(() => {
+    if (companion.groupId) setTab('groups')
+  }, [companion.groupId])
 
   if (!companion.enabled || !companion.config) return null
 
   const config   = companion.config
   const compName = config.name || 'Erika'
+  const groupId  = companion.groupId
 
   // Non-reload persona change: update API + zustand + invalidate queries
   const handlePersonaChange = async (id) => {
@@ -82,9 +92,27 @@ export default function CompanionBubble() {
             <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
                  style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(127,119,221,0.08)' }}>
               <Sparkles size={16} style={{ color: '#7F77DD' }} />
-              <span className="flex-1 text-[17px] font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              <span className="flex-1 text-[17px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.9)' }}>
                 {compName}
               </span>
+              {/* DMs / Groups toggle */}
+              <div className="flex rounded-lg overflow-hidden flex-shrink-0"
+                   style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                {[
+                  { id: 'dm',     label: 'DM' },
+                  { id: 'groups', label: <Users size={13} /> },
+                ].map(t => (
+                  <button key={t.id}
+                          onClick={() => { setTab(t.id); if (t.id === 'dm') setCompanionGroup(null) }}
+                          className="px-2.5 py-1 text-[13px] font-medium flex items-center transition-all"
+                          style={tab === t.id
+                            ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6' }
+                            : { color: 'rgba(255,255,255,0.4)' }}
+                          title={t.id === 'groups' ? 'Group chats' : '1-on-1 chat'}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => { setOpen(false); navigate('/erika') }}
                 className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
@@ -103,14 +131,25 @@ export default function CompanionBubble() {
               </button>
             </div>
 
-            {/* Chat — shared component, same history */}
+            {/* Body — 1-on-1 chat, groups list, or an open group */}
             <div className="flex-1 min-h-0">
-              <CompanionChat
-                config={config}
-                creators={creators || []}
-                onPersonaChange={handlePersonaChange}
-                compact
-              />
+              {tab === 'dm' ? (
+                <CompanionChat
+                  config={config}
+                  creators={creators || []}
+                  onPersonaChange={handlePersonaChange}
+                  compact
+                />
+              ) : groupId ? (
+                <GroupChat
+                  groupId={groupId}
+                  compact
+                  onBack={() => setCompanionGroup(null)}
+                  onDeleted={() => setCompanionGroup(null)}
+                />
+              ) : (
+                <GroupsPanel creators={creators || []} onOpenGroup={(id) => setCompanionGroup(id)} />
+              )}
             </div>
           </motion.div>
         )}

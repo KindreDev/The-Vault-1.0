@@ -274,7 +274,7 @@ export const useVaultStore = create((set, get) => ({
 
   // Multi-viewer queue — files or galleries queued for the multi-panel viewer
   // Item format: { id: string (e.g. 'img-1' or 'gal-1'), type: 'image'|'gallery', media: Object, images?: Array }
-  MULTIVIEWER_MAX: 20,
+  MULTIVIEWER_MAX: 999,
   multiViewerQueue: [],
   addToMultiViewer: (item) => {
     const s = get()
@@ -398,8 +398,10 @@ export const useVaultStore = create((set, get) => ({
     open:    false,
     enabled: false,
     config:  null,
+    groupId: null,   // open group chat id; null = 1-on-1 DM mode
   },
   setCompanionOpen:    (v) => set(s => ({ companion: { ...s.companion, open: v } })),
+  setCompanionGroup:   (v) => set(s => ({ companion: { ...s.companion, groupId: v } })),
   setCompanionEnabled: (v) => set(s => ({ companion: { ...s.companion, enabled: v } })),
   setCompanionConfig:  (v) => set(s => ({ companion: { ...s.companion, config: v, enabled: v?.enabled ?? false } })),
 

@@ -1,0 +1,615 @@
+/* Hoisted out of VaultCard.jsx (was a literal <style> tag re-rendered once per
+   card instance — on a 50-card grid that duplicated ~600 lines of CSS 50 times
+   in the DOM). Same rules, loaded once as a real stylesheet. No visual change. */
+
+@keyframes epic-smoke {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%       { opacity: 0.85; transform: scale(1.06); }
+}
+@keyframes flame-flicker {
+  0%, 100% { box-shadow: 0 0 30px #ff6600, 0 0 60px #ff3300, inset 0 0 20px rgba(255,100,0,0.2); }
+  33%  { box-shadow: 0 0 42px #ff8800, 0 0 72px #ff5500, inset 0 0 28px rgba(255,140,0,0.3); }
+  66%  { box-shadow: 0 0 22px #ff4400, 0 0 44px #ff2200, inset 0 0 14px rgba(255,80,0,0.15); }
+}
+@keyframes gold-shimmer {
+  0%   { background-position: -300% center; }
+  100% { background-position: 300% center; }
+}
+@keyframes holo-border-spin {
+  from { --holo-angle: 0deg; }
+  to   { --holo-angle: 360deg; }
+}
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+  50%       { opacity: 1; transform: scale(1) rotate(20deg); }
+}
+@keyframes rare-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes cosmic-text-glow {
+  0%, 100% { text-shadow: 0 0 6px #fff, 0 0 14px #aaf, 0 0 30px #88f; }
+  50%       { text-shadow: 0 0 10px #fff, 0 0 24px #fff, 0 0 50px #ccf; }
+}
+@keyframes cosmic-name-glow {
+  0%, 100% { text-shadow: 0 0 6px #E8E8FF, 0 0 14px #aaf, 0 0 28px #88f; }
+  50%       { text-shadow: 0 0 12px #fff, 0 0 24px #ccf, 0 0 50px #aaf; }
+}
+@keyframes legendary-name-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(255,140,0,1), 0 0 20px rgba(255,80,0,0.7), 0 0 40px rgba(255,60,0,0.3); }
+  50%       { text-shadow: 0 0 16px rgba(255,220,0,1), 0 0 32px rgba(255,140,0,0.9), 0 0 60px rgba(255,60,0,0.5); }
+}
+@keyframes epic-name-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(180,160,255,0.9), 0 0 20px rgba(127,119,221,0.7), 0 0 40px rgba(100,80,200,0.4); }
+  50%       { text-shadow: 0 0 16px rgba(220,210,255,1), 0 0 36px rgba(180,160,255,0.9), 0 0 60px rgba(127,119,221,0.6); }
+}
+@keyframes relic-name-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(255,215,0,1), 0 0 20px rgba(200,160,0,0.7), 0 0 40px rgba(180,130,0,0.3); }
+  50%       { text-shadow: 0 0 16px rgba(255,245,120,1), 0 0 32px rgba(255,215,0,0.9), 0 0 60px rgba(200,160,0,0.5); }
+}
+@property --holo-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 135deg;
+}
+@keyframes rainbow-text {
+  0%   { color: hsl(0,100%,70%);   text-shadow: 0 0 10px hsl(0,100%,60%); }
+  14%  { color: hsl(40,100%,65%);  text-shadow: 0 0 10px hsl(40,100%,55%); }
+  28%  { color: hsl(80,100%,65%);  text-shadow: 0 0 10px hsl(80,100%,55%); }
+  42%  { color: hsl(160,100%,65%); text-shadow: 0 0 10px hsl(160,100%,55%); }
+  57%  { color: hsl(220,100%,75%); text-shadow: 0 0 10px hsl(220,100%,65%); }
+  71%  { color: hsl(270,100%,75%); text-shadow: 0 0 10px hsl(270,100%,65%); }
+  85%  { color: hsl(310,100%,70%); text-shadow: 0 0 10px hsl(310,100%,60%); }
+  100% { color: hsl(0,100%,70%);   text-shadow: 0 0 10px hsl(0,100%,60%); }
+}
+
+/* ── Common/Uncommon: glare ──────────────────────────────────── */
+.card-holo-trainer {
+  background-image:
+    radial-gradient(
+      farthest-corner circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      hsla(0,0%,100%,.38) 5%, hsla(0,0%,100%,.12) 50%, transparent 78%
+    );
+  mix-blend-mode: overlay;
+  filter: brightness(calc(1.0 + var(--pointer-from-center, 0) * .7));
+  opacity: .5;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Rare: Metal tilt shimmer — two offset layers break the grid ── */
+.card-holo-cosmos-a {
+  background-image:
+    url('/metal.png'),
+    url('/metal.png'),
+    radial-gradient(
+      ellipse 80% 60% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      hsla(0,0%,100%,.2) 0%, transparent 70%
+    );
+  background-blend-mode: overlay, screen, normal;
+  background-size: 83px 67px, 109px 91px, cover;
+  background-position:
+    calc(var(--pointer-x, 50%) * 0.3) calc(var(--pointer-y, 50%) * 0.3),
+    calc(50% - var(--pointer-x, 50%) * 0.2) calc(50% - var(--pointer-y, 50%) * 0.2),
+    center;
+  mix-blend-mode: overlay;
+  filter: brightness(1.4) contrast(1.05) saturate(0);
+  opacity: calc(var(--pointer-from-center, 0) * 0.04);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Rare: Metal glint — Layer B ─────────────────────────────── */
+.card-holo-cosmos-b {
+  background-image:
+    radial-gradient(
+      ellipse 70% 55% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      hsla(0,0%,100%,.5) 0%,
+      hsla(0,0%,100%,.15) 40%,
+      transparent 68%
+    );
+  mix-blend-mode: overlay;
+  opacity: calc(var(--pointer-from-center, 0) * 0.42);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Epic: VMAX Holofoil — Layer A (texture + multicolor foil) ── */
+.card-holo-vmax-a {
+  background-image:
+    url('/vmaxbg.jpg'),
+    repeating-linear-gradient(
+      -33deg,
+      hsl(2,40%,47%) 6%,
+      hsl(228,35%,64%) 12%,
+      hsl(176,35%,39%) 18%,
+      hsl(123,38%,35%) 24%,
+      hsl(283,42%,57%) 30%,
+      hsl(2,40%,47%) 36%
+    ),
+    repeating-linear-gradient(
+      133deg,
+      hsla(227,53%,12%,.5) 0%,
+      hsl(180,10%,50%) 2.5%,
+      hsl(83,50%,35%) 5%,
+      hsl(180,10%,50%) 7.5%,
+      hsla(227,53%,12%,.5) 10%,
+      hsla(227,53%,12%,.5) 15%
+    ),
+    radial-gradient(
+      farthest-corner circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+      hsla(189,76%,77%,.6) 0%,
+      hsla(147,59%,77%,.6) 25%,
+      hsla(271,55%,69%,.6) 50%,
+      hsla(355,56%,72%,.6) 75%
+    );
+  background-blend-mode: difference, luminosity, soft-light;
+  background-size: 116px 97px, 1100% 1100%, 600% 600%, 200% 200%;
+  background-position:
+    calc(var(--pointer-x, 50%) * 0.4) calc(var(--pointer-y, 50%) * 0.4),
+    var(--background-x, 50%) var(--background-y, 50%),
+    var(--background-x, 50%) var(--background-y, 50%),
+    var(--background-x, 50%) var(--background-y, 50%);
+  filter: brightness(calc(var(--pointer-from-center, 0) * .6 + .3)) contrast(1.4) saturate(.45);
+  mix-blend-mode: screen;
+  opacity: calc(0.05 + var(--pointer-from-center, 0) * 0.6);
+}
+
+/* ── Epic: VMAX — Layer B (sunpillar overlay) ─────────────────── */
+.card-holo-vmax-b {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      hsl(2,85%,55%) 6%,
+      hsl(35,90%,55%) 12%,
+      hsl(60,100%,55%) 18%,
+      hsl(120,80%,45%) 24%,
+      hsl(200,90%,55%) 30%,
+      hsl(270,80%,60%) 36%,
+      hsl(2,85%,55%) 42%
+    ),
+    repeating-linear-gradient(
+      133deg,
+      #0e152e 0%,
+      hsl(180,10%,60%) 3.8%,
+      hsl(180,29%,66%) 4.5%,
+      hsl(180,10%,60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    );
+  background-blend-mode: hue, hard-light;
+  background-size: 200% 700%, 300% 100%;
+  background-position: 0% var(--background-y, 50%), var(--background-x, 50%) var(--background-y, 50%);
+  mix-blend-mode: lighten;
+  opacity: calc(.15 + var(--pointer-from-center, 0) * .3);
+}
+
+/* ── Legendary: Trainer Gallery iridescent foil — Layer A ───── */
+.card-holo-regular-a {
+  background-image:
+    repeating-linear-gradient(
+      -22deg,
+      hsla(283,49%,60%,.6) 5%,
+      hsla(2,74%,59%,.6) 10%,
+      hsla(53,67%,53%,.6) 15%,
+      hsla(93,56%,52%,.6) 20%,
+      hsla(176,38%,50%,.6) 25%,
+      hsla(228,100%,77%,.6) 30%,
+      hsla(283,49%,61%,.6) 35%
+    );
+  background-size: 300% 400%;
+  background-position: 0% calc(var(--background-y, 50%) * 1);
+  mix-blend-mode: screen;
+  filter: brightness(calc(var(--pointer-from-center, 0) * .4 + .25)) contrast(1.4) saturate(.85);
+  opacity: .5;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Legendary: Trainer Gallery hard-light shimmer — Layer B ── */
+.card-holo-regular-b {
+  background-image:
+    radial-gradient(
+      farthest-corner ellipse
+      at calc(var(--pointer-x, 50%) * .5 + 25%) calc(var(--pointer-y, 50%) * .5 + 25%),
+      hsl(0,0%,100%) 5%,
+      hsla(300,100%,11%,.5) 40%,
+      hsl(0,0%,22%) 120%
+    );
+  background-size: 400% 500%;
+  mix-blend-mode: hard-light;
+  filter: brightness(calc(var(--pointer-from-center, 0) * .25 + .25)) contrast(.8) saturate(.9);
+  opacity: .5;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Legendary: gold cosmic dust — tuned so it reads as sparkle,
+   never as grime over bright photos. The ambient fields stay faint;
+   the flare is localised to an ellipse around the cursor. ── */
+.card-holo-relic-a {
+  background-image: url('/cosmos-top-trans.png');
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: screen;
+  filter: brightness(1.05) contrast(1.15);
+  opacity: calc(0.02 + var(--pointer-from-center, 0) * 0.22);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Layer B: 130% scale — different speck positions, breaks duplication */
+.card-holo-relic-b {
+  background-image: url('/cosmos-top-trans.png');
+  background-size: 130% 130%;
+  background-position:
+    calc(50% + (var(--pointer-from-left, 0.5) - 0.5) * -50px)
+    calc(50% + (var(--pointer-from-top, 0.5) - 0.5) * -50px);
+  mix-blend-mode: screen;
+  filter: brightness(1.15) contrast(1.15) hue-rotate(15deg);
+  opacity: calc(0.01 + var(--pointer-from-center, 0) * 0.14);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Layer C: cursor flashlight — specks flare ONLY near the cursor */
+.card-holo-relic-c {
+  background-image: url('/cosmos-top-trans.png');
+  background-size: cover;
+  -webkit-mask-image: radial-gradient(
+    ellipse 32% 26% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    #fff 0%, rgba(255,255,255,.4) 55%, transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 32% 26% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    #fff 0%, rgba(255,255,255,.4) 55%, transparent 100%
+  );
+  mix-blend-mode: screen;
+  filter: brightness(2.2) contrast(1.25) saturate(1.8) sepia(.35);
+  opacity: calc(var(--pointer-from-center, 0) * 0.6);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Celestial: prismatic rainbow sheen — Layer A ─────────────────
+   Reworked 2026-07: the old version stacked a black darkening radial
+   (via hard-light) + a hue-blend teal gradient, which darkened the card,
+   tinted it green, AND left a vertical seam from a centered 200%-wide
+   radial. Now a single seamless full-width rainbow band (100% width →
+   no vertical seam) on plain screen with a STATIC filter — bright,
+   balanced, and far cheaper (no per-frame filter/background-blend). */
+.card-holo-v-a {
+  background-image: repeating-linear-gradient(
+    8deg,
+    hsla(2,90%,66%,.42)   0%,
+    hsla(45,95%,64%,.42)  3.2%,
+    hsla(150,75%,62%,.42) 6.4%,
+    hsla(205,95%,68%,.42) 9.6%,
+    hsla(285,88%,70%,.42) 12.8%,
+    hsla(2,90%,66%,.42)   16%
+  );
+  background-size: 100% 300%;
+  background-position: 50% var(--background-y, 50%);
+  mix-blend-mode: screen;
+  filter: saturate(1.6);
+  opacity: .15;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── FOIL: slow prismatic streak — a thin diagonal light band that
+   glides across then rests, like tilting a real foil under a lamp.
+   Soft feathered stops + skewed travel so it never reads as a box. ── */
+@keyframes foil-sheen-sweep {
+  0%       { transform: translateX(-160%) skewX(-22deg); opacity: 0; }
+  6%       { opacity: 1; }
+  38%      { opacity: 1; }
+  46%      { transform: translateX(240%) skewX(-22deg); opacity: 0; }
+  100%     { transform: translateX(240%) skewX(-22deg); opacity: 0; }
+}
+.card-foil-sweep {
+  overflow: hidden;
+}
+.card-foil-sweep::before {
+  content: '';
+  position: absolute;
+  top: -20%; bottom: -20%;
+  left: 0; width: 55%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    hsla(0,100%,68%,.06)   22%,
+    hsla(45,100%,62%,.10)  36%,
+    hsla(160,90%,60%,.12)  50%,
+    hsla(210,100%,68%,.10) 64%,
+    hsla(285,95%,68%,.06)  78%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+  animation: foil-sheen-sweep 5.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* ── FOIL hover: smooth iridescent bands over the art (no texture noise) ── */
+.card-foil-iris {
+  background-image:
+    repeating-linear-gradient(
+      -28deg,
+      hsla(283,55%,62%,.5) 4%,
+      hsla(2,70%,60%,.5)   11%,
+      hsla(53,70%,55%,.5)  18%,
+      hsla(160,55%,55%,.5) 25%,
+      hsla(210,90%,68%,.5) 32%,
+      hsla(283,55%,62%,.5) 39%
+    );
+  background-size: 300% 400%;
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  mix-blend-mode: screen;
+  filter: brightness(calc(var(--pointer-from-center, 0) * .35 + .2)) saturate(.9);
+  opacity: 0.05;
+  transition: opacity .2s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── FOIL hover: glitter that lights up ONLY around the cursor ────
+   NOTE: circle radii must be lengths — 'circle 34%' is INVALID CSS and
+   silently drops the mask (full-card static). Ellipse takes %s. ── */
+.card-foil-glitter {
+  background-image:
+    url('/glitter.png'),
+    repeating-linear-gradient(
+      -35deg,
+      hsl(0,90%,62%)   0%,  hsl(45,95%,58%)  9%,
+      hsl(120,70%,55%) 18%, hsl(200,95%,62%) 27%,
+      hsl(280,85%,64%) 36%, hsl(0,90%,62%)   45%
+    );
+  background-blend-mode: overlay;
+  background-size: cover, 300% 300%;
+  background-position: center, var(--pointer-x, 50%) var(--pointer-y, 50%);
+  -webkit-mask-image: radial-gradient(
+    ellipse 30% 24% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    #fff 0%, rgba(255,255,255,.4) 55%, transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 30% 24% at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    #fff 0%, rgba(255,255,255,.4) 55%, transparent 100%
+  );
+  mix-blend-mode: screen;
+  filter: brightness(1.05) saturate(1.5);
+  opacity: calc(var(--pointer-from-center, 0) * 0.35);
+  transition: opacity .15s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── Celestial: prismatic rainbow sheen — Layer B (cross-angle) ───
+   Reworked 2026-07: was teal/navy content on hue + soft-light (the main
+   green-cast + darkening culprit). Now a second rainbow band at a
+   crossing angle so the two layers interfere into a shifting holo,
+   on plain screen, static filter — bright and cheap. */
+.card-holo-v-b {
+  background-image: repeating-linear-gradient(
+    -100deg,
+    hsla(320,90%,70%,.4)  0%,
+    hsla(45,95%,66%,.4)   4%,
+    hsla(160,75%,62%,.4)  8%,
+    hsla(210,95%,70%,.4)  12%,
+    hsla(275,88%,72%,.4)  16%,
+    hsla(320,90%,70%,.4)  20%
+  );
+  background-size: 200% 200%;
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  mix-blend-mode: screen;
+  filter: saturate(1.5);
+  opacity: .20;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ── CodePen "Pokémon holo" technique (test on celestial) ─────────
+   The key vs our old wash: mix-blend-mode COLOR-DODGE (keeps blacks
+   black — no milky haze) driven through a real foil texture (holo.png)
+   + sparkles.webp, so the shine lives in the texture grain, not as a
+   flat film over the photo. Adapted from codetheworldio/BaGyYPN. */
+/* ── VERBATIM copy of codetheworldio/BaGyYPN "Pokémon Card Holo Effect"
+   (their :before + :after). --background-x/y are driven by our pointer
+   JS exactly like their demo drives background-position. Idle shimmer
+   via their holoGradient/holoSparkle keyframes. ── */
+.card-cdp-a, .card-cdp-b {
+  background-repeat: no-repeat;
+  opacity: .5;
+  mix-blend-mode: color-dodge;
+  transition: opacity .2s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+/* VERBATIM codetheworldio/BaGyYPN :before / :after. These live inside an
+   ISOLATED group whose background IS the photo (.card-cdp-group), so
+   color-dodge blends against the photo exactly like the CodePen —
+   NOT against our dark-purple card bg (which was the magenta cause). */
+.card-cdp-group { isolation: isolate; will-change: transform; transform: translateZ(0); }
+.card-cdp-a {   /* their .card:before */
+  border-radius: 18px;
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 300% 300%;
+  background-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgb(0,231,255) 25%,
+    transparent 47%,
+    transparent 53%,
+    rgb(255,0,231) 75%,
+    transparent 100%
+  );
+  opacity: .5;
+  filter: brightness(.5) contrast(1);
+  mix-blend-mode: color-dodge;
+  z-index: 1;
+}
+.card-cdp-b {   /* their .card:after */
+  border-radius: 14px;
+  background-image:
+    url("/sparkles.webp"),
+    url(/holo.png),
+    linear-gradient(
+      125deg,
+      #ff008450 15%,
+      #fca40040 30%,
+      #ffff0030 40%,
+      #00ff8a20 60%,
+      #00cfff40 70%,
+      #cc4cfa50 85%
+    );
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 160%;
+  background-blend-mode: overlay;
+  filter: brightness(1) contrast(1);
+  mix-blend-mode: color-dodge;
+  opacity: .75;
+  z-index: 2;
+}
+
+/* ── Foil Celestial CodePen holo — same technique as purple foils but
+   uses its OWN image files so swapping them never touches purple foils.
+   Replace /sparkles-celestial.gif and /holo-celestial.png with your
+   new assets. ── */
+.card-cdp-cel-a, .card-cdp-cel-b {
+  background-repeat: no-repeat;
+  opacity: .5;
+  mix-blend-mode: color-dodge;
+  transition: opacity .2s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+.card-cdp-cel-a {
+  border-radius: 18px;
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 300% 300%;
+  background-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgb(0,231,255) 25%,
+    transparent 47%,
+    transparent 53%,
+    rgb(255,0,231) 75%,
+    transparent 100%
+  );
+  opacity: .5;
+  filter: brightness(.5) contrast(1);
+  mix-blend-mode: color-dodge;
+  z-index: 1;
+}
+.card-cdp-cel-b {
+  border-radius: 14px;
+  background-image:
+    url("/universe.webp"),
+
+    linear-gradient(
+      125deg,
+      #ff008450 15%,
+      #fca40040 30%,
+      #ffff0030 40%,
+      #00ff8a20 60%,
+      #00cfff40 70%,
+      #cc4cfa50 85%
+    );
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 300%;
+  background-blend-mode: darken;
+  filter: brightness(1) contrast(1);
+  mix-blend-mode: color-dodge;
+  opacity: 1;
+  z-index: 2;
+}
+
+/* ── Foil Legendary CodePen holo — same technique, own image files.
+   Replace /sparkles-legendary.gif and /holo-legendary.png with your
+   new assets. ── */
+.card-cdp-leg-a, .card-cdp-leg-b {
+  background-repeat: no-repeat;
+  opacity: .5;
+  mix-blend-mode: color-dodge;
+  transition: opacity .2s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+.card-cdp-leg-a {
+  border-radius: 18px;
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 300% 300%;
+  background-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgb(0,231,255) 25%,
+    transparent 47%,
+    transparent 53%,
+    rgb(255,0,231) 75%,
+    transparent 100%
+  );
+  opacity: .5;
+  filter: brightness(.5) contrast(1);
+  mix-blend-mode: color-dodge;
+  z-index: 1;
+}
+.card-cdp-leg-b {
+  border-radius: 14px;
+  background-image:
+    url("/gold-hearts.webp"),
+
+    linear-gradient(
+      125deg,
+      #ff008450 15%,
+      #fca40040 30%,
+      #ffff0030 40%,
+      #00ff8a20 60%,
+      #00cfff40 70%,
+      #cc4cfa50 85%
+    );
+  background-position: var(--background-x, 50%) var(--background-y, 50%);
+  background-size: 160%;
+  background-blend-mode: darken;
+  filter: brightness(1) contrast(1);
+  mix-blend-mode: color-dodge;
+  opacity: .3;
+  z-index: 2;
+}
+
+/* ── Rarity-class badge (R / SR / SSR / UR) ─────────────────────────────── */
+.rc-badge {
+  position: absolute; top: 8px; left: 8px; z-index: 11;
+  min-width: 26px; text-align: center; padding: 3px 7px; border-radius: 7px;
+  font-weight: 800; font-size: 12px; letter-spacing: 0.05em; line-height: 1;
+  font-family: 'Cause', 'Inter', system-ui, sans-serif; pointer-events: none;
+  overflow: hidden;
+}
+.rc-badge .rc-spk { font-size: 8px; margin-left: 2px; vertical-align: top; }
+/* per-tier color ramp (matches the frame) */
+.rc-common    { --t1:#5B54B8; --t2:#7F77DD; --t3:#9F8FEF; --t4:#D6CCFF; --ux1:#D4537E; --ux2:#55C2FF; }
+.rc-epic      { --t1:#A34400; --t2:#cc5500; --t3:#ff8800; --t4:#FFC98A; --ux1:#FF3D00; --ux2:#FFD24A; }
+.rc-legendary { --t1:#B8860B; --t2:#E0B84C; --t3:#FFD700; --t4:#FFF3B0; --ux1:#FFAA00; --ux2:#FFFFFF; }
+.rc-celestial { --t1:#9aa0d0; --t2:#c8ccf0; --t3:#E8E8FF; --t4:#ffffff; --ux1:#ff5db1; --ux2:#5db8ff; }
+/* intensity per class */
+.rc-R   { background: color-mix(in srgb, var(--t2) 16%, #0b0b12); border: 1px solid color-mix(in srgb, var(--t2) 46%, transparent); color: var(--t3); }
+.rc-SR  { background: linear-gradient(135deg, var(--t2), var(--t1)); border: 1px solid var(--t3); color: var(--t4); box-shadow: 0 0 11px color-mix(in srgb, var(--t2) 60%, transparent); }
+.rc-SSR { background: linear-gradient(135deg, var(--t1), var(--t3) 55%, var(--t2)); border: 1px solid var(--t4); color: #fff; text-shadow: 0 0 6px color-mix(in srgb, var(--t4) 85%, transparent); box-shadow: 0 0 17px color-mix(in srgb, var(--t3) 72%, transparent); }
+.rc-SSR::before { content:''; position:absolute; inset:0; background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.6) 50%, transparent 68%); transform: translateX(-130%); animation: rc-shimmer 2.6s ease-in-out infinite; }
+.rc-UR  { color:#fff; border:1px solid rgba(255,255,255,0.92); background: linear-gradient(120deg, var(--t2), var(--ux1), var(--t4), var(--ux2), var(--t2)); background-size:320% 320%; animation: rc-shift 4s linear infinite, rc-pulse 2.2s ease-in-out infinite; text-shadow: 0 0 9px rgba(255,255,255,0.75); }
+/* celestial UR opens to full rainbow */
+.rc-celestial.rc-UR { background: linear-gradient(120deg,#ff0000,#ff7700,#ffff00,#00ff88,#0088ff,#aa00ff,#ff0088,#ff0000); background-size:320% 320%; }
+@keyframes rc-shimmer { 0%{transform:translateX(-130%);} 60%,100%{transform:translateX(240%);} }
+@keyframes rc-shift { 0%{background-position:0% 50%;} 100%{background-position:320% 50%;} }
+@keyframes rc-pulse { 0%,100%{box-shadow:0 0 12px color-mix(in srgb, var(--t3) 60%, transparent);} 50%{box-shadow:0 0 24px color-mix(in srgb, var(--t3) 95%, transparent), 0 0 36px color-mix(in srgb, var(--ux1) 55%, transparent);} }
+
+/* ── Prestige treatment (crafted holo) — universal across tiers ─────────── */
+.vc-prestige-halo { position:absolute; inset:-6px; border-radius:20px; z-index:0; transform-origin:center; pointer-events:none;
+  background:conic-gradient(from 135deg,#ff0000,#ff7700,#ffff00,#00ff88,#0088ff,#aa00ff,#ff0088,#ff0000);
+  filter:blur(9px); animation:vc-prestige-pulse 3.4s ease-in-out infinite; }
+@keyframes vc-prestige-pulse { 0%,100%{transform:scale(1.0);opacity:0.6;} 50%{transform:scale(1.06);opacity:0.95;} }
+.vc-prestige-flower { position:absolute; z-index:8; color:#FFD700; pointer-events:none;
+  text-shadow:0 0 7px #FFD700,0 0 14px #ffb300; animation:vc-prestige-tw 2.4s ease-in-out infinite; }
+@keyframes vc-prestige-tw { 0%,100%{opacity:0;transform:scale(0.5);} 50%{opacity:1;transform:scale(1);} }
+.vc-prestige-label { font-weight:800; letter-spacing:0.08em; padding:1px 7px; border-radius:11px; color:#fff; white-space:nowrap;
+  background:linear-gradient(120deg,#ff0088,#aa00ff,#0088ff,#00ff88,#ffcc00,#ff0088); background-size:300% 300%;
+  animation:vc-prestige-shift 4s linear infinite; box-shadow:0 0 9px rgba(255,255,255,0.45); }
+@keyframes vc-prestige-shift { to { background-position:300% 50%; } }

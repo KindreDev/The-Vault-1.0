@@ -18,6 +18,11 @@ from models import (
     Creator, FeedComment, FeedPost, FeedStory, Gallery, Image, Tag,
     gallery_creators, image_tags,
 )
+from services.access import is_personal_mode
+
+# Fallback first names for the "Liked by" summary when a post has no comments
+# yet to draw names from — picked deterministically per post so it's stable.
+_LIKE_NAME_POOL = ["Alex", "Sam", "Jordan", "Riley", "Morgan", "Casey", "Taylor", "Jamie"]
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
 MAX_POSTS_PER_DAY   = 12   # global cap across all creators
@@ -526,6 +531,7 @@ def dm_pings(db: Session) -> list[dict]:
         out.append({
             "id": p.id,
             "message": p.message,
+            "group_id": p.group_id,
             "created_at": p.created_at.isoformat() if p.created_at else None,
             "creator": {
                 "id": c.id, "name": c.name,
@@ -614,6 +620,26 @@ def _post_hashtags(db: Session, image_ids: list[int], limit: int = 6) -> list[st
     return names if len(names) >= 2 else []
 
 
+def _likes_summary(post: FeedPost, comments: list, like_count: int) -> dict:
+    """Instagram-style 'Liked by X, Y and N more' — used to stand in for the
+    real comment thread when personal mode is locked. Names are first-name-only,
+    drawn from real commenters when available so it still feels tied to the post."""
+    names = []
+    for cm in comments:
+        if cm.creator_id is None:
+            continue  # skip Erika / the user
+        first = (cm.author_name or "").strip().split(" ")[0]
+        if first and first not in names:
+            names.append(first)
+        if len(names) == 2:
+            break
+    if not names:
+        rng = random.Random(post.id * 31)
+        names = rng.sample(_LIKE_NAME_POOL, 2)
+    extra = max(0, like_count - len(names))
+    return {"names": names, "extra": extra}
+
+
 def _serialize_post(db: Session, post: FeedPost) -> dict:
     try:
         ids = json.loads(post.image_ids or "[]")
@@ -632,6 +658,12 @@ def _serialize_post(db: Session, post: FeedPost) -> dict:
         gallery_name = db.query(Gallery.name).filter(Gallery.id == post.gallery_id).scalar()
 
     c = post.creator
+    like_count = random.Random(post.id * 97).randint(180, 42000)
+    raw_comments = (db.query(FeedComment)
+                      .filter(FeedComment.post_id == post.id)
+                      .order_by(FeedComment.id.asc()).all())
+
+    personal = is_personal_mode()
     return {
         "id": post.id,
         "post_type": post.post_type,
@@ -643,17 +675,19 @@ def _serialize_post(db: Session, post: FeedPost) -> dict:
         "gallery_name": gallery_name,
         "images": images,
         "hashtags": _post_hashtags(db, ids),
-        "like_count": random.Random(post.id * 97).randint(180, 42000),
+        "like_count": like_count,
+        "likes_summary": None if personal else _likes_summary(post, raw_comments, like_count),
         "comments": [{
             "id": cm.id,
             "creator_id": cm.creator_id,
             "author": cm.author_name,
             "handle": handle_for(cm.author_name),   # companion rename flows through
-            "is_erika": cm.creator_id is None,
+            "is_erika": cm.creator_id is None and not cm.is_user,
+            "is_user": bool(cm.is_user),
             "text": cm.text,
-        } for cm in db.query(FeedComment)
-                      .filter(FeedComment.post_id == post.id)
-                      .order_by(FeedComment.id.asc()).all()],
+            "reply_to": cm.reply_to_name,
+            "sim": bool(cm.sim),
+        } for cm in raw_comments] if personal else [],
         "creator": {
             "id": c.id if c else None,
             "name": c.name if c else "Unknown",
@@ -774,7 +808,23 @@ def toggle_like(db: Session, post_id: int) -> dict:
         return {"error": "not found"}
     post.liked = not bool(post.liked)
     db.commit()
-    return {"liked": post.liked}
+    return {"liked": post.liked, "creator_id": post.creator_id}
+
+
+def add_user_comment(db: Session, post_id: int, text: str) -> dict:
+    """You leave a comment on a creator's post — as yourself, under your username."""
+    from models import UserProfile
+    post = db.query(FeedPost).filter(FeedPost.id == post_id).first()
+    if not post:
+        return {"error": "not found"}
+    profile = db.query(UserProfile).first()
+    uname = (getattr(profile, 'username', None) or "You").strip() or "You"
+    cm = FeedComment(post_id=post_id, creator_id=None, author_name=uname,
+                     text=text[:600], is_user=True)
+    db.add(cm)
+    db.commit()
+    db.refresh(cm)
+    return {"id": cm.id, "creator_id": post.creator_id, "author": uname, "text": cm.text}
 
 
 # ── Sim profile & social standing ─────────────────────────────────────────────

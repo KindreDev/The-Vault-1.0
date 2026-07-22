@@ -271,10 +271,39 @@ _PERSONALITY_POOL = (
 )
 
 
-def assign_personality(creator, force: bool = False) -> str:
-    """Give a creator a stable, seeded-random personality. No-op if she already
-    has one assigned (or a deliberately-chosen non-default one), unless force."""
+# Baseline dirty-mouth by personality — how casually she swears when NOT angry.
+_VULGARITY_BY_PERSONALITY = {
+    'bold': 55, 'dominant': 52, 'tsundere': 48, 'cold': 42, 'teasing': 45,
+    'playful': 44, 'yandere': 38, 'warm': 28, 'mommy': 22, 'deredere': 34,
+    'kuudere': 30, 'shy': 14, 'dandere': 10,
+}
+# Cultural nudge — some origins just have a filthier casual register (organic flavour).
+_ORIGIN_VULGAR_HINTS = ('irel', 'irish', 'scot', 'glasg', 'australia', 'aussie',
+                        'england', 'britain', 'british', 'uk', 'london', 'liverpool', 'manch')
+
+
+def seed_vulgarity(creator) -> int:
+    """A stable, organic baseline dirty-mouth level (0-100). Most girls land moderate;
+    a handful are just filthy by nature; shy types stay clean. Nudged by origin."""
     import random as _random
+    base = _VULGARITY_BY_PERSONALITY.get(getattr(creator, 'personality_type', None) or 'warm', 30)
+    rng = _random.Random((getattr(creator, 'id', 0) or 0) * 31 + 7)
+    val = base + rng.randint(-18, 22)
+    origin = (getattr(creator, 'origin', None) or "").lower()
+    if any(h in origin for h in _ORIGIN_VULGAR_HINTS):
+        val += 22
+    if rng.random() < 0.10:          # ~10% just have a filthy mouth no matter what
+        val = max(val, rng.randint(72, 95))
+    return max(0, min(100, val))
+
+
+def assign_personality(creator, force: bool = False) -> str:
+    """Give a creator a stable, seeded-random personality (and a baseline vulgarity).
+    No-op if she already has one assigned (or a deliberately-chosen non-default one)."""
+    import random as _random
+    # Always make sure she has a vulgarity baseline, even if personality is already set.
+    if getattr(creator, 'vulgarity', None) is None:
+        creator.vulgarity = seed_vulgarity(creator)
     if not force:
         if getattr(creator, 'personality_assigned', False):
             return creator.personality_type or 'warm'
@@ -286,6 +315,8 @@ def assign_personality(creator, force: bool = False) -> str:
     pt = _random.Random(seed).choice(_PERSONALITY_POOL)
     creator.personality_type = pt
     creator.personality_assigned = True
+    # Re-seed vulgarity now that personality is known (personality drives the base).
+    creator.vulgarity = seed_vulgarity(creator)
     return pt
 
 
@@ -535,6 +566,38 @@ def _persona_own_galleries(db: Session, c) -> str:
     return block
 
 
+def _persona_mood_toward_user(db: Session, c) -> str:
+    """If Simulation Mode has left this girl jealous/upset with the user, tell her so
+    she carries that into the DM — cold, confronting, escalating per her personality."""
+    try:
+        from models import SimRelationship
+        r = (db.query(SimRelationship)
+               .filter(SimRelationship.subject_id == c.id,
+                       SimRelationship.target_user == True)  # noqa: E712
+               .first())
+    except Exception:
+        return ""
+    if not r:
+        return ""
+    sent, heat = (r.sentiment or 0), (r.heat or 0)
+    if sent > -8 and heat < 12:
+        return ""  # basically fine
+    reason = (r.last_reason or "something he did").strip()
+    if sent <= -45 or heat >= 70:
+        level = ("You are FURIOUS with him right now. " + reason.capitalize() + ". Don't hide it — "
+                 "confront him. If pushing you is in your nature, you can get genuinely cruel, "
+                 "insult him, threaten to walk. Make him work HARD to fix this.")
+    elif sent <= -20 or heat >= 40:
+        level = ("You're hurt and jealous. " + reason.capitalize() + ". You're cold and short with "
+                 "him, throwing shade, making him notice you're upset. You want an apology.")
+    else:
+        level = ("You're a little put out with him. " + reason.capitalize() + ". A bit clipped and "
+                 "pointed, testing whether he even notices.")
+    return ("\n\n=== HOW YOU FEEL ABOUT HIM RIGHT NOW ===\n" + level +
+            "\nStay true to your personality — a sweet girl sulks and wants reassurance; a fierce one "
+            "goes for the throat. Let him earn his way back; don't melt the instant he's nice.")
+
+
 def build_persona_prompt(db: Session, config) -> str:
     from models import Creator
 
@@ -549,9 +612,10 @@ def build_persona_prompt(db: Session, config) -> str:
                 feed_ctx = ""
             look = _persona_appearance(c)
             own  = _persona_own_galleries(db, c)
+            mood = _persona_mood_toward_user(db, c)
             # Use custom prompt if the user wrote one
             if getattr(c, 'companion_prompt', None):
-                return c.companion_prompt + look + own + feed_ctx
+                return c.companion_prompt + look + own + mood + feed_ctx
             # Auto-generate from creator data
             lines = [f"You are roleplaying as {c.name} ({c.creator_type})."]
             if c.description:
@@ -561,7 +625,7 @@ def build_persona_prompt(db: Session, config) -> str:
             if getattr(c, 'series', None):
                 lines.append(f"From: {c.series}")
             lines.append(f"Stay in character as {c.name} at all times. Respond as they would.")
-            return "\n".join(lines) + look + own + feed_ctx
+            return "\n".join(lines) + look + own + mood + feed_ctx
 
     # Custom prompt saved by user takes priority — substitute {name} dynamically
     if getattr(config, 'companion_prompt', None):

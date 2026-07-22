@@ -133,7 +133,7 @@ const LEVEL_TIERS = [
 ]
 
 const RARITY_DATA = [
-  { label: 'Common',    color: '#888',    shard: 5,    bg: 'rgba(136,136,136,0.12)', note: 'Standard image cards' },
+  { label: 'Core',      color: '#888',    shard: 5,    bg: 'rgba(136,136,136,0.12)', note: 'Standard image cards' },
   { label: 'Uncommon',  color: '#1D9E75', shard: 10,   bg: 'rgba(29,158,117,0.12)',  note: 'Gallery cards' },
   { label: 'Rare',      color: '#4682DC', shard: 25,   bg: 'rgba(70,130,220,0.12)',  note: 'Creator cards + shimmer effect' },
   { label: 'Epic',      color: '#9F8FEF', shard: 75,   bg: 'rgba(127,119,221,0.15)', note: 'Goon cards (≥20 orgasms) + glow' },
@@ -666,7 +666,7 @@ function CardsContent() {
         <SectionBody>
           <div className="grid grid-cols-2 gap-2 text-[17px]">
             {[
-              { label: 'Image card',   rarity: 'Common',    desc: 'Generated from random images in your vault. 67% of pack drops.' },
+              { label: 'Image card',   rarity: 'Core',    desc: 'Generated from random images in your vault. 67% of pack drops.' },
               { label: 'Gallery card', rarity: 'Uncommon',  desc: 'One gallery becomes a card. 19% of drops. Shows gallery cover art.' },
               { label: 'Creator card', rarity: 'Rare',      desc: 'A creator or character from your roster. 7% of drops.' },
               { label: 'Goon card',    rarity: 'Epic',      desc: 'Images with 20+ orgasms logged. Only 1% of drops — rare by design.' },

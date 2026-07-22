@@ -60,19 +60,22 @@ def get_inventory(
     if rarity:
         q = q.filter(Card.rarity == rarity)
 
-    from models import CardRarity
-    RARITY_IDX = {r: i for i, r in enumerate(
-        ["common", "uncommon", "rare", "epic", "legendary", "relic", "celestial"]
-    )}
+    from config import RARITY_ORDER
+    from services.cards import norm_rarity, rarity_score
+    RARITY_IDX = {r: i for i, r in enumerate(RARITY_ORDER)}
 
     invs = q.all()
 
     def sort_key(inv):
-        r = inv.card.rarity.value if hasattr(inv.card.rarity, "value") else inv.card.rarity
+        r = norm_rarity(inv.card.rarity)
+        # True Rarity: sort by the scarcity-aware Collection Rarity Score so a
+        # scarce low-tier card can outrank a generic high-tier one. Falls back to
+        # the tier×foil×level score for any card not yet scored (crs == 0).
+        crs = inv.card.crs or rarity_score(inv.card)
         if sort == "rarity_desc":
-            return -RARITY_IDX.get(r, 0)
+            return (-crs, -rarity_score(inv.card))
         if sort == "rarity_asc":
-            return RARITY_IDX.get(r, 0)
+            return (crs, rarity_score(inv.card))
         if sort == "recent":
             return -(inv.card.generated_at.timestamp() if inv.card.generated_at else 0)
         if sort == "cxp":
@@ -103,6 +106,13 @@ def card_rarity_distribution(db: Session = Depends(get_db)):
         by_rarity[key] = int(r.count or 0)
     total = sum(by_rarity.values())
     return {"by_rarity": by_rarity, "total": total}
+
+
+@router.post("/recompute-rarity")
+def recompute_rarity(db: Session = Depends(get_db)):
+    """Recompute every card's Collection Rarity Score + R/SR/SSR/UR class."""
+    from services.rarity import compute_rarity
+    return {"scored": compute_rarity(db)}
 
 
 @router.get("/{card_id}")
@@ -169,6 +179,15 @@ def apply_catalyst(inventory_id: int, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return result
+
+
+@router.post("/{inventory_id}/craft-prestige")
+def craft_prestige(inventory_id: int, db: Session = Depends(get_db)):
+    """Turn a card Prestige by spending duplicates + credits (see craft_prestige)."""
+    try:
+        return card_svc.craft_prestige(db, inventory_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ── CXP: feed duplicate ───────────────────────────────────────────────────────

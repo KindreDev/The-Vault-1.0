@@ -135,3 +135,26 @@ _frames/sheet_c2.jpg
 allow-mobile-firewall.bat
 backend/companion_avatars/companion_avatar.jpg
 VAULT_1.1.2_GUIDE.md
+.vs/The Vault/FileContentIndex/f2965799-3621-4f1b-8817-1c287a1d691f.vsidx
+.vs/The Vault/FileContentIndex/ed41833b-eb73-4047-a608-9c5729acf07a.vsidx
+.vs/The Vault/FileContentIndex/cde1fc0e-3f05-42eb-a7ca-9de65189e954.vsidx
+.vs/The Vault/FileContentIndex/c1633f5b-7b30-4a55-ad16-aa3d3a6dc442.vsidx
+.vs/The Vault/FileContentIndex/8eaf6701-174b-489e-93e7-f6b9faf025a7.vsidx
+.vs/VSWorkspaceState.json
+.vs/The Vault/v17/DocumentLayout.json
+.vs/The Vault/v17/DocumentLayout.backup.json
+.vs/The Vault/v17/.wsuo
+.vs/slnx.sqlite
+.vs/ProjectSettings.json
+*.vsidx
+AGENTS.md
+backend/routers/group_chat.py
+backend/services/access.py
+backend/services/group_chat.py
+backend/services/simulation.py
+frontend/src/components/companion/GroupChat.jsx
+frontend/src/components/companion/GroupsPanel.jsx
+frontend/src/components/companion/SimulationSection.jsx
+GROUP_CHAT_SPEC.md
+INTAKE_SPEC.md
+.vs/slnx.sqlite-journal

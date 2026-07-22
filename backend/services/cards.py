@@ -10,7 +10,7 @@ import random
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from models import (
     Card, CardInventory, CardPack, CardRarity, CardType,
@@ -19,15 +19,43 @@ from models import (
 )
 from config import (
     BASELINE_RARITY, DROP_WEIGHTS, GOON_THRESHOLD, PACK_COST, PACK_SIZE,
-    RARITY_ORDER, SHARD_YIELD, HEART_YIELD, UPGRADE_EPIC_CHANCE, UPGRADE_LEGENDARY_CHANCE,
-    UPGRADE_RELIC_CHANCE, UPGRADE_CELESTIAL_CHANCE, VARIANT_CAP, ECONOMY, CATALYST_SHARD_COST,
-    DISMANTLE_XP, CXP_THRESHOLDS, CXP_EVOLVE_SHARD_COST, CXP_FEED_YIELD,
+    RARITY_ORDER, LEGACY_RARITY_MAP, SHARD_YIELD, HEART_YIELD,
+    FOIL_CHANCE, FOIL_CHANCE_PREMIUM, FOIL_SHARD_MULT,
+    GALLERY_EPIC_RATING, PREMIUM_RARITY_FLOOR,
+    VARIANT_CAP, ECONOMY, CATALYST_SHARD_COST,
+    DISMANTLE_XP, LEVEL_CXP_STEP, MAX_CARD_LEVEL, CXP_FEED_YIELD,
+    RARITY_SCORE_BASE, RARITY_SCORE_FOIL_MULT, RARITY_SCORE_LEVEL_BONUS,
     FORGE_VARIANT_SHARD_COST, FORGE_VARIANT_CATALYST_COST,
     FEED_CARD_TYPE_MULTIPLIERS, OVERFLOW_CXP_TO_CREDITS_RATE,
 )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def norm_rarity(rarity) -> str:
+    """Normalise a rarity to the live 4-tier system (tolerates legacy strings)."""
+    r = rarity.value if hasattr(rarity, "value") else rarity
+    return LEGACY_RARITY_MAP.get(r, r)
+
+
+def card_level(card: Card) -> int:
+    """A card's level (1-10), grown via CXP within its fixed rarity."""
+    step = LEVEL_CXP_STEP.get(norm_rarity(card.rarity), 100)
+    return min(MAX_CARD_LEVEL, 1 + (card.cxp or 0) // step)
+
+
+def max_cxp(card: Card) -> int:
+    """CXP at which the card hits level 10 — feeding beyond this overflows."""
+    step = LEVEL_CXP_STEP.get(norm_rarity(card.rarity), 100)
+    return step * (MAX_CARD_LEVEL - 1)
+
+
+def rarity_score(card: Card) -> int:
+    """Composite score ranking how special a card is: tier × foil × level."""
+    base = RARITY_SCORE_BASE.get(norm_rarity(card.rarity), 10)
+    score = base * (RARITY_SCORE_FOIL_MULT if card.foil else 1.0)
+    score *= 1 + RARITY_SCORE_LEVEL_BONUS * (card_level(card) - 1)
+    return int(round(score))
 
 def _cxp_level_multiplier(db: Session) -> float:
     """Level 50+ grants +1% CXP per level, capped at +50% at level 100."""
@@ -54,24 +82,11 @@ def _get_or_create_profile(db: Session) -> UserProfile:
     return get_or_create_profile(db)
 
 
-def _upgrade_rarity(base: str) -> tuple[str, bool]:
-    """Run the upgrade lottery. Returns (final_rarity, is_relic).
-    Roll order (cumulative): celestial(0.1%) → relic(0.5%) → legendary(1%) → epic+1(5%) → base.
-    """
-    roll = random.random()
-    if roll < UPGRADE_CELESTIAL_CHANCE:
-        return "celestial", True
-    if roll < UPGRADE_RELIC_CHANCE:
-        return "relic", True
-    if roll < UPGRADE_LEGENDARY_CHANCE:
-        return "legendary", False
-    if roll < UPGRADE_EPIC_CHANCE:
-        # +1 tier, capped at epic
-        idx = RARITY_ORDER.index(base)
-        epic_idx = RARITY_ORDER.index("epic")
-        new_idx = min(idx + 1, epic_idx)
-        return RARITY_ORDER[new_idx], False
-    return base, base == "celestial"
+def _roll_foil(pack_type: str = "standard") -> bool:
+    """The foil lottery — replaces the old tier-upgrade lottery. Rarity is fixed
+    at birth; the chase within every tier is pulling the FOIL version."""
+    chance = FOIL_CHANCE_PREMIUM if pack_type == "premium" else FOIL_CHANCE
+    return random.random() < chance
 
 
 def _add_to_inventory(db: Session, card: Card) -> Card:
@@ -96,18 +111,40 @@ def _add_to_inventory(db: Session, card: Card) -> Card:
             return existing_inv.card
 
     elif ct == "creator" and card.source_creator_id:
-        existing_inv = (
+        # Stack by creator AND art — each of her (up to 5) minted arts is its own card
+        q = (
             db.query(CardInventory)
             .join(Card, CardInventory.card_id == Card.id)
             .filter(
                 Card.card_type == CardType.creator,
                 Card.source_creator_id == card.source_creator_id,
             )
+        )
+        if card.source_image_id:
+            q = q.filter(Card.source_image_id == card.source_image_id)
+        else:
+            q = q.filter(Card.source_image_id.is_(None))
+        existing_inv = q.first()
+        if existing_inv and existing_inv.card_id != card.id:
+            existing_inv.quantity += 1
+            db.delete(card)
+            db.flush()
+            return existing_inv.card
+
+    elif ct == "hof" and card.source_creator_id:
+        # HOF mementos stack by creator — pulling hers again is a dupe
+        existing_inv = (
+            db.query(CardInventory)
+            .join(Card, CardInventory.card_id == Card.id)
+            .filter(
+                Card.card_type == CardType.hof,
+                Card.source_creator_id == card.source_creator_id,
+            )
             .first()
         )
         if existing_inv and existing_inv.card_id != card.id:
             existing_inv.quantity += 1
-            db.delete(card)
+            # HOF cards are minted pool records — never delete the mint itself
             db.flush()
             return existing_inv.card
 
@@ -155,24 +192,24 @@ def generate_card(
     source_gallery_id: Optional[int] = None,
     source_creator_id: Optional[int] = None,
     linked_character_id: Optional[int] = None,
-    skip_lottery: bool = False,
+    skip_lottery: bool = False,   # kept for call-site compat; rarity no longer rolls
     baseline_override: Optional[str] = None,
     collab_data: Optional[str] = None,
+    foil: bool = False,
 ) -> Card:
-    """Create a new Card record with rarity lottery applied."""
-    base_rarity = baseline_override if baseline_override else BASELINE_RARITY[card_type]
-    if skip_lottery:
-        final_rarity, is_relic = base_rarity, (base_rarity == "celestial")
-    else:
-        final_rarity, is_relic = _upgrade_rarity(base_rarity)
+    """Create a new Card record. Rarity is FIXED at birth (type baseline or an
+    explicit override from a birth rule) — it never changes afterwards. The only
+    lottery is the foil roll, decided by the caller (pack opening)."""
+    final_rarity = baseline_override if baseline_override else BASELINE_RARITY[card_type]
 
     # Gallery and creator are no longer unique — dupes can stack
-    is_unique = card_type in ("goon", "variant")
+    is_unique = card_type in ("goon", "variant", "hof")
 
     card = Card(
         card_type=CardType(card_type),
         rarity=CardRarity(final_rarity),
-        is_relic=is_relic,
+        foil=foil,
+        is_relic=foil,   # legacy mirror — old frontend reads is_relic for the shine
         is_unique=is_unique,
         source_image_id=source_image_id,
         source_gallery_id=source_gallery_id,
@@ -187,13 +224,15 @@ def generate_card(
 
 # ── Drop pool selectors ───────────────────────────────────────────────────────
 
-def _pick_image_card(db: Session) -> Optional[Card]:
+def _pick_image_card(db: Session, engaged_bias: bool = False) -> Optional[Card]:
     base_query = db.query(Image).filter(
         Image.cum_count < GOON_THRESHOLD,
         Image.file_path.isnot(None),
     )
-    # 70% pure random (discovery), 30% weighted toward viewed/cumed images (engagement)
-    if random.random() < 0.70:
+    # Default: 70% pure random (discovery), 30% engagement-weighted.
+    # Booster packs flip this (engaged_bias) — "your history" is their identity.
+    p_random = 0.30 if engaged_bias else 0.70
+    if random.random() < p_random:
         count = base_query.count()
         if not count:
             return None
@@ -248,7 +287,10 @@ def _pick_gallery_card(db: Session) -> Optional[Card]:
         good_imgs = [i for i in imgs if i.view_count > 5 or i.cum_count > 1]
         img_id = random.choice(good_imgs).id if good_imgs else random.choice(imgs).id
 
-    return generate_card(db, "gallery", source_gallery_id=gal.id, source_image_id=img_id)
+    # Birth rule: a top-rated gallery (≥9 of 10 stars) is born epic
+    override = "epic" if (gal.rating or 0) >= GALLERY_EPIC_RATING else None
+    return generate_card(db, "gallery", source_gallery_id=gal.id, source_image_id=img_id,
+                         baseline_override=override)
 
 
 def _pick_creator_card(db: Session) -> Optional[Card]:
@@ -258,7 +300,60 @@ def _pick_creator_card(db: Session) -> Optional[Card]:
         return _pick_gallery_card(db)
 
     creator = query.offset(random.randint(0, count - 1)).first()
-    return generate_card(db, "creator", source_creator_id=creator.id)
+
+    # Creator cards mint with fixed art, up to 5 distinct versions per creator:
+    # her FIRST card is the signature card — it shows her profile photo (and
+    # follows it, like a real player card portrait); mints 2-5 pin a permanent
+    # gallery image each. Beyond 5, pulls stack as dupes of existing mints.
+    existing = (db.query(Card)
+                  .filter(Card.card_type == CardType.creator,
+                          Card.source_creator_id == creator.id)
+                  .all())
+    if len(existing) >= 5:
+        return random.choice(existing)   # dupe of one of her minted arts
+
+    if not existing:
+        # Signature card — profile photo (no pinned image)
+        return generate_card(db, "creator", source_creator_id=creator.id,
+                             baseline_override=_creator_birth_rarity(creator))
+
+    used_imgs = {c.source_image_id for c in existing if c.source_image_id}
+    pool = (db.query(Image)
+              .filter(Image.gallery_id.in_(_creator_gallery_ids(db, creator.id) or [-1]),
+                      Image.is_video == False,           # noqa: E712
+                      ~Image.id.in_(used_imgs or [-1]))
+              .all())
+    img = random.choice(pool) if pool else None
+    if img is None:
+        return random.choice(existing)   # no fresh art available — stack instead
+    return generate_card(db, "creator", source_creator_id=creator.id,
+                         source_image_id=img.id,
+                         baseline_override=_creator_birth_rarity(creator))
+
+
+def _creator_gallery_ids(db: Session, creator_id: int) -> list[int]:
+    """All her galleries — direct FK plus the gallery_creators M2M links."""
+    from models import gallery_creators
+    direct = [g.id for g in db.query(Gallery.id).filter(Gallery.creator_id == creator_id)]
+    m2m = [r[0] for r in db.query(gallery_creators.c.gallery_id)
+                           .filter(gallery_creators.c.creator_id == creator_id).all()]
+    return list(set(direct) | set(m2m))
+
+
+def _creator_birth_rarity(creator) -> Optional[str]:
+    """Birth rule: a My Queen-tier creator (top of the creator rarity ladder)
+    mints a CELESTIAL creator card."""
+    cr = creator.card_rarity.value if hasattr(creator.card_rarity, "value") else creator.card_rarity
+    return "celestial" if cr in ("relic", "celestial") else None
+
+
+def _top_goon_image_id(db: Session) -> Optional[int]:
+    """The single most-gooned image in the vault — its card is born celestial."""
+    img = (db.query(Image)
+             .filter(Image.cum_count >= GOON_THRESHOLD)
+             .order_by(Image.cum_count.desc(), Image.id.asc())
+             .first())
+    return img.id if img else None
 
 
 def _pick_goon_card(db: Session) -> Optional[Card]:
@@ -266,28 +361,207 @@ def _pick_goon_card(db: Session) -> Optional[Card]:
     if not goon_imgs:
         return _pick_image_card(db)  # fallback to image card
     img = random.choice(goon_imgs)
-    return generate_card(db, "goon", source_image_id=img.id)
+    # Birth rule: THE most-gooned image in the vault is a celestial artifact
+    override = "celestial" if img.id == _top_goon_image_id(db) else None
+    return generate_card(db, "goon", source_image_id=img.id, baseline_override=override)
+
+
+# ── Hall of Fame cards ────────────────────────────────────────────────────────
+
+def _hof_top_creators(db: Session, limit: int = 5) -> list:
+    """Creators currently in the Hall of Fame, best first — same composite score
+    as the creators router: view_seconds + cum×120 + sessions×300 + views×5."""
+    from sqlalchemy import func as sqlfunc
+    from models import gallery_creators, SessionLog
+
+    rows = (db.query(Creator,
+                     sqlfunc.sum(Gallery.view_count).label("views"),
+                     sqlfunc.sum(Gallery.cum_count).label("cum"))
+              .join(gallery_creators, gallery_creators.c.creator_id == Creator.id)
+              .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+              .group_by(Creator.id).all())
+    if not rows:
+        return []
+    ids = [c.id for c, _, _ in rows]
+    secs = dict(db.query(gallery_creators.c.creator_id, sqlfunc.sum(Image.view_seconds))
+                  .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+                  .filter(gallery_creators.c.creator_id.in_(ids))
+                  .group_by(gallery_creators.c.creator_id).all())
+    sess = dict(db.query(SessionLog.creator_id, sqlfunc.count(SessionLog.id))
+                  .filter(SessionLog.creator_id.in_(ids))
+                  .group_by(SessionLog.creator_id).all())
+    scored = sorted(rows, key=lambda r: (
+        int(secs.get(r[0].id) or 0) + int(r[2] or 0) * 120 +
+        int(sess.get(r[0].id) or 0) * 300 + int(r[1] or 0) * 5
+    ), reverse=True)
+    return [c for c, _, _ in scored[:limit]]
+
+
+def mint_hof_cards(db: Session) -> int:
+    """Mint the permanent Hall of Fame memento for any creator currently in the
+    HOF who doesn't have one yet. The card records that she made it — it stays
+    in the pool forever, even if she later drops out. Top-3 mint CELESTIAL,
+    the rest Legendary. Idempotent: one HOF card per creator, ever."""
+    hof = _hof_top_creators(db, limit=5)
+    minted = 0
+    for i, creator in enumerate(hof):
+        exists = (db.query(Card)
+                    .filter(Card.card_type == CardType.hof,
+                            Card.source_creator_id == creator.id)
+                    .first())
+        if exists:
+            continue
+        img = (db.query(Image).join(Gallery, Image.gallery_id == Gallery.id)
+                 .filter(Gallery.creator_id == creator.id)
+                 .order_by(Image.cum_count.desc(), Image.view_count.desc())
+                 .first())
+        generate_card(
+            db, "hof",
+            source_creator_id=creator.id,
+            source_image_id=img.id if img else None,
+            baseline_override="celestial" if i < 3 else "legendary",
+        )
+        minted += 1
+    if minted:
+        db.flush()
+    return minted
+
+
+def _pick_hof_card(db: Session) -> Optional[Card]:
+    """Draw one of the minted HOF mementos from the pool (mints any missing
+    ones first). Falls back to a creator card if none exist yet."""
+    mint_hof_cards(db)
+    minted = db.query(Card).filter(Card.card_type == CardType.hof).all()
+    if not minted:
+        return _pick_creator_card(db)
+    return random.choice(minted)
+
+
+def backfill_creator_card_art(db: Session) -> int:
+    """Pin permanent art onto creator cards minted without one — EXCEPT each
+    creator's first (oldest) card, which is her signature card and shows the
+    live profile photo by design. Idempotent, cheap — runs at every startup."""
+    fixed = 0
+    orphans = (db.query(Card)
+                 .filter(Card.card_type == CardType.creator,
+                         Card.source_image_id.is_(None),
+                         Card.source_creator_id.isnot(None))
+                 .order_by(Card.id.asc())
+                 .all())
+    signature_seen = set()
+    for card in orphans:
+        # Her oldest card keeps the profile photo (signature card)
+        oldest = (db.query(Card.id)
+                    .filter(Card.card_type == CardType.creator,
+                            Card.source_creator_id == card.source_creator_id)
+                    .order_by(Card.id.asc()).first())
+        if oldest and oldest[0] == card.id and card.source_creator_id not in signature_seen:
+            signature_seen.add(card.source_creator_id)
+            continue
+        used = {c.source_image_id for c in db.query(Card)
+                  .filter(Card.card_type == CardType.creator,
+                          Card.source_creator_id == card.source_creator_id,
+                          Card.source_image_id.isnot(None)).all()}
+        pool = (db.query(Image)
+                  .filter(Image.gallery_id.in_(_creator_gallery_ids(db, card.source_creator_id) or [-1]),
+                          Image.is_video == False,          # noqa: E712
+                          ~Image.id.in_(used or [-1]))
+                  .all())
+        if pool:
+            card.source_image_id = random.choice(pool).id
+            fixed += 1
+    if fixed:
+        db.commit()
+    return fixed
+
+
+def apply_birth_bonuses(db: Session) -> int:
+    """Migration refinement: re-apply the birth rules to EXISTING cards so the
+    reworked collection matches what the generator would mint today. Promotes
+    only (never demotes): 10★ galleries → epic, the #1 goon image → celestial,
+    My Queen creators → celestial. Also mints any missing HOF mementos."""
+    promoted = 0
+    # Top-rated gallery cards → epic
+    for card in db.query(Card).filter(Card.card_type == CardType.gallery).all():
+        if norm_rarity(card.rarity) == "common" and card.source_gallery_id:
+            g = db.query(Gallery).filter(Gallery.id == card.source_gallery_id).first()
+            if g and (g.rating or 0) >= GALLERY_EPIC_RATING:
+                card.rarity = CardRarity("epic")
+                promoted += 1
+    # The single most-gooned image → celestial
+    top_goon = _top_goon_image_id(db)
+    if top_goon:
+        for card in db.query(Card).filter(Card.card_type == CardType.goon,
+                                          Card.source_image_id == top_goon).all():
+            if norm_rarity(card.rarity) != "celestial":
+                card.rarity = CardRarity("celestial")
+                promoted += 1
+    # My Queen creators → celestial
+    for card in db.query(Card).filter(Card.card_type == CardType.creator).all():
+        if card.source_creator_id and norm_rarity(card.rarity) != "celestial":
+            c = db.query(Creator).filter(Creator.id == card.source_creator_id).first()
+            if c and _creator_birth_rarity(c) == "celestial":
+                card.rarity = CardRarity("celestial")
+                promoted += 1
+    # Collab VARIANT subtype → legendary (2-way; 3-way mints celestial at birth)
+    for card in db.query(Card).filter(Card.card_type == CardType.collab).all():
+        if norm_rarity(card.rarity) == "epic" and card.collab_data:
+            try:
+                if json.loads(card.collab_data).get("subtype") == "variant":
+                    card.rarity = CardRarity("legendary")
+                    promoted += 1
+            except Exception:
+                pass
+    mint_hof_cards(db)
+    db.commit()
+    return promoted
+
+
+# Real-person / real-creator types that can portray a character to form a variant
+# (everything except 'character' itself, and 'custom' which is user-defined).
+VARIANT_CREATOR_TYPES = ["cosplayer", "ethot", "actress", "artist"]
 
 
 def _variant_pairs(db: Session) -> list:
-    """Return all distinct (creator_id, character_id) pairs eligible for variant cards."""
+    """Return all distinct (creator_id, character_id) pairs eligible for variant
+    cards. A creator×character intersection is recorded by tagging a gallery with
+    BOTH a real-creator-type creator (cosplayer/ethot/actress/artist) and a
+    character-type creator in the gallery_creators M2M — the legacy
+    Gallery.creator_id/linked_character_id columns are not used for this."""
+    from models import gallery_creators
+    cre = gallery_creators.alias("cre")
+    chr_ = gallery_creators.alias("chr")
+    cre_c = aliased(Creator)
+    chr_c = aliased(Creator)
     return (
-        db.query(Gallery.creator_id, Gallery.linked_character_id)
-        .filter(Gallery.creator_id.isnot(None), Gallery.linked_character_id.isnot(None))
-        .distinct()
-        .all()
+        db.query(cre.c.creator_id, chr_.c.creator_id)
+          .select_from(cre)
+          .join(chr_, chr_.c.gallery_id == cre.c.gallery_id)
+          .join(cre_c, cre_c.id == cre.c.creator_id)
+          .join(chr_c, chr_c.id == chr_.c.creator_id)
+          .filter(cre_c.creator_type.in_(VARIANT_CREATOR_TYPES),
+                  chr_c.creator_type == "character")
+          .distinct()
+          .all()
     )
 
 
 def _images_for_variant_pair(db: Session, creator_id: int, character_id: int) -> list:
-    """Return all images from galleries linking this creator to this character."""
-    imgs = []
-    for gal in db.query(Gallery).filter(
-        Gallery.creator_id == creator_id,
-        Gallery.linked_character_id == character_id,
-    ).all():
-        imgs.extend(db.query(Image).filter(Image.gallery_id == gal.id).all())
-    return imgs
+    """Return all images from galleries tagged (via the M2M) with BOTH this
+    cosplayer and this character."""
+    from models import gallery_creators
+    cos = gallery_creators.alias("cos")
+    chr_ = gallery_creators.alias("chr")
+    gal_ids = [
+        r[0] for r in
+        db.query(cos.c.gallery_id)
+          .join(chr_, chr_.c.gallery_id == cos.c.gallery_id)
+          .filter(cos.c.creator_id == creator_id, chr_.c.creator_id == character_id)
+          .distinct().all()
+    ]
+    if not gal_ids:
+        return []
+    return db.query(Image).filter(Image.gallery_id.in_(gal_ids)).all()
 
 
 def _pick_variant_card(db: Session) -> Optional[Card]:
@@ -468,7 +742,7 @@ def _pick_collab_card(db: Session) -> Optional[Card]:
             source_image_id=img.id if img else None,
             source_gallery_id=gal_id,
             collab_data=collab_data,
-            baseline_override="rare",
+            baseline_override="epic",
         )
 
 
@@ -483,7 +757,8 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
 
     total_cost = 0
     if not free:
-        cost_per_pack = PACK_COST if pack_type == "standard" else 500
+        from config import PREMIUM_PACK_COST
+        cost_per_pack = PACK_COST if pack_type == "standard" else PREMIUM_PACK_COST
         total_cost = cost_per_pack * quantity
         if (profile.vault_credits or 0) < total_cost:
             raise ValueError(f"Insufficient credits: need {total_cost}, have {profile.vault_credits or 0}")
@@ -491,19 +766,22 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
 
     # Adjust rates based on pack type
     if pack_type == "premium":
-        types   = ["image", "gallery", "creator", "goon", "variant", "collab"]
-        weights = [38, 27, 17, 3, 5, 10]  # sums to 100
+        types   = ["image", "gallery", "creator", "goon", "variant", "collab", "hof"]
+        weights = [30, 20, 15, 9, 3, 12, 11]  # sums to 100
     else:
         types   = list(DROP_WEIGHTS.keys())
         weights = list(DROP_WEIGHTS.values())
 
     selectors = {
-        "image":   _pick_image_card,
+        # Booster identity: image pulls lean into what you've actually engaged with
+        "image":   (lambda d: _pick_image_card(d, engaged_bias=True)) if pack_type != "premium"
+                   else _pick_image_card,
         "gallery": _pick_gallery_card,
         "creator": _pick_creator_card,
         "goon":    _pick_goon_card,
         "variant": _pick_variant_card,
         "collab":  _pick_collab_card,
+        "hof":     _pick_hof_card,
     }
 
     cards = []
@@ -526,20 +804,17 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
         if card:
             raw_cards.append(card)
 
-    # Premium pack: guarantee at least 1 rare+ — if none landed rare+, upgrade
-    # the first card; all other cards keep their rolled rarity.
+    # Prestige is CRAFTED, never pulled — no foil lottery on pack opens anymore.
+    # (Prestige = the celestial holo treatment, earned by spending duplicates +
+    # credits in the forge. See craft_prestige.)
+
+    # Premium pack: guarantee at least 1 epic+ — if none landed, promote the
+    # first card to the floor (this is the ONLY post-birth rarity change left).
     if pack_type == "premium" and raw_cards:
-        from config import RARITY_ORDER as _RO
-        from models import CardRarity
-        floor_idx = _RO.index("rare")
-        has_rare_plus = any(
-            _RO.index(c.rarity.value if hasattr(c.rarity, "value") else c.rarity) >= floor_idx
-            for c in raw_cards
-        )
-        if not has_rare_plus:
-            c0 = raw_cards[0]
-            c0.rarity = CardRarity("rare")
-            db.flush()
+        floor_idx = RARITY_ORDER.index(PREMIUM_RARITY_FLOOR)
+        if not any(RARITY_ORDER.index(norm_rarity(c.rarity)) >= floor_idx for c in raw_cards):
+            raw_cards[0].rarity = CardRarity(PREMIUM_RARITY_FLOOR)
+        db.flush()
 
     for card in raw_cards:
         canonical = _add_to_inventory(db, card)
@@ -558,6 +833,14 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
 
     db.commit()
 
+    # Re-score collection rarity so the new cards get a crs/class and the
+    # percentile buckets shift as the collection grows.
+    try:
+        from services.rarity import compute_rarity
+        compute_rarity(db)
+    except Exception:
+        pass
+
     return {
         "cards": [_card_to_dict(db, c) for c in cards],
         "xp_earned": xp.amount if hasattr(xp, 'amount') else 0,
@@ -574,8 +857,8 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
         raise ValueError("Inventory entry not found")
 
     card = inv.card
-    rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-    shards = SHARD_YIELD.get(rarity_str, 5)
+    rarity_str = norm_rarity(card.rarity)
+    shards = SHARD_YIELD.get(rarity_str, 5) * (FOIL_SHARD_MULT if card.foil else 1)
     hearts = HEART_YIELD.get(rarity_str, 0)
 
     # Unique cards: regenerate a new card for the pool
@@ -639,10 +922,11 @@ def _regenerate_unique(db: Session, old_card: Card):
     _add_to_inventory(db, new_card)
 
 
-# ── Catalyst Token: force-upgrade rarity ──────────────────────────────────────
+# ── Catalyst Token: craft a foil ──────────────────────────────────────────────
 
 def apply_catalyst(db: Session, inventory_id: int) -> dict:
-    """Consume 1 Catalyst Token to upgrade a card's rarity by one tier."""
+    """Consume 1 Catalyst Token to turn a card FOIL. Rarity is fixed at birth —
+    the catalyst is now the deterministic path to the premium holo variant."""
     materials = _get_or_create_materials(db)
     if materials.catalyst_tokens < 1:
         raise ValueError("No catalyst tokens available")
@@ -652,19 +936,62 @@ def apply_catalyst(db: Session, inventory_id: int) -> dict:
         raise ValueError("Inventory entry not found")
 
     card = inv.card
-    rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-    current_idx = RARITY_ORDER.index(rarity_str)
+    if card.foil:
+        raise ValueError("Card is already foil")
+    ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
+    if ct == "hof":
+        raise ValueError("Hall of Fame mementos can't be altered — they are what they are")
 
-    if current_idx >= len(RARITY_ORDER) - 1:
-        raise ValueError("Card is already at maximum rarity (celestial)")
-
-    new_rarity = RARITY_ORDER[current_idx + 1]
-    card.rarity = CardRarity(new_rarity)
-    card.is_relic = (new_rarity == "celestial")
+    card.foil = True
+    card.is_relic = True   # legacy mirror
     materials.catalyst_tokens -= 1
 
     db.commit()
-    return {"new_rarity": new_rarity, "is_relic": card.is_relic}
+    return {"foil": True, "rarity": norm_rarity(card.rarity), "is_relic": True}
+
+
+# ── Prestige: craft the celestial holo treatment from duplicates ──────────────
+# Prestige is never pulled from a pack — it is earned by sacrificing duplicate
+# copies (scaled by how easy the tier is to farm) plus a flat credit cost. The
+# DB still stores it on the `foil` column; "prestige" is just its public name.
+PRESTIGE_DUPES   = {"common": 6, "epic": 4, "legendary": 2, "celestial": 1}
+PRESTIGE_CREDITS = 1000
+
+
+def prestige_cost(card: Card) -> dict:
+    """How many total copies (incl. the one kept) + credits a Prestige craft needs."""
+    return {"dupes": PRESTIGE_DUPES.get(norm_rarity(card.rarity), 6),
+            "credits": PRESTIGE_CREDITS}
+
+
+def craft_prestige(db: Session, inventory_id: int) -> dict:
+    """Turn a card Prestige by consuming duplicate copies + credits. Requires
+    N total copies for its tier (Core 6 / Epic 4 / Legendary 2 / Celestial 1);
+    N-1 are consumed, the survivor becomes Prestige."""
+    inv = db.query(CardInventory).filter(CardInventory.id == inventory_id).first()
+    if not inv:
+        raise ValueError("Inventory entry not found")
+    card = inv.card
+    if card.foil:
+        raise ValueError("Card is already Prestige")
+
+    need = PRESTIGE_DUPES.get(norm_rarity(card.rarity), 6)
+    if (inv.quantity or 0) < need:
+        raise ValueError(f"Need {need} copies to craft Prestige — you have {inv.quantity or 0}")
+
+    profile = _get_or_create_profile(db)
+    if (profile.vault_credits or 0) < PRESTIGE_CREDITS:
+        raise ValueError(f"Need {PRESTIGE_CREDITS} credits — you have {profile.vault_credits or 0}")
+
+    profile.vault_credits -= PRESTIGE_CREDITS
+    inv.quantity -= (need - 1)          # consume the duplicates, keep 1 survivor
+    card.foil = True
+    card.is_relic = True                # legacy mirror for old shine paths
+
+    db.commit()
+    return {"prestige": True, "rarity": norm_rarity(card.rarity),
+            "credits_spent": PRESTIGE_CREDITS, "dupes_spent": need - 1,
+            "quantity": inv.quantity}
 
 
 # ── CXP: feed duplicate for XP boost ─────────────────────────────────────────
@@ -678,8 +1005,7 @@ def feed_duplicate(db: Session, inventory_id: int) -> dict:
         raise ValueError("No duplicate to feed — quantity must be > 1")
 
     card = inv.card
-    rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-    cxp_base = CXP_FEED_YIELD.get(rarity_str, 30)
+    cxp_base = CXP_FEED_YIELD.get(norm_rarity(card.rarity), 30)
     cxp_gain = max(1, int(cxp_base * _cxp_level_multiplier(db)))
 
     inv.quantity -= 1
@@ -704,8 +1030,8 @@ def feed_cards(db: Session, target_inventory_id: int, source_inventory_ids: list
         raise ValueError("No source cards provided")
 
     target_card  = target_inv.card
-    rarity_str   = target_card.rarity.value if hasattr(target_card.rarity, "value") else target_card.rarity
-    threshold    = CXP_THRESHOLDS.get(rarity_str)  # None for celestial
+    # CXP cap = level 10; feeding beyond it overflows into credits
+    threshold    = max_cxp(target_card)
     level_mult   = _cxp_level_multiplier(db)
 
     total_cxp_gained      = 0
@@ -721,7 +1047,7 @@ def feed_cards(db: Session, target_inventory_id: int, source_inventory_ids: list
             continue
 
         src_card    = src_inv.card
-        src_rarity  = src_card.rarity.value if hasattr(src_card.rarity, "value") else src_card.rarity
+        src_rarity  = norm_rarity(src_card.rarity)
         src_type    = src_card.card_type.value if hasattr(src_card.card_type, "value") else src_card.card_type
 
         cxp_base    = CXP_FEED_YIELD.get(src_rarity, 30)
@@ -781,41 +1107,15 @@ def feed_cards(db: Session, target_inventory_id: int, source_inventory_ids: list
     }
 
 
-# ── CXP evolve: spend shards to evolve when at threshold ─────────────────────
+# ── CXP evolve: retired by the rarity rework ─────────────────────────────────
 
 def evolve_via_cxp(db: Session, inventory_id: int) -> dict:
-    """Evolve a card one rarity tier by spending shards, if CXP threshold is met."""
-    inv = db.query(CardInventory).filter(CardInventory.id == inventory_id).first()
-    if not inv:
-        raise ValueError("Inventory entry not found")
-
-    card = inv.card
-    rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-
-    if rarity_str == "celestial":
-        raise ValueError("Card is already at maximum rarity")
-
-    threshold = CXP_THRESHOLDS.get(rarity_str)
-    if threshold is None:
-        raise ValueError("This card cannot evolve via CXP")
-
-    current_cxp = card.cxp or 0
-    if current_cxp < threshold:
-        raise ValueError(f"Need {threshold} CXP to evolve (have {current_cxp})")
-
-    materials = _get_or_create_materials(db)
-    if materials.shards < CXP_EVOLVE_SHARD_COST:
-        raise ValueError(f"Not enough shards — need {CXP_EVOLVE_SHARD_COST}, have {materials.shards}")
-
-    materials.shards -= CXP_EVOLVE_SHARD_COST
-
-    current_idx = RARITY_ORDER.index(rarity_str)
-    new_rarity = RARITY_ORDER[current_idx + 1]
-    card.rarity = CardRarity(new_rarity)
-    card.is_relic = (new_rarity == "celestial")
-
-    db.commit()
-    return {"new_rarity": new_rarity, "is_relic": card.is_relic, "cxp": card.cxp}
+    """Retired: rarity is fixed at birth. CXP now grows the card's LEVEL (1-10)
+    automatically — no evolution step needed."""
+    raise ValueError(
+        "Cards no longer evolve between rarities — CXP levels the card up "
+        "automatically (level 1-10 within its tier)."
+    )
 
 
 # ── Dismantle duplicates: keep 1 of everything ───────────────────────────────
@@ -833,8 +1133,9 @@ def dismantle_duplicates(db: Session) -> dict:
     for inv in dupes:
         extras = inv.quantity - 1
         card = inv.card
-        rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-        total_shards += SHARD_YIELD.get(rarity_str, 5) * extras
+        rarity_str = norm_rarity(card.rarity)
+        foil_mult = FOIL_SHARD_MULT if card.foil else 1
+        total_shards += SHARD_YIELD.get(rarity_str, 5) * foil_mult * extras
         total_hearts += HEART_YIELD.get(rarity_str, 0) * extras
         total_count  += extras
         inv.quantity  = 1
@@ -863,7 +1164,7 @@ def get_fuseable(db: Session, inventory_id: int) -> list:
         return []
 
     target_card = target_inv.card
-    target_rarity_str = target_card.rarity.value if hasattr(target_card.rarity, "value") else target_card.rarity
+    target_rarity_str = norm_rarity(target_card.rarity)
     target_rarity_idx = RARITY_ORDER.index(target_rarity_str)
 
     results = []
@@ -912,7 +1213,7 @@ def get_fuseable(db: Session, inventory_id: int) -> list:
 
     for inv in same_source:
         card = inv.card
-        rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
+        rarity_str = norm_rarity(card.rarity)
         if RARITY_ORDER.index(rarity_str) <= target_rarity_idx:
             cxp_per = CXP_FEED_YIELD.get(rarity_str, 30)
             results.append({
@@ -935,7 +1236,7 @@ def fuse_all(db: Session, inventory_id: int) -> dict:
         raise ValueError("Target card not found")
 
     target_card = target_inv.card
-    target_rarity_str = target_card.rarity.value if hasattr(target_card.rarity, "value") else target_card.rarity
+    target_rarity_str = norm_rarity(target_card.rarity)
     target_rarity_idx = RARITY_ORDER.index(target_rarity_str)
 
     total_cxp = 0
@@ -974,7 +1275,7 @@ def fuse_all(db: Session, inventory_id: int) -> dict:
 
     for inv in same_source:
         card = inv.card
-        rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
+        rarity_str = norm_rarity(card.rarity)
         if RARITY_ORDER.index(rarity_str) <= target_rarity_idx:
             cxp_per = CXP_FEED_YIELD.get(rarity_str, 30)
             total_cxp += cxp_per * inv.quantity
@@ -1006,8 +1307,8 @@ def dismantle_batch(db: Session, inventory_ids: list) -> dict:
             continue
 
         card = inv.card
-        rarity_str = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
-        total_shards += SHARD_YIELD.get(rarity_str, 5)
+        rarity_str = norm_rarity(card.rarity)
+        total_shards += SHARD_YIELD.get(rarity_str, 5) * (FOIL_SHARD_MULT if card.foil else 1)
         total_hearts += HEART_YIELD.get(rarity_str, 0)
         total_xp     += DISMANTLE_XP
         processed    += 1
@@ -1140,15 +1441,14 @@ def forge_variant(db: Session, creator_id: int, character_id: int) -> dict:
     if char_type != "character":
         raise ValueError("Second entity must be of character type")
 
-    # Validate gallery link exists
-    link = db.query(Gallery).filter(
-        Gallery.creator_id == creator_id,
-        Gallery.linked_character_id == character_id,
-    ).first()
-    if not link:
+    # Validate the pair links via the gallery_creators M2M (the SAME rule the
+    # variant-pair list uses) and grab the candidate art in one shot. The legacy
+    # Gallery.creator_id/linked_character_id columns are not the source of truth.
+    all_imgs = _images_for_variant_pair(db, creator_id, character_id)
+    if not all_imgs:
         raise ValueError(
             f"No gallery links {creator.name} and {character.name}. "
-            "Open a gallery, assign the creator, then set the linked character."
+            "Tag a gallery with both the creator and the character, then try again."
         )
 
     # Check cap
@@ -1174,14 +1474,7 @@ def forge_variant(db: Session, creator_id: int, character_id: int) -> dict:
     materials.shards          -= FORGE_VARIANT_SHARD_COST
     materials.catalyst_tokens -= FORGE_VARIANT_CATALYST_COST
 
-    # Pick art from intersection galleries
-    gals = db.query(Gallery).filter(
-        Gallery.creator_id == creator_id,
-        Gallery.linked_character_id == character_id,
-    ).all()
-    all_imgs = []
-    for gal in gals:
-        all_imgs.extend(db.query(Image).filter(Image.gallery_id == gal.id).all())
+    # Pick art from the intersection galleries (gathered above via the M2M)
     img = random.choice(all_imgs) if all_imgs else None
 
     # Generate + add to inventory
@@ -1223,7 +1516,7 @@ def award_credits_for_action(db: Session, action: str) -> int:
 # ── Serialisation helper ──────────────────────────────────────────────────────
 
 def _card_to_dict(db: Session, card: Card) -> dict:
-    rarity = card.rarity.value if hasattr(card.rarity, "value") else card.rarity
+    rarity = norm_rarity(card.rarity)
     ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
 
     # Resolve image URL (full quality)
@@ -1303,6 +1596,13 @@ def _card_to_dict(db: Session, card: Card) -> dict:
             # /api/images/{id}/thumb route (which hits the DB for every card).
             if src_img.thumb_path and os.path.exists(src_img.thumb_path):
                 thumb_url = f"/thumbs/{os.path.basename(src_img.thumb_path)}"
+            # Video-sourced cards: the full-res "image" URL is a video file that
+            # can't render as static card art (opens to emptiness). Prefer the
+            # short looping animated-webp preview; else fall back to the poster.
+            if src_img.is_video:
+                image_url = thumb_url
+                if src_img.preview_path and os.path.exists(src_img.preview_path):
+                    image_url = f"/thumbs/{os.path.basename(src_img.preview_path)}"
 
     # Collab metadata
     collab_info = None
@@ -1316,9 +1616,20 @@ def _card_to_dict(db: Session, card: Card) -> dict:
         "id": card.id,
         "card_type": ct,
         "rarity": rarity,
-        "is_relic": card.is_relic,
+        "foil": bool(card.foil),
+        "prestige": bool(card.foil),            # public name for the holo treatment
+        "prestige_dupes": PRESTIGE_DUPES.get(rarity, 6),   # copies needed to craft it
+        "prestige_credits": PRESTIGE_CREDITS,
+        "is_relic": card.is_relic,   # legacy alias of foil — kept for old UI paths
         "is_unique": card.is_unique,
         "cxp": card.cxp,
+        "level": card_level(card),
+        "level_max": MAX_CARD_LEVEL,
+        "cxp_for_next": (None if card_level(card) >= MAX_CARD_LEVEL
+                         else LEVEL_CXP_STEP.get(rarity, 100) * card_level(card)),
+        "rarity_score": rarity_score(card),
+        "crs": round(card.crs or 0, 2),
+        "rarity_class": card.rarity_class or "R",
         "generated_at": card.generated_at.isoformat() if card.generated_at else None,
         # Art
         "image_url": image_url,

@@ -106,19 +106,42 @@ def generate_thumbnail(file_path: str, thumb_path: str) -> bool:
         return False
 
 
+def _detect_video_crop(file_path: str, ffmpeg: str) -> Optional[str]:
+    """Detect baked-in black bars (letterbox/pillarbox) via ffmpeg cropdetect and
+    return a 'crop=w:h:x:y' filter string, or None if nothing to crop / detection
+    fails. Videos are encoded with bars in the actual pixels, so cover-cropping a
+    square can't remove them — we must crop the content box first."""
+    try:
+        res = subprocess.run(
+            [ffmpeg, "-ss", "5", "-i", file_path, "-vframes", "20",
+             "-vf", "cropdetect=24:2:0", "-f", "null", "-"],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=20,
+            creationflags=_NO_WINDOW, text=True, errors="ignore",
+        )
+        crops = re.findall(r"crop=(\d+:\d+:\d+:\d+)", res.stderr or "")
+        return f"crop={crops[-1]}" if crops else None
+    except Exception:
+        return None
+
+
 def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
-    """Extract a representative frame from a video using FFmpeg."""
+    """Extract a representative frame from a video using FFmpeg, stripping any
+    baked-in black bars first so card/gallery art fills the frame cleanly."""
     try:
         os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
-        # Try seeking to 5 seconds in; if video is shorter that's fine (ffmpeg handles it)
         ffmpeg = _get_ffmpeg_exe()
+        # Auto-crop letterbox/pillarbox bars, then cover-crop to a 640² square.
+        crop = _detect_video_crop(file_path, ffmpeg)
+        cover = "scale=640:640:force_original_aspect_ratio=increase,crop=640:640"
+        vf = f"{crop},{cover}" if crop else cover
+        # Try seeking to 5 seconds in; if video is shorter that's fine (ffmpeg handles it)
         result = subprocess.run(
             [
                 ffmpeg, "-y",
                 "-ss", "5",
                 "-i", file_path,
                 "-vframes", "1",
-                "-vf", "scale=640:640:force_original_aspect_ratio=increase,crop=640:640",
+                "-vf", vf,
                 "-q:v", "3",
                 thumb_path,
             ],
@@ -135,7 +158,7 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
                 ffmpeg, "-y",
                 "-i", file_path,
                 "-vframes", "1",
-                "-vf", "scale=640:640:force_original_aspect_ratio=increase,crop=640:640",
+                "-vf", vf,
                 "-q:v", "3",
                 thumb_path,
             ],
@@ -145,6 +168,49 @@ def generate_video_thumbnail(file_path: str, thumb_path: str) -> bool:
             creationflags=_NO_WINDOW,
         )
         return result2.returncode == 0 and os.path.exists(thumb_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return False
+
+
+def generate_video_preview(file_path: str, out_path: str, duration: Optional[float] = None) -> bool:
+    """Build a short looping animated WebP for video-backed cards: ~2s each from
+    near the start, the middle, and the end, concatenated. Bars auto-cropped.
+    Animated WebP plays in an <img> like a GIF but is far smaller/sharper.
+    Returns True on success. out_path should end in .webp."""
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        ffmpeg = _get_ffmpeg_exe()
+        crop = _detect_video_crop(file_path, ffmpeg)
+        cropf = (crop + ",") if crop else ""
+        clip = 2.0
+        if duration and duration >= 6:
+            stamps = [duration * 0.15, duration * 0.50, duration * 0.82]
+        else:
+            stamps = [0.0]
+            if duration:
+                clip = max(1.0, min(duration, 3.0))
+        inputs = []
+        for t in stamps:
+            inputs += ["-ss", f"{t:.2f}", "-t", f"{clip:.2f}", "-i", file_path]
+        n = len(stamps)
+        sq = ("scale=460:460:force_original_aspect_ratio=increase,crop=460:460")
+        if n > 1:
+            parts = "".join(
+                f"[{i}:v]{cropf}{sq},fps=12,setpts=PTS-STARTPTS[v{i}];" for i in range(n)
+            )
+            vf = parts + "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1[out]"
+        else:
+            vf = f"[0:v]{cropf}{sq},fps=12[out]"
+        cmd = [
+            ffmpeg, "-y", *inputs,
+            "-filter_complex", vf, "-map", "[out]",
+            "-an", "-loop", "0", "-vcodec", "libwebp",
+            "-lossless", "0", "-quality", "68", "-compression_level", "5",
+            out_path,
+        ]
+        res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True,
+                             timeout=120, creationflags=_NO_WINDOW)
+        return res.returncode == 0 and os.path.exists(out_path)
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         return False
 

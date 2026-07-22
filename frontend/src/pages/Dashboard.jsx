@@ -7,11 +7,12 @@ import {
   Star, Droplets, Clock, Shuffle, Dice6, Target, CheckCircle2, Circle,
   Plus, Images, Eye, User, HardDrive, Video, Trophy, Flame, X, Play,
   BarChart2, Calendar, Tag as TagIcon, Hash, Activity, Zap, Info, PlayCircle, StarHalf,
-  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check,
+  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check, Inbox,
 } from 'lucide-react'
 import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
+import IntakeModal from '../components/IntakeModal'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
@@ -854,10 +855,10 @@ function getOrCreateGreeting(name) {
 // ── Scan Folders Modal ────────────────────────────────────────────────────────
 function ScanModal({ onClose }) {
   const t = useT()
-  const [search, setSearch]       = useState('')
-  const [scanning, setScanning]   = useState(false)
-  const [done, setDone]           = useState(false)
-  const [scanningId, setScanningId] = useState(null) // null = full library
+  const [search, setSearch]     = useState('')
+  const [queuedId, setQueuedId] = useState(undefined) // undefined = none; null = full library queued; number = root id queued
+  const [watching, setWatching] = useState(false)      // silently poll so results refresh once a queued scan finishes
+  const sawRunning = useRef(false)
   const qc = useQueryClient()
 
   const { data: roots = [] } = useQuery({
@@ -868,27 +869,31 @@ function ScanModal({ onClose }) {
   const { data: status } = useQuery({
     queryKey: ['scan-status-modal'],
     queryFn: () => scannerApi.status().then(r => r.data),
-    refetchInterval: scanning ? 1500 : false,
+    refetchInterval: watching ? 1500 : false,
   })
 
-  // Watch for scan completion
+  // Silently refresh galleries/stats once a scan WE queued has actually run and
+  // finished. Requires observing running=true first, so a queued-but-not-yet-
+  // started job is never mistaken for a completed one (the old false-complete bug).
   useEffect(() => {
-    if (scanning && status && !status.running) {
-      setScanning(false)
-      setDone(true)
+    if (!watching || !status) return
+    if (status.running) { sawRunning.current = true; return }
+    if (sawRunning.current) {
+      sawRunning.current = false
+      setWatching(false)
       qc.invalidateQueries({ queryKey: ['galleries'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
     }
-  }, [scanning, status, qc])
+  }, [watching, status, qc])
 
   const triggerScan = async (rootId = null) => {
-    setDone(false)
-    setScanning(true)
-    setScanningId(rootId)
     try {
       await scannerApi.scan(rootId)
+      setQueuedId(rootId)
+      sawRunning.current = false
+      setWatching(true)
+      setTimeout(() => setQueuedId(undefined), 3000)
     } catch {
-      setScanning(false)
       toast.error(t('Failed to start scan'))
     }
   }
@@ -897,8 +902,6 @@ function ScanModal({ onClose }) {
     r.label?.toLowerCase().includes(search.toLowerCase()) ||
     r.path?.toLowerCase().includes(search.toLowerCase())
   )
-
-  const progressPct = status?.total > 0 ? Math.round((status.scanned / status.total) * 100) : null
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
@@ -921,34 +924,14 @@ function ScanModal({ onClose }) {
 
         <div className="p-5 flex flex-col gap-4">
 
-          {/* Scan status bar */}
-          {(scanning || done) && (
+          {/* Queued confirmation — scans run in the background task queue, so we
+              only confirm the job was added; progress shows in the global queue. */}
+          {queuedId !== undefined && (
             <div className="rounded-[10px] px-4 py-3 flex items-center gap-3"
-                 style={{ background: done ? 'rgba(29,158,117,0.12)' : 'rgba(127,119,221,0.1)', border: `0.5px solid ${done ? 'rgba(29,158,117,0.3)' : 'rgba(127,119,221,0.25)'}` }}>
-              {done
-                ? <Check size={15} style={{ color: '#1D9E75', flexShrink: 0 }} />
-                : <Loader2 size={15} className="animate-spin" style={{ color: '#7F77DD', flexShrink: 0 }} />}
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: 13, color: done ? '#9FE1CB' : '#CECBF6', fontWeight: 500 }}>
-                  {done ? t('Scan complete') : status?.current_file
-                    ? `Scanning — ${status.current_file.split(/[\\/]/).pop()}`
-                    : t('Starting scan…')}
-                </div>
-                {scanning && progressPct !== null && (
-                  <div className="mt-1.5 rounded-full overflow-hidden" style={{ height: 3, background: 'rgba(255,255,255,0.08)' }}>
-                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: '#7F77DD' }} />
-                  </div>
-                )}
-                {scanning && status?.total > 0 && (
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    {status.scanned} / {status.total} {t('folders')}
-                  </div>
-                )}
-                {done && status?.new_galleries > 0 && (
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
-                    {status.new_galleries} {t('new')} {status.new_galleries === 1 ? t('gallery') : t('galleries')} {t('found')}
-                  </div>
-                )}
+                 style={{ background: 'rgba(29,158,117,0.12)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+              <Check size={16} style={{ color: '#1D9E75', flexShrink: 0 }} />
+              <div style={{ fontSize: 15, color: '#9FE1CB', fontWeight: 500 }}>
+                {t('Added to queue')} — {queuedId === null ? t('scanning entire library') : t('scanning folder')}
               </div>
             </div>
           )}
@@ -956,11 +939,10 @@ function ScanModal({ onClose }) {
           {/* Full library scan */}
           <button
             onMouseDown={() => triggerScan(null)}
-            disabled={scanning}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-[10px] cursor-pointer transition-all disabled:opacity-50"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-[10px] cursor-pointer transition-all"
             style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)', color: '#CECBF6' }}>
-            {scanning && scanningId === null
-              ? <Loader2 size={16} className="animate-spin" style={{ flexShrink: 0 }} />
+            {queuedId === null
+              ? <Check size={16} style={{ color: '#9FE1CB', flexShrink: 0 }} />
               : <Plus size={16} style={{ flexShrink: 0 }} />}
             <div className="text-left">
               <div style={{ fontSize: 15, fontWeight: 600 }}>{t('Scan Entire Library')}</div>
@@ -998,13 +980,12 @@ function ScanModal({ onClose }) {
                   <button
                     key={root.id}
                     onMouseDown={() => triggerScan(root.id)}
-                    disabled={scanning}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer text-left transition-all disabled:opacity-50"
-                    style={{ background: scanningId === root.id && scanning ? 'rgba(127,119,221,0.12)' : 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}
-                    onMouseEnter={e => { if (!scanning) e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = scanningId === root.id && scanning ? 'rgba(127,119,221,0.12)' : 'rgba(255,255,255,0.03)' }}>
-                    {scanning && scanningId === root.id
-                      ? <Loader2 size={13} className="animate-spin" style={{ color: '#7F77DD', flexShrink: 0 }} />
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer text-left transition-all"
+                    style={{ background: queuedId === root.id ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}
+                    onMouseEnter={e => { if (queuedId !== root.id) e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = queuedId === root.id ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.03)' }}>
+                    {queuedId === root.id
+                      ? <Check size={13} style={{ color: '#1D9E75', flexShrink: 0 }} />
                       : <FolderSearch size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />}
                     <div className="min-w-0 flex-1">
                       <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1317,6 +1298,7 @@ export default function Dashboard() {
   const [showMission, setShowMission] = useState(false)
   const [showMoreStats, setShowMoreStats] = useState(false)
   const [showScanModal, setShowScanModal] = useState(false)
+  const [showIntake, setShowIntake] = useState(false)
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [showSpinModal, setShowSpinModal] = useState(false)
   const [showMixModal, setShowMixModal] = useState(false)
@@ -1589,20 +1571,24 @@ export default function Dashboard() {
                       onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.07)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.2)' }}>
                 <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(127,119,221,0.6)' }}>{t('Card Collection')}</div>
                 {(epicCards ?? []).length > 0 ? (
-                  <div className="flex items-end justify-center flex-1" style={{ gap: 0 }}>
+                  // Card stack is absolutely positioned so its (deliberately oversized)
+                  // cards overflow the tile WITHOUT adding to its height — otherwise the
+                  // grid row would grow to max-content and enlarge every tile in the row.
+                  <div className="relative flex-1" style={{ minHeight: 0 }}>
+                    <div className="absolute flex items-center" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', gap: 0, whiteSpace: 'nowrap' }}>
                     {epicCards.slice(0, 5).map((c, i, arr) => {
                       const rc = { epic: '#7F77DD', legendary: '#BA7517', relic: '#E24B4A', celestial: '#FAC775' }[c.rarity] ?? '#7F77DD'
                       const isCenter = i === Math.floor(arr.slice(0, 5).length / 2)
                       return (
                         <div key={c.inventory_id} style={{
-                          width: isCenter ? 58 : 46,
-                          height: isCenter ? 86 : 68,
-                          borderRadius: 7,
+                          width: isCenter ? 116 : 92,
+                          height: isCenter ? 172 : 136,
+                          borderRadius: 10,
                           overflow: 'hidden',
                           flexShrink: 0,
                           border: `2px solid ${rc}`,
-                          boxShadow: `0 0 16px ${rc}77, 0 4px 12px rgba(0,0,0,0.6)`,
-                          marginLeft: i === 0 ? 0 : -12,
+                          boxShadow: `0 0 22px ${rc}77, 0 6px 16px rgba(0,0,0,0.6)`,
+                          marginLeft: i === 0 ? 0 : -24,
                           zIndex: isCenter ? 10 : 5 - Math.abs(i - Math.floor(arr.slice(0, 5).length / 2)),
                           background: '#111',
                           transition: 'transform 0.15s',
@@ -1616,6 +1602,7 @@ export default function Dashboard() {
                         </div>
                       )
                     })}
+                    </div>
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
@@ -1627,11 +1614,11 @@ export default function Dashboard() {
                 </div>
               </button>
 
-              {/* Session start/stop — elapsed time from sessionStartAt, not accumulated total */}
+              {/* Session start/stop — big centered play-button hero; elapsed time from sessionStartAt */}
               <button onClick={handleSessionBtn}
-                      className="rounded-[12px] cursor-pointer text-left flex flex-col justify-between p-3"
+                      className="rounded-[12px] cursor-pointer flex flex-col items-center justify-center gap-3 p-3 group"
                       style={{
-                        minHeight: 88,
+                        minHeight: 120,
                         transition: 'background 0.15s, border-color 0.15s',
                         ...(sessionActive
                           ? { background: 'rgba(212,83,126,0.18)', border: '0.5px solid rgba(212,83,126,0.45)' }
@@ -1645,14 +1632,20 @@ export default function Dashboard() {
                         e.currentTarget.style.background = sessionActive ? 'rgba(212,83,126,0.18)' : 'rgba(212,83,126,0.08)'
                         e.currentTarget.style.borderColor = sessionActive ? 'rgba(212,83,126,0.45)' : 'rgba(212,83,126,0.2)'
                       }}>
-                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(212,83,126,0.7)' }}>
-                  {sessionActive ? t('Session active') : t('Session')}
+                {/* Big circular play / stop control */}
+                <div className="flex items-center justify-center rounded-full transition-transform group-hover:scale-105"
+                     style={{ width: 60, height: 60,
+                              background: sessionActive ? '#D4537E' : 'rgba(212,83,126,0.85)',
+                              boxShadow: '0 4px 18px rgba(212,83,126,0.45)' }}>
+                  {sessionActive
+                    ? <div style={{ width: 20, height: 20, borderRadius: 3, background: '#fff' }} />
+                    : <Play size={28} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />}
                 </div>
-                <div>
-                  <div className="text-[15px] font-semibold" style={{ color: '#ED93B1' }}>
-                    {sessionActive ? `⏹ End — ${fmtMs(sessionElapsedMs)}` : t('▶ Start session')}
+                <div className="text-center">
+                  <div className="text-[16px] font-semibold" style={{ color: '#ED93B1' }}>
+                    {sessionActive ? `End — ${fmtMs(sessionElapsedMs)}` : t('Start session')}
                   </div>
-                  <div className="text-[12px] mt-0.5" style={{ color: 'rgba(212,83,126,0.5)' }}>
+                  <div className="text-[12px] mt-0.5" style={{ color: 'rgba(212,83,126,0.55)' }}>
                     {sessionActive ? t('Log when you finish') : t('+25 XP when you finish')}
                   </div>
                 </div>
@@ -1766,6 +1759,11 @@ export default function Dashboard() {
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
                       style={{ background: 'rgba(29,158,117,0.12)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.25)', fontSize: 15, fontWeight: 500 }}>
                 <Plus size={15} /> {t('Scan Folders')}
+              </button>
+              <button onClick={() => setShowIntake(true)}
+                      className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
+                      style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)', fontSize: 15, fontWeight: 500 }}>
+                <Inbox size={15} /> {t('Loading Bay')}
               </button>
               <button onClick={() => setShowMission(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
@@ -2000,6 +1998,7 @@ export default function Dashboard() {
       )}
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
       {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}
+      {showIntake && <IntakeModal onClose={() => setShowIntake(false)} />}
       {showSpinModal && <SpinModal onClose={() => setShowSpinModal(false)} />}
       {showMixModal && <RandomMixModal onClose={() => setShowMixModal(false)} />}
       {ctxMenu && (

@@ -3,10 +3,12 @@ import VaultCard from './VaultCard'
 
 const RARITY_DRAMA = {
   celestial: { flash: 'rgba(220,220,255,0.95)', label: '✦ CELESTIAL ✦', delay: 1000 },
-  relic:     { flash: 'rgba(255,215,0,0.7)',    label: '✦ RELIC ✦',     delay: 800 },
-  legendary: { flash: 'rgba(255,140,0,0.5)',    label: '🔥 LEGENDARY',   delay: 500 },
-  epic:      { flash: 'rgba(127,119,221,0.4)',  label: '⚡ EPIC',        delay: 300 },
+  legendary: { flash: 'rgba(255,215,0,0.7)',    label: '✦ LEGENDARY ✦', delay: 800 },
+  epic:      { flash: 'rgba(255,140,0,0.5)',    label: '🔥 EPIC',        delay: 500 },
 }
+// Prestige cards get their own reveal drama regardless of tier (dead path today —
+// Prestige is crafted, never pulled from packs — kept in case that ever changes)
+const FOIL_DRAMA = { flash: 'rgba(255,255,255,0.85)', label: '✨ PRESTIGE ✨', delay: 900 }
 
 export default function PackOpening({ packs, onCollect, onSkip }) {
   const [packIdx, setPackIdx]   = useState(0)
@@ -30,7 +32,7 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
     if (revealed.includes(i) || flipped.includes(i)) return
     setFlipped(f => [...f, i])
     const card  = currentPack[i]
-    const drama = RARITY_DRAMA[card?.rarity]
+    const drama = (card?.foil && !RARITY_DRAMA[card?.rarity]) ? FOIL_DRAMA : RARITY_DRAMA[card?.rarity]
     setTimeout(() => {
       setRevealed(r => {
         const next = [...r, i]

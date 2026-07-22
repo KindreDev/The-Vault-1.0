@@ -1672,7 +1672,7 @@ export function Stats() {
                 { key: 'epic',      label: 'Epic',      color: '#7F77DD' },
                 { key: 'rare',      label: 'Rare',      color: '#378ADD' },
                 { key: 'uncommon',  label: 'Uncommon',  color: '#1D9E75' },
-                { key: 'common',    label: 'Common',    color: '#888780' },
+                { key: 'common',    label: 'Core',      color: '#888780' },
               ]
               const entries = RARITY_META.filter(r => (dist[r.key] || 0) > 0)
               const totalOwned = cardRarityDist?.total ?? 0

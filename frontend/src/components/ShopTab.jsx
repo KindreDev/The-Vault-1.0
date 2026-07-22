@@ -417,20 +417,22 @@ function InfoBlock({ description, dropRates, creditCost, credits, onOpen, isPend
 // Drop-rate data
 // ─────────────────────────────────────────────────────────────────────────────
 const STANDARD_DROPS = [
-  { label: 'Photo',     pct: '67%', color: '#c0c0c0' },
-  { label: 'Gallery',   pct: '19%', color: '#1D9E75' },
-  { label: 'Creator',   pct: '7%',  color: '#4682DC' },
-  { label: 'Collab ♦',  pct: '5%',  color: '#D4537E' },
-  { label: 'Goon ★',    pct: '1%',  color: '#7F77DD' },
-  { label: 'Variant ✦', pct: '1%',  color: '#ff8800' },
+  { label: 'Photo',     pct: '58%', color: '#c0c0c0' },
+  { label: 'Gallery',   pct: '17%', color: '#1D9E75' },
+  { label: 'Creator',   pct: '7%',  color: '#9F8FEF' },
+  { label: 'HOF 🏆',    pct: '7%',  color: '#FFD700' },
+  { label: 'Goon ★',    pct: '5%',  color: '#D4537E' },
+  { label: 'Collab ♦',  pct: '5%',  color: '#ff8800' },
+  { label: 'Variant ✦', pct: '1%',  color: '#E8E8FF' },
 ]
 const PREMIUM_DROPS = [
-  { label: 'Photo',     pct: '38%', color: '#c0c0c0' },
-  { label: 'Gallery',   pct: '27%', color: '#1D9E75' },
-  { label: 'Creator',   pct: '17%', color: '#4682DC' },
-  { label: 'Collab ♦',  pct: '10%', color: '#D4537E' },
-  { label: 'Variant ✦', pct: '5%',  color: '#ff8800' },
-  { label: 'Goon ★',    pct: '3%',  color: '#7F77DD' },
+  { label: 'Photo',     pct: '30%', color: '#c0c0c0' },
+  { label: 'Gallery',   pct: '20%', color: '#1D9E75' },
+  { label: 'Creator',   pct: '15%', color: '#9F8FEF' },
+  { label: 'Collab ♦',  pct: '12%', color: '#ff8800' },
+  { label: 'HOF 🏆',    pct: '11%', color: '#FFD700' },
+  { label: 'Goon ★',    pct: '9%',  color: '#D4537E' },
+  { label: 'Variant ✦', pct: '3%',  color: '#E8E8FF' },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -546,9 +548,9 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
             images={images}
           />
           <InfoBlock
-            description="5 random cards drawn from your vault library. Chance of Epic, Legendary, Relic, or Celestial drops."
+            description="Your history, in card form — pulls lean hard into what you've actually watched, gooned, and rated."
             dropRates={STANDARD_DROPS}
-            creditCost={250}
+            creditCost={400}
             credits={credits}
             onOpen={(qty) => openPackMutation.mutate({ pack_type: 'standard', quantity: qty })}
             isPending={openPackMutation.isPending}
@@ -576,57 +578,14 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
             shiny
           />
           <InfoBlock
-            description="5 premium cards. Massively boosted variant and goon drop rates. Higher relic and celestial chance."
+            description="The high table — guaranteed Epic+, heavy goon, collab, and Hall of Fame rates. Chases rarity. The tier hunter's pack."
             dropRates={PREMIUM_DROPS}
-            creditCost={500}
+            creditCost={800}
             credits={credits}
             onOpen={(qty) => openPackMutation.mutate({ pack_type: 'premium', quantity: qty })}
             isPending={openPackMutation.isPending}
             glowColor="rgba(255,200,30,0.85)"
           />
-        </div>
-
-        {/* ── Upgrade odds sidebar ── */}
-        <div style={{
-          flex:           '0 0 220px',
-          borderRadius:    14,
-          background:     'rgba(8,8,22,0.65)',
-          backdropFilter: 'blur(12px)',
-          border:         '0.5px solid rgba(255,255,255,0.07)',
-          padding:         22,
-          alignSelf:      'flex-start',
-          marginTop:       6,
-        }}>
-          <div style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: '0.12em',
-            color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', marginBottom: 14,
-          }}>
-            Upgrade Lottery
-          </div>
-          {[
-            { label: 'Epic upgrade',      pct: '3%',   color: '#7F77DD' },
-            { label: 'Legendary upgrade', pct: '1%',   color: '#ff8800' },
-            { label: 'Relic upgrade',     pct: '0.5%', color: '#FFD700' },
-            { label: 'Celestial upgrade', pct: '0.1%', color: '#E8E8FF' },
-          ].map(u => (
-            <div key={u.label} style={{
-              display:        'flex',
-              justifyContent: 'space-between',
-              alignItems:     'center',
-              padding:        '7px 0',
-              borderBottom:   '0.5px solid rgba(255,255,255,0.04)',
-              fontSize:        11,
-            }}>
-              <span style={{ color: 'rgba(255,255,255,0.38)' }}>{u.label}</span>
-              <span style={{ color: u.color, fontWeight: 700 }}>{u.pct}</span>
-            </div>
-          ))}
-          <div style={{
-            fontSize: 10, color: 'rgba(255,255,255,0.16)',
-            marginTop: 12, lineHeight: 1.55,
-          }}>
-            Each of the 5 cards rolls its upgrade independently, on top of its base type rarity.
-          </div>
         </div>
 
       </div>

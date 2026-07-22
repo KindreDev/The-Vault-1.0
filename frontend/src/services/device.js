@@ -39,6 +39,8 @@ class DeviceService {
     this._schedulerTimer = null
     this._edgingTimer    = null
     this._cumTimer       = null
+    this._finisherActive = false
+    this._finisherPrev   = null   // { mode, presetId } to restore when the finisher stops
     this._msgId          = 100   // counter for raw WS message IDs
 
     // Per-device linear feature info extracted at connect time
@@ -516,19 +518,29 @@ class DeviceService {
     }
   }
 
+  // Sync offset convention: `funscriptOffsetMs` > 0 means the script is DELAYED
+  // relative to the video — an action authored at `action.at` should physically
+  // fire at video time `action.at + offsetMs`. Negative offset fires it earlier.
+  // We implement this by comparing against an "effective" action time
+  // (`action.at + offsetMs`) everywhere we'd otherwise use `action.at` directly,
+  // so all downstream duration math (which only cares about deltas between
+  // consecutive effective times) is unaffected by the shift.
   _scheduleAxis(axisId, actions) {
+    const offsetMs = store().funscriptOffsetMs || 0
+    const effAt    = (a) => a.at + offsetMs
+
     const nowMs   = this._videoEl.currentTime * 1000
-    const nextIdx = actions.findIndex(a => a.at > nowMs)
+    const nextIdx = actions.findIndex(a => effAt(a) > nowMs)
     if (nextIdx < 0) return
 
     const scheduleNext = (idx) => {
       if (store().mode !== 'funscript' || idx >= actions.length - 1) return
       const curr = actions[idx]
       const next = actions[idx + 1]
-      const dur  = next.at - curr.at
+      const dur  = effAt(next) - effAt(curr)
       // Pass raw pos (0-100); _sendAxisSerial applies the stroke limiter to L0 only.
       this._sendAxis(axisId, next.pos, dur)
-      const delay = curr.at - (this._videoEl.currentTime * 1000)
+      const delay = effAt(curr) - (this._videoEl.currentTime * 1000)
       this._funscriptTimers[axisId] = setTimeout(() => scheduleNext(idx + 1), Math.max(0, delay + dur))
     }
     scheduleNext(nextIdx)
@@ -539,6 +551,13 @@ class DeviceService {
     if (store().mode === 'funscript') this._scheduleFunscriptActions()
   }
 
+  // Update the funscript sync offset (see _scheduleAxis for the sign convention)
+  // and re-arm the scheduler immediately so the change takes effect without a seek.
+  setFunscriptOffset(ms) {
+    useDeviceStore.getState().setFunscriptOffset(ms)
+    this.onVideoSeek()
+  }
+
   onVideoPause() {
     // Stop scheduling future commands — device stays at last position silently
     if (store().mode === 'funscript') this._stopFunscriptPlayer()
@@ -547,6 +566,70 @@ class DeviceService {
   onVideoPlay() {
     // Resume scheduling from the new current time
     if (store().mode === 'funscript') this._scheduleFunscriptActions()
+  }
+
+  // ── Finisher ──────────────────────────────────────────────────────────────
+  // Instantly override whatever the device is doing (a running funscript,
+  // freestyle, ramp…) and loop a chosen saved pattern until manually stopped.
+  // The "press one key and let it take you home" button. Meant to be fired only
+  // while a funscript is loaded, but works whenever the device is connected.
+
+  hasFunscriptLoaded() {
+    return !!(this._funscript && this._videoEl)
+  }
+
+  isFinisherActive() {
+    return this._finisherActive
+  }
+
+  startFinisher(patternName) {
+    if (store().status !== 'connected') return false
+    const name    = patternName || store().finisherPatternName
+    const pattern = store().savedPatterns.find(p => p.name === name)
+    if (!pattern) return false
+
+    // Remember what to return to once the finisher stops.
+    this._finisherPrev   = { mode: store().mode, presetId: store().activePresetId }
+    this._finisherActive = true
+
+    // Kill every other driver so nothing fights the finisher. Switching to
+    // 'freestyle' also neutralises the funscript re-arm paths (they all guard
+    // on mode === 'funscript'), so a still-playing video won't tug back control.
+    this._stopFunscriptPlayer()
+    this._stopRamp()
+    this._stopScheduler()
+    this._stopEdging()
+    clearTimeout(this._cumTimer)
+
+    useDeviceStore.setState({ mode: 'freestyle', activePresetId: `saved_${name}`, finisherActive: true })
+    this._startPatternEngine()
+    return true
+  }
+
+  stopFinisher() {
+    if (!this._finisherActive) return
+    this._finisherActive = false
+    this._stopPatternEngine()
+
+    const prev = this._finisherPrev || { mode: 'off', presetId: 'tease' }
+    this._finisherPrev = null
+    useDeviceStore.setState({ finisherActive: false, activePresetId: prev.presetId })
+
+    // Return to whatever was running before the finisher, if we still can.
+    if (prev.mode === 'funscript' && this._funscript && this._videoEl) {
+      this.takeFunscriptControl()
+    } else if (prev.mode === 'freestyle') {
+      useDeviceStore.setState({ mode: 'freestyle' })
+      this._startPatternEngine()
+    } else {
+      this.stop()   // send device to rest
+    }
+  }
+
+  // Same key starts and stops. Returns true if it just started.
+  toggleFinisher(patternName) {
+    if (this._finisherActive) { this.stopFinisher(); return false }
+    return this.startFinisher(patternName)
   }
 
   // ── Cum pattern shortcut ────────────────────────────────────────────────────
@@ -569,7 +652,9 @@ class DeviceService {
     this._stopScheduler()
     this._stopEdging()
     clearTimeout(this._cumTimer)
-    useDeviceStore.setState({ schedulerRunningOnce: false })
+    this._finisherActive = false
+    this._finisherPrev   = null
+    useDeviceStore.setState({ schedulerRunningOnce: false, finisherActive: false })
   }
 
   // ── The Handy REST API v2 ───────────────────────────────────────────────────

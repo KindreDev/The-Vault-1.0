@@ -1,7 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Zap } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Zap, Link2, Loader2, Minus, Plus, RotateCcw } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { deviceService } from '../services/device'
 import { useDeviceStore } from '../store/deviceStore'
+import { imagesApi } from '../lib/api'
 
 function fmtTime(s) {
   if (!s || !isFinite(s)) return '0:00'
@@ -45,13 +47,107 @@ function FunscriptWaveform({ actions, duration, currentTime }) {
   const pct    = Math.min(100, (currentTime / duration) * 100)
 
   return (
-    <div className="relative mb-1.5 rounded overflow-hidden" style={{ height: 22 }}>
+    <div className="relative mb-1.5 rounded overflow-hidden" style={{ height: 30 }}>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
-        <polygon points={filled} fill="rgba(127,119,221,0.18)" />
-        <polyline points={line} fill="none" stroke="rgba(127,119,221,0.55)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        <polygon points={filled} fill="color-mix(in srgb, var(--accent) 20%, transparent)" />
+        <polyline points={line} fill="none" stroke="color-mix(in srgb, var(--accent) 65%, transparent)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
         <rect x="0" y="0" width={pct} height="100" fill="rgba(0,0,0,0.32)" />
         <line x1={pct} y1="0" x2={pct} y2="100" stroke="rgba(239,159,39,0.85)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
       </svg>
+    </div>
+  )
+}
+
+// Compact funscript live-stats readout shown next to the waveform when a
+// script is loaded. Computes strokes, strokes/min, avg & peak speed, and
+// timeline coverage from the raw action list — dense player-HUD styling
+// (~12px) to match the surrounding chrome, not the 16px body-text minimum.
+function FunscriptStatsPill({ actions, duration }) {
+  if (!actions?.length) return null
+  const count = actions.length
+  const lastAt = actions[actions.length - 1]?.at ?? 0
+  const coveragePct = duration ? Math.min(100, Math.round(((lastAt / 1000) / duration) * 100)) : null
+  const spm = duration ? Math.round(count / (duration / 60)) : null
+
+  // Per-interval speed in pos-units/sec between consecutive actions.
+  // Intervals with non-positive time delta are skipped (bad/duplicate timestamps).
+  let avgSpeed = null
+  let peakSpeed = null
+  if (count >= 2) {
+    let total = 0, n = 0, peak = 0
+    for (let i = 1; i < actions.length; i++) {
+      const a = actions[i - 1], b = actions[i]
+      const dtSec = (b.at - a.at) / 1000
+      if (dtSec <= 0) continue
+      const speed = Math.abs(b.pos - a.pos) / dtSec
+      total += speed
+      n += 1
+      if (speed > peak) peak = speed
+    }
+    if (n > 0) {
+      avgSpeed = Math.round(total / n)
+      peakSpeed = Math.round(peak)
+    }
+  }
+
+  const stats = [
+    `${count.toLocaleString()} ${count === 1 ? 'stroke' : 'strokes'}`,
+    spm !== null ? `${spm} SPM` : null,
+    avgSpeed !== null ? `avg ${avgSpeed}` : null,
+    peakSpeed !== null ? `peak ${peakSpeed}` : null,
+    coveragePct !== null ? `${coveragePct}%` : null,
+  ].filter(Boolean)
+
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full flex-shrink-0 flex-wrap"
+          style={{
+            fontSize: 12, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
+            background: 'color-mix(in srgb, var(--accent) 16%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+          }}>
+      <Zap size={10} fill="currentColor" />
+      FS · {stats.join(' · ')}
+    </span>
+  )
+}
+
+// Sync-offset nudge: shift funscript timing relative to the video (±2000ms,
+// 50ms steps). Persisted per-video in localStorage; in-memory only when no
+// imageId (e.g. an unsaved "play once" override script).
+function FunscriptOffsetControl({ offsetMs, onChange }) {
+  const step = 50
+  const clamp = (v) => Math.max(-2000, Math.min(2000, v))
+  return (
+    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full flex-shrink-0"
+         style={{
+           fontSize: 12, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
+           background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+           border: '0.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+         }}>
+      <span style={{ opacity: 0.75, paddingLeft: 4 }}>Sync</span>
+      <button onMouseDown={e => { e.stopPropagation(); onChange(clamp(offsetMs - step)) }}
+              title="Shift script earlier"
+              className="cursor-pointer flex items-center justify-center rounded-full"
+              style={{ width: 16, height: 16, background: 'rgba(255,255,255,0.08)' }}>
+        <Minus size={9} />
+      </button>
+      <span className="font-mono tabular-nums" style={{ minWidth: 42, textAlign: 'center' }}>
+        {offsetMs > 0 ? '+' : ''}{offsetMs}ms
+      </span>
+      <button onMouseDown={e => { e.stopPropagation(); onChange(clamp(offsetMs + step)) }}
+              title="Shift script later"
+              className="cursor-pointer flex items-center justify-center rounded-full"
+              style={{ width: 16, height: 16, background: 'rgba(255,255,255,0.08)' }}>
+        <Plus size={9} />
+      </button>
+      {offsetMs !== 0 && (
+        <button onMouseDown={e => { e.stopPropagation(); onChange(0) }}
+                title="Reset offset to 0"
+                className="cursor-pointer flex items-center justify-center rounded-full ml-0.5"
+                style={{ width: 16, height: 16, background: 'rgba(255,255,255,0.08)' }}>
+          <RotateCcw size={9} />
+        </button>
+      )}
     </div>
   )
 }
@@ -63,6 +159,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   overrideFunscript = null,
   onViewTracked,
   onEnded,
+  onFunscriptChange,
   videoZoom    = 1,
   videoPan     = { x: 0, y: 0 },
   isFullscreen = false,
@@ -82,6 +179,11 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const [funscript,    setFunscript]    = useState(null)
   const [scriptSynced, setScriptSynced] = useState(false)
   const [videoError,   setVideoError]   = useState(null)
+  const [scriptDrag,   setScriptDrag]   = useState(false)  // .funscript being dragged over
+  const [droppedScript, setDroppedScript] = useState(null) // { name, content, parsed } awaiting confirm
+  const [linking,      setLinking]      = useState(false)
+  const [funscriptOffsetMs, setFunscriptOffsetMs] = useState(0)
+  const dragDepth = useRef(0)
 
   const deviceStatus    = useDeviceStore(s => s.status)
   const deviceConnected = deviceStatus === 'connected'
@@ -105,6 +207,20 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       if (!dur || isNaN(dur)) return
       v.currentTime = Math.max(0, Math.min(dur - 0.05, v.currentTime + delta))
       deviceService.onVideoSeek()
+    },
+    // Load a File (or File-like) and surface the same link-confirmation
+    // dialog used by drag-and-drop, so the sidebar "Load .funscript" button
+    // shares one flow with the video-drop path.
+    promptLinkFunscript: async (file) => {
+      if (!imageId || !file) return
+      try {
+        const content = await file.text()
+        const parsed = JSON.parse(content)
+        if (!Array.isArray(parsed.actions) || parsed.actions.length === 0) throw new Error('no actions')
+        setDroppedScript({ name: file.name, content, parsed })
+      } catch {
+        toast.error('Not a valid funscript')
+      }
     },
   }))
 
@@ -145,6 +261,28 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       setScriptSynced(false)
     }
   }, [funscript])
+
+  // Sync-offset persistence: keyed per-video by imageId. When imageId is null
+  // (an unsaved/override script with no linked image), the offset lives in
+  // memory only for the duration of this mount and resets on next load.
+  useEffect(() => {
+    if (!imageId) { setFunscriptOffsetMs(0); deviceService.setFunscriptOffset(0); return }
+    let stored = 0
+    try {
+      const raw = localStorage.getItem(`vault_fs_offset_${imageId}`)
+      if (raw !== null) stored = parseInt(raw, 10) || 0
+    } catch {}
+    setFunscriptOffsetMs(stored)
+    deviceService.setFunscriptOffset(stored)
+  }, [imageId])
+
+  const handleOffsetChange = useCallback((ms) => {
+    setFunscriptOffsetMs(ms)
+    if (imageId) {
+      try { localStorage.setItem(`vault_fs_offset_${imageId}`, String(ms)) } catch {}
+    }
+    deviceService.setFunscriptOffset(ms)
+  }, [imageId])
 
   const toggleScriptSync = useCallback(() => {
     if (!scriptSynced) {
@@ -244,8 +382,116 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     setVideoError(msgs[code] ?? 'Unknown video error.')
   }, [])
 
+  // ── Funscript drag-and-drop: drop a .funscript onto the video to link it ──
+  const isFileDrag = (e) => e.dataTransfer?.types?.includes('Files')
+
+  const onScriptDragEnter = useCallback((e) => {
+    if (!imageId || !isFileDrag(e)) return
+    e.preventDefault()
+    dragDepth.current += 1
+    setScriptDrag(true)
+  }, [imageId])
+
+  const onScriptDragLeave = useCallback((e) => {
+    if (!isFileDrag(e)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setScriptDrag(false)
+  }, [])
+
+  const onScriptDrop = useCallback(async (e) => {
+    if (!imageId || !isFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepth.current = 0
+    setScriptDrag(false)
+    const file = [...(e.dataTransfer.files || [])].find(f => f.name.toLowerCase().endsWith('.funscript'))
+    if (!file) { toast.error('Drop a .funscript file'); return }
+    try {
+      const content = await file.text()
+      const parsed = JSON.parse(content)
+      if (!Array.isArray(parsed.actions) || parsed.actions.length === 0) throw new Error('no actions')
+      setDroppedScript({ name: file.name, content, parsed })
+    } catch {
+      toast.error('Not a valid funscript')
+    }
+  }, [imageId])
+
+  const applyScriptLocally = useCallback((parsed) => {
+    setFunscript(parsed)
+    setDetectedAxes(axisIdsOf(parsed))
+  }, [setDetectedAxes])
+
+  const linkDroppedScript = useCallback(async () => {
+    if (!droppedScript || !imageId) return
+    setLinking(true)
+    try {
+      await imagesApi.linkFunscript(imageId, droppedScript.content)
+      applyScriptLocally(droppedScript.parsed)
+      toast.success('Funscript linked to this video')
+      setDroppedScript(null)
+      onFunscriptChange?.()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not link funscript')
+    } finally {
+      setLinking(false)
+    }
+  }, [droppedScript, imageId, applyScriptLocally, onFunscriptChange])
+
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#060606' }}>
+    <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#060606' }}
+         onDragEnter={onScriptDragEnter}
+         onDragOver={e => { if (imageId && isFileDrag(e)) e.preventDefault() }}
+         onDragLeave={onScriptDragLeave}
+         onDrop={onScriptDrop}>
+
+      {/* Drop hint */}
+      {scriptDrag && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none animate-fade-in"
+             style={{ background: 'rgba(0,0,0,0.7)', border: '2px dashed color-mix(in srgb, var(--accent) 70%, transparent)', borderRadius: 12 }}>
+          <Link2 size={34} style={{ color: 'color-mix(in srgb, var(--accent) 85%, white)' }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)' }}>
+            Drop .funscript to link it to this video
+          </div>
+        </div>
+      )}
+
+      {/* Link confirmation */}
+      {droppedScript && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center"
+             style={{ background: 'rgba(0,0,0,0.75)' }}
+             onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+             onDoubleClick={e => e.stopPropagation()}>
+          <div className="rounded-[14px] p-5 flex flex-col gap-3 animate-modal-pop"
+               style={{ width: 'min(400px, 90%)', background: 'var(--c-card, #1a1a1a)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+            <div className="flex items-center gap-2">
+              <Zap size={17} style={{ color: 'var(--c-pink)' }} />
+              <span className="truncate" style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                {droppedScript.name}
+              </span>
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
+              Link this script to the video permanently? It will be saved next to the video
+              {funscriptPath ? ' and replace the current script.' : '.'}
+            </div>
+            <button onMouseDown={linkDroppedScript} disabled={linking}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[10px] cursor-pointer disabled:opacity-50"
+                    style={{ background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+              {linking ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
+              Link permanently
+            </button>
+            <button onMouseDown={() => { applyScriptLocally(droppedScript.parsed); setDroppedScript(null) }}
+                    className="w-full py-2.5 rounded-[10px] cursor-pointer"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.75)', fontSize: 14 }}>
+              Just play once (don't save)
+            </button>
+            <button onMouseDown={() => setDroppedScript(null)}
+                    className="w-full py-1.5 cursor-pointer"
+                    style={{ background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Codec / format error overlay */}
       {videoError && (
@@ -317,7 +563,13 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
              onDoubleClick={e => e.stopPropagation()}>
 
           {funscript && (
-            <FunscriptWaveform actions={funscript.actions} duration={duration} currentTime={time} />
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <FunscriptWaveform actions={funscript.actions} duration={duration} currentTime={time} />
+              </div>
+              <FunscriptStatsPill actions={funscript.actions} duration={duration} />
+              <FunscriptOffsetControl offsetMs={funscriptOffsetMs} onChange={handleOffsetChange} />
+            </div>
           )}
 
           {funscript && localAxes.length > 1 && (

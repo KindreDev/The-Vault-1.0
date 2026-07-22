@@ -9,17 +9,12 @@ const ROW_HEIGHT   = 88
 const VISIBLE_ROWS = 6
 const OVERSCAN     = 2
 
-const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'relic', 'celestial']
-
 const CXP_FEED_YIELD = {
-  common: 30, uncommon: 75, rare: 200, epic: 500,
-  legendary: 1200, relic: 3000, celestial: 8000,
+  common: 40, epic: 250, legendary: 800, celestial: 2500,
 }
 const TYPE_MULTS = { goon: 1.5, variant: 2.0 }
-const CXP_THRESHOLDS_MAP = {
-  common: 100, uncommon: 300, rare: 800, epic: 2000,
-  legendary: 5000, relic: 12000,
-}
+// Level steps per rarity (mirrors backend): CXP cap = step × 9 (level 10)
+const LEVEL_CXP_STEP = { common: 100, epic: 400, legendary: 1200, celestial: 3000 }
 const OVERFLOW_RATE = 5
 
 function calcCxp(card) {
@@ -35,14 +30,12 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
   const [feedPopped, setFeedPopped] = useState(false)
   const qc = useQueryClient()
 
-  const threshold  = CXP_THRESHOLDS_MAP[targetCard.rarity] ?? null
+  // Feeding grows the card's LEVEL now — the cap is level 10 (step × 9)
+  const threshold  = (LEVEL_CXP_STEP[targetCard.rarity] ?? 100) * 9
   const currentCxp = targetCard.cxp ?? 0
 
-  const nextRarity = useMemo(() => {
-    const idx = RARITY_ORDER.indexOf(targetCard.rarity)
-    return idx >= 0 && idx < RARITY_ORDER.length - 1 ? RARITY_ORDER[idx + 1] : null
-  }, [targetCard.rarity])
-  const nextCfg = nextRarity ? RARITY_CONFIG[nextRarity] : null
+  const nextRarity = null   // rarity is fixed at birth — levels are the progression
+  const nextCfg = null
 
   const { data: invData, isLoading } = useQuery({
     queryKey: ['card-inventory-feed'],

@@ -12,6 +12,7 @@ import BondHearts from '../components/BondHearts'
 import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import HoverVideoPreview from '../components/HoverVideoPreview'
+import CreatorShowcase from '../components/CreatorShowcase'
 import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -1538,9 +1539,11 @@ export default function CreatorProfile() {
 
         {/* ── Profile hero — transparent, floats over the banner photo ─── */}
         <div className="relative px-6 pb-8 z-10">
-        <div className="flex items-start gap-5">
+        <div className="flex items-start gap-6">
+          {/* ── Left rail: avatar + bond cluster ── */}
+          <div className="flex-shrink-0 flex flex-col" style={{ width: 300 }}>
           {/* Avatar — tall vertical portrait */}
-          <div className="relative flex-shrink-0 z-10" style={{ marginTop: -300 }}>
+          <div className="relative z-10" style={{ marginTop: -300 }}>
             <div className="rounded-[20px] overflow-hidden flex items-center justify-center group/avatar cursor-zoom-in relative"
                  onClick={() => (!avatarFailed && creator.avatar_path) && !avatarDragOver && setShowAvatarZoom(true)}
                  onDragOver={e => { e.preventDefault(); setAvatarDragOver(true) }}
@@ -1574,10 +1577,38 @@ export default function CreatorProfile() {
               <Camera size={15} />
             </button>
           </div>
+          {/* Bond hearts + gift — anchored under the avatar */}
+          {!creator.bond_excluded && (
+            <div className="mt-5 flex flex-col gap-2">
+              <BondHearts
+                level={creator.bond_level ?? 0}
+                size="lg"
+                bondScore={creator.bond_score ?? 0}
+                showProgress
+              />
+              <button
+                onClick={() => giftMutation.mutate()}
+                disabled={giftMutation.isPending || heartsAvailable < 1}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 8, fontSize: 16, fontWeight: 600,
+                  cursor: heartsAvailable >= 1 ? 'pointer' : 'not-allowed',
+                  background: heartsAvailable >= 1 ? 'rgba(255,45,117,0.18)' : 'rgba(255,255,255,0.04)',
+                  border: heartsAvailable >= 1 ? '0.5px solid rgba(255,45,117,0.5)' : '0.5px solid rgba(255,255,255,0.07)',
+                  color: heartsAvailable >= 1 ? '#FF2D75' : 'rgba(255,255,255,0.2)',
+                  transition: 'all 0.15s',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                {t('❤️ Gift Heart')}
+                <span style={{ fontSize: 14, opacity: 0.6 }}>({heartsAvailable} {t('available')})</span>
+              </button>
+            </div>
+          )}
+          </div>{/* end left rail */}
 
           {/* Main Info Area */}
-          <div className="flex-1 min-w-0 pt-2 flex flex-col justify-between">
-            <div className="flex items-start justify-between gap-6">
+          <div className="flex-1 min-w-0 pt-2 flex flex-col">
               {/* Name & Tags */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-3 group/name">
@@ -1590,16 +1621,16 @@ export default function CreatorProfile() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-[13px] px-3 py-0.5 rounded-full capitalize font-medium" style={{ background: tc.bg, color: tc.text }}>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <span className="text-[16px] px-3 py-1 rounded-full capitalize font-medium" style={{ background: tc.bg, color: tc.text }}>
                     {creator.creator_type}
                   </span>
-                  <span className="text-[12px] px-3 py-0.5 rounded-full font-semibold"
+                  <span className="text-[16px] px-3 py-1 rounded-full font-semibold"
                         style={{ background: `${rc}22`, color: rc }}>
                     {t(RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity)}
                   </span>
                   {creator.series && (
-                    <span className="text-[12px] px-3 py-0.5 rounded-full"
+                    <span className="text-[16px] px-3 py-1 rounded-full"
                           style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.45)' }}>
                       {creator.series}
                     </span>
@@ -1610,7 +1641,7 @@ export default function CreatorProfile() {
                 {creator.platform_links && creator.platform_links !== "{}" && (
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {Object.values(JSON.parse(creator.platform_links)).map((link, i) => {
-                      let icon = <Globe size={11} />
+                      let icon = <Globe size={14} />
                       let label = t("Link")
                       if (link.includes('patreon')) { label = t("Patreon") }
                       else if (link.includes('onlyfans')) { label = t("OnlyFans") }
@@ -1620,7 +1651,7 @@ export default function CreatorProfile() {
                       
                       return (
                         <a key={i} href={link} target="_blank" rel="noreferrer"
-                           className="flex items-center gap-1.5 text-[12px] px-3 py-1 rounded-full hover:bg-[rgba(255,255,255,0.1)] transition-colors"
+                           className="flex items-center gap-1.5 text-[16px] px-3 py-1 rounded-full hover:bg-[rgba(255,255,255,0.1)] transition-colors"
                            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                           {icon} {label}
                         </a>
@@ -1629,48 +1660,26 @@ export default function CreatorProfile() {
                   </div>
                 )}
 
-                <div className="mt-2">
+                <div className="mt-3">
                   <RatingInput value={rating ?? creator.rating ?? 0} onChange={handleRating} />
                 </div>
-                {!creator.bond_excluded && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <BondHearts
-                      level={creator.bond_level ?? 0}
-                      size="lg"
-                      bondScore={creator.bond_score ?? 0}
-                      showProgress
-                    />
-                    <button
-                      onClick={() => giftMutation.mutate()}
-                      disabled={giftMutation.isPending || heartsAvailable < 1}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '5px 12px', borderRadius: 8, fontSize: 14, fontWeight: 600,
-                        cursor: heartsAvailable >= 1 ? 'pointer' : 'not-allowed',
-                        background: heartsAvailable >= 1 ? 'rgba(255,45,117,0.18)' : 'rgba(255,255,255,0.04)',
-                        border: heartsAvailable >= 1 ? '0.5px solid rgba(255,45,117,0.5)' : '0.5px solid rgba(255,255,255,0.07)',
-                        color: heartsAvailable >= 1 ? '#FF2D75' : 'rgba(255,255,255,0.2)',
-                        transition: 'all 0.15s',
-                        alignSelf: 'flex-start',
-                      }}
-                    >
-                      {t('❤️ Gift Heart')}
-                      <span style={{ fontSize: 12, opacity: 0.6 }}>({heartsAvailable} {t('available')})</span>
-                    </button>
-                  </div>
-                )}
               </div>
 
-              {/* Creator Description */}
-              {creator.description && (
-                <div className="flex-1 min-w-0 max-w-2xl text-[14px] text-white leading-relaxed line-clamp-5 mt-1 hidden md:block" 
-                     style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            {/* Creator Description — transparent over the banner so the art stays visible */}
+            {creator.description && (
+              <div className="mt-4 max-w-2xl">
+                <div className="text-[16px] uppercase tracking-wider mb-1 font-medium"
+                     style={{ color: 'rgba(255,255,255,0.55)', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                  {t('About')}
+                </div>
+                <div className="text-[16px] text-white leading-relaxed line-clamp-5"
+                     style={{ textShadow: '0 1px 4px rgba(0,0,0,0.95)' }}>
                   {creator.description}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Expanded Details Stats */}
+            {/* Vital stats — full-width wrap */}
             <div className="mt-6 flex flex-wrap gap-x-8 gap-y-4">
               {[
                 ['Real Name', creator.real_name],
@@ -1696,22 +1705,29 @@ export default function CreatorProfile() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-1.5 flex-shrink-0 pt-2 flex-wrap justify-end">
+        </div>
+
+        {/* ── Bottom band: showcase (own box) + actions, spanning the full width ── */}
+        <div className="mt-8 flex flex-wrap items-end justify-between gap-x-8 gap-y-6">
+          {/* Showcase — its own box, enlarged cards */}
+          <CreatorShowcase creatorId={parseInt(id)} slotWidth={140} />
+
+          {/* Action buttons — anchored at the bottom-right */}
+          <div className="flex gap-2 flex-wrap justify-end">
             <button onClick={() => setShowEditModal(true)}
-                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-              <Pencil size={11} /> {t('Edit')}
+                    className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '0.5px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(6px)' }}>
+              <Pencil size={15} /> {t('Edit')}
             </button>
             <button onClick={() => navigate(`/feed?creator_id=${id}`)}
-                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                    style={{ background: 'rgba(212,83,126,0.15)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
-              <Newspaper size={12} /> {t('Feed')}
+                    className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(212,83,126,0.18)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.35)', backdropFilter: 'blur(6px)' }}>
+              <Newspaper size={15} /> {t('Feed')}
             </button>
             <button onClick={talkToCreator}
-                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                    style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              <Sparkles size={12} /> {t('Talk to')} {creator.name}
+                    className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
+                    style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)', backdropFilter: 'blur(6px)' }}>
+              <Sparkles size={15} /> {t('Talk to')} {creator.name}
             </button>
             <button
               disabled={aiTagging}
@@ -1726,20 +1742,21 @@ export default function CreatorProfile() {
                   setAiTagging(false)
                 }
               }}
-              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-              <Sparkles size={12} /> {aiTagging ? t('Starting…') : t('AI Tag')}
+              className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer disabled:opacity-40"
+              style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)', backdropFilter: 'blur(6px)' }}>
+              <Sparkles size={15} /> {aiTagging ? t('Starting…') : t('AI Tag')}
             </button>
             <button onClick={() => favMutation.mutate()}
-                    className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                    style={{ background: creator.is_favorite ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
-                             color: creator.is_favorite ? '#FAC775' : 'rgba(255,255,255,0.4)',
-                             border: '0.5px solid rgba(255,255,255,0.1)' }}>
-              <Star size={12} fill={creator.is_favorite ? '#FAC775' : 'none'} />
+                    className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
+                    style={{ background: creator.is_favorite ? 'rgba(186,117,23,0.22)' : 'rgba(255,255,255,0.06)',
+                             color: creator.is_favorite ? '#FAC775' : 'rgba(255,255,255,0.55)',
+                             border: '0.5px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(6px)' }}>
+              <Star size={15} fill={creator.is_favorite ? '#FAC775' : 'none'} />
               {creator.is_favorite ? t('Favorited') : t('Favorite')}
             </button>
           </div>
         </div>
+
       </div>
       </div>{/* end combined banner+hero wrapper */}
 
