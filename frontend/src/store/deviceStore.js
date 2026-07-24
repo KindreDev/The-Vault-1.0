@@ -31,9 +31,9 @@ export const useDeviceStore = create((set, get) => ({
   provider:  null,             // null | 'intiface' | 'handy' | 'serial' — active provider
   wsUrl:     localStorage.getItem('vault_device_url') || 'ws://localhost:12345',
   errorMsg:  null,
-  devices:   [],               // [{ name, index, canLinear, canVibrate }]
+  devices:   [],               // [{ name, index, canLinear, canVibrate, canRotate, canOscillate }]
 
-  // The Handy REST API
+  // The Handy REST API v3
   handyKey:  localStorage.getItem('vault_handy_key') || '',
   setHandyKey: (k) => { localStorage.setItem('vault_handy_key', k); set({ handyKey: k }) },
 

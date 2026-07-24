@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { creatorsApi, imagesApi } from '../lib/api'
+import { creatorsApi } from '../lib/api'
 
 const ROTATE_MS = 2800
 
@@ -87,8 +87,8 @@ const TILE_RADII = [
 // Shuffled so tiles get variety. Always at least GRID_CELL_COUNT entries by cycling.
 function buildPool(creators, images) {
   const entries = [
-    ...creators.map(c => ({ url: creatorsApi.avatarUrl(c.id), id: `c${c.id}` })),
-    ...images.map(img => ({ url: `/api/images/${img.id}/thumb`, id: `i${img.id}` })),
+    ...creators.map(c => ({ url: creatorsApi.avatarThumbUrl(c.id, 200), id: `c${c.id}` })),
+    ...images.map(img => ({ url: img.thumb || `/api/images/${img.id}/thumb`, id: `i${img.id}` })),
   ]
   if (!entries.length) return []
   const shuffled = [...entries].sort(() => Math.random() - 0.5)
@@ -324,6 +324,7 @@ function PackVisual({ imageSrc, title, glowColor, creators, images, shiny = fals
 // InfoBlock — description, drop rates, and buy buttons beneath the visual
 // ─────────────────────────────────────────────────────────────────────────────
 function InfoBlock({ description, dropRates, creditCost, credits, onOpen, isPending, glowColor }) {
+  const [showTypes, setShowTypes] = useState(false)
   return (
     <div style={{
       marginTop:    12,
@@ -344,22 +345,52 @@ function InfoBlock({ description, dropRates, creditCost, credits, onOpen, isPend
         {description}
       </div>
 
-      {/* Drop-rate badges */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
-        {dropRates.map(r => (
+      {/* Drop rates — rarity class at a glance */}
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 6 }}>
+        Drop rates
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        {CLASS_ODDS.map(r => (
           <span key={r.label} style={{
-            padding:      '3px 8px',
-            borderRadius:  8,
-            fontSize:      9,
-            fontWeight:    700,
-            background:   `${r.color}15`,
-            border:       `0.5px solid ${r.color}50`,
-            color:         r.color,
+            padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 700,
+            background: `${r.color}15`, border: `0.5px solid ${r.color}50`, color: r.color,
           }}>
             {r.label} {r.pct}
           </span>
         ))}
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>· scarcity within a tier</span>
       </div>
+
+      {/* Learn more — expands the card-type odds */}
+      <button
+        onClick={() => setShowTypes(v => !v)}
+        style={{
+          background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer',
+          color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 4,
+          marginBottom: showTypes ? 10 : 14,
+        }}>
+        {showTypes ? 'Show less' : 'Learn more'}
+        <span style={{ display: 'inline-block', transform: showTypes ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease', fontSize: 9 }}>▾</span>
+      </button>
+
+      {showTypes && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 6 }}>
+            By card type
+          </div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {dropRates.map(r => (
+              <span key={r.label} style={{
+                padding: '3px 8px', borderRadius: 8, fontSize: 9, fontWeight: 700,
+                background: `${r.color}15`, border: `0.5px solid ${r.color}50`, color: r.color,
+              }}>
+                {r.label} {r.pct}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Buy buttons — each in its own container */}
       <div style={{ display: 'flex', gap: 10 }}>
@@ -435,24 +466,31 @@ const PREMIUM_DROPS = [
   { label: 'Variant ✦', pct: '3%',  color: '#E8E8FF' },
 ]
 
+// Rarity-class bands (per tier) — from the CRS percentile cutoffs in rarity.py:
+// UR = top 3% of a tier, SSR = next 12%, SR = next 25%, R = the rest.
+const CLASS_ODDS = [
+  { label: 'R',   pct: '~60%', color: '#8a897f' },
+  { label: 'SR',  pct: '~25%', color: '#6FA8FF' },
+  { label: 'SSR', pct: '~12%', color: '#9F8FEF' },
+  { label: 'UR',  pct: '~3%',  color: '#FFD700' },
+]
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ShopTab — main export
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ShopTab({ credits, openPackMutation, openFromInventoryMutation, standardPacks = 0, premiumPacks = 0 }) {
   const { data: rawCreators } = useQuery({
     queryKey: ['creators-collage'],
-    queryFn:  () => creatorsApi.list({ limit: 60 })
-                      .then(r => r.data?.items ?? (Array.isArray(r.data) ? r.data : [])),
-    staleTime: 5 * 60 * 1000,
-  })
-  const { data: rawImages } = useQuery({
-    queryKey: ['images-collage'],
-    queryFn:  () => imagesApi.list({ limit: 80, sort_by: 'random', is_video: false })
+    queryFn:  () => creatorsApi.randomPicks(50)
                       .then(r => r.data?.items ?? (Array.isArray(r.data) ? r.data : [])),
     staleTime: 5 * 60 * 1000,
   })
   const creators = rawCreators ?? []
-  const images   = rawImages   ?? []
+  // Collage uses creator avatar THUMBS only now. The old image query used
+  // sort_by:'random', which sorts all ~425k image rows on every shop open — the
+  // main cause of the slow load. Avatar thumbs are small and the creators table
+  // is tiny, so this is instant.
+  const images   = []
 
   const totalInventory = standardPacks + premiumPacks
   const isPendingInventory = openFromInventoryMutation?.isPending

@@ -49,6 +49,20 @@ export const RARITY_CONFIG = {
   },
 }
 
+// ── SR / SSR class border ─────────────────────────────────────────────────────
+// SR & SSR wear a polished metallic border in their tier's colour (a brushed-metal
+// bevel); SSR additionally gets a subtle twinkling-stars overlay. UR & Prestige
+// are untouched.
+const METAL_GRADIENT = {
+  common:    'linear-gradient(135deg,#E8DEFF,#7F77DD 20%,#453f86 42%,#9a90ef 60%,#EDE6FF 80%,#6a62c4)',
+  epic:      'linear-gradient(135deg,#FFDCA6,#ff8800 20%,#7a3200 42%,#ff9f42 60%,#FFE8C0 80%,#cf5a08)',
+  legendary: 'linear-gradient(135deg,#FFF8CC,#FFD700 20%,#8a6a12 42%,#ffe268 60%,#FFFBE6 80%,#c9a84c)',
+  celestial: 'linear-gradient(135deg,#FFFFFF,#cfd3f4 20%,#868ec0 42%,#e8ebff 60%,#FFFFFF 80%,#b8bee8)',
+}
+
+// ⭐ SSR twinkle intensity — change THIS ONE number to tune it (0 = off, 1 = full).
+const SSR_TWINKLE_OPACITY = 0.4
+
 // ── Flame particle canvas (Legendary) ─────────────────────────────────────────
 function FlameCanvas({ width = 220, height = 320 }) {
   const canvasRef = useRef(null)
@@ -219,6 +233,10 @@ function VaultCard({
   // Top class of a tier. UR cards wear the ex-foil webp textures; a UR that's
   // also Prestige gets the golden, denser flower field.
   const isUR = rarity_class === 'UR'
+  // SR/SSR wear the metallic tier border; SSR also gets the twinkle overlay.
+  const isSR    = rarity_class === 'SR'
+  const isSSR   = rarity_class === 'SSR'
+  const isMetal = isSR || isSSR
   const cfg = RARITY_CONFIG[rarity] || RARITY_CONFIG.common
   const height = Math.round(width * 1.45)
   const cardRef = useRef(null)
@@ -423,11 +441,13 @@ function VaultCard({
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        className={isMetal ? 'vc-metal-glide' : undefined}
         style={{
           position: 'relative',
-          padding: 3,
+          padding: isMetal ? 4 : 3,
           borderRadius: 18,
-          background: `${cfg.badge}18`,
+          background: isMetal ? METAL_GRADIENT[rarity] : `${cfg.badge}18`,
+          backgroundSize: isMetal ? '230% 230%' : undefined,
           boxShadow: `0 0 22px ${cfg.badge}55, 0 6px 24px rgba(0,0,0,0.7), inset 0 0 0 0.5px ${cfg.badge}44`,
           cursor: onClick ? 'pointer' : 'default',
           flexShrink: 0,
@@ -672,6 +692,19 @@ function VaultCard({
               borderRadius: 14,
             }}
           />
+
+          {/* ── SSR twinkling stars — subtle overlay over the art/frame ── */}
+          {isSSR && showEffects && inViewport && (
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 7, pointerEvents: 'none',
+              borderRadius: 14,
+              backgroundImage: "url('/stars-twinkle.webp')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              mixBlendMode: 'screen',
+              opacity: SSR_TWINKLE_OPACITY,
+            }} />
+          )}
 
           {/* ── Epic warm glow overlay (orange frame, CSS — no external file) ── */}
           {rarity === 'epic' && (

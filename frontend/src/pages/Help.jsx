@@ -834,7 +834,7 @@ function DevicesContent() {
           <div className="space-y-3">
             {[
               { icon: Wifi,  name: 'Intiface Central', color: '#4682DC', desc: 'Connects via WebSocket to Intiface Central (free app by Nonpolynomial). Supports 50+ device brands. Default URL: ws://localhost:12345. Enable WebSocket Server in Intiface settings first.' },
-              { icon: Radio, name: 'The Handy',        color: 'var(--c-green)', desc: 'Connects via The Handy REST API v2. Requires a Connection Key from the Handy app. No Intiface needed — cloud relay handles it. Uses HDSP mode for real-time stroke control.' },
+              { icon: Radio, name: 'The Handy',        color: 'var(--c-green)', desc: 'Connects via The Handy REST API v3 (HSP streaming protocol). Requires a Connection Key from the Handy app, a free Developer API Key from user.handyfeeling.com, and firmware 4+ (an original Handy 1 works fine once updated). No Intiface needed — cloud relay handles it.' },
               { icon: Usb,   name: 'Direct Serial (T-Code)', color: 'var(--c-amber)', desc: 'USB serial connection to T-Code devices (OSR2, SR6, etc.). Uses Web Serial API — requires Chrome or Edge. Select your COM port when prompted. 115200 baud, L0 axis.' },
             ].map(({ icon: Icon, name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"

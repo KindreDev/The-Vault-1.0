@@ -578,7 +578,7 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.6.0")
+app = FastAPI(title="The Vault", version="1.6.2")
 
 app.add_middleware(
     CORSMiddleware,

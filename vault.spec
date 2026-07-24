@@ -17,6 +17,15 @@ FFMPEG_EXE    = os.path.join(ROOT, 'tools', 'ffmpeg.exe')
 # Build the datas list — always include the frontend, bundle ffmpeg if present
 _datas = [(FRONTEND_DIST, 'frontend/dist')]
 
+# CHANGELOG.md + version.json — read at runtime to build the in-app changelog
+# history (Settings → Changelog). Both live at the project root.
+CHANGELOG_MD = os.path.join(ROOT, 'CHANGELOG.md')
+VERSION_JSON = os.path.join(ROOT, 'version.json')
+if os.path.isfile(CHANGELOG_MD):
+    _datas.append((CHANGELOG_MD, '.'))
+if os.path.isfile(VERSION_JSON):
+    _datas.append((VERSION_JSON, '.'))
+
 # Mobile PWA (served at /m for phones on the LAN). Built via build:pwa; skipped
 # gracefully if it hasn't been built yet.
 if os.path.isdir(MOBILE_PWA_DIST):

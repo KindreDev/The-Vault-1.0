@@ -308,8 +308,8 @@ function DeviceList({ devices, scanning }) {
           <div className="flex items-center gap-2">
             <Activity size={12} className="text-[#1D9E75] flex-shrink-0" />
             <span className="flex-1">{d.name}</span>
-            <span className={`text-[10px] font-medium ${d.canLinear ? 'text-[#1D9E75]' : d.canVibrate ? 'text-[var(--c-accent)]' : 'text-[#D4537E]'}`}>
-              {d.canLinear ? 'Linear ✓' : d.canVibrate ? 'Vibrate' : 'Unknown type'}
+            <span className={`text-[10px] font-medium ${d.canLinear ? 'text-[#1D9E75]' : (d.canVibrate || d.canRotate || d.canOscillate) ? 'text-[var(--c-accent)]' : 'text-[#D4537E]'}`}>
+              {d.canLinear ? 'Linear ✓' : d.canVibrate ? 'Vibrate' : d.canRotate ? 'Rotate ✓' : d.canOscillate ? 'Oscillate ✓' : 'Unknown type'}
             </span>
           </div>
           {d.outputTypes?.length > 0 && (
@@ -492,7 +492,7 @@ function HandySection() {
       <div className="p-3 rounded-lg bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] space-y-1">
         <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-medium">How it works</div>
         <div className="text-[10px] text-[rgba(255,255,255,0.3)] leading-relaxed">
-          Uses The Handy REST API v2 (cloud relay). Your connection key authenticates commands directly — no Intiface needed. HDSP mode is used for real-time stroke control.
+          Uses The Handy REST API v3 (HSP streaming protocol, cloud relay) — no Intiface needed. Requires firmware 4+; this is a firmware requirement, not a hardware one, so an original Handy 1 works fine once updated via the Handy Connect app. Devices still on firmware 3 or earlier can't connect until updated.
         </div>
       </div>
     </div>

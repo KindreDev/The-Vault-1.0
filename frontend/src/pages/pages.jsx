@@ -1954,6 +1954,76 @@ function RootDropdown({ roots, value, onChange }) {
 }
 
 // ── SettingsSection (accordion — mirrors Help.jsx Section) ───────────────────
+function ChangelogBody({ text }) {
+  if (!text) return null
+  const lines = text.split('\n')
+  const blocks = []
+  let currentList = null
+  for (const raw of lines) {
+    const trimmed = raw.trim()
+    if (!trimmed) { currentList = null; continue }
+    const bulletMatch = trimmed.match(/^[-*]\s+(.*)$/)
+    if (bulletMatch) {
+      if (!currentList) { currentList = []; blocks.push({ type: 'list', items: currentList }) }
+      currentList.push(bulletMatch[1])
+      continue
+    }
+    currentList = null
+    if (trimmed.startsWith('>')) continue // skip "reconstructed from git history"-style meta notes
+    const headingMatch = trimmed.match(/^#{2,4}\s+(.*)$/) || trimmed.match(/^([A-Za-z][A-Za-z /]{1,40}):$/)
+    if (headingMatch) {
+      blocks.push({ type: 'heading', text: headingMatch[1] })
+      continue
+    }
+    blocks.push({ type: 'para', text: trimmed })
+  }
+  return (
+    <div className="space-y-2">
+      {blocks.map((b, i) => {
+        if (b.type === 'heading') {
+          return <div key={i} className="text-[16px] font-semibold text-white/65 mt-3 first:mt-0">{b.text}</div>
+        }
+        if (b.type === 'list') {
+          return (
+            <ul key={i} className="space-y-1.5 list-disc list-outside pl-5">
+              {b.items.map((it, j) => <li key={j} className="text-[16px] text-white/45 leading-relaxed">{it}</li>)}
+            </ul>
+          )
+        }
+        return <div key={i} className="text-[16px] text-white/45 leading-relaxed">{b.text}</div>
+      })}
+    </div>
+  )
+}
+
+function ChangelogEntry({ entry }) {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <div className="rounded-[8px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+      <button onClick={() => setOpen(v => !v)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer">
+        <span className="text-[17px] font-semibold text-white/75">v{entry.version}</span>
+        {entry.date && <span className="text-[15px] text-white/30">{entry.date}</span>}
+        <ChevronDown size={14} className="text-white/25 transition-transform duration-200 ml-auto"
+                     style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
+            <div className="px-4 pb-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+              <ChangelogBody text={entry.changelog} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 function SettingsSection({ title, icon: Icon, accentColor = 'var(--c-accent)', children, defaultOpen = true }) {
   const [open, setOpen] = React.useState(defaultOpen)
   return (
@@ -2083,11 +2153,17 @@ export function Settings() {
   const { data: configData } = useQuery({
     queryKey: ['system-config'],
     queryFn:  () => systemApi.getConfig().then(r => r.data),
-    onSuccess: (d) => {
-      if (!storageInput) setStorageInput(d.data_dir || d.effective_data_dir)
-      if (!fsLibDirty) setFsLibPath(d.funscript_library_path || '')
-    },
   })
+
+  // React Query v5 removed the useQuery `onSuccess` callback, so the inputs were
+  // never populated from the loaded config — that's why the funscript-library
+  // folder (and the storage path) appeared to clear on every reload even though
+  // the value was saved. Populate them here instead.
+  React.useEffect(() => {
+    if (!configData) return
+    if (!storageInput) setStorageInput(configData.data_dir || configData.effective_data_dir || '')
+    if (!fsLibDirty) setFsLibPath(configData.funscript_library_path || '')
+  }, [configData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: mobileLink } = useQuery({
     queryKey: ['mobile-link'],
@@ -2108,6 +2184,12 @@ export function Settings() {
   const { data: versionData } = useQuery({
     queryKey: ['system-version'],
     queryFn:  () => systemApi.getVersion().then(r => r.data),
+  })
+
+  const { data: changelogData } = useQuery({
+    queryKey: ['system-changelog'],
+    queryFn:  () => systemApi.getChangelog(10).then(r => r.data),
+    staleTime: 5 * 60 * 1000,
   })
   const startupMutation = useMutation({
     mutationFn: (enabled) => systemApi.setStartup(enabled).then(r => r.data),
@@ -3341,6 +3423,17 @@ export function Settings() {
                     </div>
                   )}
                   {updateState === 'error' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#F4C0D1' }}><AlertCircle size={13} /> {updateError}</div>}
+                </SettingsSection>
+
+                <SettingsSection title={t('Changelog')} icon={ScrollText} accentColor="var(--c-accent)" defaultOpen={false}>
+                  {!changelogData?.entries?.length && (
+                    <div className="text-[16px] text-white/35">{t('No changelog history yet.')}</div>
+                  )}
+                  <div className="space-y-2">
+                    {changelogData?.entries?.map((entry) => (
+                      <ChangelogEntry key={entry.version} entry={entry} />
+                    ))}
+                  </div>
                 </SettingsSection>
 
                 <SettingsSection title={t('Server')} icon={RefreshCw} accentColor="var(--c-amber)" defaultOpen={false}>

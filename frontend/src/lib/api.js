@@ -333,6 +333,7 @@ export const systemApi = {
     })
   },
   getVersion:    () => api.get('/system/version'),
+  getChangelog:  (limit = 10) => api.get('/system/changelog', { params: { limit } }),
   mobileLink:    () => api.get('/system/mobile-link'),
   checkUpdate:   () => api.get('/system/update/check'),
   installUpdate: (download_url) => api.post('/system/update/install', { download_url }),

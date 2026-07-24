@@ -15,6 +15,7 @@ backend/vault.db.pre_restore_*
 backend/thumbs/
 backend/vault_config.json
 backend/dedup_ignored.json
+backend/changelog_history.json
 
 # ── AI model files (downloaded at runtime via huggingface_hub, not stored in repo) ──
 backend/models/

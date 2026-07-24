@@ -544,7 +544,7 @@ Access from **Device Control** in the sidebar.
 
 **Intiface Central** — install Intiface Central separately, enable WebSocket Server (default port 12345). Covers the widest range of hardware via Buttplug.io protocol.
 
-**The Handy** — no Intiface required. Enter your Connection Key (found in The Handy app under Settings → Connection Key). Connects directly via REST API. Device must already be paired in The Handy app via Bluetooth or WiFi.
+**The Handy** — no Intiface required. Uses REST API v3, which needs firmware 4+ (a firmware requirement, not a hardware one — an original Handy 1 works fine once updated). Enter your Connection Key (found in The Handy app under Settings → Connection Key) plus a free Developer API Key from [user.handyfeeling.com](https://user.handyfeeling.com/). Device must already be paired in The Handy app via Bluetooth or WiFi.
 
 **Serial (T-Code)** — connect via USB. Click Connect and select the COM port from the browser dialog. 
 

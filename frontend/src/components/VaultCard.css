@@ -613,3 +613,7 @@
   background:linear-gradient(120deg,#ff0088,#aa00ff,#0088ff,#00ff88,#ffcc00,#ff0088); background-size:300% 300%;
   animation:vc-prestige-shift 4s linear infinite; box-shadow:0 0 9px rgba(255,255,255,0.45); }
 @keyframes vc-prestige-shift { to { background-position:300% 50%; } }
+
+/* ── SR / SSR metallic border — slow reflection glide across the tier-metal trim ── */
+.vc-metal-glide { animation: vc-metal-glide 6s linear infinite; }
+@keyframes vc-metal-glide { 0% { background-position: 0% 0%; } 100% { background-position: 230% 230%; } }

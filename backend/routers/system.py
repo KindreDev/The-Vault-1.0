@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import shutil
@@ -11,7 +12,7 @@ from datetime import datetime
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from database import DB_PATH, CONFIG_FILE, CONFIG_DIR
+from database import DB_PATH, CONFIG_FILE, CONFIG_DIR, DATA_DIR
 
 router = APIRouter()
 
@@ -293,7 +294,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.2"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:
@@ -323,6 +324,112 @@ def _cmp_versions(a: str, b: str):
 @router.get("/version")
 def get_version():
     return {"version": APP_VERSION, "is_installed": getattr(sys, "frozen", False)}
+
+
+# ── Changelog history ──────────────────────────────────────────────────────────
+# Persists a running "what's new" history in the data dir (survives updates,
+# unlike version.json which gets overwritten/reset for each release manifest).
+def _root_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+CHANGELOG_MD_PATH  = os.path.join(_root_dir(), "CHANGELOG.md")
+VERSION_JSON_PATH  = os.path.join(_root_dir(), "version.json")
+CHANGELOG_HISTORY_PATH = os.path.join(DATA_DIR, "changelog_history.json")
+
+_VERSION_HEADER_RE = re.compile(r"^##\s*\[([^\]]+)\](?:\s*-\s*(.+))?\s*$", re.MULTILINE)
+
+
+def _load_changelog_history() -> list:
+    try:
+        if os.path.isfile(CHANGELOG_HISTORY_PATH):
+            with open(CHANGELOG_HISTORY_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def _save_changelog_history(entries: list):
+    tmp = CHANGELOG_HISTORY_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, CHANGELOG_HISTORY_PATH)
+
+
+def _read_local_version_json() -> dict:
+    try:
+        with open(VERSION_JSON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _parse_changelog_md() -> list:
+    """Splits CHANGELOG.md into one entry per released version (skips [Unreleased])."""
+    try:
+        with open(CHANGELOG_MD_PATH, "r", encoding="utf-8") as f:
+            text = f.read()
+    except Exception:
+        return []
+
+    entries = []
+    matches = list(_VERSION_HEADER_RE.finditer(text))
+    for i, m in enumerate(matches):
+        version = m.group(1).strip()
+        if version.lower() == "unreleased":
+            continue
+        date = (m.group(2) or "").strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = re.sub(r"^-{3,}\s*$", "", text[start:end], flags=re.MULTILINE).strip()
+        entries.append({"version": version, "date": date, "changelog": body})
+    return entries
+
+
+def _ensure_changelog_history() -> list:
+    """
+    First run: seed the persistent history from CHANGELOG.md, then swap the
+    1.6.1 entry for the condensed version.json changelog (CHANGELOG.md's own
+    1.6.1 section is a much longer dev-facing writeup — version.json already
+    has the user-facing condensed version, so reuse that instead of duplicating it).
+
+    Every run after: if the currently running APP_VERSION isn't in the history
+    yet and version.json's version matches it, its changelog gets appended —
+    this is what lets future releases (1.6.2+) get captured automatically even
+    though version.json itself gets overwritten every release.
+    """
+    history = _load_changelog_history()
+
+    if not history:
+        history = _parse_changelog_md()
+        vj = _read_local_version_json()
+        if vj.get("version") == "1.6.1" and vj.get("changelog"):
+            for e in history:
+                if e["version"] == "1.6.1":
+                    e["changelog"] = vj["changelog"]
+                    break
+        _save_changelog_history(history)
+
+    if not any(e.get("version") == APP_VERSION for e in history):
+        vj = _read_local_version_json()
+        if vj.get("version") == APP_VERSION and vj.get("changelog"):
+            history.insert(0, {
+                "version": APP_VERSION,
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "changelog": vj["changelog"],
+            })
+            _save_changelog_history(history)
+
+    return history
+
+
+@router.get("/changelog")
+def get_changelog(limit: int = 10):
+    history = _ensure_changelog_history()
+    ordered = sorted(history, key=lambda e: _parse_version(e.get("version", "0")), reverse=True)
+    return {"entries": ordered[:limit]}
 
 
 def _find_lan_ip():

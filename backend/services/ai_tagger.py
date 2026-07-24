@@ -51,6 +51,8 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "multiple_girls":       ("group", "subject"),
     "multiple_boys":        ("group", "subject"),
     "multiple_others":      ("group", "subject"),
+    "loli":                 ("loli", "subject"),
+    "furry":                ("furry", "subject"),
     # Body parts
     "breasts":              ("breasts", "body_part"),
     "large_breasts":        ("large breasts", "body_part"),
@@ -290,6 +292,7 @@ JOYTAG_TAG_MAP: dict[str, tuple[str, str]] = {
     "5+ people":            ("group", "subject"),
     "group":                ("group", "subject"),
     "multiple people":      ("group", "subject"),
+    "furry":                ("furry", "subject"),
     # Body parts
     "breasts":              ("breasts", "body_part"),
     "large breasts":        ("large breasts", "body_part"),

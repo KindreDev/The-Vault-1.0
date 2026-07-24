@@ -12,7 +12,23 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
-## [1.6.0] - 2026-07-22
+### Added
+- AI auto-tagging now detects and applies `loli` and `furry` tags (previously dropped as unmapped by the WD14/JoyTag tag allowlist).
+
+## [1.6.2] - 2026-07-24
+
+### Added
+- Settings → System: a Changelog panel showing your last releases, right under App Updates — it's a persistent in-app history so version notes aren't lost when the update manifest resets each month.
+- Intiface device control now supports rotating toys (Kiiroo Onyx/Titan, Vorze Cyclone/UFO, We-Vibe Nova) and oscillating/thrusting toys (Fun Factory Stronic line) — previously these connected but produced no movement since only Vibrate and linear stroke output were wired up.
+
+### Changed
+- The Handy integration now uses REST API v3 (HSP streaming protocol) instead of the old v2 HDSP commands. Developer API Key is baked into the app — users only enter their Connection Key. Requires firmware 4+ (firmware requirement, not hardware — original Handy 1 works once updated).
+
+### Fixed
+- Handy v3: corrected auth header from `Authorization: Bearer` to `X-Api-Key` (developer key is an API key, not a bearer token).
+- Handy v3: fixed all snake_case field names in HSP requests — `stream_id`, `tail_point_stream_index`, `start_time`, `server_time`, `playback_rate` were all being sent in camelCase, which the API rejected silently.
+
+## [1.6.1] - 2026-07-22
 
 ### Trading-Card System Rework
 A ground-up rework of the trading-card system:
@@ -20,9 +36,10 @@ A ground-up rework of the trading-card system:
 - **Prestige** New Cards!—  **can be obtained via crafting**: spend duplicates (Core 6 / Epic 4 / Legendary 2 / Celestial 1) + 1,000 credits, or the rarer catalyst-token path (now 400 shards, and one token per 5 levels instead of per level). Its signature look is a breathing rainbow halo (now visible on all four sides) + a golden flower field + a PRESTIGE label beside the card type, on any tier.
 - Cards: the base rarity tier is now called **Core** (was "Common") — same cards and odds, a name that reflects that these single-photo cards are the foundation the whole collection is built on.
 - Dashboard: the Card Collection preview cards are now 2× larger and spill beyond their tile for a bolder, more eye-catching stack.
-- **VFX model** — base cards keep their tier's ambient effect; **UR** cards (any tier) wear that tier's premium texture (Core starfield, Epic iris/glitter, Legendary hearts, Celestial cosmos); **Prestige** cards wear the celestial flower-field + prism + halo, golden and denser when the card is also a UR.
+- **VFX model** — base cards keep their tier's ambient effect; **SR & SSR** now wear a polished **metallic border** in their tier's colour (a brushed-metal bevel with a slow reflection gliding across it), and **SSR** adds a subtle twinkling-stars overlay; **UR** cards (any tier) wear that tier's premium texture (Core starfield, Epic iris/glitter, Legendary hearts, Celestial cosmos); **Prestige** cards wear the celestial flower-field + prism + halo, golden and denser when the card is also a UR.
 - **Video cards** — now **animate**: a looping preview stitched from ~2s clips near the start, middle, and end (animated WebP) instead of a dead still. Video thumbnails also auto-crop baked-in letterbox/pillarbox bars — fixing cards that opened to emptiness or showed black bars.
-- **Optimization** — many optimization fixes, faster loading times, less lag, faster responsiveness. 
+- **Optimization** — many optimization fixes, faster loading times, less lag, faster responsiveness. The Shop opens instantly now: the pack collage was loading full-size creator avatars and running a random sort over every image in the vault on each visit — it now uses small avatar thumbnails only.
+- The Shop — each pack now discloses its **Drop rates** — the R / SR / SSR / UR class odds (≈60 / 25 / 12 / 3% within a tier) at a glance, with a **Learn more** toggle that expands the full per-card-type breakdown.
 - **The Forge** — cards render **static** (colors only, no motion); **Craft Variant** was rebuilt as a paginated grid of large, readable boxes (creator × character, result, cost, Forge button)
 - Variant (creator×character) cards can finally be minted. The generator only recognised a creator×character link via the unused legacy `linked_character_id` column, so it saw zero pairs and every variant pull silently became a creator card. It now reads the `gallery_creators` M2M — a gallery tagged with both a cosplayer and a character — unlocking variant cards in packs and the forge (230 pairs detected on the current collection).
 - Creator cards are minted permanently now: each gets a fixed art image from her galleries at mint time (changing her profile picture no longer repaints your cards), and each creator can mint up to 5 distinct art versions before pulls become dupes. Existing avatar-tracking cards were pinned automatically.

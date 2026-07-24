@@ -17,6 +17,10 @@ import { useDeviceStore, PRESETS } from '../store/deviceStore'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const store = () => useDeviceStore.getState()
 
+// App-level Handy Developer API key — registered once at user.handyfeeling.com.
+// Not a per-user credential; baked into the app so users never need to enter it.
+const HANDY_APP_KEY = '1sWGa-ThX~iSFzdMTz9pUXPE18P9tfZB'
+
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
 function lerpPattern(a, b, t) {
@@ -51,15 +55,30 @@ class DeviceService {
     // Map<deviceIndex, number[]> — array to support multi-actuator devices (e.g. Lovense Gush)
     this._vibrateFeatures = new Map()
 
+    // Per-device rotate/oscillate feature indices (Kiiroo Onyx/Titan, Vorze
+    // Cyclone/UFO, We-Vibe Nova = Rotate; Fun Factory Stronic = Oscillate)
+    this._rotateFeatures   = new Map()
+    this._oscillateFeatures = new Map()
+
     // Funscript
     this._funscript       = null
     this._funscriptTimer  = null          // legacy single-axis timer (kept for safety)
     this._funscriptTimers = {}            // multi-axis: { axisId: timeoutId }
     this._videoEl         = null
 
-    // The Handy REST API v3 (required for Handy 2 / Handy 2 Pro; v2 devices also work via v3)
-    this._HANDY_BASE     = 'https://www.handyfeeling.com/api/handy/v3'
-    this._handyCurrentPos = 50   // track position 0-100 for velocity calculation
+    // The Handy REST API v3 (HSP streaming protocol) — gated by firmware v4+,
+    // not by hardware generation: an original Handy 1 updated to firmware 4
+    // works fine, one still on firmware 3 (Handy 1 or 2) does not.
+    this._HANDY_BASE      = 'https://www.handyfeeling.com/api/handy-rest/v3/'
+    this._handyCurrentPos = 50   // interpolated position 0-100
+    this._handyTargetPos  = 50   // position last requested via _sendLinearHandy
+    this._handySpeed      = 0    // units/sec toward _handyTargetPos
+    this._handyBuffer      = []  // points queued for the next hsp/add batch
+    this._handyTailIndex   = 0   // tailPointStreamIndex — total points sent this stream
+    this._handyStreamId    = 0
+    this._handyPlaying     = false
+    this._handyServerOffset = 0  // client-server clock skew, ms
+    this._handyTickTimer   = null
 
     // Direct serial (Web Serial API)
     this._serialPort   = null
@@ -114,9 +133,11 @@ class DeviceService {
   }
 
   _onDeviceAdded(dev) {
-    const isLinear  = dev.hasOutput(OutputType.HwPositionWithDuration) ||
-                      dev.hasOutput(OutputType.Position)
-    const isVibrate = dev.hasOutput(OutputType.Vibrate)
+    const isLinear    = dev.hasOutput(OutputType.HwPositionWithDuration) ||
+                        dev.hasOutput(OutputType.Position)
+    const isVibrate   = dev.hasOutput(OutputType.Vibrate)
+    const isRotate    = dev.hasOutput(OutputType.Rotate)
+    const isOscillate = dev.hasOutput(OutputType.Oscillate)
 
     // Extract feature info for raw command construction (bypassing SDK bug)
     const outputTypes = []
@@ -134,6 +155,14 @@ class DeviceService {
         const feats = this._vibrateFeatures.get(dev.index) || []
         this._vibrateFeatures.set(dev.index, [...feats, featIdx])
       }
+      if (raw.Rotate !== undefined) {
+        const feats = this._rotateFeatures.get(dev.index) || []
+        this._rotateFeatures.set(dev.index, [...feats, featIdx])
+      }
+      if (raw.Oscillate !== undefined) {
+        const feats = this._oscillateFeatures.get(dev.index) || []
+        this._oscillateFeatures.set(dev.index, [...feats, featIdx])
+      }
     }
 
     const prev = store().devices
@@ -143,6 +172,8 @@ class DeviceService {
         index: dev.index,
         canLinear: isLinear,
         canVibrate: isVibrate,
+        canRotate: isRotate,
+        canOscillate: isOscillate,
         outputTypes,
       }],
     })
@@ -151,6 +182,8 @@ class DeviceService {
   _onDeviceRemoved(dev) {
     this._linearFeatures.delete(dev.index)
     this._vibrateFeatures.delete(dev.index)
+    this._rotateFeatures.delete(dev.index)
+    this._oscillateFeatures.delete(dev.index)
     useDeviceStore.setState({
       devices: store().devices.filter(d => d.index !== dev.index),
     })
@@ -209,23 +242,26 @@ class DeviceService {
       })
     }
 
-    // Drive vibrate-only devices: map stroke-limited position → intensity.
+    // Drive non-linear actuators: map stroke-limited position → intensity.
     // Devices that also support linear are skipped (they already received a position command).
-    this._sendVibrate(pos)
+    this._sendScalarActuator(this._vibrateFeatures,   pos, 'Vibrate')
+    this._sendScalarActuator(this._rotateFeatures,    pos, 'Rotate')
+    this._sendScalarActuator(this._oscillateFeatures, pos, 'Oscillate')
   }
 
-  // Send a vibration intensity command (0.0–1.0, already stroke-limited) to all
-  // vibrate-capable devices that are NOT also linear (pure vibrators like Lovense Gush).
-  _sendVibrate(pos) {
+  // Send a scalar intensity command (0.0–1.0, already stroke-limited) to all
+  // devices exposing the given actuator type that are NOT also linear
+  // (e.g. pure vibrators, Kiiroo Onyx/Titan rotate sleeves, Fun Factory Stronic oscillators).
+  _sendScalarActuator(featureMap, pos, actuatorType) {
     const storeDevs = store().devices
-    for (const [devIndex, featIdxList] of this._vibrateFeatures) {
+    for (const [devIndex, featIdxList] of featureMap) {
       const d = storeDevs.find(sd => sd.index === devIndex)
       if (d?.canLinear) continue  // linear device already handled
       this._rawSend({
         ScalarCmd: {
           Id: this._msgId++,
           DeviceIndex: devIndex,
-          Scalars: featIdxList.map(idx => ({ Index: idx, Scalar: clamp(pos, 0, 1), ActuatorType: 'Vibrate' })),
+          Scalars: featIdxList.map(idx => ({ Index: idx, Scalar: clamp(pos, 0, 1), ActuatorType: actuatorType })),
         },
       })
     }
@@ -253,12 +289,14 @@ class DeviceService {
     }
 
     // Intiface: verify we have at least one compatible device
-    const hasLinear  = this._getLinearDevices().length > 0
-    const hasVibrate = this._vibrateFeatures.size > 0
-    if (!hasLinear && !hasVibrate) {
+    const hasLinear    = this._getLinearDevices().length > 0
+    const hasVibrate   = this._vibrateFeatures.size > 0
+    const hasRotate    = this._rotateFeatures.size > 0
+    const hasOscillate = this._oscillateFeatures.size > 0
+    if (!hasLinear && !hasVibrate && !hasRotate && !hasOscillate) {
       throw new Error(`No compatible devices detected. Connected: ${this._describeDevices()}`)
     }
-    // _sendLinear routes to both linear and vibrate-only devices in one call
+    // _sendLinear routes to linear, vibrate-only, rotate-only, and oscillate-only devices in one call
     const dur = 700
     this._sendLinear(100, dur)
     await new Promise(r => setTimeout(r, dur + 100))
@@ -657,23 +695,52 @@ class DeviceService {
     useDeviceStore.setState({ schedulerRunningOnce: false, finisherActive: false })
   }
 
-  // ── The Handy REST API v2 ───────────────────────────────────────────────────
+  // ── The Handy REST API v3 (HSP streaming protocol) ──────────────────────────
+  // Reference: https://ohdoki.notion.site/Handy-API-v3-ea6c47749f854fbcabcc40c729ea6df4
+  // Unlike v2's fire-and-forget HDSP position commands, v3 wants a buffer of
+  // future timestamped points streamed ahead of playback. We keep a target
+  // position + speed (set by _sendLinearHandy, same call sites as before —
+  // patterns, funscript, ramp, scheduler, edging) and a 100ms tick timer
+  // interpolates toward it, queuing points that get flushed to hsp/add in
+  // small batches once enough have built up.
+  _HANDY_LOOKAHEAD_MS = 900   // points are timestamped this far into the future
+  _HANDY_BATCH_POINTS  = 2    // flush after this many buffered points (~200ms)
 
   async _handyRequest(method, path, body) {
     const { handyKey } = store()
     const resp = await fetch(`${this._HANDY_BASE}${path}`, {
       method,
       headers: {
+        'Accept': 'application/json',
         'X-Connection-Key': handyKey,
+        'X-Api-Key': HANDY_APP_KEY,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     })
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}))
-      throw new Error(err.error?.message || `HTTP ${resp.status}`)
+    const data = await resp.json().catch(() => ({}))
+    const err  = data.error
+    if (!resp.ok || err) {
+      if (err?.code === 1001 || err?.name === 'DeviceNotConnected') throw new Error('Device not connected — open The Handy app and pair via Bluetooth or WiFi first')
+      if (resp.status === 401) throw new Error('Unauthorized — check your Connection Key')
+      throw new Error(err?.message || `HTTP ${resp.status}`)
     }
-    return resp.json()
+    return data
+  }
+
+  // Estimates client-server clock skew so buffered point timestamps line up
+  // with the device's playback clock. Fewer samples than reference impls
+  // (which use 30) — a handful is enough and keeps connect() snappy.
+  async _handyServerTimeOffset() {
+    const SAMPLES = 6
+    let sum = 0
+    for (let i = 0; i < SAMPLES; i++) {
+      const t0 = Date.now()
+      const { server_time } = await this._handyRequest('GET', 'servertime')
+      const t1 = Date.now()
+      sum += (server_time + (t1 - t0) / 2) - t1
+    }
+    return Math.round(sum / SAMPLES)
   }
 
   async connectHandy() {
@@ -688,14 +755,25 @@ class DeviceService {
 
     useDeviceStore.setState({ status: 'connecting', errorMsg: null, provider: 'handy' })
     try {
-      const result = await this._handyRequest('GET', '/connected')
-      if (!result.connected) throw new Error('Device not connected — open The Handy app and pair via Bluetooth or WiFi first')
-      // Set HDSP mode (mode 2) for real-time position control
-      await this._handyRequest('PUT', '/mode', { mode: 2 })
-      this._handyCurrentPos = 50
+      await this._handyRequest('PUT', 'hsp/stop').catch(() => {})
+      await this._handyRequest('PUT', 'hsp/flush').catch(() => {})
+      this._handyServerOffset = await this._handyServerTimeOffset()
+      this._handyStreamId += 1
+      await this._handyRequest('PUT', 'hsp/setup', { stream_id: this._handyStreamId })
+
+      this._handyCurrentPos    = 50
+      this._handyTargetPos     = 50
+      this._handySpeed         = 0
+      this._handyBuffer        = []
+      this._handyTailIndex     = 0
+      this._handyPlaying       = false
+      this._handyStreamStartAt = Date.now()
+
+      this._handyTickTimer = setInterval(() => this._handyStreamTick(), 100)
+
       useDeviceStore.setState({
         status:  'connected',
-        devices: [{ name: 'The Handy', index: 0, canLinear: true, canVibrate: false, outputTypes: ['HDSP'] }],
+        devices: [{ name: 'The Handy', index: 0, canLinear: true, canVibrate: false, outputTypes: ['HSP'] }],
       })
     } catch (err) {
       useDeviceStore.setState({ status: 'error', errorMsg: err.message, provider: null })
@@ -704,30 +782,79 @@ class DeviceService {
 
   async disconnectHandy() {
     this._stopAll()
-    try { await this._handyRequest('PUT', '/hamp/stop') } catch (_) {}
+    clearInterval(this._handyTickTimer)
+    this._handyTickTimer = null
+    try { await this._handyRequest('PUT', 'hsp/stop') } catch (_) {}
+    try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
     useDeviceStore.setState({ status: 'disconnected', devices: [], mode: 'off', provider: null })
   }
 
+  // Sets the interpolation target — called from the same sites as before
+  // (pattern engine, funscript player, ramp mode, scheduler, edging assist).
+  // The actual HTTP traffic happens on the tick timer, not here.
   _sendLinearHandy(posPercent, durationMs) {
     const { strokeFloor, strokeCeiling } = store()
     const limited = strokeFloor + (strokeCeiling - strokeFloor) * (posPercent / 100)
-    const newPos   = clamp(limited / 100, 0, 1)
-    const oldPos   = this._handyCurrentPos / 100
-    const SLIDE_MM = 110
-    const distMm   = Math.abs(newPos - oldPos) * SLIDE_MM
-    const durSec   = Math.max(0.05, durationMs / 1000)
-    const velocity = clamp(Math.round(distMm / durSec), 10, 400)
-    this._handyCurrentPos = limited
-    this._handyRequest('PUT', '/hdsp/nextXAVa', { xa: newPos, va: velocity, stopOnTarget: true })
-      .then(() => {
-        if (store().errorMsg) useDeviceStore.setState({ errorMsg: null })
+    const durSec  = Math.max(0.05, durationMs / 1000)
+    this._handySpeed     = (limited - this._handyCurrentPos) / durSec
+    this._handyTargetPos = limited
+  }
+
+  _handyStreamTick() {
+    const dt    = 0.1   // seconds, matches the 100ms tick interval
+    const delta = this._handySpeed * dt
+    if (this._handySpeed > 0)      this._handyCurrentPos = Math.min(this._handyTargetPos, this._handyCurrentPos + delta)
+    else if (this._handySpeed < 0) this._handyCurrentPos = Math.max(this._handyTargetPos, this._handyCurrentPos + delta)
+
+    const t = Math.round(Date.now() - this._handyStreamStartAt) + this._HANDY_LOOKAHEAD_MS
+    const x = clamp(Math.round(this._handyCurrentPos), 0, 100)
+    this._handyBuffer.push({ t, x })
+
+    if (this._handyBuffer.length >= this._HANDY_BATCH_POINTS) this._handyFlushBuffer()
+  }
+
+  async _handyFlushBuffer() {
+    if (this._handyBuffer.length === 0) return
+    const points = this._handyBuffer
+    this._handyBuffer = []
+    const isFirstBatch = !this._handyPlaying
+
+    try {
+      this._handyTailIndex += points.length
+      const data = await this._handyRequest('PUT', 'hsp/add', {
+        points,
+        flush: isFirstBatch,
+        tail_point_stream_index: this._handyTailIndex,
       })
-      .catch(err => {
-        const msg = `Handy stroke failed: ${err.message}`
-        console.error(msg, err)
-        // Surface the error without tearing down the connection (status stays 'connected')
-        if (store().errorMsg !== msg) useDeviceStore.setState({ errorMsg: msg })
-      })
+
+      if (isFirstBatch) {
+        const now = Date.now()
+        await this._handyRequest('PUT', 'hsp/play', {
+          start_time:    now - this._handyStreamStartAt,
+          server_time:   now + this._handyServerOffset,
+          playback_rate: 1.0,
+          loop: false,
+        })
+        this._handyPlaying = true
+      }
+
+      // The device-side buffer misbehaves near capacity — flush it before that
+      // happens. tail_point_stream_index and _handyStreamStartAt are absolute
+      // across the session and must NOT be reset; only _handyPlaying resets so
+      // the next batch issues a fresh hsp/play call to resume.
+      const result = data.result
+      if (result && (result.max_points - result.points) < 100) {
+        await this._handyRequest('PUT', 'hsp/flush').catch(() => {})
+        this._handyPlaying = false
+      }
+
+      if (store().errorMsg) useDeviceStore.setState({ errorMsg: null })
+    } catch (err) {
+      const msg = `Handy stroke failed: ${err.message}`
+      console.error(msg, err)
+      // Surface the error without tearing down the connection (status stays 'connected')
+      if (store().errorMsg !== msg) useDeviceStore.setState({ errorMsg: msg })
+    }
   }
 
   // ── Direct serial — FUNSR1 2.0 (T-code, Web Serial API) ────────────────────
