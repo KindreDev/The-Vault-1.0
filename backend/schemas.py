@@ -38,6 +38,39 @@ class ImageTagOut(TagBase):
     source: str
     use_count: int
     confidence: Optional[float] = None
+
+
+# ── AI tag vocabulary allowlist ─────────────────────────────────────────────────
+class TagVocabEntryOut(BaseModel):
+    id: int
+    model: str
+    raw_tag: str
+    normalized_name: str
+    category: str
+    enabled: bool
+    is_builtin_default: bool
+    class Config:
+        from_attributes = True
+
+class TagVocabEntryUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
+
+class TagVocabBulkUpdate(BaseModel):
+    ids: List[int]
+    enabled: bool
+
+class TagVocabList(BaseModel):
+    total: int
+    items: List[TagVocabEntryOut]
+
+class TagVocabSummary(BaseModel):
+    model: str
+    model_ready: bool
+    total: int
+    enabled: int
+    by_category: dict
     tagger_model: Optional[str] = None
     class Config:
         from_attributes = True

@@ -6,12 +6,14 @@ import {
   ArrowLeft, Star, Droplets, Shuffle, Heart, ChevronLeft, ChevronRight,
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
-  FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput,
+  FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput, Tag, Copy,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
 import { useT } from '../i18n'
 import ImageContextMenu from '../components/ImageContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
+import TagAutocompleteInput from '../components/TagAutocompleteInput'
+import GalleryTransferModal from '../components/GalleryTransferModal'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
@@ -1298,138 +1300,6 @@ function MergeModal({ gallery, onClose, onMerged }) {
 }
 
 
-// ── Transfer images to an existing gallery modal ─────────────────────────────
-function GalleryTransferModal({ images, currentGalleryId, onClose, onTransferred }) {
-  const t = useT()
-  const [search, setSearch] = useState('')
-  const [targetGallery, setTargetGallery] = useState(null)
-  const [transferring, setTransferring] = useState(false)
-  const inputRef = useRef(null)
-  const qc = useQueryClient()
-
-  useEffect(() => { inputRef.current?.focus() }, [])
-
-  const { data: allGalleries } = useQuery({
-    queryKey: ['galleries-mini'],
-    queryFn: () => galleriesApi.list({ limit: 2000, sort_by: 'name' }).then(r => r.data),
-    staleTime: 30000,
-  })
-
-  const filtered = useMemo(() => {
-    if (!allGalleries) return []
-    const q = search.toLowerCase().trim()
-    if (!q) return []
-    return allGalleries
-      .filter(g => g.id !== currentGalleryId && g.name.toLowerCase().includes(q))
-      .slice(0, 40)
-  }, [allGalleries, search, currentGalleryId])
-
-  const doTransfer = async () => {
-    if (!targetGallery || transferring) return
-    setTransferring(true)
-    try {
-      await Promise.all(images.map(img => imagesApi.transfer(img.id, targetGallery.id)))
-      qc.invalidateQueries({ queryKey: ['gallery-images'] })
-      qc.invalidateQueries({ queryKey: ['galleries'] })
-      toast.success(`${images.length} image${images.length !== 1 ? 's' : ''} → "${targetGallery.name}"`)
-      onTransferred(targetGallery.id, images.map(i => i.id))
-    } catch {
-      toast.error(t('Transfer failed'))
-      setTransferring(false)
-    }
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-         style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
-         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="rounded-[14px] w-full max-w-sm flex flex-col overflow-hidden"
-           style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', maxHeight: '80vh' }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
-          <div className="flex items-center gap-2">
-            <FolderInput size={16} style={{ color: '#FAC775' }} />
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-              {t('Move')} {images.length === 1 ? t('image') : `${images.length} images`} {t('to gallery')}
-            </span>
-          </div>
-          <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 flex flex-col gap-3">
-          {/* Search */}
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{t('Search by gallery name')}</div>
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setTargetGallery(null) }}
-              onKeyDown={e => { if (e.key === 'Escape') onClose() }}
-              placeholder={t('Type to search galleries…')}
-              className="w-full rounded-[8px] px-3 py-2 outline-none"
-              style={{ fontSize: 13, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.9)' }}
-            />
-          </div>
-
-          {/* Selected target */}
-          {targetGallery ? (
-            <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
-                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.4)' }}>
-              <div>
-                <div style={{ fontSize: 13, color: '#FAC775', fontWeight: 600 }}>{targetGallery.name}</div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{targetGallery.image_count ?? 0} {t('images currently')}</div>
-              </div>
-              <button onClick={() => { setTargetGallery(null); setSearch('') }}
-                      className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            filtered.length > 0 && (
-              <div className="rounded-[8px] overflow-hidden overflow-y-auto"
-                   style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 200 }}>
-                {filtered.map(g => (
-                  <button key={g.id} onClick={() => { setTargetGallery(g); setSearch(g.name) }}
-                          className="w-full text-left px-3 py-2 flex items-center justify-between cursor-pointer transition-colors"
-                          style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(186,117,23,0.1)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <span>{g.name}</span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} {t('imgs')}</span>
-                  </button>
-                ))}
-              </div>
-            )
-          )}
-
-          {search.length > 0 && filtered.length === 0 && !targetGallery && (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '8px 0' }}>{t('No galleries found')}</div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[rgba(255,255,255,0.07)]">
-          <button onClick={onClose} disabled={transferring}
-                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
-                  style={{ color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {t('Cancel')}
-          </button>
-          <button onClick={doTransfer} disabled={!targetGallery || transferring}
-                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
-                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
-            {transferring
-              ? <><span className="animate-spin inline-block">⟳</span> {t('Moving…')}</>
-              : <><FolderInput size={13} /> {t('Move')} {images.length === 1 ? t('image') : `${images.length} images`}</>
-            }
-          </button>
-        </div>
-      </div>
-    </div>
-  , document.body)
-}
 
 
 // ── Extract images to new gallery modal ──────────────────────────────────────
@@ -1607,6 +1477,9 @@ export default function GalleryView() {
   const [showExtract, setShowExtract] = useState(false)
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
   const [bulkAssignSearch, setBulkAssignSearch] = useState('')
+  const [bulkTagOpen, setBulkTagOpen] = useState(false)
+  const [bulkPendingTags, setBulkPendingTags] = useState([])
+  const [bulkTagging, setBulkTagging] = useState(false)
   const lastSelectIdxRef = useRef(null)
   // Image context menu
   const [imgCtx, setImgCtx] = useState(null) // { image, x, y }
@@ -1991,21 +1864,83 @@ export default function GalleryView() {
             <FolderOutput size={12} /> {t('Extract to gallery')}
           </button>
           <button type="button"
-                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)) })}
+                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)), mode: 'move' })}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
             <FolderInput size={12} /> {t('Move to gallery')}
           </button>
           <button type="button"
-                  onMouseDown={() => setBulkAssignOpen(v => !v)}
+                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)), mode: 'copy' })}
+                  className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+            <Copy size={12} /> {t('Copy to gallery')}
+          </button>
+          <button type="button"
+                  onMouseDown={() => { setBulkAssignOpen(v => !v); setBulkTagOpen(false) }}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: bulkAssignOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
             <UserPlus size={12} /> {t('Assign creator')}
           </button>
-          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); setBulkAssignOpen(false); lastSelectIdxRef.current = null }}
+          <button type="button"
+                  onMouseDown={() => { setBulkTagOpen(v => !v); setBulkAssignOpen(false) }}
+                  className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: bulkTagOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+            <Tag size={12} /> {t('Add tags')}
+          </button>
+          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); setBulkAssignOpen(false); setBulkTagOpen(false); setBulkPendingTags([]); lastSelectIdxRef.current = null }}
                   className="ml-auto text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer">
             <X size={14} />
           </button>
+        </div>
+      )}
+
+      {/* Bulk tag picker — build a pending list, then apply to every selected file */}
+      {bulkMode && bulkTagOpen && (
+        <div className="mb-3 rounded-[10px] overflow-hidden relative z-20"
+             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid rgba(127,119,221,0.3)', padding: '10px 12px' }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {bulkPendingTags.map(tg => (
+              <span key={tg} className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[13px]"
+                    style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                {tg}
+                <button type="button" onMouseDown={() => setBulkPendingTags(p => p.filter(x => x !== tg))}
+                        className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white ml-0.5">
+                  <X size={9} />
+                </button>
+              </span>
+            ))}
+            <div style={{ width: 200 }}>
+              <TagAutocompleteInput
+                autoFocus
+                exclude={bulkPendingTags}
+                placeholder={t('Add tag…')}
+                onAdd={(name) => setBulkPendingTags(p => p.includes(name) ? p : [...p, name])}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={!bulkPendingTags.length || bulkTagging}
+              onMouseDown={async () => {
+                if (!bulkPendingTags.length || bulkTagging) return
+                const targets = images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? []
+                setBulkTagging(true)
+                let errs = 0
+                for (const img of targets)
+                  for (const tg of bulkPendingTags)
+                    try { await imagesApi.addTag(img.id, tg) } catch { errs++ }
+                setBulkTagging(false)
+                if (errs) toast.error(`Done with ${errs} errors`)
+                else toast.success(`Tagged ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
+                qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
+                qc.invalidateQueries({ queryKey: ['tags'] })
+                setBulkPendingTags([])
+                setBulkTagOpen(false)
+              }}
+              className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
+              style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+              {bulkTagging ? t('Tagging…') : `${t('Apply to')} ${selectedIds.size}`}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2153,6 +2088,7 @@ export default function GalleryView() {
         <GalleryTransferModal
           images={transferCtx.images}
           currentGalleryId={parseInt(id)}
+          mode={transferCtx.mode ?? 'move'}
           onClose={() => setTransferCtx(null)}
           onTransferred={(targetId, transferredIds) => {
             setTransferCtx(null)
@@ -2194,7 +2130,8 @@ export default function GalleryView() {
             if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
             if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
           }}
-          onTransfer={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}
+          onTransfer={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image], mode: 'move' })}
+          onCopyTo={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image], mode: 'copy' })}
           creators={gallery?.creators ?? []}
           onSetAsAvatar={(creatorId) => {
             if (imgCtx.image.is_video) {

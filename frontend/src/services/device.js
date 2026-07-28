@@ -79,6 +79,11 @@ class DeviceService {
     this._handyPlaying     = false
     this._handyServerOffset = 0  // client-server clock skew, ms
     this._handyTickTimer   = null
+    // Funscript streaming (Handy only) — feeds the script's real points straight
+    // into the HSP buffer instead of resampling them through the pattern
+    // interpolator, which is what HSP is designed to consume.
+    this._handyFsTimer     = null
+    this._handyFsIdx       = 0
 
     // Direct serial (Web Serial API)
     this._serialPort   = null
@@ -493,7 +498,17 @@ class DeviceService {
   loadFunscript(funscriptData, videoEl) {
     this._funscript = funscriptData
     this._videoEl   = videoEl
-    if (store().mode === 'funscript') this._startFunscriptPlayer()
+    if (store().mode === 'funscript') { this._startFunscriptPlayer(); return }
+    // Auto-sync: hand control straight to the device so a funscripted video
+    // just works without reaching for the Sync button every time.
+    if (store().autoSyncFunscript && store().status === 'connected') {
+      this.takeFunscriptControl()
+    }
+  }
+
+  // Lets the video player reflect auto-sync in its Sync button state.
+  isFunscriptActive() {
+    return store().mode === 'funscript'
   }
 
   takeFunscriptControl() {
@@ -519,6 +534,9 @@ class DeviceService {
   _startFunscriptPlayer() {
     this._stopFunscriptPlayer()
     if (!this._funscript || !this._videoEl) return
+    // The Handy streams the script itself; every other provider gets per-action
+    // commands from the scheduler below.
+    if (store().provider === 'handy') { this._startHandyFsFeed(); return }
     this._scheduleFunscriptActions()
   }
 
@@ -527,6 +545,12 @@ class DeviceService {
     this._funscriptTimer = null
     for (const t of Object.values(this._funscriptTimers || {})) clearTimeout(t)
     this._funscriptTimers = {}
+    if (this._handyFsTimer) {
+      this._stopHandyFsFeed()
+      // Points are queued up to 1.5s ahead — without clearing them the device
+      // keeps stroking after the video has stopped.
+      this._handyFsResync()
+    }
   }
 
   // Normalize the loaded funscript into { axisId: actions[] }. Prefers the
@@ -548,6 +572,11 @@ class DeviceService {
 
   _scheduleFunscriptActions() {
     if (store().mode !== 'funscript' || !this._funscript || !this._videoEl) return
+    // Nothing may drive the device unless the video is actually rolling.
+    // The scheduler advances on wall-clock timers, so without this it walks the
+    // whole script while the video sits paused — the device moves on its own.
+    // onVideoPlay() re-arms as soon as playback starts.
+    if (this._videoEl.paused || this._videoEl.ended) return
     const axes    = this._getFunscriptAxes()
     const enabled = store().funscriptAxes || {}   // { axisId: false } disables an axis; default = on
     for (const [axisId, actions] of Object.entries(axes)) {
@@ -584,9 +613,12 @@ class DeviceService {
     scheduleNext(nextIdx)
   }
 
+  // Seek / play / pause all route through _startFunscriptPlayer so the right
+  // engine runs for the active provider (Handy streams, everything else
+  // schedules per action). _startFunscriptPlayer stops the previous one first.
   onVideoSeek() {
     this._stopFunscriptPlayer()
-    if (store().mode === 'funscript') this._scheduleFunscriptActions()
+    if (store().mode === 'funscript') this._startFunscriptPlayer()
   }
 
   // Update the funscript sync offset (see _scheduleAxis for the sign convention)
@@ -603,7 +635,7 @@ class DeviceService {
 
   onVideoPlay() {
     // Resume scheduling from the new current time
-    if (store().mode === 'funscript') this._scheduleFunscriptActions()
+    if (store().mode === 'funscript') this._startFunscriptPlayer()
   }
 
   // ── Finisher ──────────────────────────────────────────────────────────────
@@ -704,6 +736,7 @@ class DeviceService {
   // interpolates toward it, queuing points that get flushed to hsp/add in
   // small batches once enough have built up.
   _HANDY_LOOKAHEAD_MS = 900   // points are timestamped this far into the future
+  _HANDY_FS_PRIME_MS  = 1000  // script buffered onto the device before video starts
   _HANDY_BATCH_POINTS  = 2    // flush after this many buffered points (~200ms)
 
   async _handyRequest(method, path, body) {
@@ -801,6 +834,11 @@ class DeviceService {
   }
 
   _handyStreamTick() {
+    // While a funscript is streaming, its own feeder owns the buffer. Letting
+    // the interpolator push here too would interleave two different timelines
+    // into one point stream.
+    if (this._handyFsTimer) return
+
     const dt    = 0.1   // seconds, matches the 100ms tick interval
     const delta = this._handySpeed * dt
     if (this._handySpeed > 0)      this._handyCurrentPos = Math.min(this._handyTargetPos, this._handyCurrentPos + delta)
@@ -811,6 +849,152 @@ class DeviceService {
     this._handyBuffer.push({ t, x })
 
     if (this._handyBuffer.length >= this._HANDY_BATCH_POINTS) this._handyFlushBuffer()
+  }
+
+  // ── Handy funscript streaming ───────────────────────────────────────────────
+  //
+  // The pattern interpolator samples position every 100ms, which is fine for
+  // generated patterns but destroys a funscript: a 60ms stroke becomes a single
+  // 100ms step, so the device receives ~10 coarse jumps a second and slams
+  // between them. HSP already accepts timestamped points, so feed it the script
+  // verbatim and let the device interpolate at the script's real resolution.
+  _startHandyFsFeed() {
+    this._stopHandyFsFeed()
+    if (store().provider !== 'handy') return
+    this._handyFsIdx = 0
+    // Drop anything the interpolator already queued so the two timelines can't mix
+    this._handyBuffer = []
+    this._handyFsTimer = setInterval(() => this._handyFsFeed(), 250)
+    this._handyFsFeed()
+  }
+
+  _stopHandyFsFeed() {
+    clearInterval(this._handyFsTimer)
+    this._handyFsTimer = null
+    this._handyFsAnchor = null
+  }
+
+  // ── Primed start ────────────────────────────────────────────────────────────
+  //
+  // Loads the opening of the script onto the device BEFORE the video rolls, then
+  // starts both together. Without it the first strokes are computed for moments
+  // only milliseconds away and can land after their due time — the device drops
+  // them, and playback opens out of step. Always on for a Handy following a
+  // script; every other case falls straight through to a plain play().
+  async primedPlay(videoEl) {
+    const canPrime = store().provider === 'handy'
+      && store().status === 'connected'
+      && store().mode === 'funscript'
+      && !!this._funscript
+    if (!canPrime) { try { await videoEl.play() } catch (_) {} return false }
+
+    const LEAD = this._HANDY_FS_PRIME_MS
+    useDeviceStore.setState({ priming: true })
+    try {
+      // Fresh device timeline so nothing queued earlier can bleed into this run
+      this._handyBuffer  = []
+      this._handyPlaying = false
+      try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
+
+      // Anchor the script to a moment LEAD ms from now, then fill the buffer
+      // while the video is still paused.
+      this._stopHandyFsFeed()   // clears the anchor, so set it after
+      this._handyFsIdx    = 0
+      this._handyFsAnchor = { wall: Date.now() + LEAD, videoMs: videoEl.currentTime * 1000 }
+      this._handyFsPrimeFeed(videoEl)
+
+      await new Promise(r => setTimeout(r, LEAD))
+      try { await videoEl.play() } catch (_) {}
+      // Hand back to the normal live feed, now anchored to real playback
+      this._handyFsAnchor = null
+      this._handyFsTimer  = setInterval(() => this._handyFsFeed(), 250)
+    } finally {
+      useDeviceStore.setState({ priming: false })
+    }
+    return true
+  }
+
+  // One-shot fill used while the video is still paused, so _handyFsFeed's
+  // "is it playing?" guard doesn't reject it.
+  _handyFsPrimeFeed(v) {
+    const actions = this._getFunscriptAxes().L0
+    if (!actions || !actions.length) return
+    const offsetMs = store().funscriptOffsetMs || 0
+    const { strokeFloor, strokeCeiling } = store()
+    const rate    = v.playbackRate || 1
+    const anchor  = this._handyFsAnchor
+    const HORIZON = 1500
+    const streamNow = anchor.wall - this._handyStreamStartAt
+
+    while (this._handyFsIdx < actions.length &&
+           (actions[this._handyFsIdx].at + offsetMs) <= anchor.videoMs) this._handyFsIdx++
+
+    let queued = 0
+    while (this._handyFsIdx < actions.length) {
+      const a = actions[this._handyFsIdx]
+      const at = a.at + offsetMs
+      if (at - anchor.videoMs > HORIZON) break
+      const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(a.pos, 0, 100) / 100)
+      this._handyBuffer.push({
+        t: Math.round(streamNow + (at - anchor.videoMs) / rate),
+        x: clamp(Math.round(limited), 0, 100),
+      })
+      this._handyFsIdx++
+      queued++
+    }
+    if (queued > 0) this._handyFlushBuffer()
+  }
+
+  // Discards queued points on the device and restarts the stream — used on seek,
+  // pause and offset changes, where everything already buffered is now wrong.
+  async _handyFsResync() {
+    if (store().provider !== 'handy') return
+    this._handyBuffer = []
+    this._handyPlaying = false
+    try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
+  }
+
+  _handyFsFeed() {
+    const v = this._videoEl
+    if (!v || v.paused || v.ended) return
+    const actions = this._getFunscriptAxes().L0
+    if (!actions || !actions.length) return
+
+    const offsetMs = store().funscriptOffsetMs || 0
+    const { strokeFloor, strokeCeiling } = store()
+    const videoNow  = v.currentTime * 1000
+    const rate      = v.playbackRate || 1
+    const HORIZON   = 1500   // ms of script to stay ahead by
+
+    // Anchor ties a video position to a wall-clock instant. Normally that's
+    // "now", but priming sets it slightly in the future so the opening strokes
+    // are already sitting on the device before the video starts — a point whose
+    // timestamp arrives after its due time is simply dropped, which is what
+    // makes the first moment of playback unreliable otherwise.
+    const anchor = this._handyFsAnchor || { wall: Date.now(), videoMs: videoNow }
+    const streamNow = anchor.wall - this._handyStreamStartAt
+
+    // Skip anything already in the past (also covers seeks backwards/forwards)
+    while (this._handyFsIdx < actions.length &&
+           (actions[this._handyFsIdx].at + offsetMs) <= anchor.videoMs) {
+      this._handyFsIdx++
+    }
+
+    let queued = 0
+    while (this._handyFsIdx < actions.length) {
+      const a  = actions[this._handyFsIdx]
+      const at = a.at + offsetMs
+      if (at - videoNow > HORIZON) break
+      const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(a.pos, 0, 100) / 100)
+      // Video time → stream time, relative to the anchor. Dividing by
+      // playbackRate keeps the script aligned at non-1x speeds.
+      const t = Math.round(streamNow + (at - anchor.videoMs) / rate)
+      this._handyBuffer.push({ t, x: clamp(Math.round(limited), 0, 100) })
+      this._handyFsIdx++
+      queued++
+    }
+
+    if (queued > 0) this._handyFlushBuffer()
   }
 
   async _handyFlushBuffer() {

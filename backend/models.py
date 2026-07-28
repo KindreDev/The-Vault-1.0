@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime, Text,
-    ForeignKey, Table, Enum
+    ForeignKey, Table, Enum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -324,6 +324,21 @@ class Tag(Base):
     galleries  = relationship("Gallery", secondary=gallery_tags, back_populates="tags")
 
 
+# ── AI tag vocabulary allowlist ─────────────────────────────────────────────────
+class TagVocabEntry(Base):
+    __tablename__ = "tag_vocab_entries"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    model               = Column(String, nullable=False)   # "wd14" | "joytag"
+    raw_tag             = Column(String, nullable=False)   # raw model vocab key (lowercase, as shipped)
+    normalized_name     = Column(String, nullable=False)   # output Tag.name when enabled
+    category            = Column(String, default="general")
+    enabled             = Column(Boolean, default=False)
+    is_builtin_default  = Column(Boolean, default=False)   # shipped in WD14_TAG_MAP/JOYTAG_TAG_MAP
+
+    __table_args__ = (UniqueConstraint("model", "raw_tag", name="uq_tag_vocab_model_raw"),)
+
+
 # ── Session Log ────────────────────────────────────────────────────────────────
 class SessionLog(Base):
     __tablename__ = "session_logs"
@@ -358,6 +373,53 @@ class Playlist(Base):
     created_at  = Column(DateTime, default=func.now())
 
     images      = relationship("Image", secondary=playlist_images)
+
+
+# ── Panel playlists (multi-panel viewer) ───────────────────────────────────────
+#
+# Deliberately separate from `playlists` above, which belongs to the mobile app:
+# a panel playlist is an ordered mix of whole galleries AND individual files, and
+# it also remembers the viewer setup (panel count + playback mode) so loading one
+# restores the whole rig, not just the media.
+#
+# Entries are real rows with their own PK rather than a composite-key join table,
+# so ordering is explicit and the same gallery could appear more than once
+# without the schema fighting it.
+class PanelPlaylist(Base):
+    __tablename__ = "panel_playlists"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    name         = Column(String, nullable=False)
+    # Marks the rolling auto-saved queue so the UI can present it separately and
+    # overwrite it in place instead of piling up duplicates.
+    is_autosave  = Column(Boolean, default=False)
+    layout_idx   = Column(Integer, default=2)          # index into the LAYOUTS list
+    gallery_mode = Column(String, default="grouped")   # 'grouped' | 'shuffled'
+    created_at   = Column(DateTime, default=func.now())
+    updated_at   = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    entries = relationship(
+        "PanelPlaylistEntry",
+        back_populates="playlist",
+        cascade="all, delete-orphan",
+        order_by="PanelPlaylistEntry.sort_order",
+    )
+
+
+class PanelPlaylistEntry(Base):
+    __tablename__ = "panel_playlist_entries"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    playlist_id = Column(Integer, ForeignKey("panel_playlists.id"), nullable=False, index=True)
+    entry_type  = Column(String, nullable=False)   # 'gallery' | 'image'
+    ref_id      = Column(Integer, nullable=False)  # gallery id or image id
+    sort_order  = Column(Integer, default=0)
+    # Which panel this entry belongs to in per-panel mode. NULL means "not
+    # pinned" — the shared-queue modes distribute those across panels as before,
+    # so playlists saved before this existed keep working untouched.
+    panel_idx   = Column(Integer, nullable=True)
+
+    playlist = relationship("PanelPlaylist", back_populates="entries")
 
 
 # ── Gamification ───────────────────────────────────────────────────────────────

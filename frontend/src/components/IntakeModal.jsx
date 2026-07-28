@@ -851,11 +851,15 @@ function IntakeSettings({ roots, onAddRoot, qc, t }) {
   const [base, setBase] = useState('')
   const [extract, setExtract] = useState(true)
   const [archiveAfter, setArchiveAfter] = useState('delete')
+  const [fsDest, setFsDest] = useState('beside')
+  const [fsLibrary, setFsLibrary] = useState('')
   useEffect(() => {
     if (cfg) {
       setBase(cfg.new_creator_base || '')
       setExtract(cfg.extract_archives !== false)
       setArchiveAfter(cfg.archive_after || 'delete')
+      setFsDest(cfg.funscript_dest || 'beside')
+      setFsLibrary(cfg.funscript_library_path || '')
     }
   }, [cfg])
 
@@ -865,6 +869,8 @@ function IntakeSettings({ roots, onAddRoot, qc, t }) {
       setBase(data.new_creator_base || '')
       setExtract(data.extract_archives !== false)
       setArchiveAfter(data.archive_after || 'delete')
+      setFsDest(data.funscript_dest || 'beside')
+      setFsLibrary(data.funscript_library_path || '')
       qc.invalidateQueries({ queryKey: ['intake-config'] })
     } catch { toast.error(t('Could not save setting')) }
   }
@@ -939,6 +945,30 @@ function IntakeSettings({ roots, onAddRoot, qc, t }) {
           <option value="move">{t('Be moved into the destination folder')}</option>
           <option value="keep">{t('Be left where it is')}</option>
         </select>
+      </div>
+
+      {/* Funscript destination */}
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>
+          {t('Funscripts')}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8, lineHeight: 1.4 }}>
+          {t('When a sorted video has a .funscript next to it, send the script to:')}
+        </div>
+        <select value={fsDest} onChange={e => save({ funscript_dest: e.target.value })}
+                className="w-full px-3 py-2 rounded-[8px] outline-none cursor-pointer"
+                style={{ background: 'var(--c-card, #1c1c1c)', border: '0.5px solid rgba(255,255,255,0.1)', fontSize: 14, color: 'rgba(255,255,255,0.85)' }}>
+          <option value="beside">{t('Move it with the video')}</option>
+          <option value="library">{t('My funscript library folder')}</option>
+        </select>
+        {fsDest === 'library' && (
+          <div style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4,
+                        color: fsLibrary ? 'rgba(255,255,255,0.4)' : '#E4989C' }}>
+            {fsLibrary
+              ? `${t('Scripts are renamed after the video and saved to')} ${fsLibrary}`
+              : t('No funscript library folder is set (Settings → Scanner → Funscript library) — scripts will move with the video until you set one.')}
+          </div>
+        )}
       </div>
     </div>
   )

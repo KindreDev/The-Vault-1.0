@@ -8,12 +8,38 @@ At release time, rename `[Unreleased]` to the new version + date and start a fre
 
 Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **Fixed** (bug fixes) · **Removed**.
 
+**Only log fixes for bugs that reached a release.** If a bug was introduced by a feature that is still in `[Unreleased]` and fixed before that feature ships, it never existed for any user — don't add a **Fixed** entry for it. The changelog records what changed for the person using the app, not the development history of getting there. A bug counts as user-facing if it exists in a released version (i.e. under a `[x.y.z]` heading), even if that release was recent.
+
 ---
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-28
+
 ### Added
-- AI auto-tagging now detects and applies `loli` and `furry` tags (previously dropped as unmapped by the WD14/JoyTag tag allowlist).
+- Device Control → **Funscript Sync**: an **Auto-sync to funscripted videos** toggle. With it on, opening a video that has a script hands the device over immediately — no reaching for Sync every time. Off by default, and the setting is remembered.
+- Multi-panel: **device sync per panel**. Funscripts now work in the multi-panel viewer (they previously never loaded there at all), and each panel has a **Sync** button to claim the connected device. Claiming one panel releases any other, since a toy can only follow one video — so you can be milked by a scripted video in one panel while the others run photos. The synced panel keeps a visible marker, and the existing Device menu still handles global limiters.
+- **Per-panel playlists** — a third Gallery Playback mode where every panel runs its own independent playlist. Load a different playlist into each of your up to 6 panels, shuffle any panel on its own, and clear or swap one panel without touching the rest. Saving while in this mode stores the whole arrangement, so one saved playlist can bring your entire multi-panel rig back. The existing shared-queue modes (Keep grouped / Shuffle with all media) are unchanged — switching back to either releases the per-panel bindings and pools everything again.
+- **Playlists** — the multi-panel viewer can now save and reload its setup. A new **Playlists** button lets you name and save the current queue, load one back (replacing or appending to what's queued), overwrite, rename, and delete. Saving also keeps your panel layout and Gallery Playback mode, so a session comes back exactly as you left it. A rolling **Last session** autosave means a reload or crash no longer throws away hours of curation. The page is now titled "Playlists / Multi panel".
+- Multi-panel queue strip: **drag and drop the thumbnails to reorder playback** (left → right), with an insertion marker showing where the item will land. Dragging onto a panel still pins it there as before.
+- Photos/Videos and gallery bulk bars: **Copy to gallery** — copies a file's reference into a mix gallery without moving anything on disk, so the same file can sit in several playlists at once. New mix galleries can be created inline from the copy dialog.
+- Tag inputs now autocomplete. Typing suggests existing tags ranked by prefix match then popularity, and explicitly marks when you're about to create a brand-new tag — so a typo no longer silently forks the tag list. Applies to the single-image tag panel and both bulk taggers.
+- Gallery view bulk bar: **Add tags** — apply tags to every selected file at once (Photos/Videos already had this).
+- Photos/Videos grid: **Shift+click** selects a whole range, matching the galleries grid and gallery view.
+- Loading Bay: a **Funscripts** setting controlling where a sorted video's `.funscript` goes — move it with the video (default, as before), or send it to your central funscript library folder. Library-bound scripts are renamed after the video and linked to it automatically, so they stay in sync even though they no longer sit beside the file.
+- Tag Manager → AI Tagging Settings: browse the full raw WD14/JoyTag tag vocabulary and choose which tags actually get applied during AI tagging, with per-tag rename/recategorize, bulk enable/disable, and a reset-to-defaults action per model. Existing installs keep today's tagging behavior unchanged — only tags already in the built-in set come pre-enabled; everything else (e.g. `loli`, `furry`) is available to opt into.
+
+### Changed
+- Video player: the funscript heatmap now spans the full width of the seek bar instead of sharing its row with the script stats, so its peaks line up with the moment they actually occur. The stats and the sync-offset nudge moved to their own row underneath.
+
+- Tag Manager (including the new AI Tagging Settings modal) now fully respects your chosen theme accent/palette instead of hardcoding the default violet — modal backgrounds, buttons, toggles, focus rings, and tabs all react live to custom themes. Added entrance/exit animations, spring-animated toggle switches, sliding tab highlights, and staggered list/grid transitions throughout.
+
+### Fixed
+- The Handy: funscripted videos now stroke the way the script was authored. Scripts were being resampled down to 10 positions a second before reaching the device, so anything fast turned into coarse lunges and jitter — the script's own points are now streamed to the device untouched, at their real timing. Playback also now starts in step — the opening of the script is loaded onto the device before the video rolls, instead of the device catching up over the first second. Also fixed the device running away on its own the moment you pressed Sync on a paused video, and continuing to stroke for a second or so after you hit pause.
+- Photos/Videos right-click → "Move to gallery" did nothing. It now opens the gallery picker and actually moves the files.
+
+### Removed
+- Tag Manager: removed the "Sync counts" button (tag count recalculation is still available via the API, just not surfaced in this UI).
 
 ## [1.6.2] - 2026-07-24
 

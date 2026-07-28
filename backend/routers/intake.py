@@ -169,4 +169,5 @@ def set_config(body: dict):
         new_creator_base=body.get("new_creator_base"),
         extract_archives=body.get("extract_archives"),
         archive_after=body.get("archive_after"),
+        funscript_dest=body.get("funscript_dest"),
     )

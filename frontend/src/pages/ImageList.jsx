@@ -8,12 +8,14 @@ import {
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
   CheckSquare, Square, UserPlus, Check, Trash2, LayoutTemplate, GripHorizontal,
-  FolderOpen, Zap, FolderOutput,
+  FolderOpen, Zap, FolderOutput, FolderInput, Copy,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
 import ImageContextMenu from '../components/ImageContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import GalleryPagination from '../components/GalleryPagination'
+import TagAutocompleteInput from '../components/TagAutocompleteInput'
+import GalleryTransferModal from '../components/GalleryTransferModal'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
@@ -106,7 +108,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
   }, [hoverVideo, image.id])
 
   return (
-    <div onClick={bulkMode ? () => onSelect(image.id) : onClick}
+    <div onClick={bulkMode ? (e) => onSelect(image.id, e) : onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
@@ -1014,9 +1016,9 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
 }
 
 
-function BulkActionPanel({ selectedImages, onDone, onCancel }) {
+function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyTo }) {
   const [creatorId, setCreatorId] = useState(null)
-  const [tagInput, setTagInput] = useState('')
+  const [pendingTags, setPendingTags] = useState([])
   const [confirmDel, setConfirmDel] = useState(false)
   const [working, setWorking] = useState(false)
   const [showExtract, setShowExtract] = useState(false)
@@ -1054,18 +1056,18 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
   }
 
   const handleAddTags = async () => {
-    const tags = tagInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean)
-    if (!tags.length) return
+    if (!pendingTags.length) return
     setWorking(true)
     let errs = 0
     for (const img of selectedImages)
-      for (const tag of tags)
+      for (const tag of pendingTags)
         try { await imagesApi.addTag(img.id, tag) } catch { errs++ }
     setWorking(false)
     if (errs) toast.error(`Done with ${errs} errors`)
     else toast.success(`Tagged ${selectedImages.length} images`)
     qc.invalidateQueries({ queryKey: ['images-list'] })
-    setTagInput('')
+    qc.invalidateQueries({ queryKey: ['tags'] })
+    setPendingTags([])
     onDone()
   }
 
@@ -1113,16 +1115,43 @@ function BulkActionPanel({ selectedImages, onDone, onCancel }) {
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
-      {/* Bulk tag */}
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-[7px]" style={{ background: 'rgba(255,255,255,0.05)' }}>
-        <Tag size={11} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
-        <input value={tagInput} onChange={e => setTagInput(e.target.value)} disabled={working}
-          placeholder={t('tag1, tag2…')}
-          className="bg-transparent text-[13px] outline-none w-24 text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.3)]" />
-        <button type="button" onMouseDown={handleAddTags} disabled={!tagInput.trim() || working}
-          className="text-[12px] px-2 py-0.5 rounded-[4px] cursor-pointer disabled:opacity-40"
+      {/* Bulk tag — autocomplete builds a pending list, Add applies it to every selection */}
+      <div className="flex items-center gap-1.5" style={{ position: 'relative', zIndex: 75 }}>
+        {pendingTags.map(tg => (
+          <span key={tg} className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[13px]"
+            style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+            {tg}
+            <button type="button" onMouseDown={() => setPendingTags(p => p.filter(x => x !== tg))}
+              className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white ml-0.5">
+              <X size={9} />
+            </button>
+          </span>
+        ))}
+        <div style={{ width: 150 }}>
+          <TagAutocompleteInput
+            exclude={pendingTags}
+            placeholder={t('Add tag…')}
+            onAdd={(name) => setPendingTags(p => p.includes(name) ? p : [...p, name])}
+          />
+        </div>
+        <button type="button" onMouseDown={handleAddTags} disabled={!pendingTags.length || working}
+          className="text-[12px] px-2 py-1 rounded-[4px] cursor-pointer disabled:opacity-40"
           style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6' }}>{t('Add')}</button>
       </div>
+
+      <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
+
+      {/* Move / copy to another gallery */}
+      <button type="button" onMouseDown={() => onTransfer?.(selectedImages)} disabled={working}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+        style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+        <FolderInput size={12} /> {t('Move')}
+      </button>
+      <button type="button" onMouseDown={() => onCopyTo?.(selectedImages)} disabled={working}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+        style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+        <Copy size={12} /> {t('Copy')}
+      </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
@@ -1229,6 +1258,7 @@ export default function ImageList({ onlyVideos = false }) {
   const [bulkMode, setBulkMode] = useState(false)
   const [selected, setSelected] = useState(new Set())
   const [imageCtxMenu, setImageCtxMenu] = useState(null) // { image, x, y }
+  const [transferCtx, setTransferCtx]   = useState(null) // { images, mode: 'move'|'copy' }
   const [avatarFramePicker, setAvatarFramePicker] = useState(null) // { creatorId, image, mode }
 
   const queryClient = useQueryClient()
@@ -1344,8 +1374,28 @@ export default function ImageList({ onlyVideos = false }) {
     setSortDir('desc')  // reset to default direction when switching sort column
   }
 
-  const toggleSelect = (id) => {
+  // Shift+click selects the range between the last-clicked thumb and this one,
+  // matching GalleryList/GalleryView. Range membership follows the currently
+  // rendered order, so it respects the active sort and filters.
+  const lastSelectedIdRef = useRef(null)
+  const toggleSelect = (id, event) => {
+    const list = images
+    if (event?.shiftKey && lastSelectedIdRef.current !== null && list?.length) {
+      const a = list.findIndex(im => im.id === lastSelectedIdRef.current)
+      const b = list.findIndex(im => im.id === id)
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        setSelected(s => {
+          const n = new Set(s)
+          for (let i = lo; i <= hi; i++) n.add(list[i].id)
+          return n
+        })
+        lastSelectedIdRef.current = id
+        return
+      }
+    }
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+    lastSelectedIdRef.current = id
   }
   const selectAll = () => {
     setSelected(selected.size === images?.length ? new Set() : new Set(images?.map(g => g.id) ?? []))
@@ -1470,7 +1520,13 @@ export default function ImageList({ onlyVideos = false }) {
             {selected.size === images?.length ? t('Deselect all') : t('Select all')}
           </button>
           {selected.size > 0 && (
-            <BulkActionPanel selectedImages={(images || []).filter(g => selected.has(g.id))} onDone={exitBulk} onCancel={exitBulk} />
+            <BulkActionPanel
+              selectedImages={(images || []).filter(g => selected.has(g.id))}
+              onDone={exitBulk}
+              onCancel={exitBulk}
+              onTransfer={(imgs) => setTransferCtx({ images: imgs, mode: 'move' })}
+              onCopyTo={(imgs) => setTransferCtx({ images: imgs, mode: 'copy' })}
+            />
           )}
         </div>
       )}
@@ -1543,6 +1599,8 @@ export default function ImageList({ onlyVideos = false }) {
             const idx = images?.findIndex(i => i.id === imageCtxMenu.image.id) ?? -1
             if (idx >= 0) setViewerIdx(idx)
           }}
+          onTransfer={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'move' })}
+          onCopyTo={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'copy' })}
           onSendToViewer={() => {
             const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]
             let added = 0, skipped = 0
@@ -1597,6 +1655,20 @@ export default function ImageList({ onlyVideos = false }) {
           image={avatarFramePicker.image}
           mode={avatarFramePicker.mode}
           onClose={() => setAvatarFramePicker(null)}
+        />
+      )}
+
+      {/* Move / copy to another gallery */}
+      {transferCtx && (
+        <GalleryTransferModal
+          images={transferCtx.images}
+          mode={transferCtx.mode}
+          onClose={() => setTransferCtx(null)}
+          onTransferred={() => {
+            setTransferCtx(null)
+            setSelected(new Set())
+            queryClient.invalidateQueries({ queryKey: ['images-list'] })
+          }}
         />
       )}
     </div>

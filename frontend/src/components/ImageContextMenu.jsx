@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { Eye, ImagePlus, LayoutTemplate, FolderInput, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2 } from 'lucide-react'
+import { Eye, ImagePlus, LayoutTemplate, FolderInput, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
 
@@ -16,7 +16,8 @@ import { useAllCreators } from '../hooks/useAllCreators'
  *   onView         – open in viewer
  *   onSetCover     – set as gallery cover (omit to hide this item)
  *   onSendToViewer
- *   onTransfer
+ *   onTransfer     – move to another gallery (omit to hide this item)
+ *   onCopyTo       – copy a reference into a mix gallery (omit to hide this item)
  *   onDelete       – (mode: 'vault' | 'disk')
  *   creators       – array of creators assigned to this gallery (for avatar/banner)
  *   onSetAsAvatar  – (creatorId) set image as creator avatar
@@ -24,7 +25,7 @@ import { useAllCreators } from '../hooks/useAllCreators'
  */
 export default function ImageContextMenu({
   image, position, onClose, bulkCount,
-  onView, onSetCover, onSendToViewer, onTransfer, onDelete,
+  onView, onSetCover, onSendToViewer, onTransfer, onCopyTo, onDelete,
   creators, onSetAsAvatar, onSetAsBanner,
   onSelectMode, onAssignCreator,
 }) {
@@ -125,8 +126,14 @@ export default function ImageContextMenu({
         {/* Send to Multi-panel */}
         <MenuItem icon={LayoutTemplate} label="Send to Multi-panel" accent onMouseDown={(e) => { e.stopPropagation(); onSendToViewer?.(); onClose() }} />
 
-        {/* Move to gallery */}
-        <MenuItem icon={FolderInput} label="Move to gallery" onMouseDown={(e) => { e.stopPropagation(); onTransfer?.(); onClose() }} />
+        {/* Move / Copy to gallery — gated on their handlers so a caller that
+            forgets to pass one doesn't render a menu item that does nothing. */}
+        {onTransfer && (
+          <MenuItem icon={FolderInput} label="Move to gallery" onMouseDown={(e) => { e.stopPropagation(); onTransfer(); onClose() }} />
+        )}
+        {onCopyTo && (
+          <MenuItem icon={Copy} label="Copy to gallery" onMouseDown={(e) => { e.stopPropagation(); onCopyTo(); onClose() }} />
+        )}
 
         {/* Assign creator to this file (expandable) */}
         {onAssignCreator && (

@@ -164,6 +164,11 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   videoPan     = { x: 0, y: 0 },
   isFullscreen = false,
   showControls = true,
+  // Whether this player is allowed to drive the connected device. Defaults to
+  // true so single-video contexts (gallery/image viewers) behave as before; the
+  // multi-panel viewer sets it false on every panel except the one the user
+  // has synced, since the device can only follow one video at a time.
+  deviceSync   = true,
 }, ref) {
   const videoRef    = useRef(null)
   const viewTracked = useRef(false)
@@ -253,14 +258,17 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   }, [imageId, funscriptPath, overrideFunscript])
 
   useEffect(() => {
-    if (!funscript || !videoRef.current) return
+    if (!funscript || !videoRef.current || !deviceSync) return
     deviceService.loadFunscript(funscript, videoRef.current)
+    // loadFunscript may have taken control itself (auto-sync) — mirror that so
+    // the button shows "Synced" rather than inviting a redundant click.
+    if (deviceService.isFunscriptActive()) setScriptSynced(true)
     return () => {
       deviceService.releaseFunscriptControl()
       deviceService.unloadFunscript()
       setScriptSynced(false)
     }
-  }, [funscript])
+  }, [funscript, deviceSync])
 
   // Sync-offset persistence: keyed per-video by imageId. When imageId is null
   // (an unsaved/override script with no linked image), the offset lives in
@@ -296,7 +304,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return
-    videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause()
+    // primedPlay falls straight through to play() unless the preload option is
+    // on and a Handy is actually following a script.
+    videoRef.current.paused ? deviceService.primedPlay(videoRef.current) : videoRef.current.pause()
   }, [])
 
   const handlePlay = useCallback(() => {
@@ -563,13 +573,20 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
              onDoubleClick={e => e.stopPropagation()}>
 
           {funscript && (
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <div className="flex-1 min-w-0">
+            <>
+              {/* The waveform is a time axis, so it must span exactly the same
+                  width as the seek bar below it — anything sharing this row
+                  shrinks it and the peaks stop lining up with the timeline. */}
+              <div className="mb-1">
                 <FunscriptWaveform actions={funscript.actions} duration={duration} currentTime={time} />
               </div>
-              <FunscriptStatsPill actions={funscript.actions} duration={duration} />
-              <FunscriptOffsetControl offsetMs={funscriptOffsetMs} onChange={handleOffsetChange} />
-            </div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <FunscriptStatsPill actions={funscript.actions} duration={duration} />
+                <div className="ml-auto">
+                  <FunscriptOffsetControl offsetMs={funscriptOffsetMs} onChange={handleOffsetChange} />
+                </div>
+              </div>
+            </>
           )}
 
           {funscript && localAxes.length > 1 && (

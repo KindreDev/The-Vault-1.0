@@ -30,7 +30,7 @@ const SOCIAL_NAV = [
 ]
 
 const GOON_NAV = [
-  { to: '/multi-panel',    icon: Columns3,   label: 'Multi-panel' },
+  { to: '/multi-panel',    icon: Columns3,   label: 'Playlists' },
   { to: '/device-control', icon: Cpu,        label: 'Device Control' },
 ]
 
@@ -230,7 +230,7 @@ export default function Sidebar() {
         {SOCIAL_NAV.map(n => <NavItem key={n.to} {...n} />)}
 
         <SectionLabel label="Goon" />
-        <NavItem to="/multi-panel" icon={Columns3} label="Multi-panel" badge={queueCount} />
+        <NavItem to="/multi-panel" icon={Columns3} label="Playlists" badge={queueCount} />
         {GOON_NAV.filter(n => n.to !== '/multi-panel').map(n => <NavItem key={n.to} {...n} />)}
         <NavItem to="/erika" icon={Sparkles} label="Erika AI" />
         <QuickConnect />

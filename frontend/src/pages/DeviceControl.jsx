@@ -609,6 +609,50 @@ function ConnectionSection() {
   )
 }
 
+// ── Funscript auto-sync ───────────────────────────────────────────────────────
+
+function AutoSyncSection() {
+  const autoSync    = useDeviceStore(s => s.autoSyncFunscript)
+  const setAutoSync = useDeviceStore(s => s.setAutoSyncFunscript)
+
+  return (
+    <Card title="Funscript Sync">
+      <button
+        type="button"
+        onMouseDown={() => setAutoSync(!autoSync)}
+        className="w-full flex items-center gap-3 cursor-pointer text-left"
+      >
+        <span
+          className="relative flex-shrink-0 rounded-full transition-colors"
+          style={{
+            width: 34, height: 19,
+            background: autoSync ? 'rgba(127,119,221,0.55)' : 'rgba(255,255,255,0.12)',
+            border: `0.5px solid ${autoSync ? 'rgba(127,119,221,0.8)' : 'rgba(255,255,255,0.18)'}`,
+          }}
+        >
+          <span
+            className="absolute rounded-full transition-all"
+            style={{
+              width: 15, height: 15, top: 1.5, left: autoSync ? 17 : 1.5,
+              background: autoSync ? '#CECBF6' : 'rgba(255,255,255,0.55)',
+            }}
+          />
+        </span>
+        <span className="flex-1">
+          <span className="block text-[13px]" style={{ color: 'rgba(255,255,255,0.8)' }}>
+            Auto-sync to funscripted videos
+          </span>
+          <span className="block text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.28)' }}>
+            {autoSync
+              ? 'Videos with a script take over the device as soon as they open.'
+              : 'Press Sync on the player each time you want the device to follow a script.'}
+          </span>
+        </span>
+      </button>
+    </Card>
+  )
+}
+
 // ── Stroke range limiter ──────────────────────────────────────────────────────
 
 function StrokeLimiterSection() {
@@ -1183,6 +1227,7 @@ export default function DeviceControl() {
 
       {isConnected && (
         <>
+          <AutoSyncSection />
           <StrokeLimiterSection />
           <FreestyleSection />
           <RampSection />

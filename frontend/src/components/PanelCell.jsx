@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer } from 'lucide-react'
+import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer, Zap } from 'lucide-react'
 import InlineVideoPlayer from './InlineVideoPlayer'
 import { imagesApi } from '../lib/api'
 
 const SPEEDS = [3, 5, 8, 12, 20]
 
 // items: array of { id, filename, is_video, galleryId }
-export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscreen = false }) {
+export default function PanelCell({
+  items, onRemoveItem, panelIndex, isFullscreen = false,
+  deviceConnected = false, deviceSynced = false, onToggleDeviceSync,
+}) {
   const [idx, setIdx]             = useState(0)
   const [playing, setPlaying]     = useState(true)
   const [speed, setSpeed]         = useState(8)
@@ -25,6 +28,7 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
 
   const item = items[idx] ?? null
   const viewStartRef = useRef(null)
+  const hasScript = !!(item?.is_video && item?.funscript_path)
 
   // Clamp idx when items shrink
   useEffect(() => {
@@ -58,6 +62,12 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
 
   // Wheel zoom — capture:true fires BEFORE any ancestor scroll handler,
   // passive:false allows preventDefault() to actually suppress scroll.
+  //
+  // Depends on hasItems because an empty panel renders a placeholder that never
+  // attaches containerRef. Without this the effect would run once against a null
+  // ref and never re-run, leaving wheel zoom permanently dead on any panel that
+  // started empty and got content later (per-panel playlists do exactly that).
+  const hasItems = items.length > 0
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -70,7 +80,7 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
     }
     el.addEventListener('wheel', onWheel, { passive: false, capture: true })
     return () => el.removeEventListener('wheel', onWheel, { capture: true })
-  }, [])
+  }, [hasItems])
 
   // Outside-click for speed menu
   useEffect(() => {
@@ -135,6 +145,9 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
           <InlineVideoPlayer
             key={item.id}
             src={`/api/images/${item.id}/file`}
+            imageId={item.id}
+            funscriptPath={item.funscript_path ?? null}
+            deviceSync={deviceSynced}
             videoZoom={zoom}
             videoPan={pan}
             onEnded={playing && items.length > 1 ? next : undefined}
@@ -166,7 +179,22 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
           {/* Top bar */}
           <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1.5 z-20"
                style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)' }}>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              {/* Device sync — the connected toy can only follow one video at a
+                  time, so this claims it for this panel and releases any other. */}
+              {deviceConnected && (
+                <button onMouseDown={(e) => { e.stopPropagation(); onToggleDeviceSync?.() }}
+                        title={deviceSynced
+                          ? 'Device is following this panel — click to release'
+                          : (hasScript ? 'Sync device to this panel' : 'Sync device to this panel (current file has no script)')}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-full cursor-pointer flex-shrink-0"
+                        style={deviceSynced
+                          ? { background: 'rgba(212,83,126,0.28)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.55)' }
+                          : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+                  <Zap size={10} />
+                  <span className="text-[13px] leading-none">{deviceSynced ? 'Synced' : 'Sync'}</span>
+                </button>
+              )}
               <span className="text-[9px] text-[rgba(255,255,255,0.4)] truncate max-w-[120px]">
                 {item?.filename ?? ''}
               </span>
@@ -280,6 +308,16 @@ export default function PanelCell({ items, onRemoveItem, panelIndex, isFullscree
             )}
           </div>
         </>
+      )}
+
+      {/* Device-sync marker stays visible unhovered, so it's obvious at a glance
+          which panel is driving the toy mid-session. */}
+      {!hovered && deviceSynced && (
+        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full z-10 pointer-events-none"
+             style={{ background: 'rgba(212,83,126,0.85)', color: '#fff' }}>
+          <Zap size={9} />
+          <span className="text-[13px] leading-none">{hasScript ? 'Synced' : 'No script'}</span>
+        </div>
       )}
 
       {/* Always-visible item count badge (when not hovered) */}

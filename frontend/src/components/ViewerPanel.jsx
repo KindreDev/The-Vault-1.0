@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { X, Plus, Tag, UserPlus, MoveRight } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
+import TagAutocompleteInput from './TagAutocompleteInput'
 import toast from 'react-hot-toast'
 
 const TYPE_COLORS = {
@@ -13,16 +14,15 @@ const TYPE_COLORS = {
 
 // ── Tag management ─────────────────────────────────────────────────────────────
 export function TagPanel({ imageId, tags, onTagsChanged }) {
-  const [newTag, setNewTag] = useState('')
   const qc = useQueryClient()
 
   const addMutation = useMutation({
     mutationFn: (name) => imagesApi.addTag(imageId, name.toLowerCase().trim()),
     onSuccess: (_, name) => {
       onTagsChanged(prev => [...prev, { id: Date.now(), name: name.toLowerCase().trim(), source: 'manual' }])
-      setNewTag('')
       qc.invalidateQueries({ queryKey: ['images-list'] })
       qc.invalidateQueries({ queryKey: ['gallery-images'] })
+      qc.invalidateQueries({ queryKey: ['tags'] })
     }
   })
 
@@ -34,8 +34,6 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
       qc.invalidateQueries({ queryKey: ['gallery-images'] })
     }
   })
-
-  const submit = () => { const t = newTag.trim(); if (t) addMutation.mutate(t) }
 
   return (
     <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
@@ -57,19 +55,11 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
         ))}
         {tags.length === 0 && <div className="text-[10px] text-[rgba(255,255,255,0.2)]">No tags</div>}
       </div>
-      <div className="flex gap-1">
-        <input value={newTag} onChange={e => setNewTag(e.target.value)}
-               onKeyDown={e => e.key === 'Enter' && submit()}
-               placeholder="Add tag…"
-               className="flex-1 px-2 py-1 rounded-[6px] text-[10px] outline-none"
-               style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)',
-                        border: '0.5px solid rgba(255,255,255,0.1)' }} />
-        <button type="button" onMouseDown={submit}
-                className="px-2 py-1 rounded-[6px] text-[10px] cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          <Plus size={10} />
-        </button>
-      </div>
+      <TagAutocompleteInput
+        size="sm"
+        exclude={tags.map(t => t.name)}
+        onAdd={(name) => addMutation.mutate(name)}
+      />
     </div>
   )
 }

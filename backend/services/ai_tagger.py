@@ -632,6 +632,115 @@ def download_joytag():
     _set(message="JoyTag download complete.")
 
 
+# ── Tag vocabulary allowlist (DB-backed, user-editable) ────────────────────────
+# WD14_TAG_MAP / JOYTAG_TAG_MAP above remain the source of *defaults* for seeding
+# and "reset to defaults" — at tag time, the allowlist is read from TagVocabEntry
+# via the in-memory cache below, not from these dicts directly.
+
+_tag_vocab_cache: dict[str, dict[str, tuple[str, str]]] = {}
+_tag_vocab_lock = threading.Lock()
+
+def invalidate_tag_vocab_cache(model: Optional[str] = None):
+    """Call after any TagVocabEntry mutation so the next tag() call reloads it."""
+    global _tag_vocab_cache
+    with _tag_vocab_lock:
+        if model is None:
+            _tag_vocab_cache = {}
+        else:
+            _tag_vocab_cache.pop(model, None)
+
+def _get_tag_vocab(model: str) -> dict[str, tuple[str, str]]:
+    """Lazily-loaded, cached {raw_tag: (normalized_name, category)} for enabled
+    entries of the given model. Mirrors the _get_wd14/_get_joytag lazy-singleton
+    pattern so the hot per-image tagging loop never hits the DB directly."""
+    with _tag_vocab_lock:
+        cached = _tag_vocab_cache.get(model)
+    if cached is not None:
+        return cached
+
+    from database import SessionLocal
+    from models import TagVocabEntry
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(TagVocabEntry.raw_tag, TagVocabEntry.normalized_name, TagVocabEntry.category)
+              .filter(TagVocabEntry.model == model, TagVocabEntry.enabled == True)  # noqa: E712
+              .all()
+        )
+    finally:
+        db.close()
+
+    mapping = {raw: (norm, cat) for raw, norm, cat in rows}
+    with _tag_vocab_lock:
+        _tag_vocab_cache[model] = mapping
+    return mapping
+
+def seed_tag_vocab(db, model: str):
+    """One-time (idempotent) seed of the full raw model vocabulary into
+    TagVocabEntry. Tags already present in WD14_TAG_MAP/JOYTAG_TAG_MAP are
+    pre-enabled — this is what keeps existing installs' tagging behavior
+    unchanged after upgrading to this feature. No-ops if already seeded for
+    this model, or if the model's raw vocab file isn't on disk yet."""
+    from models import TagVocabEntry
+
+    already_seeded = db.query(TagVocabEntry).filter(TagVocabEntry.model == model).first()
+    if already_seeded is not None:
+        return
+
+    if model == "wd14":
+        if not wd14_is_ready():
+            return
+        tag_csv = os.path.join(_wd14_dir(), "selected_tags.csv")
+        raw_tags: list[str] = []
+        with open(tag_csv, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                raw_tags.append(row["name"])
+    elif model == "joytag":
+        if not joytag_is_ready():
+            return
+        tag_file = os.path.join(_joytag_dir(), "top_tags.txt")
+        with open(tag_file, encoding="utf-8") as f:
+            raw_tags = [line.strip() for line in f if line.strip()]
+    else:
+        return
+
+    seen: set[str] = set()
+    entries: list["TagVocabEntry"] = []
+    for raw in raw_tags:
+        if model == "wd14":
+            # Matches WD14Tagger.tag()'s raw_lower lookup key exactly.
+            raw_key = raw.lower()
+            mapped = WD14_TAG_MAP.get(raw_key)
+        else:
+            # top_tags.txt ships danbooru underscore format; JOYTAG_TAG_MAP keys
+            # are natural-English (spaces), with a cross-fallback to WD14_TAG_MAP's
+            # underscore keys — mirrors JoyTagTagger.tag()'s raw_lower/raw_under
+            # dual lookup exactly, so seeding preserves current behavior 1:1.
+            raw_key = raw.lower().replace("_", " ")
+            mapped = JOYTAG_TAG_MAP.get(raw_key) or WD14_TAG_MAP.get(raw.lower())
+
+        if raw_key in seen:
+            continue
+        seen.add(raw_key)
+
+        if mapped:
+            norm_name, category = mapped
+            enabled, is_default = True, True
+        else:
+            norm_name, category = raw_key, "general"
+            enabled, is_default = False, False
+        entries.append(TagVocabEntry(
+            model=model, raw_tag=raw_key, normalized_name=norm_name,
+            category=category, enabled=enabled, is_builtin_default=is_default,
+        ))
+
+    db.bulk_save_objects(entries)
+    db.commit()
+    invalidate_tag_vocab_cache(model)
+    logger.info("Seeded %d tag_vocab_entries for model=%s (%d enabled by default)",
+                len(entries), model, sum(1 for e in entries if e.enabled))
+
+
 # ── ONNX session helper ───────────────────────────────────────────────────────
 def _gpu_enabled() -> bool:
     """Read the use_gpu flag from vault_config.json. Defaults to True."""
@@ -742,6 +851,7 @@ class WD14Tagger:
 
         probs = self._session.run([self._output_name], {self._input_name: inp})[0][0]
 
+        vocab = _get_tag_vocab("wd14")   # user-editable allowlist, DB-backed & cached
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
 
@@ -751,7 +861,7 @@ class WD14Tagger:
 
             # Per-tag threshold overrides (e.g. underboob, sideboob score lower on
             # real-photo / 3D content but are still meaningful at reduced confidence).
-            mapped_norm = WD14_TAG_MAP.get(raw_lower, (None,))[0]
+            mapped_norm = vocab.get(raw_lower, (None,))[0]
             effective_threshold = TAG_THRESHOLD_OVERRIDES.get(mapped_norm, threshold) if mapped_norm else threshold
 
             # Always evaluate rating tags; others need to clear threshold
@@ -766,13 +876,13 @@ class WD14Tagger:
 
             if raw_lower in WD14_SKIP_TAGS:
                 continue   # noise / meta tag — never pass through
-            elif raw_lower in WD14_TAG_MAP:
-                norm_name, norm_cat = WD14_TAG_MAP[raw_lower]
+            elif raw_lower in vocab:
+                norm_name, norm_cat = vocab[raw_lower]
                 results.append((norm_name, norm_cat, conf))
             elif wd14_cat == 4:
                 # True character name — pass through with underscores replaced
                 results.append((raw_name.replace("_", " "), "character", conf))
-            # General / copyright / artist tags not in our map are dropped
+            # General / copyright / artist tags not enabled in the allowlist are dropped
 
         return results, person_count
 
@@ -802,6 +912,8 @@ class JoyTagTagger:
 
         probs = self._session.run([self._output_name], {self._input_name: inp})[0][0]
 
+        jt_vocab = _get_tag_vocab("joytag")   # keyed by space form, matches raw_lower below
+        wd_vocab = _get_tag_vocab("wd14")     # keyed by underscore form, matches raw_under below
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
 
@@ -813,8 +925,8 @@ class JoyTagTagger:
             # Resolve normalised name early so we can apply per-tag overrides.
             raw_lower_pre = raw_name.lower().replace("_", " ")
             raw_under_pre = raw_name.lower()
-            _jt_norm  = JOYTAG_TAG_MAP.get(raw_lower_pre, (None,))[0]
-            _wd_norm  = WD14_TAG_MAP.get(raw_under_pre, (None,))[0] if _jt_norm is None else None
+            _jt_norm  = jt_vocab.get(raw_lower_pre, (None,))[0]
+            _wd_norm  = wd_vocab.get(raw_under_pre, (None,))[0] if _jt_norm is None else None
             _norm_key = _jt_norm or _wd_norm
             effective_threshold = TAG_THRESHOLD_OVERRIDES.get(_norm_key, threshold) if _norm_key else threshold
 
@@ -839,15 +951,15 @@ class JoyTagTagger:
             if raw_lower in WD14_SKIP_TAGS or raw_under in WD14_SKIP_TAGS:
                 continue   # skip noise tags shared with WD14
 
-            if raw_lower in JOYTAG_TAG_MAP:
+            if raw_lower in jt_vocab:
                 # JoyTag-specific entry (natural-English key)
-                norm_name, norm_cat = JOYTAG_TAG_MAP[raw_lower]
+                norm_name, norm_cat = jt_vocab[raw_lower]
                 results.append((norm_name, norm_cat, conf))
-            elif raw_under in WD14_TAG_MAP:
+            elif raw_under in wd_vocab:
                 # Overlapping danbooru tag — use WD14 normalisation
-                norm_name, norm_cat = WD14_TAG_MAP[raw_under]
+                norm_name, norm_cat = wd_vocab[raw_under]
                 results.append((norm_name, norm_cat, conf))
-            # Anything still unmapped is dropped — no raw general passthrough
+            # Anything still unmapped/disabled is dropped — no raw general passthrough
 
         return results, person_count
 
@@ -1281,6 +1393,17 @@ def download_models_task(download_wd14_flag: bool, download_joytag_flag: bool):
         if download_joytag_flag and not joytag_is_ready():
             download_joytag()
         _reset_singletons()
+
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            if wd14_is_ready():
+                seed_tag_vocab(db, "wd14")
+            if joytag_is_ready():
+                seed_tag_vocab(db, "joytag")
+        finally:
+            db.close()
+
         _set(message="Download complete.", running=False)
     except Exception as e:
         logger.exception("Model download failed: %s", e)

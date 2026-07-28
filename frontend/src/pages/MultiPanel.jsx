@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, X, Heart, Search, Video, Images,
   Maximize, Minimize, ChevronDown, LayoutGrid, MoreVertical, Sliders,
+  ListMusic, Save, Play, Pencil, Shuffle,
 } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
-import { galleriesApi, imagesApi, sessionsApi } from '../lib/api'
+import { galleriesApi, imagesApi, sessionsApi, panelPlaylistsApi } from '../lib/api'
 import PanelCell from '../components/PanelCell'
 import DeviceControls from '../components/DeviceControls'
 import toast from 'react-hot-toast'
@@ -20,9 +21,9 @@ const LAYOUTS = [
   { count: 6, label: '6', rows: [[0, 1, 2], [3, 4, 5]] },
 ]
 
-function distributeItems(queue, panelCount, mode, manualAssignments) {
+function distributeItems(queue, panelCount, mode, manualAssignments, perPanelShuffle = {}) {
   const panels = Array.from({ length: panelCount }, () => [])
-  
+
   // 1. Manually assigned items
   const unassigned = []
   const panelsWithManual = new Set()
@@ -37,6 +38,15 @@ function distributeItems(queue, panelCount, mode, manualAssignments) {
       unassigned.push(qItem)
     }
   })
+
+  // Per-panel mode: each panel runs only what's pinned to it. Unassigned items
+  // deliberately don't leak into empty panels — an empty panel means "nothing
+  // loaded here yet", which is what makes the panels independent playlists.
+  if (mode === 'per-panel') {
+    return panels.map((items, i) =>
+      perPanelShuffle[i] ? [...items].sort(() => Math.random() - 0.5) : items
+    )
+  }
 
   // 2. Auto-distribute the rest to available panels
   const availablePanels = []
@@ -72,8 +82,67 @@ function distributeItems(queue, panelCount, mode, manualAssignments) {
   return panels
 }
 
+// ── Per-panel playlist bar ────────────────────────────────────────────────────
+//
+// Shown only in per-panel mode. An empty panel gets a clear call to action; a
+// loaded panel keeps a faint label that lifts to full strength on hover, so it
+// identifies itself without competing with what's playing.
+// A loaded panel gets a real header ROW above the media rather than a floating
+// overlay. Overlaying sat on top of PanelCell's own top bar — covering the zoom
+// slider, and stealing hover so those controls hid the moment you reached for
+// them. A row can't collide with anything inside the player.
+function PanelPlaylistBar({ panelIdx, label, count, shuffled, onLoad, onClear, onToggleShuffle }) {
+  if (count === 0) {
+    // Empty panel: PanelCell only shows a static placeholder here, so a centred
+    // overlay is safe. pointer-events stay off except on the button itself.
+    return (
+      <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 pointer-events-none">
+        <div className="text-[13px] text-[rgba(255,255,255,0.3)]">Panel {panelIdx + 1}</div>
+        <button onMouseDown={onLoad}
+                className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
+                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+          <ListMusic size={13} /> Load playlist
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 px-2 flex-shrink-0"
+         style={{ height: 26, background: '#101010', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+      <ListMusic size={11} style={{ color: 'rgba(127,119,221,0.8)', flexShrink: 0 }} />
+      <span className="text-[13px] font-medium truncate" style={{ color: '#CECBF6' }}>
+        {label || `Panel ${panelIdx + 1}`}
+      </span>
+      <span className="text-[12px] flex-shrink-0 tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>{count}</span>
+      <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+        <button onMouseDown={onToggleShuffle} title={shuffled ? 'Playing shuffled' : 'Playing in order'}
+                className="p-1 rounded-[5px] cursor-pointer hover:bg-[rgba(255,255,255,0.1)]"
+                style={{ color: shuffled ? '#CECBF6' : 'rgba(255,255,255,0.35)' }}>
+          <Shuffle size={12} />
+        </button>
+        <button onMouseDown={onLoad} title="Load a different playlist"
+                className="p-1 rounded-[5px] cursor-pointer hover:bg-[rgba(255,255,255,0.1)]"
+                style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <ListMusic size={12} />
+        </button>
+        <button onMouseDown={onClear} title="Clear this panel"
+                className="p-1 rounded-[5px] cursor-pointer hover:bg-[rgba(212,83,126,0.15)]"
+                style={{ color: 'rgba(212,83,126,0.7)' }}>
+          <X size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Resizable grid ────────────────────────────────────────────────────────────
-function ResizableGrid({ layout, panelItems, onRemoveItem, onAssignItem, isFullscreen }) {
+function ResizableGrid({
+  layout, panelItems, onRemoveItem, onAssignItem, isFullscreen,
+  perPanelMode = false, panelLabels = {}, perPanelShuffle = {},
+  onLoadPanel, onClearPanel, onTogglePanelShuffle,
+  deviceConnected = false, deviceSyncPanel = null, onToggleDeviceSync,
+}) {
   const { rows } = layout
   const numRows  = rows.length
   const numCols  = rows[0].length
@@ -155,12 +224,42 @@ function ResizableGrid({ layout, panelItems, onRemoveItem, onAssignItem, isFulls
                   {dragOverIdx === panelIdx && (
                     <div className="absolute inset-0 z-50 pointer-events-none" style={{ background: 'rgba(127,119,221,0.2)', border: '2px dashed #7F77DD' }} />
                   )}
-                  <PanelCell
-                    panelIndex={panelIdx}
-                    items={panelItems[panelIdx] ?? []}
-                    onRemoveItem={onRemoveItem}
-                    isFullscreen={isFullscreen}
-                  />
+                  {perPanelMode ? (
+                    // Header row + player stacked, so the bar never overlaps the
+                    // player's own zoom/nav controls.
+                    <div className="flex flex-col h-full">
+                      <PanelPlaylistBar
+                        panelIdx={panelIdx}
+                        label={panelLabels[panelIdx]}
+                        count={(panelItems[panelIdx] ?? []).length}
+                        shuffled={!!perPanelShuffle[panelIdx]}
+                        onLoad={() => onLoadPanel?.(panelIdx)}
+                        onClear={() => onClearPanel?.(panelIdx)}
+                        onToggleShuffle={() => onTogglePanelShuffle?.(panelIdx)}
+                      />
+                      <div className="flex-1 min-h-0">
+                        <PanelCell
+                          panelIndex={panelIdx}
+                          items={panelItems[panelIdx] ?? []}
+                          onRemoveItem={onRemoveItem}
+                          isFullscreen={isFullscreen}
+                          deviceConnected={deviceConnected}
+                          deviceSynced={deviceSyncPanel === panelIdx}
+                          onToggleDeviceSync={() => onToggleDeviceSync?.(panelIdx)}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <PanelCell
+                      panelIndex={panelIdx}
+                      items={panelItems[panelIdx] ?? []}
+                      onRemoveItem={onRemoveItem}
+                      isFullscreen={isFullscreen}
+                      deviceConnected={deviceConnected}
+                      deviceSynced={deviceSyncPanel === panelIdx}
+                      onToggleDeviceSync={() => onToggleDeviceSync?.(panelIdx)}
+                    />
+                  )}
                 </div>
                 {colIdx < row.length - 1 && (
                   <div
@@ -189,6 +288,258 @@ function ResizableGrid({ layout, panelItems, onRemoveItem, onAssignItem, isFulls
           )}
         </React.Fragment>
       ))}
+    </div>
+  )
+}
+
+// ── Playlists Modal ───────────────────────────────────────────────────────────
+//
+// The multi-panel queue IS the playlist — this just persists and restores it,
+// along with the viewer setup (panel count + playback mode) so a saved session
+// comes back exactly as it was left.
+function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manualAssignments = {}, targetPanel = null }) {
+  const qc = useQueryClient()
+  const [name, setName]           = useState('')
+  const [renamingId, setRenaming] = useState(null)
+  const [renameVal, setRenameVal] = useState('')
+  const [confirmDel, setConfirm]  = useState(null)
+  const [busy, setBusy]           = useState(false)
+
+  const { data: playlists = [], isLoading } = useQuery({
+    queryKey: ['panel-playlists'],
+    queryFn: () => panelPlaylistsApi.list().then(r => r.data),
+  })
+
+  // In per-panel mode each entry carries the panel it's pinned to, so reloading
+  // this playlist rebuilds the whole arrangement rather than a flat list.
+  const payload = (nm) => ({
+    name: nm,
+    layout_idx: layoutIdx,
+    gallery_mode: galleryMode,
+    entries: queue.map(item => ({
+      entry_type: item.type,
+      ref_id: item.media.id,
+      panel_idx: galleryMode === 'per-panel' ? (manualAssignments[item.id] ?? null) : null,
+    })),
+  })
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['panel-playlists'] })
+
+  const handleSaveNew = async () => {
+    const nm = name.trim()
+    if (!nm || !queue.length || busy) return
+    setBusy(true)
+    try {
+      await panelPlaylistsApi.create(payload(nm))
+      toast.success(`Saved “${nm}”`)
+      setName('')
+      refresh()
+    } catch { toast.error('Could not save playlist') }
+    setBusy(false)
+  }
+
+  const handleOverwrite = async (pl) => {
+    if (!queue.length || busy) return
+    setBusy(true)
+    try {
+      await panelPlaylistsApi.update(pl.id, payload(pl.name))
+      toast.success(`Updated “${pl.name}”`)
+      refresh()
+    } catch { toast.error('Could not update playlist') }
+    setBusy(false)
+  }
+
+  const handleLoad = async (pl, mode) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const { data } = await panelPlaylistsApi.get(pl.id)
+      onLoad(data, mode, targetPanel)
+      toast.success(
+        targetPanel !== null ? `“${pl.name}” → panel ${targetPanel + 1}`
+        : mode === 'append'  ? `Appended “${pl.name}”`
+        : `Loaded “${pl.name}”`
+      )
+      onClose()
+    } catch { toast.error('Could not load playlist') }
+    setBusy(false)
+  }
+
+  const handleRename = async (pl) => {
+    const nm = renameVal.trim()
+    if (!nm) return
+    try {
+      await panelPlaylistsApi.rename(pl.id, nm)
+      setRenaming(null)
+      refresh()
+    } catch { toast.error('Could not rename') }
+  }
+
+  const handleDelete = async (pl) => {
+    try {
+      await panelPlaylistsApi.delete(pl.id)
+      setConfirm(null)
+      refresh()
+      toast.success(`Deleted “${pl.name}”`)
+    } catch { toast.error('Could not delete') }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
+         style={{ background: 'rgba(0,0,0,0.8)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="flex flex-col rounded-[16px] overflow-hidden shadow-2xl animate-modal-pop"
+           style={{ width: 'clamp(380px, 52vw, 760px)', height: 'clamp(380px, 66vh, 780px)', background: '#161616', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[rgba(255,255,255,0.07)]">
+          <ListMusic size={15} style={{ color: '#CECBF6' }} />
+          <span className="text-[15px] font-medium text-[rgba(255,255,255,0.85)]">
+            {targetPanel !== null ? `Load into panel ${targetPanel + 1}` : 'Playlists'}
+          </span>
+          <span className="text-[13px] text-[rgba(255,255,255,0.35)] ml-1">
+            {targetPanel !== null
+              ? 'pick a playlist for this panel'
+              : `${queue.length} item${queue.length === 1 ? '' : 's'} in the current queue`}
+          </span>
+          <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white ml-auto"><X size={15} /></button>
+        </div>
+
+        {/* Save current queue — hidden when picking a playlist for one panel */}
+        {targetPanel === null && (
+        <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.07)]">
+          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2">Save current queue</div>
+          <div className="flex items-center gap-2">
+            <input value={name} onChange={e => setName(e.target.value)}
+                   onKeyDown={e => e.key === 'Enter' && handleSaveNew()}
+                   placeholder={queue.length ? 'Playlist name…' : 'Queue is empty'}
+                   disabled={!queue.length}
+                   className="flex-1 px-3 py-2 rounded-[8px] outline-none text-[16px] disabled:opacity-40"
+                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.12)' }} />
+            <button onMouseDown={handleSaveNew} disabled={!name.trim() || !queue.length || busy}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-[14px] font-medium cursor-pointer disabled:opacity-30"
+                    style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.45)' }}>
+              <Save size={13} /> Save
+            </button>
+          </div>
+          <div className="text-[13px] text-[rgba(255,255,255,0.28)] mt-1.5">
+            {galleryMode === 'per-panel'
+              ? `Saves which panel each item plays in, across your ${LAYOUTS[layoutIdx]?.label ?? ''} panels.`
+              : `Saves the order, plus your ${LAYOUTS[layoutIdx]?.label ?? ''}-panel layout and ${galleryMode === 'grouped' ? 'grouped' : 'shuffled'} playback.`}
+          </div>
+        </div>
+        )}
+
+        {/* Saved playlists */}
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2">Saved</div>
+          {isLoading ? (
+            <div className="text-[14px] text-[rgba(255,255,255,0.3)] py-6 text-center">Loading…</div>
+          ) : playlists.length === 0 ? (
+            <div className="text-[14px] text-[rgba(255,255,255,0.28)] py-8 text-center">
+              No saved playlists yet.<br />Queue some media, name it above, and hit Save.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {playlists.map(pl => (
+                <div key={pl.id} className="rounded-[10px] px-3 py-2.5"
+                     style={{ background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${pl.is_autosave ? 'rgba(186,117,23,0.35)' : 'rgba(255,255,255,0.08)'}` }}>
+                  <div className="flex items-center gap-2.5">
+                    {/* Cover stack */}
+                    <div className="flex -space-x-2 flex-shrink-0">
+                      {(pl.covers ?? []).slice(0, 3).map((c, i) => (
+                        <img key={i} src={c} alt="" className="w-9 h-9 rounded-[5px] object-cover"
+                             style={{ border: '1px solid #161616' }}
+                             onError={e => { e.target.style.visibility = 'hidden' }} />
+                      ))}
+                      {(!pl.covers || pl.covers.length === 0) && (
+                        <div className="w-9 h-9 rounded-[5px] flex items-center justify-center"
+                             style={{ background: 'rgba(255,255,255,0.05)' }}>
+                          <ListMusic size={13} style={{ color: 'rgba(255,255,255,0.25)' }} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      {renamingId === pl.id ? (
+                        <input autoFocus value={renameVal}
+                               onChange={e => setRenameVal(e.target.value)}
+                               onKeyDown={e => { if (e.key === 'Enter') handleRename(pl); if (e.key === 'Escape') setRenaming(null) }}
+                               onBlur={() => setRenaming(null)}
+                               className="w-full px-2 py-1 rounded-[6px] outline-none text-[15px]"
+                               style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '0.5px solid rgba(127,119,221,0.5)' }} />
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[15px] text-[rgba(255,255,255,0.85)] truncate">{pl.name}</span>
+                          {pl.is_autosave && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                  style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775' }}>auto</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
+                        {pl.gallery_count} galler{pl.gallery_count === 1 ? 'y' : 'ies'} · {pl.image_count} file{pl.image_count === 1 ? '' : 's'}
+                        {pl.panels_used?.length > 0
+                          ? ` · arrangement across ${pl.panels_used.length} panel${pl.panels_used.length === 1 ? '' : 's'}`
+                          : ` · ${LAYOUTS[pl.layout_idx]?.label ?? '?'} panels · ${pl.gallery_mode}`}
+                      </div>
+                    </div>
+
+                    {confirmDel === pl.id ? (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onMouseDown={() => handleDelete(pl)}
+                                className="px-2 py-1 rounded-[6px] text-[13px] cursor-pointer"
+                                style={{ background: 'rgba(212,83,126,0.25)', color: '#F4C0D1' }}>Delete</button>
+                        <button onMouseDown={() => setConfirm(null)}
+                                className="px-2 py-1 rounded-[6px] text-[13px] cursor-pointer"
+                                style={{ color: 'rgba(255,255,255,0.4)' }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onMouseDown={() => handleLoad(pl, 'replace')} disabled={busy}
+                                title={targetPanel !== null
+                                  ? `Play this in panel ${targetPanel + 1}`
+                                  : 'Replace the current queue with this playlist'}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer disabled:opacity-40"
+                                style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                          <Play size={11} /> Load
+                        </button>
+                        {targetPanel === null && (
+                          <button onMouseDown={() => handleLoad(pl, 'append')} disabled={busy}
+                                  title="Add this playlist to the end of the current queue"
+                                  className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
+                                  style={{ color: 'rgba(255,255,255,0.45)' }}>
+                            <Plus size={13} />
+                          </button>
+                        )}
+                        {targetPanel === null && (
+                          <button onMouseDown={() => handleOverwrite(pl)} disabled={!queue.length || busy}
+                                  title="Overwrite with the current queue"
+                                  className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-25"
+                                  style={{ color: 'rgba(255,255,255,0.45)' }}>
+                            <Save size={13} />
+                          </button>
+                        )}
+                        <button onMouseDown={() => { setRenaming(pl.id); setRenameVal(pl.name) }}
+                                title={pl.is_autosave ? 'Rename — also keeps it from being auto-overwritten' : 'Rename'}
+                                className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
+                                style={{ color: 'rgba(255,255,255,0.45)' }}>
+                          <Pencil size={13} />
+                        </button>
+                        <button onMouseDown={() => setConfirm(pl.id)}
+                                title="Delete"
+                                className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(212,83,126,0.12)]"
+                                style={{ color: 'rgba(212,83,126,0.7)' }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -361,61 +712,137 @@ function AddMediaModal({ onClose }) {
 }
 
 // ── Queue strip ───────────────────────────────────────────────────────────────
-function QueueStrip({ queue, manualAssignments, onRemove, onClear }) {
+// The strip stays small while you're actually watching, and grows only when the
+// pointer enters it — so playback order is legible when you care and out of the
+// way when you don't. Dragging a tile onto another tile reorders playback
+// (left → right); dragging one onto a panel still pins it there.
+function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) {
+  const [hovered, setHovered]   = useState(false)
+  const [dragIdx, setDragIdx]   = useState(null)
+  const [overIdx, setOverIdx]   = useState(null)
+
   if (!queue.length) return null
+
+  const TILE = hovered ? 84 : 34
+  const strip = hovered ? 104 : 44
+
+  const endDrag = () => { setDragIdx(null); setOverIdx(null) }
+
   return (
-    <div className="flex items-center gap-1.5 px-2 overflow-x-auto flex-shrink-0"
-         style={{ height: 52, borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+    <div className="flex items-center gap-1.5 px-2 overflow-x-auto overflow-y-hidden flex-shrink-0"
+         onMouseEnter={() => setHovered(true)}
+         onMouseLeave={() => { setHovered(false); endDrag() }}
+         style={{
+           height: strip,
+           borderBottom: '0.5px solid rgba(255,255,255,0.06)',
+           transition: 'height 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+         }}>
       {queue.map((item, i) => {
-        const thumbSrc = item.type === 'gallery' 
-          ? item.media.cover_thumb 
+        const thumbSrc = item.type === 'gallery'
+          ? item.media.cover_thumb
           : `/api/images/${item.media.id}/thumb`
         const isVid = item.type === 'image' && item.media.is_video
-        
+        const badge  = hovered ? 18 : 12
+        const isDragging = dragIdx === i
+        const showLeftMarker = overIdx === i && dragIdx !== null && dragIdx !== i
+
         return (
-          <div key={item.id} 
-               draggable={true}
-               onDragStart={e => {
-                 e.dataTransfer.setData('text/plain', item.id)
-                 e.dataTransfer.effectAllowed = 'copyMove'
-                 e.currentTarget.style.opacity = '0.5'
-               }}
-               onDragEnd={e => { e.currentTarget.style.opacity = '1' }}
-               className="relative flex-shrink-0 rounded-[6px] overflow-hidden cursor-grab active:cursor-grabbing group"
-               style={{ width: 40, height: 40, border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            <img src={thumbSrc} alt="" className="w-full h-full object-cover pointer-events-none" onError={e => { e.target.style.display = 'none' }} />
-            {isVid && (
-              <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
-                <Video size={6} color="#fff" />
+          <React.Fragment key={`${item.id}#${i}`}>
+            {/* Insertion marker */}
+            <div style={{
+              width: showLeftMarker ? 3 : 0,
+              height: TILE,
+              background: '#7F77DD',
+              borderRadius: 2,
+              flexShrink: 0,
+              transition: 'width 120ms ease',
+            }} />
+
+            <div draggable={true}
+                 onDragStart={e => {
+                   e.dataTransfer.setData('text/plain', item.id)
+                   e.dataTransfer.effectAllowed = 'copyMove'
+                   setDragIdx(i)
+                 }}
+                 onDragEnd={endDrag}
+                 onDragOver={e => {
+                   // Only intercept when reordering within the strip — a drag that
+                   // started on a panel or elsewhere falls through untouched.
+                   if (dragIdx === null) return
+                   e.preventDefault()
+                   e.stopPropagation()
+                   e.dataTransfer.dropEffect = 'move'
+                   if (overIdx !== i) setOverIdx(i)
+                 }}
+                 onDrop={e => {
+                   if (dragIdx === null) return
+                   e.preventDefault()
+                   e.stopPropagation()
+                   if (dragIdx !== i) onReorder(dragIdx, i)
+                   endDrag()
+                 }}
+                 className="relative flex-shrink-0 rounded-[6px] overflow-hidden cursor-grab active:cursor-grabbing group"
+                 style={{
+                   width: TILE, height: TILE,
+                   border: '0.5px solid rgba(255,255,255,0.1)',
+                   opacity: isDragging ? 0.4 : 1,
+                   transition: 'width 180ms cubic-bezier(0.4, 0, 0.2, 1), height 180ms cubic-bezier(0.4, 0, 0.2, 1), opacity 120ms ease',
+                 }}>
+              <img src={thumbSrc} alt="" className="w-full h-full object-cover pointer-events-none" onError={e => { e.target.style.display = 'none' }} />
+              {isVid && (
+                <div className="absolute top-0.5 left-0.5 rounded-full flex items-center justify-center pointer-events-none"
+                     style={{ width: badge, height: badge, background: 'rgba(0,0,0,0.7)' }}>
+                  <Video size={hovered ? 11 : 7} color="#fff" />
+                </div>
+              )}
+              {item.type === 'gallery' && (
+                <div className="absolute top-0.5 left-0.5 rounded-[3px] flex items-center justify-center pointer-events-none"
+                     style={{ width: badge, height: badge, background: 'rgba(127,119,221,0.7)' }}>
+                  <Images size={hovered ? 11 : 7} color="#fff" />
+                </div>
+              )}
+              {manualAssignments[item.id] !== undefined && (
+                <div className="absolute top-0 left-0 px-1 bg-[#7F77DD] text-white rounded-br-[4px] font-bold z-10 pointer-events-none"
+                     style={{ fontSize: hovered ? 13 : 9, boxShadow: '1px 1px 3px rgba(0,0,0,0.5)' }}>
+                  P{manualAssignments[item.id] + 1}
+                </div>
+              )}
+              <button onClick={(e) => { e.stopPropagation(); onRemove(item.id) }}
+                      className="absolute top-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"
+                      style={{ width: hovered ? 22 : 16, height: hovered ? 22 : 16, background: 'rgba(212,83,126,0.9)', borderBottomLeftRadius: '4px' }}
+                      title="Remove from queue">
+                <X size={hovered ? 14 : 10} color="#fff" />
+              </button>
+              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none tabular-nums"
+                   style={{
+                     height: hovered ? 20 : 11,
+                     background: 'rgba(0,0,0,0.65)',
+                     fontSize: hovered ? 16 : 8,
+                     color: hovered ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
+                     transition: 'height 180ms ease, font-size 180ms ease',
+                   }}>
+                {i + 1}
               </div>
-            )}
-            {item.type === 'gallery' && (
-              <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-[3px] flex items-center justify-center" style={{ background: 'rgba(127,119,221,0.7)' }}>
-                <Images size={6} color="#fff" />
-              </div>
-            )}
-            {manualAssignments[item.id] !== undefined && (
-              <div className="absolute top-0 left-0 px-1 bg-[#7F77DD] text-white rounded-br-[4px] font-bold z-10 pointer-events-none"
-                   style={{ fontSize: '9px', boxShadow: '1px 1px 3px rgba(0,0,0,0.5)' }}>
-                P{manualAssignments[item.id] + 1}
-              </div>
-            )}
-            <button onClick={(e) => { e.stopPropagation(); onRemove(item.id) }}
-                    className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"
-                    style={{ background: 'rgba(212,83,126,0.9)', borderBottomLeftRadius: '4px' }}
-                    title="Remove from queue">
-              <X size={10} color="#fff" />
-            </button>
-            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center"
-                 style={{ height: 10, background: 'rgba(0,0,0,0.6)', fontSize: 7, color: 'rgba(255,255,255,0.4)' }}>
-              {i + 1}
             </div>
-          </div>
+          </React.Fragment>
         )
       })}
-      <button onMouseDown={onClear} className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer ml-1"
-              style={{ background: 'rgba(212,83,126,0.12)', border: '0.5px solid rgba(212,83,126,0.25)' }} title="Clear all">
-        <Trash2 size={11} color="#F4C0D1" />
+
+      {/* Trailing drop zone — lets you drag a tile to the very end */}
+      <div style={{ width: overIdx === queue.length && dragIdx !== null ? 3 : 0, height: TILE, background: '#7F77DD', borderRadius: 2, flexShrink: 0, transition: 'width 120ms ease' }} />
+      <div onDragOver={e => { if (dragIdx === null) return; e.preventDefault(); e.stopPropagation(); if (overIdx !== queue.length) setOverIdx(queue.length) }}
+           onDrop={e => {
+             if (dragIdx === null) return
+             e.preventDefault(); e.stopPropagation()
+             onReorder(dragIdx, queue.length - 1)
+             endDrag()
+           }}
+           style={{ width: 16, height: TILE, flexShrink: 0 }} />
+
+      <button onMouseDown={onClear} className="flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer ml-1"
+              style={{ width: hovered ? 34 : 26, height: hovered ? 34 : 26, background: 'rgba(212,83,126,0.12)', border: '0.5px solid rgba(212,83,126,0.25)', transition: 'width 180ms ease, height 180ms ease' }}
+              title="Clear all">
+        <Trash2 size={hovered ? 15 : 11} color="#F4C0D1" />
       </button>
     </div>
   )
@@ -426,6 +853,7 @@ export default function MultiPanel() {
   const queue            = useVaultStore(s => s.multiViewerQueue)
   const removeFromViewer = useVaultStore(s => s.removeFromMultiViewer)
   const clearViewer      = useVaultStore(s => s.clearMultiViewer)
+  const reorderViewer    = useVaultStore(s => s.reorderMultiViewer)
   const addXpToast       = useVaultStore(s => s.addXpToast)
   const MAX                    = useVaultStore(s => s.MULTIVIEWER_MAX)
   const sessionActive          = useVaultStore(s => s.sessionActive)
@@ -433,14 +861,26 @@ export default function MultiPanel() {
   const endSession             = useVaultStore(s => s.endSession)
   const setMultiPanelFullscreen = useVaultStore(s => s.setMultiPanelFullscreen)
 
+  const setQueue         = useVaultStore(s => s.setMultiViewerQueue)
+  const appendQueue      = useVaultStore(s => s.appendMultiViewerQueue)
+
   const [layoutIdx, setLayoutIdx]   = useState(2)   // default: 3 cols
   const [showAdd, setShowAdd]       = useState(false)
+  const [showPlaylists, setShowPlaylists] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const isFullscreenRef             = useRef(false)
   const [showTopBar, setShowTopBar] = useState(true)
   const topBarTimer                 = useRef(null)
 
-  const [galleryMode, setGalleryMode] = useState('grouped') // 'grouped' | 'shuffled'
+  const [galleryMode, setGalleryMode] = useState('grouped') // 'grouped' | 'shuffled' | 'per-panel'
+  // Per-panel mode only: which panels shuffle their own playlist, and a label
+  // per panel so you can see which playlist each one is running.
+  const [perPanelShuffle, setPerPanelShuffle] = useState({})
+  const [panelLabels, setPanelLabels]         = useState({})
+  const [loadTarget, setLoadTarget]           = useState(null)  // panel idx awaiting a playlist
+  // Which panel currently drives the connected device. Exclusive by design —
+  // one toy can only follow one video, so claiming a panel releases the previous.
+  const [deviceSyncPanel, setDeviceSyncPanel] = useState(null)
   const [showMenu, setShowMenu] = useState(false)
   const [showDevicePanel, setShowDevicePanel] = useState(false)
   const [manualAssignments, setManualAssignments] = useState({})
@@ -450,7 +890,10 @@ export default function MultiPanel() {
   const deviceStatus = useDeviceStore(s => s.status)
 
   const layout     = LAYOUTS[layoutIdx] ?? LAYOUTS[2]
-  const panelItems = useMemo(() => distributeItems(queue, layout.count, galleryMode, manualAssignments), [queue, layout.count, galleryMode, manualAssignments])
+  const panelItems = useMemo(
+    () => distributeItems(queue, layout.count, galleryMode, manualAssignments, perPanelShuffle),
+    [queue, layout.count, galleryMode, manualAssignments, perPanelShuffle],
+  )
 
   // Clean up assignments when removing
   const handleRemoveFromViewer = useCallback((id) => {
@@ -466,6 +909,112 @@ export default function MultiPanel() {
   const handleAssignItem = useCallback((itemId, panelIdx) => {
     setManualAssignments(prev => ({ ...prev, [itemId]: panelIdx }))
   }, [])
+
+  // ── Per-panel mode helpers ─────────────────────────────────────────────────
+  // A panel's playlist is expressed through manualAssignments (itemId → panel),
+  // the same mechanism drag-onto-panel already uses — so pinning, the queue
+  // strip, reordering and session logging all keep working unchanged.
+  const assignItemsToPanel = useCallback((items, panelIdx, label) => {
+    appendQueue(items)
+    setManualAssignments(prev => {
+      const next = { ...prev }
+      items.forEach(i => { next[i.id] = panelIdx })
+      return next
+    })
+    if (label) setPanelLabels(prev => ({ ...prev, [panelIdx]: label }))
+  }, [appendQueue])
+
+  // Leaving per-panel mode releases its panel bindings, otherwise every item
+  // stays pinned and the shared modes have nothing left to distribute — the
+  // mode switch would look like it did nothing. Drag-pins made in the shared
+  // modes are untouched, since grouped ↔ shuffled doesn't pass through here.
+  const changeGalleryMode = useCallback((next) => {
+    setGalleryMode(prev => {
+      if (prev === 'per-panel' && next !== 'per-panel') {
+        setManualAssignments({})
+        setPanelLabels({})
+        setPerPanelShuffle({})
+      }
+      return next
+    })
+  }, [])
+
+  const clearPanel = useCallback((panelIdx) => {
+    // Drop every item pinned to this panel from both the queue and the pin map
+    const doomed = Object.entries(manualAssignments)
+      .filter(([, p]) => p === panelIdx)
+      .map(([itemId]) => itemId)
+    doomed.forEach(id => removeFromViewer(id))
+    setManualAssignments(prev => {
+      const next = { ...prev }
+      doomed.forEach(id => delete next[id])
+      return next
+    })
+    setPanelLabels(prev => { const n = { ...prev }; delete n[panelIdx]; return n })
+    setPerPanelShuffle(prev => { const n = { ...prev }; delete n[panelIdx]; return n })
+  }, [manualAssignments, removeFromViewer])
+
+  // Rehydrate a saved playlist back into queue-item shape. 'replace' also
+  // restores the saved viewer setup; 'append' leaves the current setup alone
+  // since the user is adding to a session already in progress.
+  const handleLoadPlaylist = useCallback((data, mode, targetPanel = null) => {
+    const entries = data.entries ?? []
+    const items = entries.map(e => ({
+      id:     e.entry_type === 'gallery' ? `gal-${e.ref_id}` : `img-${e.ref_id}`,
+      type:   e.entry_type,
+      media:  e.media,
+      images: e.images ?? [],
+    }))
+
+    // Loading into one specific panel — everything lands there regardless of
+    // how the playlist was originally saved.
+    if (targetPanel !== null) {
+      assignItemsToPanel(items, targetPanel, data.name)
+      setGalleryMode('per-panel')
+      return
+    }
+
+    if (mode === 'append') {
+      appendQueue(items)
+      return
+    }
+
+    setManualAssignments({})
+    setPanelLabels({})
+    setPerPanelShuffle({})
+    setQueue(items)
+    if (typeof data.layout_idx === 'number' && LAYOUTS[data.layout_idx]) setLayoutIdx(data.layout_idx)
+    if (data.gallery_mode) setGalleryMode(data.gallery_mode)
+
+    // A saved multi-panel arrangement restores each entry to its own panel.
+    const pinned = {}
+    entries.forEach((e, i) => {
+      if (e.panel_idx !== null && e.panel_idx !== undefined) pinned[items[i].id] = e.panel_idx
+    })
+    if (Object.keys(pinned).length) setManualAssignments(pinned)
+  }, [appendQueue, setQueue, assignItemsToPanel])
+
+  // Rolling autosave — the queue lives only in memory, so a reload or crash
+  // would otherwise throw away a long session's worth of curation. Debounced so
+  // rapid add/reorder bursts collapse into one write.
+  const autosaveTimer = useRef(null)
+  useEffect(() => {
+    if (!queue.length) return
+    clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      panelPlaylistsApi.autosave({
+        name: 'Last session',
+        layout_idx: layoutIdx,
+        gallery_mode: galleryMode,
+        entries: queue.map(item => ({
+          entry_type: item.type,
+          ref_id: item.media.id,
+          panel_idx: galleryMode === 'per-panel' ? (manualAssignments[item.id] ?? null) : null,
+        })),
+      }).catch(() => {})
+    }, 2500)
+    return () => clearTimeout(autosaveTimer.current)
+  }, [queue, layoutIdx, galleryMode, manualAssignments])
 
   const wrapperRef = useRef(null)
 
@@ -557,6 +1106,13 @@ export default function MultiPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Drop the device claim if the toy goes away or the layout shrinks past the
+  // synced panel, so a stale claim can't block re-syncing to a visible panel.
+  useEffect(() => {
+    if (deviceSyncPanel === null) return
+    if (deviceStatus !== 'connected' || deviceSyncPanel >= layout.count) setDeviceSyncPanel(null)
+  }, [deviceStatus, deviceSyncPanel, layout.count])
+
   const sessionMutation = useMutation({
     mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
     // Only show XP toast for the primary session (skip_xp=false ones have xp_earned=0)
@@ -582,7 +1138,7 @@ export default function MultiPanel() {
       <div className="flex items-center gap-2 px-3"
            style={{ height: 44, borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#111', flexShrink: 0 }}>
 
-        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Multi panel view</span>
+        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Playlists / Multi panel</span>
 
         {/* Layout picker */}
         <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-[8px]"
@@ -606,6 +1162,13 @@ export default function MultiPanel() {
           <Plus size={12} /> Add media
         </button>
 
+        <button onMouseDown={() => setShowPlaylists(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.12)' }}
+                title="Save or load a playlist">
+          <ListMusic size={12} /> Playlists
+        </button>
+
         {/* Options Menu */}
         <div ref={menuRef} className="relative">
           <button onMouseDown={() => setShowMenu(m => !m)}
@@ -619,17 +1182,28 @@ export default function MultiPanel() {
               <div className="px-3 py-2 text-[10px] text-[rgba(255,255,255,0.4)] border-b border-[rgba(255,255,255,0.06)] uppercase tracking-wider">
                 Gallery Playback
               </div>
-              <button onMouseDown={() => { setGalleryMode('grouped'); setShowMenu(false) }}
+              <button onMouseDown={() => { changeGalleryMode('grouped'); setShowMenu(false) }}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                       style={{ color: galleryMode === 'grouped' ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'grouped' ? '#7F77DD' : 'transparent' }} />
                 Keep grouped in panel
               </button>
-              <button onMouseDown={() => { setGalleryMode('shuffled'); setShowMenu(false) }}
+              <button onMouseDown={() => { changeGalleryMode('shuffled'); setShowMenu(false) }}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                       style={{ color: galleryMode === 'shuffled' ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'shuffled' ? '#7F77DD' : 'transparent' }} />
                 Shuffle with all media
+              </button>
+              <button onMouseDown={() => { changeGalleryMode('per-panel'); setShowMenu(false) }}
+                      className="w-full flex items-start gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
+                      style={{ color: galleryMode === 'per-panel' ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
+                <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: galleryMode === 'per-panel' ? '#7F77DD' : 'transparent' }} />
+                <span className="text-left">
+                  Per-panel playlists
+                  <span className="block text-[10px] text-[rgba(255,255,255,0.35)] mt-0.5">
+                    Each panel plays its own
+                  </span>
+                </span>
               </button>
             </div>
           )}
@@ -721,12 +1295,13 @@ export default function MultiPanel() {
       </div>
 
       {/* Queue strip */}
-      <QueueStrip queue={queue} manualAssignments={manualAssignments} onRemove={handleRemoveFromViewer} onClear={handleClearViewer} />
+      <QueueStrip queue={queue} manualAssignments={manualAssignments} onRemove={handleRemoveFromViewer} onClear={handleClearViewer} onReorder={reorderViewer} />
 
       </div>{/* end topbar overlay wrapper */}
 
-      {/* Empty state */}
-      {queue.length === 0 ? (
+      {/* Empty state — skipped in per-panel mode, where empty panels are the
+          entry point for loading a playlist into each one. */}
+      {queue.length === 0 && galleryMode !== 'per-panel' ? (
         <div className="flex-1 flex items-center justify-center flex-col gap-4">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
                style={{ background: 'rgba(127,119,221,0.1)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
@@ -738,11 +1313,18 @@ export default function MultiPanel() {
               Add media here, or use the <span style={{ color: '#CECBF6' }}>⊞ Send to viewer</span> button<br/>
               while browsing Images and Videos.
             </div>
-            <button onMouseDown={() => setShowAdd(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] cursor-pointer mx-auto"
-                    style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-              <Plus size={14} /> Add media
-            </button>
+            <div className="flex items-center gap-2 justify-center">
+              <button onMouseDown={() => setShowAdd(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] cursor-pointer"
+                      style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                <Plus size={14} /> Add media
+              </button>
+              <button onMouseDown={() => setShowPlaylists(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] cursor-pointer"
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.14)' }}>
+                <ListMusic size={14} /> Load a playlist
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -752,10 +1334,30 @@ export default function MultiPanel() {
           onRemoveItem={handleRemoveFromViewer}
           onAssignItem={handleAssignItem}
           isFullscreen={isFullscreen}
+          perPanelMode={galleryMode === 'per-panel'}
+          panelLabels={panelLabels}
+          perPanelShuffle={perPanelShuffle}
+          onLoadPanel={(idx) => { setLoadTarget(idx); setShowPlaylists(true) }}
+          onClearPanel={clearPanel}
+          onTogglePanelShuffle={(idx) => setPerPanelShuffle(p => ({ ...p, [idx]: !p[idx] }))}
+          deviceConnected={deviceStatus === 'connected'}
+          deviceSyncPanel={deviceSyncPanel}
+          onToggleDeviceSync={(idx) => setDeviceSyncPanel(p => (p === idx ? null : idx))}
         />
       )}
 
       {showAdd && <AddMediaModal onClose={() => setShowAdd(false)} />}
+      {showPlaylists && (
+        <PlaylistsModal
+          onClose={() => { setShowPlaylists(false); setLoadTarget(null) }}
+          queue={queue}
+          layoutIdx={layoutIdx}
+          galleryMode={galleryMode}
+          manualAssignments={manualAssignments}
+          targetPanel={loadTarget}
+          onLoad={handleLoadPlaylist}
+        />
+      )}
     </div>
   )
 }

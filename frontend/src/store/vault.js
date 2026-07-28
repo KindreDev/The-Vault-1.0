@@ -286,6 +286,22 @@ export const useVaultStore = create((set, get) => ({
   removeFromMultiViewer: (id) =>
     set(s => ({ multiViewerQueue: s.multiViewerQueue.filter(q => q.id !== id) })),
   clearMultiViewer: () => set({ multiViewerQueue: [] }),
+  // Replace or extend the queue wholesale — used when loading a saved playlist.
+  // Queue ids must stay unique: manualAssignments keys off them and
+  // removeFromMultiViewer filters by them, so a repeated id would pin/remove
+  // both copies at once (and collide as a React key). Note this only collapses
+  // the *same* gallery/file appearing twice — a photo that exists in two
+  // different galleries is two different rows and still plays once per copy.
+  setMultiViewerQueue: (items) => set(s => {
+    const seen = new Set()
+    const unique = items.filter(i => !seen.has(i.id) && seen.add(i.id))
+    return { multiViewerQueue: unique.slice(0, s.MULTIVIEWER_MAX) }
+  }),
+  appendMultiViewerQueue: (items) => set(s => {
+    const have = new Set(s.multiViewerQueue.map(q => q.id))
+    const fresh = items.filter(i => !have.has(i.id))
+    return { multiViewerQueue: [...s.multiViewerQueue, ...fresh].slice(0, s.MULTIVIEWER_MAX) }
+  }),
   reorderMultiViewer: (from, to) => set(s => {
     const q = [...s.multiViewerQueue]
     const [moved] = q.splice(from, 1)

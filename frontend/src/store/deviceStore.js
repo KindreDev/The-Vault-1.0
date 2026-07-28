@@ -123,6 +123,19 @@ export const useDeviceStore = create((set, get) => ({
     set({ savedPatterns: updated })
   },
 
+  // ── Auto-sync ───────────────────────────────────────────────────────────────
+  // When on, loading a funscripted video hands control to the device straight
+  // away instead of waiting for the Sync button.
+  autoSyncFunscript: localStorage.getItem('vault_auto_sync_funscript') === 'true',
+  setAutoSyncFunscript: (v) => {
+    try { localStorage.setItem('vault_auto_sync_funscript', String(!!v)) } catch {}
+    set({ autoSyncFunscript: !!v })
+  },
+
+  // True while the script's opening is being loaded onto the device just before
+  // playback starts. Not a setting — this always happens for a synced Handy.
+  priming: false,
+
   // ── Funscript stroke limiter (video mode) ───────────────────────────────────
   strokeFloor:   0,    // 0–100
   strokeCeiling: 100,  // 0–100

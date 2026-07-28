@@ -87,6 +87,8 @@ export const galleriesApi = {
   renameFolder:  (id, folderName) => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }),
   extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
   randomMix:     (d)              => api.post('/galleries/random-mix', d),
+  createMix:     (d)              => api.post('/galleries/mix', d),
+  addMixImages:  (id, imageIds)   => api.post(`/galleries/${id}/mix-images`, { image_ids: imageIds }),
   pickFolder:    ()               => api.post('/galleries/pick-folder'),
   exportZip:     (galleryIds, outputPath) => api.post('/galleries/export-zip', { gallery_ids: galleryIds, output_path: outputPath }, { timeout: 300000 }),
 }
@@ -255,6 +257,18 @@ export const playlistsApi = {
   randomMix:   (d)      => api.post('/playlists/random-mix', d),
 }
 
+// ── Panel playlists (multi-panel viewer setups) ───────────────────────────────
+// Separate from playlistsApi above, which serves the mobile app.
+export const panelPlaylistsApi = {
+  list:     ()        => api.get('/panel-playlists/'),
+  get:      (id)      => api.get(`/panel-playlists/${id}`),
+  create:   (d)       => api.post('/panel-playlists/', d),
+  update:   (id, d)   => api.put(`/panel-playlists/${id}`, d),
+  rename:   (id, nm)  => api.patch(`/panel-playlists/${id}`, { name: nm }),
+  delete:   (id)      => api.delete(`/panel-playlists/${id}`),
+  autosave: (d)       => api.put('/panel-playlists/autosave', d),
+}
+
 // ── Tags ──────────────────────────────────────────────────────────────────────
 export const tagsApi = {
   list:       (cat) => api.get('/tags/', { params: cat ? { category: cat } : {} }),
@@ -270,6 +284,15 @@ export const tagsApi = {
   categorySamples: ()                  => api.get('/tags/category-samples'),
   trending:        (limit = 8, days = 30) => api.get('/tags/trending', { params: { limit, days } }),
   coOccurring:     (limit = 10)           => api.get('/tags/co-occurring', { params: { limit } }),
+}
+
+// ── AI Tag Vocabulary (allowlist) ────────────────────────────────────────────
+export const tagVocabApi = {
+  list:          (params)      => api.get('/tag-vocab/', { params }),
+  summary:       (model)       => api.get('/tag-vocab/summary', { params: { model } }),
+  update:        (id, d)       => api.patch(`/tag-vocab/${id}`, d),
+  bulkUpdate:    (ids, enabled) => api.post('/tag-vocab/bulk', { ids, enabled }),
+  resetDefaults: (model)       => api.post('/tag-vocab/reset-defaults', null, { params: { model } }),
 }
 
 // ── AI Tagger ─────────────────────────────────────────────────────────────────

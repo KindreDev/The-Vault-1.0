@@ -94,21 +94,34 @@ def _write_config(cfg: dict):
 # What to do with the original archive file once it has been extracted.
 _ARCHIVE_AFTER_CHOICES = {"delete", "move", "keep"}
 
+# Where a sorted video's .funscript sidecar should land:
+#   "beside"  — next to the video in its destination folder (default)
+#   "library" — into the central funscript library folder (Settings → Funscript
+#               library), named after the video so filename-matching re-links it
+_FUNSCRIPT_DEST_CHOICES = {"beside", "library"}
+
 
 def get_intake_config() -> dict:
     cfg = _read_config()
     after = cfg.get("intake_archive_after", "delete")
     if after not in _ARCHIVE_AFTER_CHOICES:
         after = "delete"
+    fs_dest = cfg.get("intake_funscript_dest", "beside")
+    if fs_dest not in _FUNSCRIPT_DEST_CHOICES:
+        fs_dest = "beside"
     return {
         "new_creator_base": cfg.get("intake_new_creator_base", ""),
         "extract_archives": cfg.get("intake_extract_archives", True),
         "archive_after": after,
+        "funscript_dest": fs_dest,
+        # Surfaced so the UI can warn when "library" is picked but no folder is set
+        "funscript_library_path": (cfg.get("funscript_library_path") or "").strip(),
     }
 
 
 def set_intake_config(new_creator_base: Optional[str], extract_archives: Optional[bool],
-                      archive_after: Optional[str] = None) -> dict:
+                      archive_after: Optional[str] = None,
+                      funscript_dest: Optional[str] = None) -> dict:
     cfg = _read_config()
     if new_creator_base is not None:
         base = new_creator_base.strip()
@@ -121,6 +134,10 @@ def set_intake_config(new_creator_base: Optional[str], extract_archives: Optiona
         val = str(archive_after).strip().lower()
         if val in _ARCHIVE_AFTER_CHOICES:
             cfg["intake_archive_after"] = val
+    if funscript_dest is not None:
+        val = str(funscript_dest).strip().lower()
+        if val in _FUNSCRIPT_DEST_CHOICES:
+            cfg["intake_funscript_dest"] = val
     _write_config(cfg)
     return get_intake_config()
 
@@ -178,14 +195,37 @@ def _move_file(src: str, dest: str):
         os.remove(src)
 
 
-def _move_funscript(src_media: str, dest_media: str):
-    """Move a `<base>.funscript` sidecar alongside its video, matching the
-    (possibly renamed) destination base so filename-match sync still works."""
+def _move_funscript(src_media: str, dest_media: str, mode: str = "beside") -> Optional[str]:
+    """Move a `<base>.funscript` sidecar for a video being sorted into the vault.
+
+    mode="beside"  → next to the video in its destination folder (default).
+    mode="library" → into the central funscript library folder, named after the
+                     video so filename-matching keeps them linked. Falls back to
+                     "beside" when no library folder is configured.
+
+    Either way the script is named after the (possibly renamed) destination
+    video, so filename-match sync keeps working. Returns the final path, or
+    None when the video had no sidecar.
+    """
     fs_src = os.path.splitext(src_media)[0] + ".funscript"
     if not os.path.exists(fs_src):
-        return
-    fs_dest = os.path.splitext(dest_media)[0] + ".funscript"
+        return None
+
+    fs_name = os.path.splitext(os.path.basename(dest_media))[0] + ".funscript"
+    fs_dest = None
+    if mode == "library":
+        library = (_read_config().get("funscript_library_path") or "").strip()
+        if library:
+            try:
+                os.makedirs(library, exist_ok=True)
+                fs_dest = _unique_dest(library, fs_name)
+            except OSError:
+                fs_dest = None   # unwritable library → fall back to beside
+    if fs_dest is None:
+        fs_dest = os.path.join(os.path.dirname(dest_media), fs_name)
+
     _move_file(fs_src, fs_dest)
+    return fs_dest
 
 
 # ── 7-Zip (7z.exe) driver ───────────────────────────────────────────────────────
@@ -740,7 +780,11 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
         db.commit()  # persist creator/source_folder BEFORE the scan auto-links
         cfg_now = get_intake_config()
         extract = bool(cfg_now["extract_archives"])
-        archive_after = cfg_now["archive_after"]   # delete | move | keep
+        archive_after = cfg_now["archive_after"]     # delete | move | keep
+        fs_dest_mode = cfg_now["funscript_dest"]     # beside | library
+        # Scripts sent to the central library don't sit next to their video, so the
+        # folder rescan can't find them by filename — link those explicitly after.
+        library_links = []   # (dest_video_path, funscript_path)
 
         for idx, iid in enumerate(item_ids):
             if _cancelled():
@@ -777,7 +821,9 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                     renamed = os.path.basename(dest) != item.filename
                     _move_file(item.source_path, dest)
                     if item.has_funscript:
-                        _move_funscript(item.source_path, dest)
+                        fs_path = _move_funscript(item.source_path, dest, fs_dest_mode)
+                        if fs_path and os.path.dirname(fs_path) != os.path.dirname(dest):
+                            library_links.append((dest, fs_path))
                     scan_dirs.add(dest_dir)
                     result = "renamed" if renamed else "moved"
 
@@ -809,6 +855,24 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                         scan_folder_path(scan_db, d)
                     finally:
                         scan_db.close()
+
+            # Re-link scripts that were routed to the central funscript library:
+            # the folder rescan only detects sidecars sitting next to the video.
+            if library_links:
+                link_db = SessionLocal()
+                try:
+                    from models import Image as _Image
+                    for video_path, fs_path in library_links:
+                        img = (link_db.query(_Image)
+                                      .filter(_Image.file_path == video_path).first())
+                        if img:
+                            img.funscript_path = fs_path
+                    link_db.commit()
+                except Exception as e:
+                    link_db.rollback()
+                    print(f"[intake] funscript library link failed: {e}")
+                finally:
+                    link_db.close()
 
         _set_state(message=(f"Committed {len(moved_ok)} item(s)."
                             + (f" {len(report) - len(moved_ok)} failed." if len(report) != len(moved_ok) else "")))

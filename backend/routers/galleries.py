@@ -185,6 +185,86 @@ def create_random_mix(data: dict, db: Session = Depends(get_db)):
     return _enrich(g)
 
 
+@router.post("/mix", response_model=GalleryOut, status_code=201)
+def create_empty_mix(data: dict, db: Session = Depends(get_db)):
+    """Create an empty mix gallery to copy files into.
+
+    Mix galleries are virtual — not backed by a folder on disk — which is what
+    makes 'copy' safe: the scanner skips them when pruning rows whose file isn't
+    present in the folder, so a copied reference survives a rescan.
+    """
+    from datetime import datetime
+
+    name  = (data.get("name") or "").strip() or f"Mix · {datetime.now().strftime('%b %d, %Y')}"
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    g = Gallery(
+        name=name,
+        description="Mix gallery",
+        folder_path=f"__mix__/{stamp}",
+        is_mix=True,
+        image_count=0,
+    )
+    db.add(g)
+    db.commit()
+    db.refresh(g)
+    return _enrich(g)
+
+
+@router.post("/{gallery_id}/mix-images", status_code=200)
+def add_mix_images(gallery_id: int, data: dict, db: Session = Depends(get_db)):
+    """Copy image references into a mix gallery — non-destructive.
+
+    The files stay put and keep their original gallery; only a reference is
+    added. Refuses non-mix targets: a real gallery is defined by its folder, so
+    a reference to a file that isn't in that folder would be pruned on rescan.
+    """
+    from sqlalchemy import insert, func as _func
+
+    g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
+    if not g:
+        raise HTTPException(404, "Gallery not found")
+    if not g.is_mix:
+        raise HTTPException(
+            400,
+            "Files can only be copied into a mix gallery. Regular galleries mirror a "
+            "folder on disk, so a copied reference would be removed on the next scan.",
+        )
+
+    image_ids = [int(i) for i in (data.get("image_ids") or []) if i]
+    if not image_ids:
+        raise HTTPException(400, "No images given")
+
+    valid = {r[0] for r in db.query(Image.id).filter(Image.id.in_(image_ids)).all()}
+    existing = {r[0] for r in db.execute(
+        mix_images.select().with_only_columns(mix_images.c.image_id)
+                  .where(mix_images.c.gallery_id == gallery_id)
+    ).all()}
+
+    start = db.query(_func.coalesce(_func.max(mix_images.c.sort_order), -1)).filter(
+        mix_images.c.gallery_id == gallery_id
+    ).scalar() + 1
+
+    rows, added = [], 0
+    for img_id in image_ids:
+        if img_id not in valid or img_id in existing:
+            continue
+        existing.add(img_id)
+        rows.append({"gallery_id": gallery_id, "image_id": img_id, "sort_order": start + added})
+        added += 1
+
+    if rows:
+        db.execute(insert(mix_images), rows)
+
+    g.image_count = db.query(mix_images).filter(mix_images.c.gallery_id == gallery_id).count()
+    if not g.cover_thumb and rows:
+        first = db.query(Image).filter(Image.id == rows[0]["image_id"]).first()
+        if first and first.thumb_path:
+            g.cover_thumb = first.thumb_path
+    db.commit()
+
+    return {"added": added, "skipped": len(image_ids) - added, "gallery_id": gallery_id, "image_count": g.image_count}
+
+
 @router.get("/", response_model=List[GalleryOut])
 def list_galleries(
     response: Response,
@@ -197,6 +277,7 @@ def list_galleries(
     tags: Optional[str] = None,  # comma-separated, AND logic
     favorite: Optional[bool] = None,
     unassigned: Optional[bool] = None,
+    is_mix: Optional[bool] = None,  # True → only mix galleries, False → only real ones
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by collection period/term
     sort_by: Optional[str] = "date_added",  # date_added | name | image_count | rating | cum_count | period | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
@@ -215,6 +296,11 @@ def list_galleries(
         search=search, tag=tag, tags=tags, favorite=favorite,
         unassigned=unassigned, period=period,
     )
+
+    if is_mix is not None:
+        q = q.filter(Gallery.is_mix == True) if is_mix else q.filter(
+            (Gallery.is_mix == False) | (Gallery.is_mix.is_(None))
+        )
 
     # Total count under the current filters, exposed so the frontend can
     # compute the real last page instead of guessing with a fixed window.

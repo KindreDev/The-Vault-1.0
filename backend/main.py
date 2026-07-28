@@ -190,7 +190,7 @@ if getattr(sys, 'frozen', False):
 
 from sqlalchemy.orm import Session
 from database import engine, Base, SessionLocal, get_db, DATA_DIR
-from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake
+from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake, tag_vocab, panel_playlists
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
@@ -340,6 +340,8 @@ def _migrate_add_columns():
         # Collection Rarity Score — scarcity-aware ranking + R/SR/SSR/UR class
         "ALTER TABLE cards ADD COLUMN crs FLOAT DEFAULT 0",
         "ALTER TABLE cards ADD COLUMN rarity_class VARCHAR DEFAULT 'R'",
+        # Per-panel playlists — which panel a saved entry belongs to (NULL = unpinned)
+        "ALTER TABLE panel_playlist_entries ADD COLUMN panel_idx INTEGER",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -578,7 +580,24 @@ def _migrate_creator_rarity():
 
 _migrate_creator_rarity()
 
-app = FastAPI(title="The Vault", version="1.6.2")
+
+def _seed_ai_tag_vocab():
+    """Seed the raw WD14/JoyTag vocabulary into tag_vocab_entries for any model
+    already downloaded, so upgrading an existing install doesn't change tagging
+    behavior — only tags already in the hardcoded map come pre-enabled."""
+    import services.ai_tagger as ai_tagger
+    db = SessionLocal()
+    try:
+        if ai_tagger.wd14_is_ready():
+            ai_tagger.seed_tag_vocab(db, "wd14")
+        if ai_tagger.joytag_is_ready():
+            ai_tagger.seed_tag_vocab(db, "joytag")
+    finally:
+        db.close()
+
+_seed_ai_tag_vocab()
+
+app = FastAPI(title="The Vault", version="1.7.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -740,11 +759,13 @@ app.include_router(galleries.router,     prefix="/api/galleries",     tags=["gal
 app.include_router(creators.router,      prefix="/api/creators",      tags=["creators"])
 app.include_router(images.router,        prefix="/api/images",        tags=["images"])
 app.include_router(tags.router,          prefix="/api/tags",          tags=["tags"])
+app.include_router(tag_vocab.router,     prefix="/api/tag-vocab",     tags=["tag-vocab"])
 app.include_router(sessions.router,      prefix="/api/sessions",      tags=["sessions"])
 app.include_router(gamification.router,  prefix="/api/gamification",  tags=["gamification"])
 app.include_router(scanner.router,       prefix="/api/scanner",       tags=["scanner"])
 app.include_router(intake.router,        prefix="/api/intake",        tags=["intake"])
 app.include_router(playlists.router,     prefix="/api/playlists",     tags=["playlists"])
+app.include_router(panel_playlists.router, prefix="/api/panel-playlists", tags=["panel-playlists"])
 app.include_router(cards_router)
 app.include_router(economy_router)
 app.include_router(system_router,            prefix="/api/system",        tags=["system"])
