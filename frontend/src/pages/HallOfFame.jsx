@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock } from 'lucide-react'
+import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock, TrendingUp, ArrowUp, ArrowDown, ChevronDown, X } from 'lucide-react'
 import { galleriesApi, creatorsApi } from '../lib/api'
 import CreatorCollageBackground from '../components/CreatorCollageBackground'
 import CreatorStatsModal from '../components/CreatorStatsModal'
+import HofFullListModal from '../components/HofFullListModal'
+import GalleryStatsModal from '../components/stats/GalleryStatsModal'
+import MediaStatsModal from '../components/stats/MediaStatsModal'
 
 // ── Color maps ────────────────────────────────────────────────────────────────
 const TYPE_COLORS = {
@@ -46,10 +49,14 @@ function creatorAvatarUrl(creator, size = 480) {
 }
 
 // ── Shared stat row ───────────────────────────────────────────────────────────
-function StatRow({ views, cum, size = 12 }) {
+// Shows the raw signals that actually drive Hall of Fame ranking (see _score in
+// creators.py) — views/cum alone don't explain a creator's rank, watch time and
+// session count are weighted far more heavily, so surface watch time here too.
+function StatRow({ views, cum, viewSeconds, dwell, engagement, size = 12 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="flex items-center gap-1" style={{ fontSize: size, color: 'rgba(255,255,255,0.45)' }}>
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="flex items-center gap-1" style={{ fontSize: size, color: 'rgba(255,255,255,0.45)' }}
+            title="Total views — every gallery open plus every photo and video viewed">
         <Eye size={size - 2} /> {(views ?? 0).toLocaleString()}
       </span>
       {(cum ?? 0) > 0 && (
@@ -57,6 +64,53 @@ function StatRow({ views, cum, size = 12 }) {
           <Droplets size={size - 2} /> {cum.toLocaleString()}
         </span>
       )}
+      {(viewSeconds ?? 0) > 0 && (
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#9F99E8' }} title="Time spent viewing — a major factor in Hall of Fame ranking">
+          <Clock size={size - 2} /> {formatViewTimeFull(viewSeconds)}
+        </span>
+      )}
+      {(dwell ?? 0) > 0 && (
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#9FE1CB' }}
+              title={`You linger ${dwell}s on each of her photos — attention per photo scales her ranking${engagement ? ` (×${engagement})` : ''}`}>
+          <TrendingUp size={size - 2} /> {dwell}s
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Rank movement chip ────────────────────────────────────────────────────────
+// League-table style: green up / red down with the number of places moved.
+// A movement stays on screen until the next one, so it reads as "change since
+// this last moved" rather than blinking away on the next page load.
+// Used by creators, galleries and individual files alike, so the wording stays
+// neutral rather than saying "her".
+function RankChange({ change, size = 12 }) {
+  if (!change) return null
+  const up = change > 0
+  const color = up ? '#1D9E75' : '#D4537E'
+  const Icon  = up ? ArrowUp : ArrowDown
+  return (
+    <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
+          title={`${up ? 'Climbed' : 'Dropped'} ${Math.abs(change)} place${Math.abs(change) === 1 ? '' : 's'} since it last moved`}
+          style={{ fontSize: size, fontWeight: 700, color, background: `${color}1F`, border: `0.5px solid ${color}55` }}>
+      <Icon size={size} /> {Math.abs(change)}
+    </span>
+  )
+}
+
+// ── "Know more" button ────────────────────────────────────────────────────────
+// Each section shows only its top entries; this opens the rest as a full list.
+function KnowMoreButton({ onClick, label }) {
+  return (
+    <div className="flex justify-center mt-8">
+      <button onClick={onClick}
+              className="flex items-center gap-2 px-5 py-3 rounded-[10px] cursor-pointer transition-all hover:bg-white/[0.08]"
+              style={{ fontSize: 17, color: 'rgba(255,255,255,0.6)',
+                       background: 'rgba(255,255,255,0.04)',
+                       border: '0.5px solid rgba(255,255,255,0.12)' }}>
+        {label} <ChevronDown size={16} />
+      </button>
     </div>
   )
 }
@@ -261,6 +315,7 @@ function CreatorHero({ creator, onClick }) {
                            letterSpacing: '0.14em', color: '#FAC775' }}>
               #1 · Most Visited Creator
             </span>
+            <RankChange change={creator.rank_change} size={13} />
           </div>
           <h2 style={{ fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.95)',
                        lineHeight: 1.05, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>
@@ -272,7 +327,7 @@ function CreatorHero({ creator, onClick }) {
               {creator.creator_type}
             </span>
           </div>
-          <StatRow views={creator.total_views} cum={creator.total_cum} size={15} />
+          <StatRow views={creator.total_views} cum={creator.total_cum} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} size={15} />
           {(creator.total_view_seconds ?? 0) > 0 ? (
             <div className="flex flex-col gap-1 mt-2"
                  style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)',
@@ -338,8 +393,9 @@ function PodiumCard({ creator, rank, meta, onClick }) {
               {creator.name}
             </span>
             <RarityPill rarity={creator.card_rarity} />
+            <RankChange change={creator.rank_change} />
           </div>
-          <StatRow views={creator.total_views} cum={creator.total_cum} />
+          <StatRow views={creator.total_views} cum={creator.total_cum} viewSeconds={creator.total_view_seconds} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} />
         </div>
       </div>
 
@@ -383,15 +439,18 @@ function CreatorGridCard({ creator, rank, onClick }) {
         {/* Name on its own row so a long rarity label can never cover it */}
         <div className="text-[13px] font-medium text-[rgba(255,255,255,0.75)] truncate mb-1">{creator.name}</div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <StatRow views={creator.total_views} cum={creator.total_cum} />
-          <RarityPill rarity={creator.card_rarity} />
+          <StatRow views={creator.total_views} cum={creator.total_cum} viewSeconds={creator.total_view_seconds} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} />
+          <div className="flex items-center gap-1.5">
+            <RankChange change={creator.rank_change} />
+            <RarityPill rarity={creator.card_rarity} />
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function CreatorSection({ creators, onCreatorClick }) {
+function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
   if (!creators || creators.length === 0) return null
   const top3 = creators.slice(0, 3)
   const rest = creators.slice(3)
@@ -406,8 +465,8 @@ function CreatorSection({ creators, onCreatorClick }) {
         <div>
           <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">Creator Hall of Fame</div>
           <div className="text-[12px] text-[rgba(255,255,255,0.3)]">
-            Ranked by total views across all galleries belonging to this creator.
-            Cum count (💧) and assigned rarity shown beneath each entry.
+            Ranked by overall engagement — views, orgasms, watch time, and logged sessions combined.
+            All of that is shown beneath each entry, along with assigned rarity.
           </div>
         </div>
       </div>
@@ -440,6 +499,7 @@ function CreatorSection({ creators, onCreatorClick }) {
           </div>
         </>
       )}
+      {onKnowMore && <KnowMoreButton onClick={onKnowMore} label="See all creators" />}
     </section>
   )
 }
@@ -541,7 +601,10 @@ function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
       </div>
       <div className="p-2.5">
         <div className="text-[12px] font-medium text-[rgba(255,255,255,0.6)] truncate mb-0.5">{item.filename}</div>
-        <StatRow views={item.view_count} cum={item.cum_count} />
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <StatRow views={item.view_count} cum={item.cum_count} />
+          <RankChange change={item.rank_change} />
+        </div>
       </div>
     </div>
   )
@@ -573,14 +636,17 @@ function GalleryCard({ gallery, rank, imgHeight = 220, showRank = false, onClick
         {gallery.creator_name && (
           <div className="text-[11px] text-[rgba(255,255,255,0.3)] truncate mb-0.5">{gallery.creator_name}</div>
         )}
-        <StatRow views={gallery.view_count} cum={gallery.cum_count} />
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <StatRow views={gallery.view_count} cum={gallery.cum_count} />
+          <RankChange change={gallery.rank_change} />
+        </div>
       </div>
     </div>
   )
 }
 
 // ── Tiered section ────────────────────────────────────────────────────────────
-function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg, renderCard }) {
+function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg, renderCard, onKnowMore, knowMoreLabel }) {
   if (!items) return null
 
   const inner    = items.slice(0, 3)
@@ -633,6 +699,9 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
           )}
         </>
       )}
+      {onKnowMore && items.length > 0 && (
+        <KnowMoreButton onClick={onKnowMore} label={knowMoreLabel || 'Know more'} />
+      )}
     </section>
   )
 }
@@ -643,6 +712,28 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
 export default function HallOfFame() {
   const navigate = useNavigate()
   const [statsId, setStatsId] = useState(null)
+  const [fullList, setFullList] = useState(null)   // which section's full list is open
+  const [galleryStatsId, setGalleryStatsId] = useState(null)
+  const [mediaStatsId, setMediaStatsId]     = useState(null)
+
+  // Page fetchers for the "know more" list. Wrapped in useCallback so the modal
+  // resets its rows when you switch sections rather than appending to them.
+  const fetchCreators = useCallback((limit, offset) =>
+    creatorsApi.hof(limit, offset).then(r => r.data), [])
+  const fetchMedia = useCallback((limit, offset) =>
+    galleriesApi.hof(limit, offset).then(r => r.data), [])
+  const fetchGalleries = useCallback((limit, offset) =>
+    galleriesApi.galleryHof(limit, offset).then(r => r.data), [])
+
+  const LISTS = {
+    creators:  { title: 'All creators',  subtitle: 'Ranked by engagement — tap any of them for her full stats', fetch: fetchCreators,
+                 onRowClick: (item) => { setFullList(null); setStatsId(item.id) } },
+    media:     { title: 'All photos & videos', subtitle: 'Ranked by cum taps, edges, then views', fetch: fetchMedia,
+                 onRowClick: (item) => { setFullList(null); setMediaStatsId(item.id) } },
+    galleries: { title: 'All galleries', subtitle: 'Ranked by time spent, cum taps, edges and visits', fetch: fetchGalleries,
+                 onRowClick: (item) => { setFullList(null); setGalleryStatsId(item.id) } },
+  }
+  const activeList = fullList ? LISTS[fullList] : null
 
   const { data: imageHof }   = useQuery({ queryKey: ['hof',         30], queryFn: () => galleriesApi.hof(30).then(r => r.data),   staleTime: 0 })
   const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30], queryFn: () => galleriesApi.galleryHof(30).then(r => r.data), staleTime: 0 })
@@ -668,6 +759,18 @@ export default function HallOfFame() {
 
       <CreatorStatsModal creatorId={statsId} onClose={() => setStatsId(null)} />
 
+      <HofFullListModal
+        open={!!activeList}
+        title={activeList?.title}
+        subtitle={activeList?.subtitle}
+        fetchPage={activeList?.fetch}
+        onRowClick={activeList?.onRowClick}
+        onClose={() => setFullList(null)}
+      />
+
+      <GalleryStatsModal galleryId={galleryStatsId} onClose={() => setGalleryStatsId(null)} />
+      <MediaStatsModal   imageId={mediaStatsId}     onClose={() => setMediaStatsId(null)} />
+
       <div className="max-w-[1400px] mx-auto px-8 py-10" style={{ position: 'relative', zIndex: 1 }}>
 
         <div className="flex items-center gap-4 mb-14">
@@ -686,7 +789,8 @@ export default function HallOfFame() {
 
         <div className="flex flex-col gap-20">
 
-          <CreatorSection creators={creatorHof} onCreatorClick={setStatsId} />
+          <CreatorSection creators={creatorHof} onCreatorClick={setStatsId}
+                          onKnowMore={() => setFullList('creators')} />
 
           <TieredSection
             icon={Film}
@@ -697,8 +801,10 @@ export default function HallOfFame() {
             emptyMsg="Open images and videos in galleries to start building this list"
             renderCard={(item, rank, h, showRank) => (
               <MediaCard key={item.id} item={item} rank={rank} imgHeight={h} showRank={showRank}
-                         onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)} />
+                         onClick={() => setMediaStatsId(item.id)} />
             )}
+            onKnowMore={() => setFullList('media')}
+            knowMoreLabel="See all photos & videos"
           />
 
           {(galleryHof ?? []).length > 0 && (
@@ -711,8 +817,10 @@ export default function HallOfFame() {
               emptyMsg="Browse galleries to build this list"
               renderCard={(g, rank, h, showRank) => (
                 <GalleryCard key={g.id} gallery={g} rank={rank} imgHeight={h} showRank={showRank}
-                             onClick={() => navigate(`/galleries/${g.id}`)} />
+                             onClick={() => setGalleryStatsId(g.id)} />
               )}
+              onKnowMore={() => setFullList('galleries')}
+              knowMoreLabel="See all galleries"
             />
           )}
 

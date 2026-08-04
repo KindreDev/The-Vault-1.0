@@ -10,7 +10,7 @@ import services.gamification as gami
 router = APIRouter()
 
 
-@router.post("/", response_model=SessionOut, status_code=201)
+@router.post("/", status_code=201)
 def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     # Auto-fill creator_id from gallery if not explicitly provided
     if not data.creator_id and data.gallery_id:
@@ -21,8 +21,8 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
             elif g.creators:
                 data = data.model_copy(update={"creator_id": g.creators[0].id})
 
-    # skip_xp is a transport-only flag — strip it before writing to the DB
-    session = SessionLog(**data.model_dump(exclude={'skip_xp'}))
+    # Transport-only flags — strip before writing to the DB
+    session = SessionLog(**data.model_dump(exclude={'skip_xp', 'image_ids', 'count_orgasm'}))
     db.add(session)
     db.flush()
 
@@ -61,6 +61,16 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(session)
 
+    # Finishing a session counts an orgasm against whatever was on screen.
+    # Falls back to the single image the caller named when the on-screen list
+    # is empty, so this works from any surface.
+    orgasm = None
+    if data.count_orgasm and not data.skip_xp:
+        targets = list(data.image_ids or [])
+        if not targets and data.image_id:
+            targets = [data.image_id]
+        orgasm = gami.credit_orgasm(db, targets)
+
     # Spending "quality time" with one creator can make a bonded girl jealous.
     if data.creator_id:
         try:
@@ -77,7 +87,10 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     local_hour = datetime.now().hour
     if 0 <= local_hour < 5:
         gami.unlock_achievement(db, "night_owl")
-    return session
+
+    out = SessionOut.model_validate(session, from_attributes=True).model_dump()
+    out["orgasm"] = orgasm
+    return out
 
 
 @router.get("/")
@@ -191,10 +204,11 @@ def session_stats(db: Session = Depends(get_db)):
     total_count = db.query(SessionLog).count()
     avg_dur = (total_dur // total_count) if total_count > 0 else 0
 
-    # Cum count from profile
+    # Cum + edge counts from profile
     from models import UserProfile, XPEvent
     profile = db.query(UserProfile).first()
-    total_cum = profile.total_cum_count if profile else 0
+    total_cum  = profile.total_cum_count if profile else 0
+    total_edge = (profile.total_edge_count or 0) if profile else 0
 
     # XP by day (last 7 days)
     xp_by_day_data = {}
@@ -250,6 +264,27 @@ def session_stats(db: Session = Depends(get_db)):
 
     total_view_seconds = int(db.query(func.sum(Image.view_seconds)).scalar() or 0)
 
+    # Creators you edge to most — Edge Mode credits the images on screen, so
+    # this rolls those per-image counts up through the gallery→creator join.
+    edge_creator_rows = (
+        db.query(gallery_creators.c.creator_id, func.sum(Image.edge_count).label("edges"))
+          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+          .group_by(gallery_creators.c.creator_id)
+          .order_by(func.sum(Image.edge_count).desc())
+          .limit(6)
+          .all()
+    )
+    top_creators_by_edges = []
+    for row in edge_creator_rows:
+        if not (row.edges or 0) > 0:
+            continue
+        c = db.query(Creator).filter(Creator.id == row.creator_id).first()
+        if c:
+            top_creators_by_edges.append({"name": c.name, "edges": int(row.edges)})
+
+    # Edges per O — how many times you pulled back for each finish.
+    edges_per_cum = round(total_edge / total_cum, 1) if total_cum else 0.0
+
     return {
         "total": total_count,
         "this_week": db.query(SessionLog).filter(SessionLog.logged_at >= week_ago).count(),
@@ -268,8 +303,11 @@ def session_stats(db: Session = Depends(get_db)):
         "total_duration_sec": total_dur,
         "avg_duration_sec": avg_dur,
         "total_cum_count": total_cum,
+        "total_edge_count": total_edge,
+        "edges_per_cum": edges_per_cum,
         "xp_by_day": [{"date": k, "xp": v} for k, v in xp_by_day_data.items()],
         "top_creators_chart": top_creators_chart,
         "top_creators_by_time": top_creators_by_time,
+        "top_creators_by_edges": top_creators_by_edges,
         "total_view_seconds": total_view_seconds,
     }

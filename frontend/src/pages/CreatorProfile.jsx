@@ -1774,6 +1774,7 @@ export default function CreatorProfile() {
                 { label: 'Photos',    value: creator.image_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
                 { label: 'Videos',    value: creator.video_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
                 { label: 'Galleries', value: creator.gallery_count ?? 0,   color: 'rgba(255,255,255,0.9)' },
+                { label: 'Views',     value: (creator.total_views ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
                 { label: '💦',        value: creator.cum_count ?? 0,       color: '#D4537E' },
                 { label: 'Gooning Time', value: (() => {
                   const secs = creator.total_view_seconds || 0

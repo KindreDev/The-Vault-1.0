@@ -5,6 +5,8 @@ import {
   Usb, Radio, Play,
 } from 'lucide-react'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
+import { useVaultStore } from '../store/vault'
+import { bindingToDisplay } from '../lib/hotkeys'
 import { deviceService } from '../services/device'
 import toast from 'react-hot-toast'
 
@@ -695,26 +697,13 @@ function FreestyleSection() {
   const deletePattern = useDeviceStore(s => s.deleteSavedPattern)
 
   const finisherPattern    = useDeviceStore(s => s.finisherPatternName)
-  const finisherHotkey     = useDeviceStore(s => s.finisherHotkey)
   const finisherActive     = useDeviceStore(s => s.finisherActive)
   const setFinisherPattern = useDeviceStore(s => s.setFinisherPattern)
-  const setFinisherHotkey  = useDeviceStore(s => s.setFinisherHotkey)
+  // Binding is owned by the shared hotkey map; shown here read-only for context.
+  const finisherHotkey     = useVaultStore(s => s.hotkeys.finisher)
 
   const [saveName, setSaveName] = useState('')
-  const [capturingKey, setCapturingKey] = useState(false)
   const isFreestyle = mode === 'freestyle'
-
-  // Capture the next keypress as the finisher hotkey (Esc cancels).
-  useEffect(() => {
-    if (!capturingKey) return
-    const onKey = (e) => {
-      e.preventDefault()
-      if (e.key !== 'Escape') setFinisherHotkey(e.key)
-      setCapturingKey(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [capturingKey, setFinisherHotkey])
 
   // Display intensity as a multiplier (e.g. "1.5×") so the value is intuitive
   const intensityPct = Math.round(intensity * 100)
@@ -910,27 +899,16 @@ function FreestyleSection() {
                 </select>
               </div>
 
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <div className="text-[11px] text-[rgba(255,255,255,0.3)] mb-1.5">Hotkey</div>
-                  <button
-                    onClick={() => setCapturingKey(true)}
-                    className="w-full text-left bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-[13px] text-[rgba(255,255,255,0.85)] hover:border-[rgba(255,255,255,0.18)] transition-all">
-                    {capturingKey
-                      ? 'Press any key…  (Esc to cancel)'
-                      : finisherHotkey
-                        ? `Key: ${finisherHotkey.length === 1 ? finisherHotkey.toUpperCase() : finisherHotkey}`
-                        : 'Click to set a key'}
-                  </button>
+              <div>
+                <div className="text-[11px] text-[rgba(255,255,255,0.3)] mb-1.5">Hotkey</div>
+                <div className="flex items-center gap-2 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2">
+                  <span className="text-[13px] font-mono text-[rgba(255,255,255,0.85)]">
+                    {bindingToDisplay(finisherHotkey)}
+                  </span>
+                  <span className="text-[11px] text-[rgba(255,255,255,0.3)] ml-auto">
+                    Rebind in Settings → Hotkeys
+                  </span>
                 </div>
-                {finisherHotkey && (
-                  <button
-                    onClick={() => setFinisherHotkey('')}
-                    title="Clear hotkey"
-                    className="p-2 rounded-lg bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.4)] hover:text-[#D4537E] transition-all">
-                    <Trash2 size={14} />
-                  </button>
-                )}
               </div>
 
               <button
@@ -1151,47 +1129,132 @@ function SchedulerSection() {
   )
 }
 
-// ── Edging section ────────────────────────────────────────────────────────────
+// ── Edge Mode section ─────────────────────────────────────────────────────────
+
+// Small segmented control for the fixed/random and stop/slow choices.
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}>
+      {options.map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className="px-3 py-1.5 text-[12px] cursor-pointer transition-colors"
+          style={{
+            background: value === opt.value ? 'rgba(127,119,221,0.25)' : 'transparent',
+            color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+          }}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function EdgeSection() {
-  const enabled       = useDeviceStore(s => s.edgingEnabled)
-  const peakSecs      = useDeviceStore(s => s.edgingPeakSeconds)
-  const dropPreset    = useDeviceStore(s => s.edgingDropPreset)
-  const buildSecs     = useDeviceStore(s => s.edgingBuildBackSeconds)
-  const savedPatterns = useDeviceStore(s => s.savedPatterns)
-  const setEnabled    = useDeviceStore(s => s.setEdgingEnabled)
-  const setPeak       = useDeviceStore(s => s.setEdgingPeakSeconds)
-  const setDrop       = useDeviceStore(s => s.setEdgingDropPreset)
-  const setBuild      = useDeviceStore(s => s.setEdgingBuildBackSeconds)
+  const s   = useDeviceStore()
+  const set = useDeviceStore(st => st.setEdgeSetting)
 
-  const opts = buildPatternOptions(savedPatterns, { excludeCum: true })
+  const isRandomInterval = s.edgeIntervalMode === 'random'
+  const isRandomDuration = s.edgeDurationMode === 'random'
 
   return (
-    <Card title="Edging Assist">
+    <Card title="Edge Mode">
       <div className="space-y-4">
         <Toggle
-          label="Edging Assist"
-          desc="Drops intensity after peak duration, then slowly builds back"
-          checked={enabled}
-          onChange={setEnabled}
+          label="Edge Mode"
+          desc="Periodically cuts or slows the device mid-session. Works in freestyle and funscript alike."
+          checked={s.edgeModeEnabled}
+          onChange={(v) => deviceService.setEdgeMode(v)}
         />
 
-        {enabled && (
-          <div className="space-y-3">
-            <Slider
-              label="Peak Duration" value={peakSecs} min={5} max={120}
-              onChange={setPeak} unit="s"
-              hint="Time at peak intensity before auto-drop"
-            />
-            <div>
-              <label className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 block">Drop Pattern</label>
-              <PatternSelect value={dropPreset} onChange={setDrop} options={opts} />
+        {s.edgeModeEnabled && (
+          <div className="space-y-4">
+            {/* Live state */}
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg"
+                 style={{ background: s.edgeActive ? 'rgba(212,83,126,0.15)' : 'rgba(255,255,255,0.03)',
+                          border: `0.5px solid ${s.edgeActive ? 'rgba(212,83,126,0.35)' : 'rgba(255,255,255,0.08)'}` }}>
+              <span className="text-[12px]" style={{ color: s.edgeActive ? '#F4A8C0' : 'rgba(255,255,255,0.45)' }}>
+                {s.edgeActive ? '🌊 Edging right now…' : 'Armed — waiting'}
+              </span>
+              <span className="text-[12px] font-mono text-[rgba(255,255,255,0.4)]">
+                {s.edgeSessionCount} this session
+              </span>
             </div>
+
+            {/* How often */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] text-[rgba(255,255,255,0.4)]">How often</label>
+                <Segmented
+                  value={s.edgeIntervalMode}
+                  onChange={(v) => set('edgeIntervalMode', v)}
+                  options={[{ value: 'random', label: 'Random' }, { value: 'fixed', label: 'Fixed' }]}
+                />
+              </div>
+              <Slider
+                label={isRandomInterval ? 'Shortest gap' : 'Every'} value={s.edgeIntervalMinSec}
+                min={10} max={600} onChange={(v) => set('edgeIntervalMinSec', v)} unit="s"
+              />
+              {isRandomInterval && (
+                <Slider
+                  label="Longest gap" value={s.edgeIntervalMaxSec}
+                  min={10} max={600} onChange={(v) => set('edgeIntervalMaxSec', v)} unit="s"
+                  hint="Each edge picks a fresh random gap in this range"
+                />
+              )}
+            </div>
+
+            {/* What it does */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] text-[rgba(255,255,255,0.4)]">What happens</label>
+                <Segmented
+                  value={s.edgeActionMode}
+                  onChange={(v) => set('edgeActionMode', v)}
+                  options={[{ value: 'stop', label: 'Full stop' }, { value: 'slow', label: 'Slow down' }]}
+                />
+              </div>
+              {s.edgeActionMode === 'slow' && (
+                <Slider
+                  label="Slow to" value={s.edgeSlowPercent} min={5} max={90}
+                  onChange={(v) => set('edgeSlowPercent', v)} unit="%"
+                  hint="Freestyle slows to this speed; a funscript keeps its timing but strokes this much smaller"
+                />
+              )}
+            </div>
+
+            {/* How long */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] text-[rgba(255,255,255,0.4)]">How long</label>
+                <Segmented
+                  value={s.edgeDurationMode}
+                  onChange={(v) => set('edgeDurationMode', v)}
+                  options={[{ value: 'random', label: 'Random' }, { value: 'fixed', label: 'Fixed' }]}
+                />
+              </div>
+              <Slider
+                label={isRandomDuration ? 'Shortest hold' : 'Hold for'} value={s.edgeDurationMinSec}
+                min={2} max={180} onChange={(v) => set('edgeDurationMinSec', v)} unit="s"
+              />
+              {isRandomDuration && (
+                <Slider
+                  label="Longest hold" value={s.edgeDurationMaxSec}
+                  min={2} max={180} onChange={(v) => set('edgeDurationMaxSec', v)} unit="s"
+                />
+              )}
+            </div>
+
             <Slider
-              label="Build-Back Duration" value={buildSecs} min={10} max={300}
-              onChange={setBuild} unit="s"
-              hint="Time spent climbing back to peak after the drop"
+              label="Ease back over" value={s.edgeRampBackSec} min={0} max={30}
+              onChange={(v) => set('edgeRampBackSec', v)} unit="s"
+              hint="0 snaps straight back to full output"
             />
+
+            <div className="text-[11px] text-[rgba(255,255,255,0.3)] leading-relaxed">
+              Every edge adds +1 to the edge count of whatever is on screen, and earns XP.
+            </div>
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ from services.scanner import scan_library, scan_folder_path, get_scan_state, can
 from services.scanner import make_thumb_path, generate_thumbnail, generate_video_thumbnail
 import services.ai_tagger as ai_tagger
 import services.gpu_setup as gpu_setup
-from services import task_queue
+from services import task_queue, video_meta
 import threading
 import os
 
@@ -60,6 +60,34 @@ def start_scan(root_id: int = None):
         cancel_fn=cancel_scan,
     )
     return {"message": "Queued", "queued": True}
+
+
+@router.post("/backfill-video-durations")
+def start_duration_backfill(db: Session = Depends(get_db)):
+    """Fill in duration for videos scanned before the probe existed.
+
+    A normal rescan can't do this — the scanner skips images it already has, so
+    the column stays empty. This walks them explicitly.
+    """
+    missing = video_meta.missing_count(db)
+    if missing == 0:
+        return {"queued": False, "message": "Every video already has a duration", "missing": 0}
+    task_queue.submit(
+        'video_duration', f'Read length of {missing} videos',
+        start_fn=lambda: threading.Thread(
+            target=video_meta._backfill_thread, args=(SessionLocal,), daemon=True
+        ).start(),
+        poll_fn=video_meta.get_state,
+        cancel_fn=video_meta.cancel,
+    )
+    return {"queued": True, "missing": missing}
+
+
+@router.get("/video-duration-status")
+def duration_backfill_status(db: Session = Depends(get_db)):
+    st = video_meta.get_state()
+    st["missing"] = video_meta.missing_count(db)
+    return st
 
 
 @router.post("/scan-folder")

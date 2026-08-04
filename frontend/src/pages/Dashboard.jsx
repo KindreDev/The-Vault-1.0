@@ -10,6 +10,7 @@ import {
   ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check, Inbox,
 } from 'lucide-react'
 import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi } from '../lib/api'
+import { useSession } from '../hooks/useSession'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
 import IntakeModal from '../components/IntakeModal'
@@ -1275,8 +1276,7 @@ export default function Dashboard() {
   const avatarBust       = useVaultStore(s => s.avatarBust)
   const sessionActive    = useVaultStore(s => s.sessionActive)
   const sessionStartAt   = useVaultStore(s => s.sessionStartAt)
-  const startSession     = useVaultStore(s => s.startSession)
-  const endSession       = useVaultStore(s => s.endSession)
+  const { sessionActive: _sa, startSession, finishSession } = useSession()
   const qc = useQueryClient()
 
   const profile = useVaultStore(s => s.profile)
@@ -1378,13 +1378,10 @@ export default function Dashboard() {
   })
 
   const handleSessionBtn = () => {
-    if (!sessionActive) {
-      startSession()
-      toast(t('Session started — enjoy! 🔥'), { icon: '🎯' })
-    } else {
-
-      const elapsed = endSession(); sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-    }
+    // No media context here, so the orgasm lands on whatever the registry still
+    // holds from the viewer you came from — or nothing, if you never opened one.
+    if (!sessionActive) startSession()
+    else                finishSession()
   }
 
   return (

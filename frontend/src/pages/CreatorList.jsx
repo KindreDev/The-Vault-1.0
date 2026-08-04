@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { Search, Plus, Star, X, User, Loader, LayoutGrid } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Search, Plus, Star, X, User, Loader, LayoutGrid, Filter } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { creatorsApi } from '../lib/api'
 import CreatorContextMenu from '../components/CreatorContextMenu'
@@ -12,6 +12,7 @@ import { COUNTRIES } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
 import BondHearts from '../components/BondHearts'
 import FranchiseFilter from '../components/FranchiseFilter'
+import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 
 const COUNTRY_OPTIONS = [
@@ -715,56 +716,97 @@ function AddCreatorModal({ onClose, onSuccess }) {
 const TYPE_FILTER_LIST = ['all', ...TYPES]
 const CL_STATE_KEY = 'vault_creator_list_state'
 
-function readSavedState() {
-  try {
-    const raw = sessionStorage.getItem(CL_STATE_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
 export default function CreatorList() {
   const navigate   = useNavigate()
   const avatarBust = useVaultStore(s => s.avatarBust)
+  const cardSize    = useVaultStore(s => s.thumbSizeCreators)
+  const setCardSize = useVaultStore(s => s.setThumbSizeCreators)
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  // Restore state from sessionStorage on first mount (back-navigation support)
-  const [_saved]                  = useState(readSavedState)
-  const [search, setSearch]       = useState(_saved?.search     ?? '')
-  const [typeFilter, setTypeFilter] = useState(_saved?.typeFilter ?? 'all')
-  const [sortBy, setSortBy]       = useState(_saved?.sortBy     ?? 'name')
-  const [sortDir, setSortDir]     = useState(_saved?.sortDir    ?? 'asc')
-  const [perPage, setPerPage]     = useState(_saved?.perPage    ?? 50)
-  const [page, setPage]           = useState(_saved?.page       ?? 1)
-  const [franchise, setFranchise] = useState('')
+  // ── Persist filter state so back-navigation (and sidebar re-entry) restores it —
+  // same pattern as GalleryList: URL params are the source of truth, sessionStorage
+  // is only a restore-on-mount convenience for when the URL itself is bare.
+  const _clRestoredRef = useRef(false)
+  useEffect(() => {
+    if (_clRestoredRef.current) return
+    _clRestoredRef.current = true
+    if (searchParams.toString() === '') {
+      try {
+        const saved = sessionStorage.getItem(CL_STATE_KEY)
+        if (saved) setSearchParams(new URLSearchParams(saved), { replace: true })
+      } catch {}
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    try { sessionStorage.setItem(CL_STATE_KEY, searchParams.toString()) } catch {}
+  }, [searchParams])
+
+  // ── Derive all filter state from URL search params ──────────────────────────
+  const search     = searchParams.get('q') || ''
+  const typeFilter = searchParams.get('ctype') || 'all'
+  const sortBy     = searchParams.get('sort') || 'name'
+  const sortDir    = searchParams.get('dir') || (sortBy === 'name' ? 'asc' : 'desc')
+  const franchise  = searchParams.get('franchise') || ''
+  const favOnly    = searchParams.get('fav') === '1'
+  const page       = parseInt(searchParams.get('page') || '1', 10) || 1
+
+  // Page size: localStorage (not URL) so it can't get stuck via sessionStorage restore
+  const [perPage, setPerPageState] = useState(() => parseInt(localStorage.getItem('vault_creator_page_size') || '50', 10))
+
   const [showModal, setShowModal] = useState(false)
-  const [cardSize, setCardSize]   = useState(_saved?.cardSize   ?? 345)
   const [creatorCtxMenu, setCreatorCtxMenu] = useState(null) // { creator, x, y }
 
   const qc = useQueryClient()
   const t = useT()
-  // Skip the first mount so that filter-change resets don't clobber the
-  // page restored from sessionStorage when navigating back to the list.
-  const _filterMountRef           = useRef(true)
 
-  // Persist state whenever it changes so back-navigation restores it
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(CL_STATE_KEY, JSON.stringify({
-        search, typeFilter, sortBy, sortDir, perPage, page, cardSize,
-      }))
-    } catch {}
-  }, [search, typeFilter, sortBy, sortDir, perPage, page, cardSize])
+  // ── Helpers: update URL params, merging with what's already there ───────────
+  const setParam = useCallback((key, value) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (value === null || value === undefined || value === '' || value === false) next.delete(key)
+      else next.set(key, String(value))
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
-  // Reset to page 1 when filters change — but skip the very first mount so that
-  // the page number restored from sessionStorage is not immediately overwritten.
-  useEffect(() => {
-    if (_filterMountRef.current) { _filterMountRef.current = false; return }
-    setPage(1)
-  }, [search, typeFilter, sortBy, sortDir, perPage])
+  const setParams = useCallback((updates) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null || value === undefined || value === '' || value === false) next.delete(key)
+        else next.set(key, String(value))
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const setSearch     = useCallback(v => setParams({ q: v || null, page: null }), [setParams])
+  const setTypeFilter = useCallback(v => setParams({ ctype: v !== 'all' ? v : null, page: null }), [setParams])
+  const setFranchise  = useCallback(v => setParams({ franchise: v || null, page: null }), [setParams])
+  const setFavOnly    = useCallback(v => setParams({ fav: v ? '1' : null, page: null }), [setParams])
+  const setSortDir    = useCallback(v => setParam('dir', v), [setParam])
+  const setPage = useCallback((v) => {
+    const p = typeof v === 'function' ? v(page) : v
+    setParam('page', p > 1 ? p : null)
+  }, [setParam, page])
+  const setPerPage = useCallback((v) => {
+    setPerPageState(v)
+    try { localStorage.setItem('vault_creator_page_size', String(v)) } catch {}
+    setParam('page', null)
+  }, [setParam])
+  const handleSortChange = useCallback((val) => {
+    setParams({ sort: val !== 'name' ? val : null, dir: val === 'name' ? null : 'desc', page: null })
+  }, [setParams])
+
+  const hasActiveFilters = search || typeFilter !== 'all' || sortBy !== 'name' || franchise || favOnly
+  const resetFilters = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams])
 
   const skip = (page - 1) * perPage
+  const filterKey = `${search}|${typeFilter}|${sortBy}|${sortDir}|${franchise}|${favOnly}`
 
-  const { data: creators, isLoading } = useQuery({
-    queryKey: ['creators', search, typeFilter, sortBy, sortDir, perPage, page, franchise],
+  const { data: creatorPage, isLoading } = useQuery({
+    queryKey: ['creators', filterKey, page, perPage],
     // avatarBust intentionally excluded — avatar images have their own cache-busting
     // in the URL (v=${updated_at}_${avatarBust}). Including it here caused the ENTIRE
     // creators list to re-fetch from the server whenever any avatar changed.
@@ -772,19 +814,19 @@ export default function CreatorList() {
       search: search || undefined,
       creator_type: typeFilter !== 'all' ? typeFilter : undefined,
       series: franchise || undefined,
+      favorite: favOnly || undefined,
       sort_by: sortBy,
       sort_dir: sortBy !== 'random' ? sortDir : undefined,
       skip,
       limit: perPage,
-    }).then(r => r.data),
+    }).then(r => ({
+      items: r.data,
+      total: parseInt(r.headers['x-total-count'] ?? '0', 10),
+    })),
   })
 
-  const handleSortChange = (val) => {
-    setSortDir(val === 'name' ? 'asc' : 'desc')
-    setSortBy(val)
-  }
-
-  const hasMore = (creators?.length ?? 0) === perPage
+  const creators   = creatorPage?.items ?? []
+  const totalPages = Math.max(1, Math.ceil((creatorPage?.total ?? 0) / perPage))
 
   return (
     <div className="p-5 pb-16">
@@ -811,7 +853,26 @@ export default function CreatorList() {
           onSortDirChange={setSortDir}
         />
 
-        <FranchiseFilter value={franchise} onChange={v => { setFranchise(v || ''); setPage(1) }} />
+        <FranchiseFilter value={franchise} onChange={v => setFranchise(v || '')} />
+
+        {/* Favorites toggle */}
+        <button onClick={() => setFavOnly(!favOnly)}
+                className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full cursor-pointer"
+                style={{
+                  background: favOnly ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
+                  color: favOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${favOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                }}>
+          <Star size={12} fill={favOnly ? '#FAC775' : 'none'} /> {t('Favorites')}
+        </button>
+
+        {hasActiveFilters && (
+          <button onClick={resetFilters}
+                  className="text-[12px] px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            {t('Reset')}
+          </button>
+        )}
 
         <button onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 text-[12px] font-medium px-4 py-2 rounded-full ml-auto cursor-pointer"
@@ -819,6 +880,37 @@ export default function CreatorList() {
           <Plus size={13} /> {t('Add creator')}
         </button>
       </div>
+
+      {/* Active filters summary */}
+      {(search || typeFilter !== 'all' || franchise || favOnly) && (
+        <div className="flex items-center gap-2 flex-wrap text-[12px] mb-3">
+          <Filter size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
+          {search && (
+            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>
+              "{search}" <button type="button" onClick={() => setSearch('')} className="cursor-pointer ml-0.5"><X size={10} /></button>
+            </span>
+          )}
+          {typeFilter !== 'all' && (
+            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+              {t(TYPE_LABELS[typeFilter] || typeFilter)} <button type="button" onClick={() => setTypeFilter('all')} className="cursor-pointer ml-0.5"><X size={10} /></button>
+            </span>
+          )}
+          {franchise && (
+            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+              {franchise} <button type="button" onClick={() => setFranchise('')} className="cursor-pointer ml-0.5"><X size={10} /></button>
+            </span>
+          )}
+          {favOnly && (
+            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775' }}>
+              {t('Favorites only')} <button type="button" onClick={() => setFavOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Controls row: type filter + per-page */}
       <div className="flex items-center gap-1.5 mb-5 flex-wrap">
@@ -865,6 +957,13 @@ export default function CreatorList() {
         </div>
       </div>
 
+      {/* Pagination (top) */}
+      {!isLoading && creators.length > 0 && totalPages > 1 && (
+        <div className="mb-5">
+          <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="creators-top" />
+        </div>
+      )}
+
       {/* Grid */}
       {isLoading
         ? <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
@@ -878,15 +977,25 @@ export default function CreatorList() {
               </div>
             ))}
           </div>
-        : creators?.length === 0
+        : creators.length === 0
           ? <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div style={{ fontSize: 52, opacity: 0.12 }}>👤</div>
-              <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>{t('No creators yet')}</div>
-              <button onClick={() => setShowModal(true)}
-                      className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
-                      style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
-                <Plus size={15} /> {t('Add your first creator')}
-              </button>
+              <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                {hasActiveFilters ? t('No creators match these filters') : t('No creators yet')}
+              </div>
+              {hasActiveFilters ? (
+                <button onClick={resetFilters}
+                        className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+                  {t('Reset filters')}
+                </button>
+              ) : (
+                <button onClick={() => setShowModal(true)}
+                        className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
+                        style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                  <Plus size={15} /> {t('Add your first creator')}
+                </button>
+              )}
             </div>
           : <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
               {creators.map(c => (
@@ -897,20 +1006,10 @@ export default function CreatorList() {
             </div>
       }
 
-      {/* Pagination */}
-      {(page > 1 || hasMore) && (
-        <div className="flex items-center justify-center gap-3 mt-8">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-30"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            ← {t('Prev')}
-          </button>
-          <span className="text-[12px] text-[rgba(255,255,255,0.4)]">{t('Page')} {page}</span>
-          <button onClick={() => setPage(p => p + 1)} disabled={!hasMore}
-                  className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer disabled:opacity-30"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {t('Next')} →
-          </button>
+      {/* Pagination (bottom) */}
+      {!isLoading && creators.length > 0 && totalPages > 1 && (
+        <div className="mt-8">
+          <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="creators-bottom" />
         </div>
       )}
 

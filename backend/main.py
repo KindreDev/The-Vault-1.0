@@ -342,6 +342,14 @@ def _migrate_add_columns():
         "ALTER TABLE cards ADD COLUMN rarity_class VARCHAR DEFAULT 'R'",
         # Per-panel playlists — which panel a saved entry belongs to (NULL = unpinned)
         "ALTER TABLE panel_playlist_entries ADD COLUMN panel_idx INTEGER",
+        # Edge Mode — lifetime edge counts, mirroring how cum_count is tracked
+        "ALTER TABLE images ADD COLUMN edge_count INTEGER DEFAULT 0",
+        "ALTER TABLE galleries ADD COLUMN edge_count INTEGER DEFAULT 0",
+        "ALTER TABLE user_profile ADD COLUMN total_edge_count INTEGER DEFAULT 0",
+        "ALTER TABLE user_profile ADD COLUMN daily_edge_count INTEGER DEFAULT 0",
+        "ALTER TABLE user_profile ADD COLUMN last_edge_date DATETIME",
+        # Hall of Fame rank movement (green/red place-change arrows)
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_hof_ranks_entity ON hof_ranks(entity_type, entity_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -597,7 +605,7 @@ def _seed_ai_tag_vocab():
 
 _seed_ai_tag_vocab()
 
-app = FastAPI(title="The Vault", version="1.7.0")
+app = FastAPI(title="The Vault", version="1.7.2")
 
 app.add_middleware(
     CORSMiddleware,

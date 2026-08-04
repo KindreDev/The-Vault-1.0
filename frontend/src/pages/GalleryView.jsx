@@ -7,12 +7,16 @@ import {
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
   FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput, Tag, Copy,
+  Waves,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
+import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import { useT } from '../i18n'
+import { useSession } from '../hooks/useSession'
 import ImageContextMenu from '../components/ImageContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import TagAutocompleteInput from '../components/TagAutocompleteInput'
+import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
@@ -285,10 +289,20 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
             <Play size={12} fill="currentColor" />
           </div>
         )}
-        {image.cum_count > 0 && (
-          <div className="absolute bottom-1 right-1 flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full z-[3]"
-               style={{ background: 'rgba(0,0,0,0.75)', color: '#ED93B1' }}>
-            <Droplets size={8} /> {image.cum_count}
+        {(image.cum_count > 0 || image.edge_count > 0) && (
+          <div className="absolute bottom-1 right-1 flex items-center gap-1 z-[3]">
+            {image.cum_count > 0 && (
+              <div className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full"
+                   style={{ background: 'rgba(0,0,0,0.75)', color: '#ED93B1' }}>
+                <Droplets size={8} /> {image.cum_count}
+              </div>
+            )}
+            {image.edge_count > 0 && (
+              <div className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full"
+                   style={{ background: 'rgba(0,0,0,0.75)', color: '#CECBF6' }}>
+                <Waves size={8} /> {image.edge_count}
+              </div>
+            )}
           </div>
         )}
         {image.rating > 0 && (
@@ -361,7 +375,18 @@ function fmtVideoTime(s) {
   return `${m}:${String(sec).padStart(2,'0')}`
 }
 
-function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators, onClose }) {
+function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, galleryCreators, onClose }) {
+  // A slideshow can hand the viewer a different run of photos (more from this
+  // creator, your favourites, …) without leaving the page. While a queue is
+  // loaded it stands in for the gallery's own images everywhere below.
+  const [queue, setQueue] = useState(null)   // { images, label, galleryId } | null
+  const images = queue?.images ?? propImages
+  // Recommendations must follow what you are actually watching, not the gallery
+  // the viewer was originally opened from. Null for mixed queues (favourites),
+  // where no single gallery is the source.
+  const activeGalleryId = queue ? queue.galleryId : galleryId
+
+  const [showEndScreen, setShowEndScreen] = useState(false)
   const [idx, setIdx] = useState(startIdx)
   const [fullLoaded, setFullLoaded] = useState(false)
   const [rating, setRating] = useState(0)
@@ -391,13 +416,29 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
   const isFullscreenRef    = useRef(false)
   const videoPlayerRef     = useRef(null)
   const funscriptInputRef  = useRef(null)
-  const sessionActive   = useVaultStore(s => s.sessionActive)
-  const startSession    = useVaultStore(s => s.startSession)
-  const endSession      = useVaultStore(s => s.endSession)
+  const { sessionActive, startSession, finishSession } = useSession()
   const addXpToast      = useVaultStore(s => s.addXpToast)
+  const registerVisible   = useVaultStore(s => s.registerVisible)
+  const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const lastCountPing     = useVaultStore(s => s.lastCountPing)
   const qc              = useQueryClient()
   const t               = useT()
   const image = images[idx]
+
+  // Tell the app what's on screen, so Edge Mode and the log-cum hotkey know
+  // what to credit. Cleared on unmount so a closed viewer stops counting.
+  useEffect(() => {
+    if (image?.id) registerVisible('viewer', image.id)
+  }, [image?.id, registerVisible])
+  useEffect(() => () => unregisterVisible('viewer'), [unregisterVisible])
+
+  // The log-cum hotkey posts straight to the API, so pick up its result here
+  // rather than leaving the counter showing a stale number.
+  useEffect(() => {
+    if (lastCountPing && lastCountPing.imageId === image?.id && lastCountPing.cumCount != null) {
+      setCumCount(lastCountPing.cumCount)
+    }
+  }, [lastCountPing, image?.id])
 
   // Sync local state when image changes; track view count and time spent
   useEffect(() => {
@@ -423,7 +464,11 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
       // Log time spent when navigating away from this image
       if (viewStartRef.current) {
         const secs = Math.round((Date.now() - viewStartRef.current) / 1000)
-        if (secs >= 2) imagesApi.logDuration(image.id, secs).catch(() => {})
+        // Threshold matches the 1s view-count debounce above. They used to
+        // disagree (view at 1s, duration at 2s), so anything looked at for
+        // between 1 and 2 seconds banked a view worth zero seconds and dragged
+        // every dwell-time average down.
+        if (secs >= 1) imagesApi.logDuration(image.id, secs).catch(() => {})
         viewStartRef.current = null
       }
     }
@@ -467,17 +512,59 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
-  // Slideshow auto-advance
+  // Slideshow auto-advance. Unlike manual navigation it does NOT wrap: running
+  // off the end is what surfaces the "keep going?" screen.
+  // Armed per slide rather than on a fixed interval, because how long a slide
+  // should stay up depends on what it is:
+  //   · video → no timer; it advances from onEnded once it has played out
+  //   · animated GIF → held for at least one full loop
+  //   · still image → the configured speed
+  const advanceSlide = useCallback(() => {
+    setIdx(i => {
+      if (i >= images.length - 1) {
+        setSlideshowActive(false)
+        setShowEndScreen(true)
+        return i
+      }
+      return i + 1
+    })
+  }, [images.length])
+
   useEffect(() => {
-    if (!slideshowActive) return
-    const id = setInterval(() => setIdx(i => (i + 1) % images.length), slideshowSpeed * 1000)
-    return () => clearInterval(id)
-  }, [slideshowActive, slideshowSpeed, images.length])
+    if (!slideshowActive || showEndScreen || !images?.length) return
+    const cur = images[idx]
+    // Videos advance from onEnded; the watchdog only rescues one that can't play.
+    if (!cur) return
+    if (cur.is_video) return armVideoWatchdog({ onFire: advanceSlide })
+    return armSlideTimer({
+      url: `/api/images/${cur.id}/file`,
+      animated: isGif(cur.filename || cur.file_path),
+      baseSecs: slideshowSpeed,
+      onFire: advanceSlide,
+    })
+  }, [slideshowActive, slideshowSpeed, images, idx, showEndScreen, advanceSlide])
+
+  // Load a fresh run of photos into this same viewer and keep the slideshow
+  // rolling — the whole point of the end screen is not breaking the flow.
+  const playQueue = useCallback((nextImages, label, sourceGalleryId = null, creators = []) => {
+    setQueue({ images: nextImages, label, galleryId: sourceGalleryId, creators })
+    setIdx(0)
+    setShowEndScreen(false)
+    setSlideshowActive(true)
+  }, [])
+
+  const replayCurrent = useCallback(() => {
+    setIdx(0)
+    setShowEndScreen(false)
+    setSlideshowActive(true)
+  }, [])
 
   // Keyboard: arrows + space (slideshow toggle) + escape
   useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'INPUT') return
+      // The end screen owns the keyboard while it is up.
+      if (showEndScreen) return
       if (e.key === 'Escape') {
         if (isFullscreenRef.current) {
           if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
@@ -506,7 +593,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [images.length, onClose, zoom, resetZoom])
+  }, [images.length, onClose, zoom, resetZoom, showEndScreen])
 
   // Outside-click for speed menu
   useEffect(() => {
@@ -554,7 +641,9 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
   const handleMouseUp = () => setDragging(false)
 
   const cumMutation = useMutation({
-    mutationFn: () => imagesApi.cum(image.id, { gallery_id: galleryId }),
+    // A loaded queue can hold photos from other galleries, so credit the one
+    // the image actually belongs to rather than the page's gallery.
+    mutationFn: () => imagesApi.cum(image.id, { gallery_id: image.gallery_id ?? galleryId }),
     onSuccess: () => {
       setCumCount(c => c + 1)
       addXpToast('+5 XP')
@@ -630,7 +719,7 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
                 }
                 title={t('Play/Pause slideshow (Space)')}>
                 {slideshowActive ? <Pause size={13} /> : <Play size={13} />}
-                <span>{slideshowActive ? t('Pause') : t('Play')}</span>
+                <span>{slideshowActive ? t('Pause') : t('Slideshow')}</span>
               </button>
               <button
                 onMouseDown={() => setShowSpeedMenu(s => !s)}
@@ -703,11 +792,16 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
               videoPan={pan}
               isFullscreen={isFullscreen}
               showControls={showFilmstrip}
+              // During a slideshow the video decides when to move on — the
+              // slide timer deliberately doesn't run for videos.
+              onEnded={slideshowActive && !showEndScreen ? advanceSlide : undefined}
             />
           ) : (
             <>
-              {/* LQIP — blurred 320px thumbnail shown while full image loads */}
-              {!fullLoaded && (
+              {/* LQIP — blurred 320px thumbnail shown while full image loads.
+                  Suppressed during a slideshow: a blur flash between every
+                  photo defeats the crossfade. */}
+              {!fullLoaded && !slideshowActive && (
                 <img
                   data-no-fade
                   src={`/api/images/${image.id}/thumb`}
@@ -725,7 +819,11 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
                   }}
                 />
               )}
-              {/* Full-resolution image */}
+              {/* Full-resolution image.
+                  During a slideshow each photo crossfades in, the way the
+                  Windows Photos app does it. Outside a slideshow the swap stays
+                  instant — a fade would just feel laggy when you are clicking
+                  through by hand. */}
               <img
                 key={image.id}
                 src={`/api/images/${image.id}/file`}
@@ -736,7 +834,9 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
                   maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                   transformOrigin: 'center center',
-                  transition: dragging ? 'none' : 'transform 0.15s ease',
+                  transition: dragging
+                    ? 'none'
+                    : `transform 0.15s ease${slideshowActive ? ', opacity 0.45s ease-in-out' : ''}`,
                   userSelect: 'none',
                   opacity: fullLoaded ? 1 : 0,
                   zIndex: 1,
@@ -777,6 +877,19 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
                  style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.4)' }}>
               {t('Double-click or Esc to reset · Drag to pan')}
             </div>
+          )}
+          {/* End-of-slideshow "keep going?" screen — an overlay on the stage,
+              not a route, so dismissing it puts you back on the last photo. */}
+          {showEndScreen && (
+            <SlideshowEndScreen
+              galleryId={activeGalleryId}
+              galleryName={queue?.label || galleryName}
+              galleryCreators={queue ? (queue.creators ?? []) : galleryCreators}
+              watchedImages={images}
+              onPlayQueue={playQueue}
+              onReplay={replayCurrent}
+              onDismiss={() => setShowEndScreen(false)}
+            />
           )}
           {slideshowActive && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
@@ -917,6 +1030,11 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
               <div className="text-[22px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
               <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
+            {/* Edges are logged by Edge Mode, never by hand — read-only */}
+            <div className="text-center min-w-[36px]">
+              <div className="text-[22px] font-medium leading-none" style={{ color: '#A89FE8' }}>{image?.edge_count ?? 0}</div>
+              <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('edges')}</div>
+            </div>
           </div>
         </div>
 
@@ -969,14 +1087,8 @@ function ImageViewer({ images, startIdx, galleryId, galleryName, galleryCreators
         {/* Actions */}
         <div className="p-3 flex flex-col gap-2">
           <button onMouseDown={() => {
-            if (sessionActive) {
-              const elapsed = endSession()
-              sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-              toast.success(t('Session stopped'))
-            } else {
-              startSession()
-              toast.success(t('Session started ❤️'))
-            }
+            if (sessionActive) finishSession({ imageId: image.id, galleryId })
+            else               startSession()
           }}
                   className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[11px] font-medium cursor-pointer"
                   style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
@@ -1765,6 +1877,13 @@ export default function GalleryView() {
                   style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
             <Droplets size={12} /> {gallery?.cum_count ?? 0}
           </button>
+          {gallery?.edge_count > 0 && (
+            <div className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full"
+                 title={t('Edges — logged automatically by Edge Mode')}
+                 style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              <Waves size={12} /> {gallery.edge_count}
+            </div>
+          )}
           {/* Gallery rating */}
           <div className="flex items-center gap-0.5 px-2 py-1.5 rounded-full"
                style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}

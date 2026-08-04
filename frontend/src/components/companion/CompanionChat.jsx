@@ -38,7 +38,7 @@ function stripAndFireDeviceTags(text, deviceStore) {
       } else if (action === 'stop') {
         deviceService.stop()
       } else if (action === 'edge') {
-        deviceStore.setEdgingEnabled?.(true)
+        deviceService.setEdgeMode(true)
         if (deviceStore.mode !== 'freestyle') deviceService.startFreestyle()
       }
     } catch (_) {}

@@ -2,11 +2,13 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy } from 'lucide-react'
+import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
 import { useT, LANGUAGES } from '../i18n'
+import HotkeySettings from '../components/settings/HotkeySettings'
+import { useSession } from '../hooks/useSession'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
 
@@ -556,7 +558,14 @@ export function Quests() {
       qc.invalidateQueries({ queryKey: ['profile'] })
       toast.success(type === 'daily' ? `🎴 ${t('Claimed 5 Booster Packs!')}` : `🎴 ${t('Claimed 5 Premium Packs!')}`)
     },
-    onError: () => toast.error(t('Could not claim reward')),
+    onError: (err) => {
+      // Surface what the server actually said — "Could not claim reward" gave
+      // no clue why, and the button could sit there saying "Ready!" against a
+      // cached profile. Refetch so the board corrects itself either way.
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      qc.invalidateQueries({ queryKey: ['quests'] })
+      toast.error(err?.response?.data?.detail || t('Could not claim reward'))
+    },
   })
 
   const daily  = quests?.filter(q => q.quest_type === 'daily')  ?? []
@@ -924,8 +933,7 @@ function SessionsModal({ onClose }) {
 export function Stats() {
   const addXpToast     = useVaultStore(s => s.addXpToast)
   const sessionActive  = useVaultStore(s => s.sessionActive)
-  const startSession   = useVaultStore(s => s.startSession)
-  const endSession     = useVaultStore(s => s.endSession)
+  const { startSession, finishSession } = useSession()
   const sessionTotalMs = useVaultStore(s => s.sessionTotalMs)
   const profile        = useVaultStore(s => s.profile)
   const accent         = useVaultStore(s => s.accent)
@@ -985,13 +993,8 @@ export function Stats() {
   })
 
   const handleSession = () => {
-    if (!sessionActive) {
-      startSession()
-      toast(t('Session started 🔥'), { icon: '🎯' })
-    } else {
-      const elapsed = endSession()
-      logMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-    }
+    if (!sessionActive) startSession()
+    else                finishSession()
   }
 
   const fmtHour = (h) => {
@@ -1082,6 +1085,8 @@ export function Stats() {
   const maxViewSecs    = Math.max(1, ...topByTime.map(c => c.seconds))
   const topBySessions  = stats?.top_creators_chart ?? []
   const maxSessionCount = Math.max(1, ...topBySessions.map(c => c.count))
+  const topByEdges     = stats?.top_creators_by_edges ?? []
+  const maxEdges       = Math.max(1, ...topByEdges.map(c => c.edges))
 
   return (
     <div className="p-5 flex flex-col gap-5">
@@ -1132,6 +1137,14 @@ export function Stats() {
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('All-time count')}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#F47AA0' }}>{stats.total_cum_count.toLocaleString()} 💦</div>
+                </div>
+              )}
+              {stats?.total_edge_count > 0 && (
+                <div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Edges')}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#CECBF6' }}>
+                    {stats.total_edge_count.toLocaleString()} 🌊
+                  </div>
                 </div>
               )}
               {stats?.top_creator_name && (
@@ -1260,6 +1273,8 @@ export function Stats() {
           { label: 'Avg session',        value: fmtDuration(stats?.avg_duration_sec) },
           { label: 'Viewing time',       value: totalViewFmt ?? '—',                              color: '#7F77DD' },
           { label: 'Cummed (all-time)',   value: (stats?.total_cum_count ?? 0).toLocaleString(),   color: '#F47AA0' },
+          { label: 'Edges (all-time)',    value: (stats?.total_edge_count ?? 0).toLocaleString(), color: '#CECBF6' },
+          { label: 'Edges per O',         value: stats?.edges_per_cum ? `${stats.edges_per_cum}×` : '—', color: '#CECBF6' },
           { label: 'Peak hour',          value: fmtHour(stats?.peak_hour) },
           { label: 'XP from sessions',   value: `${(totalCount * 25).toLocaleString()} XP` },
         ].map(s => (
@@ -1360,6 +1375,21 @@ export function Stats() {
                 value={c.count} maxVal={maxSessionCount}
                 label={String(c.count)}
                 color="#D4537E" gradientEnd="#F47AA0" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top creators by edges — who you hold back the longest for */}
+      {topByEdges.length > 0 && (
+        <div className="vault-card p-5">
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · edges')}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {topByEdges.map((c, i) => (
+              <CreatorBar key={c.name} rank={i + 1} name={c.name}
+                value={c.edges} maxVal={maxEdges}
+                label={String(c.edges)}
+                color="#7F77DD" gradientEnd="#A89FE8" />
             ))}
           </div>
         </div>
@@ -2063,6 +2093,7 @@ const SETTINGS_TABS = [
   { id: 'scanner',    label: 'Scanner',    icon: ScanLine       },
   { id: 'tagging',    label: 'AI Tagging', icon: Cpu            },
   { id: 'appearance', label: 'Appearance', icon: Sparkles       },
+  { id: 'hotkeys',    label: 'Hotkeys',    icon: Keyboard       },
   { id: 'backup',     label: 'Backup',     icon: Archive        },
   { id: 'system',     label: 'System',     icon: ShieldCheck    },
 ]
@@ -2767,6 +2798,31 @@ export function Settings() {
                       </button>
                     ))}
                   </div>
+                  {/* Video length backfill — videos imported before the duration
+                      probe existed have no length on record, and a normal
+                      rescan won't fix it because known files are skipped. */}
+                  <div className="mt-4 pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                    <div className="text-[16px] text-white/75 mb-1">{t('Read video lengths')}</div>
+                    <div className="text-[14px] text-white/30 mb-3">
+                      {t('Fills in the length of videos imported before The Vault started reading it. A normal rescan skips them. Safe to cancel and resume.')}
+                    </div>
+                    <button disabled={regenning}
+                            onClick={async () => {
+                              setRegenning(true)
+                              try {
+                                const { data } = await scannerApi.backfillDurations()
+                                toast.success(data.queued
+                                  ? `${t('Queued')} — ${data.missing} ${t('videos')}`
+                                  : t('Every video already has a length'))
+                              }
+                              catch { toast.error(t('Failed to start')) }
+                              finally { setTimeout(() => setRegenning(false), 3000) }
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                            style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                      {t('⏱️ Read video lengths')}
+                    </button>
+                  </div>
                 </SettingsSection>
 
                 <SettingsSection title={t('Funscript library')} icon={ScanLine} accentColor="var(--c-pink)" defaultOpen={false}>
@@ -3244,6 +3300,15 @@ export function Settings() {
                       </a>
                     )}
                   </div>
+                </SettingsSection>
+              </div>
+            )}
+
+            {/* ── Hotkeys tab ──────────────────────────── */}
+            {settingsTab === 'hotkeys' && (
+              <div className="space-y-3">
+                <SettingsSection title={t('Hotkeys')} icon={Keyboard} accentColor="var(--c-accent)">
+                  <HotkeySettings />
                 </SettingsSection>
               </div>
             )}

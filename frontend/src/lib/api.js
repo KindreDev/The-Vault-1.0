@@ -69,8 +69,8 @@ export const galleriesApi = {
   delete:        (id, delete_files)=> api.delete(`/galleries/${id}`, { params: { delete_files } }),
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
   random:        ()                => api.get('/galleries/random'),
-  hof:           (n = 10)          => api.get('/galleries/hall-of-fame', { params: { limit: n } }),
-  galleryHof:    (n = 5)           => api.get('/galleries/gallery-hof', { params: { limit: n } }),
+  hof:           (n = 10, offset = 0) => api.get('/galleries/hall-of-fame', { params: { limit: n, offset } }),
+  galleryHof:    (n = 5, offset = 0)  => api.get('/galleries/gallery-hof', { params: { limit: n, offset } }),
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
@@ -78,11 +78,16 @@ export const galleriesApi = {
   addCreator:    (id, creatorId)   => api.post(`/galleries/${id}/creators/${creatorId}`),
   removeCreator: (id, creatorId)   => api.delete(`/galleries/${id}/creators/${creatorId}`),
   bulkAssign:    (galleryIds, creatorId) => api.post('/galleries/bulk-assign', { gallery_ids: galleryIds, creator_id: creatorId }),
+  // Strip every creator from the selected galleries in one request.
+  bulkClearCreators: (galleryIds) => api.post('/galleries/bulk-clear-creators', { gallery_ids: galleryIds }),
   setCover:      (galleryId, imageId)   => api.post(`/galleries/${galleryId}/set-cover/${imageId}`),
   randomPicks:   (n = 8)           => api.get('/galleries/', { params: { sort_by: 'random', limit: n } }),
   view:          (id)              => api.post(`/galleries/${id}/view`),
   rate:          (id, rating)     => api.post(`/galleries/${id}/rate`, null, { params: { rating } }),
   similar:       (id, limit = 6)  => api.get(`/galleries/${id}/similar`, { params: { limit } }),
+  // Rarity-weighted match used by the end-of-slideshow "More like this" tile.
+  moreLikeThis:  (id, limit = 3)  => api.get(`/galleries/${id}/more-like-this`, { params: { limit } }),
+  detailStats:   (id)             => api.get(`/galleries/${id}/stats`),
   merge:         (targetId, body) => api.post(`/galleries/${targetId}/merge`, body),
   renameFolder:  (id, folderName) => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }),
   extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
@@ -102,7 +107,7 @@ export const creatorsApi = {
   delete:            (id)     => api.delete(`/creators/${id}`),
   favorites:         ()       => api.get('/creators/favorites'),
   franchises:        ()       => api.get('/creators/franchises'),
-  hof:               (n = 5) => api.get('/creators/hall-of-fame', { params: { limit: n } }),
+  hof:               (n = 5, offset = 0) => api.get('/creators/hall-of-fame', { params: { limit: n, offset } }),
   distribution:      ()      => api.get('/creators/distribution'),
   topImages:         (id, n)  => api.get(`/creators/${id}/top-images`, { params: { limit: n } }),
   stats:             (id)     => api.get(`/creators/${id}/stats`),
@@ -153,7 +158,10 @@ export const imagesApi = {
   bulkDelete:    (ids, keepFile = false) => api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } }),
   view:          (id)      => api.post(`/images/${id}/view`),
   logDuration:   (id, s)  => api.post(`/images/${id}/duration`, { seconds: s }),
+  stats:         (id)      => api.get(`/images/${id}/stats`),
   cum:           (id, d)   => api.post(`/images/${id}/cum`, d),
+  // One edge event, credited to every image that was on screen at the time.
+  logEdge:       (imageIds) => api.post('/images/edge', { image_ids: imageIds }),
   addTag:        (id, tag) => api.post(`/images/${id}/tags/${tag}`),
   removeTag:     (id, tag) => api.delete(`/images/${id}/tags/${tag}`),
   random:        (tag)     => api.get('/images/random/pick', { params: { tag } }),
@@ -164,6 +172,7 @@ export const imagesApi = {
   addCreator:         (id, creatorId) => api.post(`/images/${id}/creators/${creatorId}`),
   removeCreator:      (id, creatorId) => api.delete(`/images/${id}/creators/${creatorId}`),
   clearCreators:      (id)            => api.delete(`/images/${id}/creators`),
+  bulkClearCreators:  (imageIds)      => api.post('/images/bulk-clear-creators', { image_ids: imageIds }),
   linkFunscript:      (id, content)   => api.post(`/images/${id}/funscript`, { content }),
   unlinkFunscript:    (id, deleteFile = false) => api.delete(`/images/${id}/funscript`, { params: { delete_file: deleteFile } }),
 }
@@ -227,6 +236,10 @@ export const scannerApi = {
   matchFunscripts: (path) => api.post('/scanner/match-funscripts', path ? { path } : {}),
   gpuStatus:       ()     => api.get('/scanner/gpu-status'),
   gpuDownload:     ()     => api.post('/scanner/gpu-download'),
+  // Videos scanned before the duration probe existed have no length on record;
+  // a rescan won't fix it because the scanner skips known files.
+  backfillDurations:   () => api.post('/scanner/backfill-video-durations'),
+  durationStatus:      () => api.get('/scanner/video-duration-status'),
 }
 
 // ── Intake / Triage ───────────────────────────────────────────────────────────

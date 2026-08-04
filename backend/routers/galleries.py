@@ -10,6 +10,9 @@ from database import get_db
 from models import Gallery, Image, Creator, Tag, gallery_creators, UserProfile, SessionLog, image_tags, mix_images
 from schemas import GalleryOut, GalleryCreate, GalleryUpdate
 import services.gamification as gami
+from services import recommend as recommend_svc
+from services import ranking
+from services import entity_stats
 from sqlalchemy import text
 
 router = APIRouter()
@@ -281,6 +284,8 @@ def list_galleries(
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by collection period/term
     sort_by: Optional[str] = "date_added",  # date_added | name | image_count | rating | cum_count | period | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
+    _seed: float = 0,  # stable shuffle seed for sort_by=random. float, because the
+                       # client seeds with Math.random(); scaled to an int below.
     skip: int = 0,
     limit: int = 200,
 ):
@@ -335,7 +340,16 @@ def list_galleries(
         else:
             q = q.order_by(Gallery.period_year.is_(None), Gallery.period_year.desc(), Gallery.period_month.desc())
     elif sort_by == "random":
-        q = q.order_by(func.random())
+        # Seeded shuffle — stable across refetches so favouriting or rating an
+        # item does not reshuffle the entire list.
+        if _seed:
+            # See images.py — squaring an offset product avoids the monotonic
+            # ordering a plain multiply produces for low ids.
+            _s = (int(abs(float(_seed)) * 1_000_000) % 99991) + 1
+            _b = (Gallery.id * _s + 54321) % 100003
+            q = q.order_by((_b * _b) % 100003, Gallery.id)
+        else:
+            q = q.order_by(func.random())
     else:
         col = Gallery.created_at
         q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
@@ -529,76 +543,84 @@ def track_gallery_view(gallery_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/hall-of-fame")
-def hall_of_fame(db: Session = Depends(get_db), limit: int = 10):
+def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0):
     """Images ranked by composite engagement score.
-       cum_count is the strongest signal (deliberate action), then view_count
-       (intentional re-opens), then view_seconds lightly weighted to avoid
-       passive watch time dominating the ranking.
-       Formula: (cum_count × 500) + (view_count × 30) + (view_seconds × 0.1)
+       cum_count is the strongest signal (deliberate action), then edges, then
+       view_count (intentional re-opens), then view_seconds lightly weighted to
+       avoid passive watch time dominating the ranking.
+       Formula: (cum × 500) + (edges × 250) + (views × 30) + (view_seconds × 0.1)
     """
-    score_expr = (
-        func.coalesce(Image.cum_count, 0) * 500
-        + func.coalesce(Image.view_count, 0) * 30
-        + func.coalesce(Image.view_seconds, 0) * 0.1
-    )
+    # Weights live in services/ranking.py so this list and a file's own stats
+    # modal can never disagree about its rank.
+    score_expr = ranking.image_score_expr()
+
+    # Movement is computed over the FULL ranking, not just the page being
+    # returned, so "dropped 10 places" is true globally. Only ids are loaded
+    # for this — the ordering is what matters, not the rows.
+    ordered_ids = [
+        r[0] for r in db.query(Image.id)
+                        .filter(score_expr > 0)
+                        .order_by(score_expr.desc())
+                        .all()
+    ]
+    deltas = ranking.apply_rank_movement(db, "image", ordered_ids)
+
     images = (
         db.query(Image)
           .filter(score_expr > 0)
           .order_by(score_expr.desc())
+          .offset(offset)
           .limit(limit)
           .all()
     )
-    return [{"id": i.id, "filename": i.filename, "thumb_path": i.thumb_path,
+    return [{"id": i.id, "rank": offset + n + 1,
+             "rank_change": deltas.get(i.id, 0),
+             "filename": i.filename, "thumb_path": i.thumb_path,
              "view_count": i.view_count, "cum_count": i.cum_count,
+             "edge_count": i.edge_count or 0,
              "view_seconds": i.view_seconds or 0,
-             "gallery_id": i.gallery_id, "is_video": i.is_video} for i in images]
+             "gallery_id": i.gallery_id, "is_video": i.is_video}
+            for n, i in enumerate(images)]
 
 
 @router.get("/gallery-hof")
-def gallery_hof(db: Session = Depends(get_db), limit: int = 5):
-    """Galleries ranked by composite engagement score:
-       image_view_seconds + (cum_count × 120) + (session_count × 300) + (view_count × 5)
+def gallery_hof(db: Session = Depends(get_db), limit: int = 5, offset: int = 0):
+    """Galleries ranked by composite engagement score — see services/ranking.py.
+
+    Scoring lives there so this list and a gallery's own stats modal can never
+    disagree about its rank.
     """
-    # Load all galleries with any engagement signal
-    galleries = (
-        db.query(Gallery)
-          .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
-          .filter(or_(Gallery.view_count > 0, Gallery.cum_count > 0))
-          .all()
-    )
-    if not galleries:
+    scores = ranking.score_all_galleries(db)
+    order  = ranking.ranked_gallery_ids(scores)
+    if not order:
         return []
 
-    gallery_ids = [g.id for g in galleries]
+    # Movement over the full ranking, so a drop is true globally, not just
+    # within the slice being returned.
+    deltas = ranking.apply_rank_movement(db, "gallery", order)
 
-    # Batch: sum image view_seconds per gallery
-    view_secs_rows = (
-        db.query(Image.gallery_id, func.sum(Image.view_seconds))
-          .filter(Image.gallery_id.in_(gallery_ids))
-          .group_by(Image.gallery_id)
+    page = order[offset:offset + limit]
+    rows = (
+        db.query(Gallery)
+          .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
+          .filter(Gallery.id.in_(page))
           .all()
     )
-    view_secs_map = {gid: int(secs or 0) for gid, secs in view_secs_rows}
+    by_id = {g.id: g for g in rows}
 
-    # Batch: count logged sessions per gallery
-    session_rows = (
-        db.query(SessionLog.gallery_id, func.count(SessionLog.id))
-          .filter(SessionLog.gallery_id.in_(gallery_ids))
-          .group_by(SessionLog.gallery_id)
-          .all()
-    )
-    session_map = {gid: int(cnt or 0) for gid, cnt in session_rows}
-
-    def _score(g):
-        return (
-            view_secs_map.get(g.id, 0)
-            + (g.cum_count or 0) * 120
-            + session_map.get(g.id, 0) * 300
-            + (g.view_count or 0) * 5
-        )
-
-    ranked = sorted(galleries, key=_score, reverse=True)[:limit]
-    return [_enrich(g) for g in ranked]
+    out = []
+    for n, gid in enumerate(page):
+        g = by_id.get(gid)
+        if not g:
+            continue
+        d = _enrich(g)
+        d["rank"]          = offset + n + 1
+        d["hof_score"]     = scores[gid]["score"]
+        d["rank_change"]   = deltas.get(gid, 0)
+        d["view_seconds"]  = scores[gid]["view_seconds"]
+        d["session_count"] = scores[gid]["session_count"]
+        out.append(d)
+    return out
 
 
 @router.get("/recent")
@@ -664,6 +686,25 @@ def similar_galleries(gallery_id: int, limit: int = 6, db: Session = Depends(get
     return [{"id": r[0], "name": r[1], "cover_thumb": r[2], "image_count": r[3],
              "cum_count": r[4], "view_count": r[5], "shared_tags": r[6]}
             for r in picked]
+
+
+@router.get("/{gallery_id}/stats")
+def gallery_stats(gallery_id: int, db: Session = Depends(get_db)):
+    """Deep stats for one gallery — the gallery-level counterpart to a
+    creator's stats modal."""
+    d = entity_stats.gallery_stats(db, gallery_id)
+    if d is None:
+        raise HTTPException(404, "Gallery not found")
+    return d
+
+
+@router.get("/{gallery_id}/more-like-this")
+def more_like_this(gallery_id: int, limit: int = 3, db: Session = Depends(get_db)):
+    """Smarter sibling of /similar — rarity-weighted tag matching that always
+    returns something. Powers the "More like this" tile after a slideshow."""
+    if not db.query(Gallery).filter(Gallery.id == gallery_id).first():
+        raise HTTPException(404, "Gallery not found")
+    return recommend_svc.more_like_this(db, gallery_id, limit)
 
 
 @router.get("/{gallery_id}", response_model=GalleryOut)
@@ -1052,6 +1093,34 @@ def remove_creator(gallery_id: int, creator_id: int, db: Session = Depends(get_d
             g.creator_id = g.creators[0].id
         db.commit()
     return _enrich(g)
+
+
+@router.post("/bulk-clear-creators")
+def bulk_clear_creators(body: dict, db: Session = Depends(get_db)):
+    """Strip every creator assignment from the given galleries.
+
+    Removing one known creator at a time already worked, but there was no way to
+    say "whoever is on these, take them all off" without visiting each creator
+    in turn. Done as one request rather than a per-gallery loop.
+    """
+    gallery_ids = [int(g) for g in (body.get("gallery_ids") or []) if g]
+    if not gallery_ids:
+        return {"updated": 0, "removed_links": 0}
+
+    galleries = db.query(Gallery).filter(Gallery.id.in_(gallery_ids)).all()
+    updated = removed = 0
+    for g in galleries:
+        if not g.creators and g.creator_id is None:
+            continue
+        removed += len(g.creators)
+        g.creators.clear()
+        # Mirrors single-creator removal: no creators left means untagged, and
+        # the legacy FK has to be cleared too or the gallery still looks owned.
+        g.is_tagged  = False
+        g.creator_id = None
+        updated += 1
+    db.commit()
+    return {"updated": updated, "removed_links": removed}
 
 
 @router.post("/bulk-assign")

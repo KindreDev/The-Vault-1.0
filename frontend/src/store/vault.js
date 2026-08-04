@@ -1,5 +1,21 @@
 import { create } from 'zustand'
 import { gamiApi } from '../lib/api'
+import { HOTKEY_DEFAULTS } from '../lib/hotkeys'
+
+// Stored bindings are merged over the defaults so an action added later picks
+// up its default binding instead of coming back unbound.
+function _readHotkeys() {
+  try {
+    const raw = localStorage.getItem('vault_hotkeys')
+    if (raw) return { ...HOTKEY_DEFAULTS, ...JSON.parse(raw) }
+    // First run since hotkeys became a shared system: adopt the standalone
+    // finisher key that used to live in the device store.
+    const legacyFinisher = localStorage.getItem('vault_finisher_hotkey')
+    const seeded = { ...HOTKEY_DEFAULTS }
+    if (legacyFinisher) seeded.finisher = legacyFinisher.toLowerCase()
+    return seeded
+  } catch { return { ...HOTKEY_DEFAULTS } }
+}
 
 // ── IndexedDB helpers (no size limit — used for glass background image) ────
 const IDB_DB = 'vault_ui'
@@ -272,6 +288,80 @@ export const useVaultStore = create((set, get) => ({
     panels: s.panels.map(p => p.id === id ? { ...p, ...data } : p)
   })),
 
+  // ── Visible media registry ──────────────────────────────────────────────────
+  // Which image is on screen right now, per surface. Keys are stable strings:
+  // 'viewer' for the gallery image viewer, 'panel-<id>' for each multi-panel
+  // cell. Surfaces register on image change and unregister on unmount.
+  //
+  // Edge Mode reads this to credit every visible image when an edge fires, and
+  // the log-cum hotkey uses it to know what you are actually looking at. Kept
+  // as a plain object (not a Map) so Zustand equality checks behave.
+  // Per surface: { current, previous }. Previous matters because when you
+  // finish on a panel wall, the shot before is usually what pushed you over and
+  // the one on screen was just the finisher — both deserve the credit.
+  visibleMedia: {},
+  // The surface last interacted with — used when an action needs exactly one
+  // target rather than everything on screen.
+  focusedSurface: null,
+
+  registerVisible: (key, imageId) => set(s => {
+    const entry = s.visibleMedia[key]
+    if (entry?.current === imageId) return s
+    return {
+      visibleMedia: {
+        ...s.visibleMedia,
+        [key]: { current: imageId, previous: entry?.current ?? null },
+      },
+    }
+  }),
+  unregisterVisible: (key) => set(s => {
+    if (!(key in s.visibleMedia)) return s
+    const next = { ...s.visibleMedia }
+    delete next[key]
+    return { visibleMedia: next, focusedSurface: s.focusedSurface === key ? null : s.focusedSurface }
+  }),
+  setFocusedSurface: (key) => set({ focusedSurface: key }),
+
+  // Last count change made outside a viewer's own mutation (currently the
+  // log-cum hotkey). Viewers keep their counters in local state, so without
+  // this a hotkey press would land on the server but leave the number frozen
+  // on screen. { imageId, cumCount } — replaced, never accumulated.
+  lastCountPing: null,
+  pingCount: (imageId, cumCount) => set({ lastCountPing: { imageId, cumCount } }),
+
+  // All distinct image ids currently on screen. Used by Edge Mode, which is
+  // about the moment it fires — only what is actually up right now.
+  getVisibleImageIds: () => [...new Set(
+    Object.values(get().visibleMedia).map(e => e?.current).filter(Boolean)
+  )],
+
+  // What an orgasm should be credited to.
+  //
+  // On a single viewer that is just the photo you finished on. On a panel wall
+  // it is every panel's current shot AND the one before it on each panel —
+  // finishing is rarely down to one image, and the previous shot is usually the
+  // one that did the work. Automatic on multi-surface layouts; `includePrevious`
+  // forces it either way.
+  getOrgasmImageIds: (includePrevious = null) => {
+    const surfaces = Object.values(get().visibleMedia)
+    const wall = includePrevious ?? surfaces.length > 1
+    const ids = []
+    for (const e of surfaces) {
+      if (e?.current) ids.push(e.current)
+      if (wall && e?.previous) ids.push(e.previous)
+    }
+    return [...new Set(ids)]
+  },
+
+  // The single image an action should target: the focused surface if there is
+  // one, otherwise the viewer, otherwise whatever registered first.
+  getFocusedImageId: () => {
+    const s = get()
+    const byFocus = s.focusedSurface ? s.visibleMedia[s.focusedSurface]?.current : null
+    return byFocus ?? s.visibleMedia.viewer?.current
+           ?? Object.values(s.visibleMedia).map(e => e?.current).find(Boolean) ?? null
+  },
+
   // Multi-viewer queue — files or galleries queued for the multi-panel viewer
   // Item format: { id: string (e.g. 'img-1' or 'gal-1'), type: 'image'|'gallery', media: Object, images?: Array }
   MULTIVIEWER_MAX: 999,
@@ -455,15 +545,32 @@ export const useVaultStore = create((set, get) => ({
     set({ showGoonBorder: v })
   },
 
+  // ── Global hotkeys ──────────────────────────────────────────────────────────
+  // { actionId: binding }. Missing keys fall back to the action's default, so a
+  // new action added to HOTKEY_ACTIONS works without migrating stored settings.
+  hotkeys: _readHotkeys(),
+
+  setHotkey: (actionId, binding) => {
+    const next = { ...get().hotkeys, [actionId]: binding || '' }
+    try { localStorage.setItem('vault_hotkeys', JSON.stringify(next)) } catch {}
+    set({ hotkeys: next })
+  },
+  resetHotkeys: () => {
+    try { localStorage.removeItem('vault_hotkeys') } catch {}
+    set({ hotkeys: { ...HOTKEY_DEFAULTS } })
+  },
+
   // ── Persistent UI preferences ─────────────────────────────────────────────
   // Thumb sizes per view — survive navigation
   thumbSizeGalleries: parseInt(localStorage.getItem('vault_thumb_galleries') || '180', 10),
   thumbSizeImages:    parseInt(localStorage.getItem('vault_thumb_images')    || '150', 10),
   thumbSizeVideos:    parseInt(localStorage.getItem('vault_thumb_videos')    || '150', 10),
+  thumbSizeCreators:  parseInt(localStorage.getItem('vault_thumb_creators')  || '345', 10),
 
   setThumbSizeGalleries: (v) => { localStorage.setItem('vault_thumb_galleries', String(v)); set({ thumbSizeGalleries: v }) },
   setThumbSizeImages:    (v) => { localStorage.setItem('vault_thumb_images',    String(v)); set({ thumbSizeImages: v }) },
   setThumbSizeVideos:    (v) => { localStorage.setItem('vault_thumb_videos',    String(v)); set({ thumbSizeVideos: v }) },
+  setThumbSizeCreators:  (v) => { localStorage.setItem('vault_thumb_creators',  String(v)); set({ thumbSizeCreators: v }) },
 
   // ── UI language (i18n) — English default, persisted across launches ─────────
   locale: localStorage.getItem('vault_locale') || 'en',

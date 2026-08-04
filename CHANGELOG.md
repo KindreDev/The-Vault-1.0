@@ -14,6 +14,55 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Fixed
+- Slideshows no longer cut videos off partway. In the main viewer the slide timer ran on a fixed interval regardless of what was on screen, so a video was skipped after a few seconds instead of playing out; it now advances when the video actually ends.
+- Animated GIFs are held for at least one full loop in slideshows, in both the main viewer and multi-panel, instead of being cut mid-animation.
+- Large GIFs no longer sit as a blurred thumbnail for several seconds. The full image was hidden until the entire file had downloaded, which suppressed the progressive rendering browsers do for GIFs — they now draw as they load. Neighbouring images are also preloaded so stepping through is instant.
+
+## [1.7.2] - 2026-08-03
+
+### Added
+- **Edge Mode** — replaces Edging Assist. Arm it and the device cuts out, or slows to a set percentage, at random or fixed intervals, holds for a random or fixed stretch, then eases back. Works in Freestyle and during funscript playback, including on The Handy.
+- Edge Mode can be armed from the device panel in any viewer, with a live countdown to the next edge, or by hotkey.
+- **Edge counter** — every edge adds +1 to each image on screen (all of them in the multi-panel viewer) plus its gallery, and earns XP. Lifetime counts, shown alongside the cum counter.
+- **Hotkeys** — new Settings → Hotkeys section for rebinding global shortcuts: start/stop session, emergency stop device, toggle Edge Mode, toggle Goon Mode, trigger Finisher, and log cum on the current image.
+- **End-of-slideshow screen** — instead of looping forever, a slideshow now lands on six big tiles: more from this creator, random gallery, more like this, your favourites, save as playlist, watch again. Each is selectable with number keys 1–6, with a countdown that picks for you so a session stays hands-free. Whatever you pick loads into the viewer you are already in and keeps playing.
+- **"More like this"** matches on the tags that actually characterise what you watched — rare tags count for more than ubiquitous ones — and relaxes its requirements until it finds something, so it never dead-ends.
+- **Hall of Fame is now a league table** — creators, galleries and photos show a green or red arrow with how many places they have moved. A movement stays visible until the next one.
+- **"See all"** at the end of each Hall of Fame section opens the complete ranking as an infinite-scrolling list; clicking a creator opens her full stats.
+- Stats page: lifetime edge total, edges per O, and a "Top creators · edges" chart.
+- Creator stats: edge total, edges per hour, edges per O, share of all your edges, a "Most-edged shot" standout, seconds-per-photo, the attention multiplier applied to her ranking, her Hall of Fame score, and how many Os or hours it would take to reach #1.
+- Creator stats: "Time on videos" — how long you have actually spent watching a creator's videos.
+- Settings → Scanner: "Read video lengths" fills in the length of videos imported before The Vault started recording it. Runs in the background, cancellable and resumable.
+- **Gallery stats and photo stats modals** — the same treatment creators got, one level down. Click any gallery or file in the Hall of Fame for its rank, Os per hour, seconds per photo, share of your total time and Os, standouts (most-gooned, most-edged, most-viewed, longest watched), curation and tag breakdown. A file also shows where it ranks in the whole vault *and* inside its own gallery, its share of that gallery's Os and time, os-per-view, and for videos how many times over you have watched its full length.
+- Hall of Fame "see all" lists now show a square preview for every row — photo, gallery cover or creator avatar — so a filename like `04.jpg` is no longer the only thing to go on.
+- **Clear all creators** in the Galleries and Photos selection toolbars — strips every creator from the selection in one go. Removing creators previously meant naming each one, or visiting each creator's page, which was unworkable when a batch had several different creators on it.
+
+### Changed
+- Creators, Card Collection: filters (search, type, rarity, sort, franchise, favorites) now live in the URL — shareable, bookmarkable, and preserved on back-navigation, matching Galleries/Photos. Added active-filter chips with one-click clear, a "Reset" button, a Favorites toggle on Creators, and real page-count pagination instead of guessing whether more pages exist.
+- Hall of Fame: creator cards now show watch time alongside views/orgasms, since watch time and session count are the biggest (and previously invisible) factors in ranking — a creator ranking above others with far higher visible stats now makes sense at a glance. Updated the section description to describe the real ranking formula.
+- Creator profile: added a "Views" stat to the main stat row — a true lifetime view count, not an average.
+- Hall of Fame ranking now counts individual photo and video views, weighted at one fifth of a gallery open. They accumulate far faster, so a heavier weight would let idle scrolling outrank real attention.
+- Hall of Fame ranking now also factors in attention per photo — how long you linger on one of a creator's photos relative to the library median. Everything else in the score measures volume and favours big collections; this asks whether you actually stop and look. Capped between ×0.75 and ×1.5, and creators with fewer than 20 photo views stay neutral so a small sample cannot fluke a high rank.
+- Gallery and photo Hall of Fame now count edges — 60 points for a gallery (half an O, matching creator scoring) and 250 for a photo.
+- The slideshow now crossfades between photos instead of cutting, and its button is labelled "Slideshow" rather than "Play".
+- The Finisher hotkey moved from the Device Control page into Settings → Hotkeys with the rest of them; your existing binding carries over.
+
+### Fixed
+- Creators: sorting by "Most Photos" or "Most Cummed" was silently broken — it summed counts through a legacy per-gallery field most galleries no longer use, so results were effectively unsorted. Now sorts correctly by actual photo/cum totals.
+- Card Collection: filtering by "Core" rarity always returned zero cards — the filter sent the display label instead of the real rarity value the database uses. Fixed; Core-tier cards now show up correctly.
+- **Finishing a session now counts an orgasm, anywhere in the app.** Ending a session recorded a session log and XP but never incremented a single cum counter — that was never implemented on the server, so no page could ever have worked. The orgasm is now credited to whatever is on screen when you stop.
+- On a multi-panel or playlist layout, an orgasm is credited to every open photo **and the previous shot on each panel** — the one before is usually what pushed you over, the one on screen just finished it. It still counts once toward your lifetime total and XP, so panel count can't inflate it.
+- Playlists view had no session controls at all — starting or finishing a session there recorded nothing. It now has a Start/Stop Session button like every other viewer.
+- The start/stop session hotkey ended the session locally without telling the server, so nothing was logged and no orgasm counted.
+- Quests: completing all your dailies but not clicking Claim before the day rolled over silently destroyed the reward — the board kept showing "Ready!" and claiming then failed with "Could not claim reward". An earned bonus now waits until you actually claim it.
+- Quests: a failed claim now says why, and refreshes the board instead of leaving a stale "Ready!" button.
+- Hall of Fame: the view count on creator cards only counted gallery opens, ignoring every photo and video view — so a creator with thousands of image views showed a number in the dozens. It is now a true total of gallery opens plus all photo and video views (e.g. 160 → 3,447).
+- Creator stats: "Total views" counted photo and video views only, silently excluding gallery opens, and so disagreed with the Hall of Fame figure for the same creator. Both now show the same true total, with a breakdown underneath. "Views / gallery" is derived from the corrected total.
+- A creator could be #2 in the Hall of Fame but "#4 of 268" in her own stats — the stats endpoint carried a stale second copy of the ranking formula that never received recent changes. Both now use one shared scoring service.
+- Creator stats: "Video runtime" showed a nonsense total (1 minute across 706 videos). Video length is only read when a file is first scanned, and that was added long after most libraries were imported, so almost no video had one — and a rescan could not fix it because known files are skipped. Runtime now shows "—" with a "length known for X/Y" note until the new backfill has run, instead of presenting a fraction as the total.
+- Photo view time under 2 seconds was never recorded while the view itself counted from 1 second, so quick glances banked a view worth zero seconds and dragged every average-time figure down. Both thresholds now match.
+
 ## [1.7.0] - 2026-07-28
 
 ### Added

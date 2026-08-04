@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer, Zap } from 'lucide-react'
 import InlineVideoPlayer from './InlineVideoPlayer'
 import { imagesApi } from '../lib/api'
+import { isGif, armSlideTimer } from '../lib/gif'
+import { useVaultStore } from '../store/vault'
 
 const SPEEDS = [3, 5, 8, 12, 20]
 
@@ -10,6 +12,10 @@ export default function PanelCell({
   items, onRemoveItem, panelIndex, isFullscreen = false,
   deviceConnected = false, deviceSynced = false, onToggleDeviceSync,
 }) {
+  const registerVisible   = useVaultStore(s => s.registerVisible)
+  const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const setFocusedSurface = useVaultStore(s => s.setFocusedSurface)
+
   const [idx, setIdx]             = useState(0)
   const [playing, setPlaying]     = useState(true)
   const [speed, setSpeed]         = useState(8)
@@ -35,6 +41,14 @@ export default function PanelCell({
     if (idx >= items.length && items.length > 0) setIdx(items.length - 1)
   }, [items.length])
 
+  // Register what this panel is showing so Edge Mode credits every visible
+  // image, not just the one in the main viewer.
+  const surfaceKey = `panel-${panelIndex}`
+  useEffect(() => {
+    if (item?.id) registerVisible(surfaceKey, item.id)
+  }, [item?.id, surfaceKey, registerVisible])
+  useEffect(() => () => unregisterVisible(surfaceKey), [surfaceKey, unregisterVisible])
+
   // Track view count and time spent whenever the displayed item changes
   useEffect(() => {
     if (!item) return
@@ -43,17 +57,26 @@ export default function PanelCell({
     return () => {
       if (viewStartRef.current) {
         const secs = Math.round((Date.now() - viewStartRef.current) / 1000)
-        if (secs >= 2) imagesApi.logDuration(item.id, secs).catch(() => {})
+        // Matches the view-count threshold — see the note in GalleryView.
+        if (secs >= 1) imagesApi.logDuration(item.id, secs).catch(() => {})
         viewStartRef.current = null
       }
     }
   }, [item?.id])
 
-  // Slideshow auto-advance (skip videos — they auto-loop)
+  // Slideshow auto-advance (skip videos — they auto-loop).
+  // Animated GIFs are held for at least one full loop instead of being cut off
+  // at the slide speed; GIFs expose no duration to the DOM, so it's read from
+  // the file itself.
   useEffect(() => {
     if (!playing || !item || item.is_video || items.length <= 1) return
-    const id = setInterval(() => setIdx(i => (i + 1) % items.length), speed * 1000)
-    return () => clearInterval(id)
+
+    return armSlideTimer({
+      url: `/api/images/${item.id}/file`,
+      animated: isGif(item.filename || item.file_path),
+      baseSecs: speed,
+      onFire: () => setIdx(i => (i + 1) % items.length),
+    })
   }, [playing, speed, items.length, item])
 
   const prev = () => { setIdx(i => (i - 1 + items.length) % items.length) }
@@ -128,7 +151,7 @@ export default function PanelCell({
     <div ref={containerRef}
          className="relative overflow-hidden h-full"
          style={{ background: '#060606' }}
-         onMouseEnter={() => setHovered(true)}
+         onMouseEnter={() => { setHovered(true); setFocusedSurface(surfaceKey) }}
          onMouseLeave={() => { setHovered(false); setDragging(false) }}>
 
       {/* Stage */}

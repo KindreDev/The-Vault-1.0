@@ -7,23 +7,37 @@ import LevelUpOverlay from '../LevelUpOverlay'
 import ErrorBoundary from '../ErrorBoundary'
 import CompanionBubble from '../companion/CompanionBubble'
 import { useVaultStore, loadGlassBackground } from '../../store/vault'
-import { useDeviceStore } from '../../store/deviceStore'
+import { useHotkeys } from '../../hooks/useHotkeys'
 import { deviceService } from '../../services/device'
-import toast from 'react-hot-toast'
+import { imagesApi } from '../../lib/api'
 
 export default function Layout() {
   const sessionActive          = useVaultStore(s => s.sessionActive)
   const showGoonBorder         = useVaultStore(s => s.showGoonBorder)
   const applyStoredPalette     = useVaultStore(s => s.applyStoredPalette)
   const multiPanelFullscreen   = useVaultStore(s => s.multiPanelFullscreen)
-  const finisherHotkey         = useDeviceStore(s => s.finisherHotkey)
-  const finisherPattern        = useDeviceStore(s => s.finisherPatternName)
   const location = useLocation()
+
+  // All user-configurable global hotkeys (Settings → Hotkeys)
+  useHotkeys()
 
   // Apply saved palette on first mount so colors are correct immediately
   useEffect(() => {
     applyStoredPalette()
     loadGlassBackground()
+  }, [])
+
+  // Edge Mode reporting. The device service fires this whenever an edge lands;
+  // wiring it here keeps the service free of API and store dependencies.
+  useEffect(() => {
+    deviceService.setEdgeReporter(() => {
+      const s = useVaultStore.getState()
+      const ids = s.getVisibleImageIds()
+      imagesApi.logEdge(ids)
+        .then(r => { if (r.data?.xp?.amount) s.addXpToast(`+${r.data.xp.amount} XP`) })
+        .catch(() => {})
+    })
+    return () => deviceService.setEdgeReporter(null)
   }, [])
 
   // F11 — true OS-level fullscreen (hides taskbar + title bar)
@@ -46,26 +60,6 @@ export default function Layout() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
-
-  // Finisher hotkey — press the bound key to instantly override the device with
-  // your chosen finisher pattern (and press again to stop). Armed only while a
-  // funscript is loaded (or the finisher is already running, so the key can end
-  // it). Ignored while typing or when a modifier is held.
-  useEffect(() => {
-    if (!finisherHotkey || !finisherPattern) return
-    function onKeyDown(e) {
-      const el = e.target
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
-      if (e.ctrlKey || e.altKey || e.metaKey) return
-      if (e.key.toLowerCase() !== finisherHotkey.toLowerCase()) return
-      if (!deviceService.isFinisherActive() && !deviceService.hasFunscriptLoaded()) return
-      e.preventDefault()
-      const started = deviceService.toggleFinisher(finisherPattern)
-      toast(started ? `🏁 Finisher: ${finisherPattern}` : 'Finisher stopped')
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [finisherHotkey, finisherPattern])
 
   // Global image fade-in: mark images as loaded so they transition opacity 0→1
   useEffect(() => {

@@ -135,6 +135,7 @@ class CreatorOut(CreatorBase):
     total_size_gb: Optional[float] = 0.0
     session_count: Optional[int] = 0
     total_view_seconds: Optional[int] = 0
+    total_views: Optional[int] = 0
     collection_value: Optional[float] = 0.0
     sub_value: Optional[float] = 0.0
     one_time_value: Optional[float] = 0.0
@@ -189,6 +190,7 @@ class GalleryOut(GalleryBase):
     cover_thumb: Optional[str]
     rating: float
     cum_count: int
+    edge_count: Optional[int] = 0
     view_count: int
     image_count: int
     is_favorite: bool
@@ -222,6 +224,7 @@ class ImageOut(BaseModel):
     funscript_path: Optional[str]
     rating: float
     cum_count: int
+    edge_count: Optional[int] = 0
     view_count: int
     is_favorite: bool
     ai_tagged: bool
@@ -245,6 +248,11 @@ class CumCountUpdate(BaseModel):
     gallery_id: Optional[int] = None
     creator_id: Optional[int] = None
 
+class EdgeLogIn(BaseModel):
+    # Every image on screen when the edge fired. May be empty — the edge still
+    # counts toward the lifetime total and XP.
+    image_ids: List[int] = []
+
 
 # ── Session ────────────────────────────────────────────────────────────────────
 class SessionCreate(BaseModel):
@@ -254,6 +262,10 @@ class SessionCreate(BaseModel):
     duration_sec: Optional[int] = None
     notes: Optional[str] = None
     skip_xp: bool = False  # True for secondary sessions (multi-panel multi-creator)
+    # Everything that was on screen when the session ended. Ending a session
+    # counts an orgasm against all of it — see gamification.credit_orgasm.
+    image_ids: List[int] = []
+    count_orgasm: bool = True
 
 class SessionOut(BaseModel):
     id: int

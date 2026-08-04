@@ -227,6 +227,7 @@ class Gallery(Base):
     description   = Column(Text, default="")
     rating        = Column(Float, default=0.0)
     cum_count     = Column(Integer, default=0)
+    edge_count    = Column(Integer, default=0)   # lifetime, never resets
     view_count    = Column(Integer, default=0)
     image_count   = Column(Integer, default=0)
 
@@ -284,6 +285,7 @@ class Image(Base):
 
     rating        = Column(Float, default=0.0)
     cum_count     = Column(Integer, default=0)
+    edge_count    = Column(Integer, default=0)   # lifetime, never resets
     view_count    = Column(Integer, default=0)
     view_seconds  = Column(Integer, default=0)   # lifetime seconds spent viewing
     is_favorite   = Column(Boolean, default=False)
@@ -449,6 +451,9 @@ class UserProfile(Base):
     total_cum_count    = Column(Integer, default=0)   # all-time Os
     daily_cum_count    = Column(Integer, default=0)   # resets each day
     last_cum_date      = Column(DateTime, nullable=True)
+    total_edge_count   = Column(Integer, default=0)   # all-time edges (Edge Mode)
+    daily_edge_count   = Column(Integer, default=0)   # resets each day
+    last_edge_date     = Column(DateTime, nullable=True)
     total_images_rated = Column(Integer, default=0)
     total_tags_added   = Column(Integer, default=0)
     tags_added_today   = Column(Integer, default=0)
@@ -745,6 +750,22 @@ class FeedDMPing(Base):
 
 
 # ── Creator Showcase: 5 card display slots on a creator's profile ─────────────
+# ── Hall of Fame rank movement ────────────────────────────────────────────────
+class HofRank(Base):
+    """Last known Hall of Fame rank per entity, so the UI can show how many
+    places something has climbed or dropped. prev_rank only changes when the
+    rank actually moves, which keeps an arrow on screen until the next
+    movement rather than clearing it on the next page load."""
+    __tablename__ = "hof_ranks"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String, index=True)   # creator | gallery | image
+    entity_id   = Column(Integer, index=True)
+    rank        = Column(Integer, nullable=False)
+    prev_rank   = Column(Integer, nullable=True)
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class CreatorShowcase(Base):
     """One row per filled slot. Slots: creator | gallery | goon | photo | wildcard.
     A card (inventory entry) can sit in only one showcase at a time. Filling all

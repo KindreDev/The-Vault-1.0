@@ -902,8 +902,8 @@ function DevicesContent() {
               <p className="text-white/55">Queue a sequence of patterns, each with a duration. The device cycles through them in order when Freestyle is active. Supports looping or play-once mode.</p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
-              <div className="font-semibold text-[var(--c-pink)] mb-1">Edging Assist</div>
-              <p className="text-white/55">Automatically drops to a softer pattern after a set Peak Duration, then slowly builds back up. Cycle: reach peak → wait → auto-drop → gradual build. Repeat indefinitely.</p>
+              <div className="font-semibold text-[var(--c-pink)] mb-1">Edge Mode</div>
+              <p className="text-white/55">Arm it and the device cuts out — or slows to a set percentage — at random (or fixed) intervals, holds for a random (or fixed) stretch, then eases back. Works in Freestyle and during funscript playback, and can be toggled from the device panel in any viewer or by hotkey. Every edge adds +1 to the edge count of whatever is on screen.</p>
             </div>
           </div>
         </SectionBody>

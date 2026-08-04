@@ -50,6 +50,9 @@ XP_REWARDS = {
     "achievement_unlock":   0,   # uses achievement.xp_reward
     "daily_spin":          25,
     "cum_logged":          10,
+    # PLACEHOLDER RATE — pending the XP/credit economy rework. Awarded once per
+    # edge event, not per image credited, so a 4-panel wall can't farm it.
+    "edge_logged":          3,
     "tagging_mission":    300,
     "pack_opened":          5,
     "card_dismantled":     15,
@@ -373,10 +376,16 @@ def _reset_daily_quests(db: Session):
     if active:
         return  # Already have today's quests
 
-    # Clear any stale claimable flag — a new day means a fresh set of quests
-    profile = db.query(UserProfile).first()
-    if profile and profile.daily_bonus_claimable:
-        profile.daily_bonus_claimable = False
+    # An unclaimed bonus is NOT cleared here. It used to be, on the reasoning
+    # that a new day means a fresh set of quests — but that quietly destroyed a
+    # reward the user had already earned: finish your dailies in the evening,
+    # don't click Claim before midnight, and the packs vanished. The board still
+    # said "Ready!" from cached profile data, so claiming then failed outright.
+    #
+    # Carrying it over can't be farmed: the flag is a boolean, so at most one
+    # daily bonus is ever pending, and _check_completion_bonus won't re-arm it
+    # while it is still set. This also matches the rule that the system rewards
+    # and never punishes.
 
     # Randomly pick DAILY_POOL_SIZE from the pool
     chosen = random.sample(ALL_DAILY_QUESTS, DAILY_POOL_SIZE)
@@ -584,6 +593,45 @@ def _check_completion_bonus(db: Session, quest_type):
             db.commit()
 
 
+def credit_orgasm(db: Session, image_ids: list) -> dict:
+    """Count one orgasm against whatever was on screen.
+
+    Ending a session IS an orgasm — that is the whole point of the button — but
+    for a long time logging a session and logging an O were separate code paths,
+    so finishing a session anywhere except the 💦 button counted nothing.
+
+    Mirrors log_edge: every image on screen is credited (in a multi-panel wall
+    they genuinely were all being used), each gallery once, but the event counts
+    once toward XP and the lifetime total so panel count can't inflate it.
+    """
+    from models import Image as _Image, Gallery as _Gallery
+
+    unique_ids = list({int(i) for i in (image_ids or []) if i})
+    images = db.query(_Image).filter(_Image.id.in_(unique_ids)).all() if unique_ids else []
+
+    gallery_ids = set()
+    for img in images:
+        img.cum_count = (img.cum_count or 0) + 1
+        if img.gallery_id:
+            gallery_ids.add(img.gallery_id)
+
+    if gallery_ids:
+        for gal in db.query(_Gallery).filter(_Gallery.id.in_(gallery_ids)).all():
+            gal.cum_count = (gal.cum_count or 0) + 1
+
+    db.commit()
+
+    # Profile totals, achievements and quest progress — once for the event.
+    xp = notify_action(db, "cum_logged")
+
+    return {
+        "counts": {img.id: img.cum_count for img in images},
+        "images_credited": len(images),
+        "galleries_credited": len(gallery_ids),
+        "xp": xp,
+    }
+
+
 def claim_completion_bonus(db: Session, quest_type: str) -> dict:
     """Explicitly claim the completion bonus packs. Returns what was awarded.
     All mutations are done in a single commit so there is no partial-state window."""
@@ -703,6 +751,14 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         if profile.total_cum_count >= 50:  unlock_achievement(db, "gooner")
         if profile.total_cum_count >= 200: unlock_achievement(db, "degenerate")
         if profile.total_cum_count >= 500: unlock_achievement(db, "cum_500")
+
+    elif action == "edge_logged":
+        if profile.last_edge_date and profile.last_edge_date.date() < now.date():
+            profile.daily_edge_count = 0
+        profile.last_edge_date   = now
+        profile.total_edge_count = (profile.total_edge_count or 0) + 1
+        profile.daily_edge_count = (profile.daily_edge_count or 0) + 1
+        db.commit()
 
     elif action == "session_logged":
         profile.total_sessions_logged = (profile.total_sessions_logged or 0) + 1

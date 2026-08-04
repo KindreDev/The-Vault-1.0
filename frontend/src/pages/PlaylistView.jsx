@@ -4,12 +4,25 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Images, Play, X, ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
 import { playlistsApi } from '../lib/api'
+import { useVaultStore } from '../store/vault'
+import { useSession } from '../hooks/useSession'
 import toast from 'react-hot-toast'
+import { Heart } from 'lucide-react'
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ images, startIdx, onClose }) {
   const [idx, setIdx] = useState(startIdx)
   const img = images[idx]
+  const registerVisible   = useVaultStore(s => s.registerVisible)
+  const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const { sessionActive, startSession, finishSession } = useSession()
+
+  // This view had no session handling at all — finishing here recorded nothing,
+  // no session and no orgasm. Register what's on screen so it counts.
+  useEffect(() => {
+    if (img?.id) registerVisible('playlist', img.id)
+  }, [img?.id, registerVisible])
+  useEffect(() => () => unregisterVisible('playlist'), [unregisterVisible])
   const prev = useCallback(() => setIdx(i => Math.max(0, i - 1)), [])
   const next = useCallback(() => setIdx(i => Math.min(images.length - 1, i + 1)), [images.length])
   const videoRef = useRef(null)
@@ -54,6 +67,16 @@ function Lightbox({ images, startIdx, onClose }) {
         </button>
         <span className="text-[13px] text-[rgba(255,255,255,0.4)]">{idx + 1} / {images.length}</span>
         <span className="text-[13px] text-[rgba(255,255,255,0.6)] truncate flex-1">{img.filename}</span>
+        <button
+          onMouseDown={() => {
+            if (sessionActive) finishSession({ imageId: img.id, galleryId: img.gallery_id })
+            else               startSession()
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer flex-shrink-0"
+          style={{ background: sessionActive ? 'rgba(212,83,126,0.3)' : 'rgba(212,83,126,0.15)',
+                   color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+          <Heart size={12} /> {sessionActive ? 'Stop Session' : 'Start Session'}
+        </button>
       </div>
 
       {/* Image stage */}

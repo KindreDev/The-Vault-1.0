@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Search, Droplets, Star, Images, Filter, SortAsc, X,
-  CheckSquare, Square, UserPlus, UserMinus, ChevronDown, AlertCircle,
+  CheckSquare, Square, UserPlus, UserMinus, UserX, ChevronDown, AlertCircle,
   Pencil, FolderPlus, Check, LayoutTemplate, Trash2, GitMerge,
   RotateCcw, FolderSymlink, Archive,
 } from 'lucide-react'
@@ -1042,6 +1042,27 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     onDone()
   }
 
+  // Strip every creator from the selection, whoever they happen to be. The
+  // per-creator Remove above needs you to know (and pick) each one — useless
+  // when a batch has a dozen different creators on it.
+  const handleClearCreators = async () => {
+    setRemoving(true)
+    try {
+      const { data } = await galleriesApi.bulkClearCreators(selectedIds)
+      if (data.updated > 0) {
+        toast.success(`Cleared creators from ${data.updated} ${data.updated === 1 ? 'gallery' : 'galleries'}`)
+      } else {
+        toast(t('Nothing to clear — none of those had a creator'))
+      }
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      onDone()
+    } catch {
+      toast.error(t('Could not clear creators'))
+    } finally {
+      setRemoving(false)
+    }
+  }
+
   const handleSendToViewer = async () => {
     let added = 0
     let skipped = 0
@@ -1190,6 +1211,17 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
         <UserMinus size={12} /> {removing ? t('Removing...') : t('Remove')}
+      </button>
+
+      {/* Action: Clear ALL creators — no need to know who is on them */}
+      <button
+        type="button"
+        onMouseDown={() => { if (!removing && !assigning) handleClearCreators() }}
+        disabled={removing || assigning}
+        title={t('Remove every creator assignment from the selected galleries')}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+        style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+        <UserX size={12} /> {t('Clear all')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />

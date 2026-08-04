@@ -11,7 +11,7 @@
  */
 import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Square, Droplets, ChevronDown } from 'lucide-react'
+import { Square, Droplets, ChevronDown, Waves } from 'lucide-react'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { deviceService } from '../services/device'
 
@@ -182,6 +182,55 @@ function StrokeLimiter({ floor, ceiling, onFloorChange, onCeilChange }) {
   )
 }
 
+// ── Edge Mode row ─────────────────────────────────────────────────────────────
+//
+// The whole point of Edge Mode is that it can be armed from wherever you are
+// gooning, so it lives in this embedded panel rather than only on the Device
+// Control page. Settings stay on that page — this is arm/disarm plus a live
+// countdown to the next edge.
+function EdgeModeRow() {
+  const enabled = useDeviceStore(s => s.edgeModeEnabled)
+  const active  = useDeviceStore(s => s.edgeActive)
+  const nextAt  = useDeviceStore(s => s.edgeNextAt)
+  const count   = useDeviceStore(s => s.edgeSessionCount)
+  const [, tick] = useState(0)
+
+  // Re-render once a second while armed so the countdown actually counts down.
+  useEffect(() => {
+    if (!enabled || !nextAt) return
+    const id = setInterval(() => tick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [enabled, nextAt])
+
+  const secsLeft = nextAt ? Math.max(0, Math.round((nextAt - Date.now()) / 1000)) : null
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => deviceService.setEdgeMode(!enabled)}
+        title={enabled ? 'Disarm Edge Mode' : 'Arm Edge Mode'}
+        className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+        style={{
+          background: active ? 'rgba(212,83,126,0.35)' : enabled ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.06)',
+          color:      active ? '#F4A8C0' : enabled ? '#CECBF6' : 'rgba(255,255,255,0.5)',
+          border:     `0.5px solid ${active ? 'rgba(212,83,126,0.45)' : enabled ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.12)'}`,
+        }}>
+        <Waves size={11} />
+        Edge
+      </button>
+
+      {enabled && (
+        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.4)]">
+          {active
+            ? 'holding…'
+            : secsLeft != null ? `next in ${secsLeft}s` : '—'}
+          {count > 0 && ` · ${count}`}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ── DeviceControls ────────────────────────────────────────────────────────────
 
 export default function DeviceControls({ className = '' }) {
@@ -258,6 +307,9 @@ export default function DeviceControls({ className = '' }) {
           Stop
         </button>
       </div>
+
+      {/* Row 1b: Edge Mode */}
+      <EdgeModeRow />
 
       {/* Row 2: intensity */}
       <div className="flex items-center gap-1.5">

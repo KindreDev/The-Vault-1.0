@@ -294,7 +294,7 @@ def restart_server():
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.2"
 
 # URL of the version manifest hosted on your website.
 # The file must be valid JSON:
@@ -366,6 +366,41 @@ def _read_local_version_json() -> dict:
         return {}
 
 
+# The 1.6.1 condensed changelog, frozen here at the point it shipped. version.json
+# gets overwritten on every release, so it can't be read live to recover what it
+# said back when 1.6.1 was current — this is the one-time historical snapshot.
+_CHANGELOG_161_OVERRIDE = (
+    "Added:\n"
+    "- Loading Bay  stage a downloads folder and bulk-sort files into creators/galleries, "
+    "with duplicate detection (DUP badges + skip/keep-both/delete), an archive peek eye button "
+    "(zip/rar/7z contents with inline previews), a sort control, a file-type + name filter, and "
+    "a setting for what happens to the original file after an archive is extracted.\n"
+    "- Funscript linking: drag a .funscript onto any playing video and \"Link permanently\" — "
+    "it's saved to your funscript library and auto-synced by filename from then on; scripts can "
+    "also be unlinked from the sidebar.\n\n"
+    "Changed:\n"
+    "- Trading-Card System Rework: a scarcity-aware True Rarity score with per-tier R/SR/SSR/UR "
+    "classes (SR/SSR now wear polished metallic borders in their tier's colour, SSR a subtle "
+    "star-twinkle), a new craftable Prestige tier with a rainbow-halo effect, the base tier "
+    "renamed Common → Core, video cards that now animate, a leaner static Forge, and broad "
+    "rendering/performance optimizations across the collection.\n"
+    "- The Shop now shows each pack's Drop rates (R/SR/SSR/UR odds) with a Learn-more breakdown "
+    "by card type — and opens instantly (it used to lag loading previews on every visit).\n"
+    "- Hall of Fame: a living photo-collage background that follows your #1 creator, and clicking "
+    "any creator now opens a full stats overview (rank, engagement, taste profile, cards, bond).\n"
+    "- Various performance fixes and minor UI tweaks throughout (card grids, funscript player, "
+    "multi-panel viewer, creator profile hero).\n\n"
+    "Fixed:\n"
+    "- Loading Bay: .rar and .7z archives can now be inspected, previewed, and extracted correctly.\n"
+    "- Craft Variant in the Forge can finally be crafted (it was rejecting valid creator×character "
+    "pairs).\n"
+    "- Video-based cards no longer open to emptiness or show black letterbox bars.\n"
+    "- Rating an image/video no longer reverts after navigating away and back.\n"
+    "- Scan Folders status toast and funscript viewer sync no longer require a manual refresh.\n"
+    "- Escape now only exits fullscreen instead of also closing the viewer."
+)
+
+
 def _parse_changelog_md() -> list:
     """Splits CHANGELOG.md into one entry per released version (skips [Unreleased])."""
     try:
@@ -391,9 +426,11 @@ def _parse_changelog_md() -> list:
 def _ensure_changelog_history() -> list:
     """
     First run: seed the persistent history from CHANGELOG.md, then swap the
-    1.6.1 entry for the condensed version.json changelog (CHANGELOG.md's own
-    1.6.1 section is a much longer dev-facing writeup — version.json already
-    has the user-facing condensed version, so reuse that instead of duplicating it).
+    1.6.1 entry for its condensed changelog (CHANGELOG.md's own 1.6.1 section is
+    a much longer dev-facing writeup — 1.6.1 shipped with a condensed, user-facing
+    version.json changelog instead, frozen in _CHANGELOG_161_OVERRIDE since
+    version.json itself gets overwritten every release and can't be read live
+    to recover what it said back then).
 
     Every run after: if the currently running APP_VERSION isn't in the history
     yet and version.json's version matches it, its changelog gets appended —
@@ -404,12 +441,10 @@ def _ensure_changelog_history() -> list:
 
     if not history:
         history = _parse_changelog_md()
-        vj = _read_local_version_json()
-        if vj.get("version") == "1.6.1" and vj.get("changelog"):
-            for e in history:
-                if e["version"] == "1.6.1":
-                    e["changelog"] = vj["changelog"]
-                    break
+        for e in history:
+            if e["version"] == "1.6.1":
+                e["changelog"] = _CHANGELOG_161_OVERRIDE
+                break
         _save_changelog_history(history)
 
     if not any(e.get("version") == APP_VERSION for e in history):

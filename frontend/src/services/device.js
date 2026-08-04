@@ -1,6 +1,6 @@
 /**
  * Device Service — singleton that owns the Buttplug client (v4 API),
- * pattern engine, funscript player, ramp mode, scheduler, and edging assist.
+ * pattern engine, funscript player, ramp mode, scheduler, and Edge Mode.
  *
  * Buttplug v4 API key differences from v2/v3:
  *  - device.runOutput(DeviceOutput.PositionWithDuration.percent(pos, durationMs))
@@ -41,8 +41,14 @@ class DeviceService {
     this._rampTimer      = null
     this._rampStartTime  = null
     this._schedulerTimer = null
-    this._edgingTimer    = null
     this._cumTimer       = null
+
+    // Edge Mode — see the Edge Mode section below.
+    this._edgeTimer     = null
+    this._edgeRampTimer = null
+    this._edgeGate      = 1      // 0..1 output gate; 1 = unrestricted
+    this._onEdge        = null   // injected reporter, called when an edge fires
+
     this._finisherActive = false
     this._finisherPrev   = null   // { mode, presetId } to restore when the finisher stops
     this._msgId          = 100   // counter for raw WS message IDs
@@ -113,6 +119,7 @@ class DeviceService {
       const connector = new ButtplugBrowserWebsocketClientConnector(wsUrl)
       await this._client.connect(connector)
       useDeviceStore.setState({ status: 'connected' })
+      this.startEdgeMode()   // no-op unless Edge Mode was left armed
 
       // Kick off scanning immediately
       try { await this._client.startScanning() } catch (_) {}
@@ -144,8 +151,26 @@ class DeviceService {
     const isRotate    = dev.hasOutput(OutputType.Rotate)
     const isOscillate = dev.hasOutput(OutputType.Oscillate)
 
-    // Extract feature info for raw command construction (bypassing SDK bug)
+    // Rebuild this device's feature maps from scratch. 'deviceadded' can fire
+    // again for a device that's already known (rescan / reconnect), and the old
+    // code appended — which is why servers saw the same FeatureIndex repeated
+    // several times in one command.
+    this._linearFeatures.delete(dev.index)
+    this._vibrateFeatures.delete(dev.index)
+    this._rotateFeatures.delete(dev.index)
+    this._oscillateFeatures.delete(dev.index)
+
+    // Extract feature info for raw command construction (bypassing SDK bug).
+    // Scalar actuators carry their own step count: Buttplug values are integer
+    // steps in the device's own range, NOT a 0–1 fraction.
     const outputTypes = []
+    const addScalar = (map, featIdx, spec) => {
+      const list = map.get(dev.index) || []
+      if (list.some(f => f.featureIndex === featIdx)) return
+      list.push({ featureIndex: featIdx, maxSteps: spec?.Value?.[1] ?? 100 })
+      map.set(dev.index, list)
+    }
+
     for (const [featIdx, feat] of dev.features) {
       const raw = feat._feature?.Output
       if (!raw) continue
@@ -156,31 +181,24 @@ class DeviceService {
           maxSteps: raw.HwPositionWithDuration.Value?.[1] ?? 99,
         })
       }
-      if (raw.Vibrate !== undefined) {
-        const feats = this._vibrateFeatures.get(dev.index) || []
-        this._vibrateFeatures.set(dev.index, [...feats, featIdx])
-      }
-      if (raw.Rotate !== undefined) {
-        const feats = this._rotateFeatures.get(dev.index) || []
-        this._rotateFeatures.set(dev.index, [...feats, featIdx])
-      }
-      if (raw.Oscillate !== undefined) {
-        const feats = this._oscillateFeatures.get(dev.index) || []
-        this._oscillateFeatures.set(dev.index, [...feats, featIdx])
-      }
+      if (raw.Vibrate   !== undefined) addScalar(this._vibrateFeatures,   featIdx, raw.Vibrate)
+      if (raw.Rotate    !== undefined) addScalar(this._rotateFeatures,    featIdx, raw.Rotate)
+      if (raw.Oscillate !== undefined) addScalar(this._oscillateFeatures, featIdx, raw.Oscillate)
     }
 
-    const prev = store().devices
     useDeviceStore.setState({
-      devices: [...prev, {
-        name: dev.name,
-        index: dev.index,
-        canLinear: isLinear,
-        canVibrate: isVibrate,
-        canRotate: isRotate,
-        canOscillate: isOscillate,
-        outputTypes,
-      }],
+      devices: [
+        ...store().devices.filter(d => d.index !== dev.index),
+        {
+          name: dev.name,
+          index: dev.index,
+          canLinear: isLinear,
+          canVibrate: isVibrate,
+          canRotate: isRotate,
+          canOscillate: isOscillate,
+          outputTypes: [...new Set(outputTypes)],
+        },
+      ],
     })
   }
 
@@ -216,6 +234,19 @@ class DeviceService {
   }
 
   _sendLinear(posPercent, durationMs) {
+    // ── Edge Mode gate ────────────────────────────────────────────────────────
+    // Applied before provider routing so every device path is gated equally.
+    // A fully closed gate sends nothing at all — the device simply holds its
+    // last commanded position, which resumes instantly on release.
+    const gate = this._edgeGate
+    if (gate <= 0) return
+    if (gate < 1 && store().mode === 'funscript') {
+      // A funscript is locked to the video timeline, so it cannot be slowed
+      // without desyncing. Damp the stroke toward the midpoint instead: same
+      // rhythm, smaller movement.
+      posPercent = 50 + (posPercent - 50) * gate
+    }
+
     // ── Provider routing ──────────────────────────────────────────────────────
     const { provider } = store()
     if (provider === 'handy')  { this._sendLinearHandy(posPercent, durationMs);  return }
@@ -254,21 +285,33 @@ class DeviceService {
     this._sendScalarActuator(this._oscillateFeatures, pos, 'Oscillate')
   }
 
-  // Send a scalar intensity command (0.0–1.0, already stroke-limited) to all
+  // Send a scalar intensity command (pos is 0.0–1.0, already stroke-limited) to
   // devices exposing the given actuator type that are NOT also linear
   // (e.g. pure vibrators, Kiiroo Onyx/Titan rotate sleeves, Fun Factory Stronic oscillators).
+  //
+  // Two things this has to get right, both of which used to be wrong:
+  //  · The message is OutputCmd. ScalarCmd was removed in the current Buttplug
+  //    message spec — servers reject the whole payload with
+  //    "unknown variant `ScalarCmd`", so nothing moved at all.
+  //  · Value is an integer step in the feature's own range, not a 0–1 fraction.
+  //    Every device advertises its own step count, so 0.5 meant "step 0" (off)
+  //    on hardware that steps 0–20.
   _sendScalarActuator(featureMap, pos, actuatorType) {
     const storeDevs = store().devices
-    for (const [devIndex, featIdxList] of featureMap) {
+    const frac = clamp(pos, 0, 1)
+    for (const [devIndex, feats] of featureMap) {
       const d = storeDevs.find(sd => sd.index === devIndex)
       if (d?.canLinear) continue  // linear device already handled
-      this._rawSend({
-        ScalarCmd: {
-          Id: this._msgId++,
-          DeviceIndex: devIndex,
-          Scalars: featIdxList.map(idx => ({ Index: idx, Scalar: clamp(pos, 0, 1), ActuatorType: actuatorType })),
-        },
-      })
+      for (const f of feats) {
+        this._rawSend({
+          OutputCmd: {
+            Id: this._msgId++,
+            DeviceIndex: devIndex,
+            FeatureIndex: f.featureIndex,
+            Command: { [actuatorType]: { Value: Math.round(f.maxSteps * frac) } },
+          },
+        })
+      }
     }
   }
 
@@ -312,6 +355,9 @@ class DeviceService {
 
   async stop() {
     this._stopAll()
+    // Emergency stop disarms Edge Mode too — leaving the toggle lit while the
+    // engine is dead would be a lie, and a stray edge must not restart output.
+    if (store().edgeModeEnabled) useDeviceStore.getState().setEdgeModeEnabled(false)
     const { provider } = store()
     if (provider === 'intiface' && this._client) {
       try { await this._client.stopAllDevices() } catch (_) {}
@@ -330,14 +376,14 @@ class DeviceService {
     this._startPatternEngine()
     if (store().rampEnabled)      this._startRamp()
     if (store().schedulerEnabled) this._startScheduler()
-    if (store().edgingEnabled)    this._startEdging()
+    // Edge Mode is deliberately NOT started here — it spans every mode and is
+    // armed on connect, so leaving freestyle must not disarm it.
   }
 
   stopFreestyle() {
     this._stopPatternEngine()
     this._stopRamp()
     this._stopScheduler()
-    this._stopEdging()
     useDeviceStore.setState({ mode: 'off' })
   }
 
@@ -359,7 +405,10 @@ class DeviceService {
 
     const pattern  = store().getEffectivePattern()
     const variance = store().variance        // 0–100
-    const halfDur  = Math.round(60000 / pattern.spm / 2)
+    // Edge Mode slows freestyle by stretching each half-stroke. The tick timer
+    // uses the same stretched value, so the engine stays in step with itself.
+    const gate     = clamp(this._edgeGate, 0.05, 1)
+    const halfDur  = Math.round(60000 / pattern.spm / 2 / gate)
     const spread   = (pattern.strokeMax - pattern.strokeMin) * variance / 100
 
     // At variance=0 always hits exact endpoints; higher variance picks a
@@ -442,7 +491,6 @@ class DeviceService {
     this._stopPatternEngine()
     this._stopScheduler()
     this._stopRamp()
-    this._stopEdging()
     useDeviceStore.setState({ mode: 'freestyle', schedulerRunningOnce: true, schedulerStep: 0 })
     this._startPatternEngine()
     this._runSchedulerOnce(0)
@@ -470,28 +518,119 @@ class DeviceService {
     this.stop()
   }
 
-  // ── Edging assist ─────────────────────────────────────────────────────────
+  // ── Edge Mode ─────────────────────────────────────────────────────────────
+  //
+  // Arms a repeating cycle: wait a (random or fixed) interval, then cut or damp
+  // device output for a (random or fixed) hold, then release and re-arm.
+  //
+  // The cut is applied as a single output gate (`_edgeGate`, 0..1) read by
+  // _sendLinear, rather than by swapping patterns like the old edging assist
+  // did. That is what lets it work in every mode:
+  //   • freestyle — the gate stretches stroke durations, so the device slows
+  //   • funscript — the script is locked to the video and cannot be slowed, so
+  //     the gate damps stroke amplitude toward the midpoint instead
+  //   • gate 0    — nothing is sent at all; the device holds where it is
+  //
+  // Every edge also credits whatever is on screen (see _reportEdge).
 
-  _startEdging() {
-    this._stopEdging()
-    this._scheduleEdgingDrop()
+  startEdgeMode() {
+    this._stopEdgeMode()
+    // An edge is a thing the device does. With nothing connected there is
+    // nothing to cut, so arming would just award XP for imaginary edges.
+    if (!store().edgeModeEnabled || store().status !== 'connected') return
+    useDeviceStore.setState({ edgeSessionCount: 0 })
+    this._scheduleEdge()
   }
 
-  _stopEdging() {
-    clearTimeout(this._edgingTimer)
-    this._edgingTimer = null
+  _stopEdgeMode() {
+    clearTimeout(this._edgeTimer)
+    clearInterval(this._edgeRampTimer)
+    this._edgeTimer     = null
+    this._edgeRampTimer = null
+    this._edgeGate      = 1
+    useDeviceStore.setState({ edgeActive: false, edgeNextAt: null })
   }
 
-  _scheduleEdgingDrop() {
-    const peakPresetId = store().activePresetId  // capture peak preset before the drop
-    this._edgingTimer = setTimeout(() => {
-      useDeviceStore.setState({ activePresetId: store().edgingDropPreset })
-      this._edgingTimer = setTimeout(() => {
-        useDeviceStore.setState({ activePresetId: peakPresetId })  // restore peak
-        this._scheduleEdgingDrop()  // re-arm (captures the restored peak)
-      }, store().edgingBuildBackSeconds * 1000)
-    }, store().edgingPeakSeconds * 1000)
+  // Public — the UI toggle and the hotkey both go through here.
+  setEdgeMode(enabled) {
+    useDeviceStore.getState().setEdgeModeEnabled(enabled)
+    if (enabled) this.startEdgeMode()
+    else         this._stopEdgeMode()
   }
+
+  _scheduleEdge() {
+    const s       = store()
+    const waitSec = s.rollEdgeInterval()
+    useDeviceStore.setState({ edgeActive: false, edgeNextAt: Date.now() + waitSec * 1000 })
+    this._edgeTimer = setTimeout(() => this._fireEdge(), waitSec * 1000)
+  }
+
+  _fireEdge() {
+    const s = store()
+    if (!s.edgeModeEnabled) { this._stopEdgeMode(); return }
+
+    this._edgeGate = s.edgeActionMode === 'slow'
+      ? clamp(s.edgeSlowPercent / 100, 0, 1)
+      : 0
+
+    // The Handy streams funscripts server-side and never passes through
+    // _sendLinear, so its already-queued points have to be re-cut by hand.
+    if (s.provider === 'handy' && s.mode === 'funscript') this._handyEdgeHold()
+
+    useDeviceStore.setState({
+      edgeActive: true,
+      edgeNextAt: null,
+      edgeSessionCount: s.edgeSessionCount + 1,
+    })
+    this._reportEdge()
+
+    const holdMs = s.rollEdgeDuration() * 1000
+    this._edgeTimer = setTimeout(() => this._releaseEdge(), holdMs)
+  }
+
+  _releaseEdge() {
+    const s = store()
+    const isHandyScript = s.provider === 'handy' && s.mode === 'funscript'
+
+    const rampSec = s.edgeRampBackSec
+    if (rampSec <= 0) {
+      this._edgeGate = 1
+      if (isHandyScript) this._handyEdgeHold()
+      useDeviceStore.setState({ edgeActive: false })
+      this._scheduleEdge()
+      return
+    }
+
+    // Ease output back up rather than snapping, so the return isn't a jolt.
+    const start = this._edgeGate
+    const t0    = Date.now()
+    clearInterval(this._edgeRampTimer)
+    this._edgeRampTimer = setInterval(() => {
+      const t = clamp((Date.now() - t0) / (rampSec * 1000), 0, 1)
+      this._edgeGate = start + (1 - start) * t
+      if (t >= 1) {
+        clearInterval(this._edgeRampTimer)
+        this._edgeRampTimer = null
+        this._edgeGate = 1
+      }
+    }, 100)
+
+    // One re-cut at the start of the ramp clears the flatlined points already
+    // on the device; from there each 250ms feed tick picks up the rising gate
+    // on its own, so the ramp costs no extra round-trips.
+    if (isHandyScript) this._handyEdgeHold()
+
+    useDeviceStore.setState({ edgeActive: false })
+    this._scheduleEdge()
+  }
+
+  // Credit every image currently on screen. Injected by the app at startup so
+  // the device service stays free of API and store imports.
+  _reportEdge() {
+    try { this._onEdge?.() } catch (_) {}
+  }
+
+  setEdgeReporter(fn) { this._onEdge = fn }
 
   // ── Funscript mode ──────────────────────────────────────────────────────────
 
@@ -668,7 +807,6 @@ class DeviceService {
     this._stopFunscriptPlayer()
     this._stopRamp()
     this._stopScheduler()
-    this._stopEdging()
     clearTimeout(this._cumTimer)
 
     useDeviceStore.setState({ mode: 'freestyle', activePresetId: `saved_${name}`, finisherActive: true })
@@ -720,7 +858,7 @@ class DeviceService {
     this._stopFunscriptPlayer()
     this._stopRamp()
     this._stopScheduler()
-    this._stopEdging()
+    this._stopEdgeMode()
     clearTimeout(this._cumTimer)
     this._finisherActive = false
     this._finisherPrev   = null
@@ -732,7 +870,7 @@ class DeviceService {
   // Unlike v2's fire-and-forget HDSP position commands, v3 wants a buffer of
   // future timestamped points streamed ahead of playback. We keep a target
   // position + speed (set by _sendLinearHandy, same call sites as before —
-  // patterns, funscript, ramp, scheduler, edging) and a 100ms tick timer
+  // patterns, funscript, ramp, scheduler, Edge Mode) and a 100ms tick timer
   // interpolates toward it, queuing points that get flushed to hsp/add in
   // small batches once enough have built up.
   _HANDY_LOOKAHEAD_MS = 900   // points are timestamped this far into the future
@@ -808,6 +946,7 @@ class DeviceService {
         status:  'connected',
         devices: [{ name: 'The Handy', index: 0, canLinear: true, canVibrate: false, outputTypes: ['HSP'] }],
       })
+      this.startEdgeMode()   // no-op unless Edge Mode was left armed
     } catch (err) {
       useDeviceStore.setState({ status: 'error', errorMsg: err.message, provider: null })
     }
@@ -823,7 +962,7 @@ class DeviceService {
   }
 
   // Sets the interpolation target — called from the same sites as before
-  // (pattern engine, funscript player, ramp mode, scheduler, edging assist).
+  // (pattern engine, funscript player, ramp mode, scheduler, Edge Mode).
   // The actual HTTP traffic happens on the tick timer, not here.
   _sendLinearHandy(posPercent, durationMs) {
     const { strokeFloor, strokeCeiling } = store()
@@ -920,7 +1059,6 @@ class DeviceService {
     const actions = this._getFunscriptAxes().L0
     if (!actions || !actions.length) return
     const offsetMs = store().funscriptOffsetMs || 0
-    const { strokeFloor, strokeCeiling } = store()
     const rate    = v.playbackRate || 1
     const anchor  = this._handyFsAnchor
     const HORIZON = 1500
@@ -934,15 +1072,46 @@ class DeviceService {
       const a = actions[this._handyFsIdx]
       const at = a.at + offsetMs
       if (at - anchor.videoMs > HORIZON) break
-      const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(a.pos, 0, 100) / 100)
       this._handyBuffer.push({
         t: Math.round(streamNow + (at - anchor.videoMs) / rate),
-        x: clamp(Math.round(limited), 0, 100),
+        x: this._handyScriptPos(a.pos),
       })
       this._handyFsIdx++
       queued++
     }
     if (queued > 0) this._handyFlushBuffer()
+  }
+
+  // Maps a raw script position through the stroke limiter and the Edge Mode
+  // gate. Damping is toward the centre of the limited window, so a closed gate
+  // parks the device mid-stroke rather than at an arbitrary end of it.
+  //
+  // Gating amplitude — rather than pausing the stream — is what makes Edge Mode
+  // work on a Handy without desyncing: the script keeps streaming in lockstep
+  // with the video the whole time, and only the size of the movement changes.
+  // A gate of 0 collapses every point to the midpoint, so the device holds
+  // still, and release resumes in perfect sync because the timeline was never
+  // interrupted.
+  _handyScriptPos(rawPos) {
+    const { strokeFloor, strokeCeiling } = store()
+    const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(rawPos, 0, 100) / 100)
+    const gate = this._edgeGate
+    if (gate >= 1) return clamp(Math.round(limited), 0, 100)
+    const mid = (strokeFloor + strokeCeiling) / 2
+    return clamp(Math.round(mid + (limited - mid) * gate), 0, 100)
+  }
+
+  // Called when the Edge Mode gate opens or closes during Handy funscript
+  // playback. Up to HORIZON ms of points are already sitting on the device at
+  // the previous amplitude, so without this the edge would take ~1.5s to bite
+  // (and just as long to let go). Drop them and re-queue from the current video
+  // position, reusing the same flush-and-restart path as a seek.
+  async _handyEdgeHold() {
+    if (!this._handyFsTimer) return
+    await this._handyFsResync()
+    // The feed's own skip loop re-advances this to the live video position.
+    this._handyFsIdx = 0
+    this._handyFsFeed()
   }
 
   // Discards queued points on the device and restarts the stream — used on seek,
@@ -961,7 +1130,6 @@ class DeviceService {
     if (!actions || !actions.length) return
 
     const offsetMs = store().funscriptOffsetMs || 0
-    const { strokeFloor, strokeCeiling } = store()
     const videoNow  = v.currentTime * 1000
     const rate      = v.playbackRate || 1
     const HORIZON   = 1500   // ms of script to stay ahead by
@@ -985,11 +1153,10 @@ class DeviceService {
       const a  = actions[this._handyFsIdx]
       const at = a.at + offsetMs
       if (at - videoNow > HORIZON) break
-      const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(a.pos, 0, 100) / 100)
       // Video time → stream time, relative to the anchor. Dividing by
       // playbackRate keeps the script aligned at non-1x speeds.
       const t = Math.round(streamNow + (at - anchor.videoMs) / rate)
-      this._handyBuffer.push({ t, x: clamp(Math.round(limited), 0, 100) })
+      this._handyBuffer.push({ t, x: this._handyScriptPos(a.pos) })
       this._handyFsIdx++
       queued++
     }
@@ -1070,6 +1237,7 @@ class DeviceService {
         serialPortInfo: portStr,
         devices: [{ name: 'FUNSR1 2.0 (Serial)', index: 0, canLinear: true, canVibrate: false, canMultiAxis: true, outputTypes: ['T-Code L0/L1/L2/R0/R1/R2'] }],
       })
+      this.startEdgeMode()   // no-op unless Edge Mode was left armed
     } catch (err) {
       useDeviceStore.setState({
         status:   'error',

@@ -11,9 +11,11 @@ from typing import Optional, List
 
 from database import get_db, _read_config
 from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
-from schemas import ImageOut, ImageUpdate, CumCountUpdate
+from schemas import ImageOut, ImageUpdate, CumCountUpdate, EdgeLogIn
 import services.gamification as gami
 from services import dedup as dedup_svc
+from services import edges as edges_svc
+from services import entity_stats
 
 router = APIRouter()
 
@@ -176,6 +178,8 @@ def list_images(
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
     sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
+    _seed: float = 0,  # stable shuffle seed for sort_by=random. float, because the
+                       # client seeds with Math.random(); scaled to an int below.
     tags: Optional[str] = None,  # comma-separated, AND logic
     skip: int = 0,
     limit: int = 200,
@@ -214,7 +218,18 @@ def list_images(
         asc = (use_asc if use_asc is not None else False)
         q = q.order_by(nullslast(Image.file_modified_at.asc() if asc else Image.file_modified_at.desc()))
     elif sort_by == "random":
-        q = q.order_by(func.random())
+        # A seeded shuffle keeps the order stable across refetches. Without it,
+        # any refetch (favouriting, rating, paging) re-rolls func.random() and
+        # the whole list jumps around under the user.
+        if _seed:
+            # Non-linear mix. A plain (id * seed) % prime stays monotonic while the
+            # product is below the prime, so low ids came out in plain id order.
+            # Offsetting into a high range and squaring makes it wrap and scatter.
+            _s = (int(abs(float(_seed)) * 1_000_000) % 99991) + 1
+            _b = (Image.id * _s + 54321) % 100003
+            q = q.order_by((_b * _b) % 100003, Image.id)
+        else:
+            q = q.order_by(func.random())
     elif sort_by == "filename":
         images = q.offset(skip).limit(limit).all()
         asc = (use_asc if use_asc is not None else True)
@@ -374,6 +389,25 @@ def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
     return {"cum_count": img.cum_count, "xp": xp}
 
 
+@router.get("/{image_id}/stats")
+def image_stats(image_id: int, db: Session = Depends(get_db)):
+    """Deep stats for a single photo or video."""
+    d = entity_stats.image_stats(db, image_id)
+    if d is None:
+        raise HTTPException(404, "Image not found")
+    return d
+
+
+@router.post("/edge")
+def log_edge(data: EdgeLogIn, db: Session = Depends(get_db)):
+    """Record one Edge Mode edge against everything that was on screen.
+
+    Batched deliberately: the multi-panel viewer can have half a dozen images
+    up at once, and one edge should be one round trip.
+    """
+    return edges_svc.log_edge(db, data.image_ids)
+
+
 @router.post("/{image_id}/tags/{tag_name}")
 def add_tag(image_id: int, tag_name: str, db: Session = Depends(get_db)):
     img = db.query(Image).filter(Image.id == image_id).first()
@@ -458,6 +492,23 @@ def clear_image_creators(image_id: int, db: Session = Depends(get_db)):
     db.execute(image_creators.delete().where(image_creators.c.image_id == image_id))
     db.commit()
     return {"cleared": image_id}
+
+
+@router.post("/bulk-clear-creators")
+def bulk_clear_image_creators(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Strip image-level creator assignments from many images at once.
+
+    Those images go back to inheriting whoever is on their gallery.
+    """
+    image_ids = [int(i) for i in (data.get("image_ids") or []) if i]
+    if not image_ids:
+        return {"updated": 0, "removed_links": 0}
+
+    removed = db.execute(
+        image_creators.delete().where(image_creators.c.image_id.in_(image_ids))
+    ).rowcount or 0
+    db.commit()
+    return {"updated": len(image_ids), "removed_links": removed}
 
 
 @router.get("/random/pick", response_model=ImageOut)

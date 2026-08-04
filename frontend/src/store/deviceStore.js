@@ -23,6 +23,37 @@ function _readCustomPattern() {
   } catch { return { ...DEFAULT_CUSTOM } }
 }
 
+// ── Edge Mode settings ────────────────────────────────────────────────────────
+export const EDGE_DEFAULTS = {
+  edgeModeEnabled:    false,
+  edgeIntervalMode:   'random',   // 'random' | 'fixed'
+  edgeIntervalMinSec: 60,         // 'fixed' uses the Min value
+  edgeIntervalMaxSec: 180,
+  edgeActionMode:     'stop',     // 'stop' | 'slow'
+  edgeSlowPercent:    30,         // output level during an edge when action = 'slow'
+  edgeDurationMode:   'random',
+  edgeDurationMinSec: 8,
+  edgeDurationMaxSec: 25,
+  edgeRampBackSec:    3,          // 0 = snap straight back to full output
+}
+
+function _readEdgeSettings() {
+  try {
+    const raw = localStorage.getItem('vault_edge_mode')
+    if (!raw) return {}
+    // Only known keys are adopted, so a stale blob can't inject junk into the store.
+    const parsed = JSON.parse(raw)
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([k]) => k in EDGE_DEFAULTS)
+    )
+  } catch { return {} }
+}
+
+function _persistEdgeSettings(state) {
+  const blob = Object.fromEntries(Object.keys(EDGE_DEFAULTS).map(k => [k, state[k]]))
+  try { localStorage.setItem('vault_edge_mode', JSON.stringify(blob)) } catch {}
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 export const useDeviceStore = create((set, get) => ({
 
@@ -167,20 +198,15 @@ export const useDeviceStore = create((set, get) => ({
   // ── Finisher (quick-override pattern) ───────────────────────────────────────
   // A saved pattern you can fire by hotkey or button to instantly override the
   // device — funscript, freestyle, whatever — and loop it until you stop.
-  // Persisted so the choice + key survive reloads. finisherActive mirrors the
-  // service flag for UI highlighting.
+  // Persisted so the choice survives reloads. finisherActive mirrors the
+  // service flag for UI highlighting. The key binding itself lives in the
+  // shared hotkey map (vault store) — see Settings → Hotkeys.
   finisherPatternName: localStorage.getItem('vault_finisher_pattern') || '',
-  finisherHotkey:      localStorage.getItem('vault_finisher_hotkey')  || '',
   finisherActive:      false,
   setFinisherPattern: (name) => {
     const v = name || ''
     try { localStorage.setItem('vault_finisher_pattern', v) } catch {}
     set({ finisherPatternName: v })
-  },
-  setFinisherHotkey: (key) => {
-    const v = key || ''
-    try { localStorage.setItem('vault_finisher_hotkey', v) } catch {}
-    set({ finisherHotkey: v })
   },
 
   // ── Ramp mode ───────────────────────────────────────────────────────────────
@@ -213,14 +239,55 @@ export const useDeviceStore = create((set, get) => ({
   }),
   setSchedulerStep: (i) => set({ schedulerStep: i }),
 
-  // ── Edging assist ───────────────────────────────────────────────────────────
-  edgingEnabled:         false,
-  edgingPeakSeconds:     20,    // seconds at peak before auto-drop
-  edgingDropPreset:      'tease',
-  edgingBuildBackSeconds: 60,   // seconds to ramp back up after drop
+  // ── Edge Mode ───────────────────────────────────────────────────────────────
+  // Replaces the old preset-swapping "edging assist". Edge Mode arms a timer
+  // that periodically cuts or damps device output for a while, then releases.
+  // It is deliberately mode-agnostic — it gates output at the send layer, so it
+  // works in freestyle, funscript, ramp and scheduler alike.
+  //
+  // Settings persist as one blob; runtime fields below do not.
+  ...EDGE_DEFAULTS,
+  ..._readEdgeSettings(),
 
-  setEdgingEnabled:          (v) => set({ edgingEnabled: v }),
-  setEdgingPeakSeconds:      (v) => set({ edgingPeakSeconds: Math.max(5, v) }),
-  setEdgingDropPreset:       (v) => set({ edgingDropPreset: v }),
-  setEdgingBuildBackSeconds: (v) => set({ edgingBuildBackSeconds: Math.max(10, v) }),
+  // Runtime (not persisted)
+  edgeActive:       false,   // true while output is cut/damped
+  edgeNextAt:       null,    // epoch ms of the next scheduled edge, for countdowns
+  edgeSessionCount: 0,       // edges fired since Edge Mode was last armed
+
+  setEdgeModeEnabled: (v) => {
+    set({ edgeModeEnabled: !!v })
+    _persistEdgeSettings(get())
+  },
+  // Generic setter for the numeric/enum settings — keeps the UI simple and
+  // means adding a knob needs no new store action.
+  setEdgeSetting: (key, value) => {
+    if (!(key in EDGE_DEFAULTS)) return
+    set({ [key]: value })
+    const s = get()
+    // Keep min <= max for both ranges regardless of which handle moved.
+    if (key === 'edgeIntervalMinSec' && s.edgeIntervalMaxSec < value) set({ edgeIntervalMaxSec: value })
+    if (key === 'edgeIntervalMaxSec' && s.edgeIntervalMinSec > value) set({ edgeIntervalMinSec: value })
+    if (key === 'edgeDurationMinSec' && s.edgeDurationMaxSec < value) set({ edgeDurationMaxSec: value })
+    if (key === 'edgeDurationMaxSec' && s.edgeDurationMinSec > value) set({ edgeDurationMinSec: value })
+    _persistEdgeSettings(get())
+  },
+
+  // Called by the device service as the engine runs.
+  setEdgeRuntime: (patch) => set(patch),
+
+  // Resolved interval / hold length for the next edge, honouring fixed vs random.
+  rollEdgeInterval: () => {
+    const s = get()
+    if (s.edgeIntervalMode === 'fixed') return s.edgeIntervalMinSec
+    const lo = Math.min(s.edgeIntervalMinSec, s.edgeIntervalMaxSec)
+    const hi = Math.max(s.edgeIntervalMinSec, s.edgeIntervalMaxSec)
+    return lo + Math.random() * (hi - lo)
+  },
+  rollEdgeDuration: () => {
+    const s = get()
+    if (s.edgeDurationMode === 'fixed') return s.edgeDurationMinSec
+    const lo = Math.min(s.edgeDurationMinSec, s.edgeDurationMaxSec)
+    const hi = Math.max(s.edgeDurationMinSec, s.edgeDurationMaxSec)
+    return lo + Math.random() * (hi - lo)
+  },
 }))

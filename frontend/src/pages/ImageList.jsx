@@ -7,7 +7,7 @@ import {
   ZoomIn, ZoomOut, Maximize, Minimize, Images as ImagesIcon,
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
-  CheckSquare, Square, UserPlus, Check, Trash2, LayoutTemplate, GripHorizontal,
+  CheckSquare, Square, UserPlus, UserX, Check, Trash2, LayoutTemplate, GripHorizontal,
   FolderOpen, Zap, FolderOutput, FolderInput, Copy,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
@@ -15,6 +15,7 @@ import ImageContextMenu from '../components/ImageContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import GalleryPagination from '../components/GalleryPagination'
 import TagAutocompleteInput from '../components/TagAutocompleteInput'
+import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -27,6 +28,7 @@ import { SortDropdown } from '../components/SortDropdown'
 import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useT } from '../i18n'
+import { useSession } from '../hooks/useSession'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -247,14 +249,20 @@ function ImageViewer({ images, startIdx, onClose }) {
   const isFullscreenRef   = useRef(false)
   const videoPlayerRef    = useRef(null)
   const funscriptInputRef = useRef(null)
-  const sessionActive = useVaultStore(s => s.sessionActive)
-  const startSession = useVaultStore(s => s.startSession)
-  const endSession = useVaultStore(s => s.endSession)
   const addXpToast = useVaultStore(s => s.addXpToast)
+  const registerVisible   = useVaultStore(s => s.registerVisible)
+  const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const { sessionActive, startSession, finishSession } = useSession()
   const qc = useQueryClient()
   const t = useT()
 
   const image = images[idx]
+
+  // Tell the app what's on screen so ending a session credits it.
+  useEffect(() => {
+    if (image?.id) registerVisible('viewer', image.id)
+  }, [image?.id, registerVisible])
+  useEffect(() => () => unregisterVisible('viewer'), [unregisterVisible])
 
   useEffect(() => {
     if (!image) return
@@ -311,12 +319,42 @@ function ImageViewer({ images, startIdx, onClose }) {
     filmstripTimer.current = setTimeout(() => setShowFilmstrip(false), 2000)
   }, [])
 
-  // Slideshow
+  // Warm the neighbouring full-size files so stepping through (or a slideshow
+  // advancing) doesn't stall on a fresh download each time. Large GIFs benefit
+  // most — by the time the slide changes the bytes are already cached.
   useEffect(() => {
-    if (!slideshowActive) return
-    const id = setInterval(() => setIdx(i => (i + 1) % images.length), slideshowSpeed * 1000)
-    return () => clearInterval(id)
-  }, [slideshowActive, slideshowSpeed, images.length])
+    if (!images?.length) return
+    const preload = []
+    for (const n of [idx + 1, idx - 1]) {
+      const nb = images[n]
+      if (!nb || nb.is_video) continue
+      const im = new Image()
+      im.decoding = 'async'
+      im.src = `/api/images/${nb.id}/file`
+      preload.push(im)
+    }
+    return () => preload.forEach(im => { im.src = '' })
+  }, [images, idx])
+
+  // Slideshow — armed per slide rather than on a fixed interval, because how
+  // long a slide should stay up depends on what it is:
+  //   · video → no timer at all; it advances from onEnded once it has played out
+  //   · animated GIF → held for at least one full loop, so it isn't cut mid-animation
+  //   · still image → the configured speed
+  useEffect(() => {
+    if (!slideshowActive || !images?.length || images.length <= 1) return
+    const cur = images[idx]
+    if (!cur) return
+    // Videos advance from onEnded; the watchdog only rescues one that can't play.
+    if (cur.is_video) return armVideoWatchdog({ onFire: () => setIdx(i => (i + 1) % images.length) })
+
+    return armSlideTimer({
+      url: `/api/images/${cur.id}/file`,
+      animated: isGif(cur.filename || cur.file_path),
+      baseSecs: slideshowSpeed,
+      onFire: () => setIdx(i => (i + 1) % images.length),
+    })
+  }, [slideshowActive, slideshowSpeed, images, idx])
 
   // Keyboard nav
   useEffect(() => {
@@ -487,6 +525,11 @@ function ImageViewer({ images, startIdx, onClose }) {
               videoPan={pan}
               isFullscreen={isFullscreen}
               showControls={showFilmstrip}
+              // During a slideshow the video is what decides when to move on —
+              // the slide timer deliberately doesn't run for videos.
+              onEnded={slideshowActive && images.length > 1
+                ? () => setIdx(i => (i + 1) % images.length)
+                : undefined}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -522,10 +565,16 @@ function ImageViewer({ images, startIdx, onClose }) {
                   transformOrigin: 'center center',
                   transition: dragging ? 'none' : 'transform 0.15s ease',
                   userSelect: 'none',
-                  opacity: fullLoaded ? 1 : 0,
+                  // Browsers paint GIF frames as they stream in, but `onLoad`
+                  // only fires once the whole file has arrived — so hiding the
+                  // element until then is what made big GIFs sit blurred for
+                  // seconds. Show GIFs immediately and let them paint over the
+                  // blurred thumb; other formats keep the clean swap.
+                  opacity: (fullLoaded || isGif(image.filename || image.file_path)) ? 1 : 0,
                   zIndex: 1,
                   position: 'relative',
                 }}
+                decoding="async"
                 onLoad={() => setFullLoaded(true)}
                 onError={e => { e.currentTarget.style.opacity = '0.3'; setFullLoaded(true) }}
                 onDoubleClick={e => { e.stopPropagation(); isZoomed ? resetZoom() : setZoom(2.5) }}
@@ -739,14 +788,8 @@ function ImageViewer({ images, startIdx, onClose }) {
         {/* Actions */}
         <div className="p-3 flex flex-col gap-2">
           <button onMouseDown={() => {
-            if (sessionActive) {
-              const elapsed = endSession()
-              sessionMutation.mutate({ duration_sec: Math.floor(elapsed / 1000) })
-              toast.success(t('Session stopped'))
-            } else {
-              startSession()
-              toast.success(t('Session started ❤️'))
-            }
+            if (sessionActive) finishSession({ imageId: image.id, galleryId: image.gallery_id })
+            else               startSession()
           }}
             className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer"
             style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
@@ -1041,6 +1084,36 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
     onError: () => toast.error(t('Assignment failed'))
   })
 
+  // Mirrors Assign, which also works on the selected images' galleries — so
+  // this clears the gallery-level creators AND any image-level overrides.
+  // The toast spells out what was touched, because "8 images selected" quietly
+  // meaning "8 whole galleries" would otherwise be a nasty surprise.
+  const [clearing, setClearing] = useState(false)
+  const handleClearCreators = async () => {
+    setClearing(true)
+    try {
+      const [gRes, iRes] = await Promise.all([
+        selectedGalleryIds.length ? galleriesApi.bulkClearCreators(selectedGalleryIds) : Promise.resolve({ data: { updated: 0 } }),
+        imagesApi.bulkClearCreators(selectedImages.map(i => i.id)),
+      ])
+      const g = gRes.data.updated || 0
+      const i = iRes.data.removed_links || 0
+      if (g || i) {
+        toast.success(`Cleared creators from ${g} ${g === 1 ? 'gallery' : 'galleries'}`
+                      + (i ? ` and ${i} per-photo assignment${i === 1 ? '' : 's'}` : ''))
+      } else {
+        toast(t('Nothing to clear — none of those had a creator'))
+      }
+      qc.invalidateQueries({ queryKey: ['images-list'] })
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      onDone()
+    } catch {
+      toast.error(t('Could not clear creators'))
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const handleSendToViewer = () => {
     let added = 0, skipped = 0
     toast(t('Adding media...'), { icon: '⏳', id: 'bulk-add' })
@@ -1111,6 +1184,14 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
         <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning…') : t('Assign')}
+      </button>
+      <button type="button"
+        onMouseDown={() => { if (!clearing && !working) handleClearCreators() }}
+        disabled={clearing || working}
+        title={t("Remove every creator from the selected photos' galleries")}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+        style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+        <UserX size={12} /> {clearing ? t('Clearing…') : t('Clear all')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />

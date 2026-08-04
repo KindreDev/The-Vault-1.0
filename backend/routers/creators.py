@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, select, union, or_
@@ -7,6 +7,7 @@ from PIL import Image as PILImage
 from io import BytesIO
 import httpx
 import re
+import statistics
 import uuid
 import os
 
@@ -18,6 +19,7 @@ from models import (
 )
 from schemas import CreatorCreate, CreatorUpdate, CreatorOut
 import services.gamification as gami
+from services import ranking
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 
@@ -57,12 +59,28 @@ def _enrich(c: Creator, db: Session) -> dict:
           .join(all_ids_sq2, Image.id == all_ids_sq2.c.id)
           .scalar() or 0
     )
+    # "Total views" means exactly that: every gallery open PLUS every photo and
+    # video view. Kept split so callers can show the breakdown.
+    all_ids_sq2b = union(gallery_img_ids, file_img_ids).subquery()
+    d["image_views"] = (
+        db.query(func.sum(Image.view_count))
+          .join(all_ids_sq2b, Image.id == all_ids_sq2b.c.id)
+          .scalar() or 0
+    )
+    d["gallery_views"] = (
+        db.query(func.sum(Gallery.view_count))
+          .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+          .filter(gallery_creators.c.creator_id == c.id)
+          .scalar() or 0
+    )
+    d["total_views"] = int(d["image_views"]) + int(d["gallery_views"])
     # Extra stats: video count, total cum count, total file size
     all_ids_sq3 = union(gallery_img_ids, file_img_ids).subquery()
     img_stats = (
         db.query(
             func.sum(case((Image.is_video == True, 1), else_=0)).label("video_count"),
             func.sum(Image.cum_count).label("cum_count"),
+            func.sum(Image.edge_count).label("edge_count"),
             func.sum(Image.file_size).label("total_bytes"),
         )
         .join(all_ids_sq3, Image.id == all_ids_sq3.c.id)
@@ -70,6 +88,7 @@ def _enrich(c: Creator, db: Session) -> dict:
     )
     d["video_count"] = int(img_stats.video_count or 0)
     d["cum_count"]   = int(img_stats.cum_count or 0)
+    d["edge_count"]  = int(img_stats.edge_count or 0)
     # file_size is null for images scanned before that column existed — fall back to os.stat
     db_bytes = img_stats.total_bytes or 0
     if db_bytes == 0:
@@ -125,6 +144,7 @@ def _compute_rarity(image_count: int, rating: float = 0.0, session_count: int = 
 
 @router.get("/", response_model=List[CreatorOut])
 def list_creators(
+    response: Response,
     db: Session = Depends(get_db),
     creator_type: Optional[str] = None,
     favorite: Optional[bool] = None,
@@ -153,6 +173,10 @@ def list_creators(
     if series:
         q = q.filter(Creator.series.ilike(f"%{series}%"))
 
+    # Total count under the current filters, exposed so the frontend can
+    # compute the real last page instead of guessing with a fixed window.
+    response.headers["X-Total-Count"] = str(q.order_by(None).count())
+
     # Sorting — sort_dir overrides default direction per column
     use_asc = None
     if sort_dir == "asc":
@@ -169,14 +193,17 @@ def list_creators(
         asc_dir = use_asc if use_asc is not None else False
         q = q.order_by(col.asc() if asc_dir else col.desc())
     elif sort_by == "image_count":
-        # Sum of Gallery.image_count per creator_id (via direct FK, not join table)
+        # Sum of Gallery.image_count per creator, via the gallery_creators M2M join
+        # table — matches how image_count is actually computed for display below
+        # (galleries are assigned to creators through this table, not the legacy
+        # Gallery.creator_id FK, which is stale/unpopulated for most galleries).
         img_subq = (
             db.query(
-                Gallery.creator_id.label("creator_id"),
+                gallery_creators.c.creator_id.label("creator_id"),
                 func.sum(Gallery.image_count).label("total_images")
             )
-            .filter(Gallery.creator_id.isnot(None))
-            .group_by(Gallery.creator_id)
+            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+            .group_by(gallery_creators.c.creator_id)
             .subquery()
         )
         q = q.outerjoin(img_subq, Creator.id == img_subq.c.creator_id)
@@ -193,14 +220,15 @@ def list_creators(
             Creator.name
         )
     elif sort_by == "cum_count":
-        # Sum of Gallery.cum_count per creator_id (via direct FK, not join table)
+        # Sum of Gallery.cum_count per creator, via the gallery_creators M2M join
+        # table — same reasoning as the image_count sort above.
         cum_subq = (
             db.query(
-                Gallery.creator_id.label("creator_id"),
+                gallery_creators.c.creator_id.label("creator_id"),
                 func.sum(Gallery.cum_count).label("total_cums")
             )
-            .filter(Gallery.creator_id.isnot(None))
-            .group_by(Gallery.creator_id)
+            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+            .group_by(gallery_creators.c.creator_id)
             .subquery()
         )
         q = q.outerjoin(cum_subq, Creator.id == cum_subq.c.creator_id)
@@ -377,77 +405,31 @@ def creator_distribution(db: Session = Depends(get_db)):
 
 
 @router.get("/hall-of-fame")
-def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5):
-    """Creators ranked by composite engagement score:
-       view_seconds + (cum_count × 120) + (session_count × 300) + (view_count × 5)
-    This reflects genuine time spent, not just page-open frequency.
-    """
-    from sqlalchemy import func as sqlfunc
-
-    # Fetch ALL creators that have at least one assigned gallery — no limit yet,
-    # because we need to score everything before taking the top N.
-    rows = (
-        db.query(
-            Creator,
-            sqlfunc.sum(Gallery.view_count).label("total_views"),
-            sqlfunc.sum(Gallery.cum_count).label("total_cum"),
-        )
-          .join(gallery_creators, gallery_creators.c.creator_id == Creator.id)
-          .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-          .group_by(Creator.id)
-          .all()
-    )
-    if not rows:
+def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: int = 0):
+    """Creators ranked by composite engagement score — see services/ranking.py
+    for the formula. Scoring lives there so this endpoint and the per-creator
+    stats endpoint can never disagree about a creator's rank again."""
+    scores = ranking.score_all_creators(db)
+    order  = ranking.ranked_creator_ids(scores)
+    if not order:
         return []
 
-    creator_ids = [c.id for c, _, _ in rows]
+    # Movement is computed over the FULL ranking, not just the page being
+    # returned, so "dropped 10 places" is true globally.
+    deltas = ranking.apply_rank_movement(db, "creator", order)
 
-    # Batch: sum image view_seconds per creator
-    view_secs_rows = (
-        db.query(gallery_creators.c.creator_id, sqlfunc.sum(Image.view_seconds))
-          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
-          .filter(gallery_creators.c.creator_id.in_(creator_ids))
-          .group_by(gallery_creators.c.creator_id)
-          .all()
-    )
-    view_secs_map = {cid: int(secs or 0) for cid, secs in view_secs_rows}
-
-    # Batch: count logged sessions per creator
-    session_rows = (
-        db.query(SessionLog.creator_id, sqlfunc.count(SessionLog.id))
-          .filter(SessionLog.creator_id.in_(creator_ids))
-          .group_by(SessionLog.creator_id)
-          .all()
-    )
-    session_map = {cid: int(cnt or 0) for cid, cnt in session_rows}
-
-    # Score, sort in Python, take top N
-    def _score(total_views, total_cum, view_secs, sessions):
-        return (
-            view_secs
-            + int(total_cum or 0) * 120
-            + sessions * 300
-            + int(total_views or 0) * 5
-        )
-
-    scored = sorted(
-        rows,
-        key=lambda r: _score(r[1], r[2],
-                              view_secs_map.get(r[0].id, 0),
-                              session_map.get(r[0].id, 0)),
-        reverse=True,
-    )[:limit]
-
+    # offset lets the "know more" list page through the whole ranking while
+    # keeping each entry's true global rank.
     out = []
-    for creator, total_views, total_cum in scored:
-        view_secs = view_secs_map.get(creator.id, 0)
-        sessions  = session_map.get(creator.id, 0)
+    for rank, cid in enumerate(order[offset:offset + limit], start=offset + 1):
+        creator = db.query(Creator).filter(Creator.id == cid).first()
+        if not creator:
+            continue
         d = _enrich(creator, db)
-        d["total_views"]        = int(total_views or 0)
-        d["total_cum"]          = int(total_cum or 0)
-        d["total_view_seconds"] = view_secs
-        d["session_count"]      = sessions
-        d["hof_score"]          = _score(total_views, total_cum, view_secs, sessions)
+        d.update(scores[cid])
+        d["hof_score"]    = scores[cid]["score"]
+        d["rank"]         = rank
+        d["rank_change"]  = deltas.get(cid, 0)
         out.append(d)
     return out
 
@@ -557,7 +539,21 @@ async def jikan_search(q: str, limit: int = 8):
                 "https://api.jikan.moe/v4/characters",
                 params={"q": q.strip(), "limit": limit, "order_by": "favorites", "sort": "desc"},
             )
+        # Without this an upstream failure (504 when MyAnimeList is unreachable,
+        # 429 when rate-limited) parses to a body with no "data" key and returns
+        # an empty list — indistinguishable from "no character matched", which
+        # makes an outage look like a broken search box.
+        resp.raise_for_status()
         data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code == 429:
+            raise HTTPException(429, "MyAnimeList search is rate-limited — wait a few seconds and try again")
+        raise HTTPException(
+            503,
+            "MyAnimeList character search is unavailable right now "
+            f"(Jikan returned {code}). This is upstream — try again later.",
+        )
     except Exception:
         raise HTTPException(503, "Jikan API unavailable")
 
@@ -1242,8 +1238,29 @@ def creator_stats(creator_id: int, db: Session = Depends(get_db)):
         .join(sq, Image.id == sq.c.id)
         .one()
     )
-    d["total_views"]          = int(agg.views or 0)
+    # This aggregate covers images only. Keep "total views" meaning gallery
+    # opens PLUS media views — gallery_views is already set by _enrich above.
+    d["image_views"]          = int(agg.views or 0)
+    d["total_views"]          = int(agg.views or 0) + int(d.get("gallery_views") or 0)
     d["total_runtime_sec"]    = int(agg.runtime or 0)
+
+    # How much of her video runtime we actually know. Duration is only probed at
+    # scan time and that probe post-dates most of the library, so this is near
+    # zero for older collections — the UI needs to know not to present a
+    # meaningless total as fact.
+    sq_r = _creator_image_ids_subq(creator_id)
+    vid = (
+        db.query(func.count(Image.id).label("n"),
+                 func.sum(case((Image.duration > 0, 1), else_=0)).label("n_known"),
+                 func.sum(Image.view_seconds).label("watched"))
+          .join(sq_r, Image.id == sq_r.c.id)
+          .filter(Image.is_video == True)  # noqa: E712
+          .one()
+    )
+    d["video_count_total"]     = int(vid.n or 0)
+    d["video_count_known_len"] = int(vid.n_known or 0)
+    # The stat people actually mean by "how long have I watched her videos".
+    d["video_watch_seconds"]   = int(vid.watched or 0)
     d["avg_image_rating"]     = round(float(agg.avg_rating), 2) if agg.avg_rating else 0.0
     d["rated_image_count"]    = int(agg.rated or 0)
     d["favorite_image_count"] = int(agg.favs or 0)
@@ -1278,34 +1295,47 @@ def creator_stats(creator_id: int, db: Session = Depends(get_db)):
     d["avg_gallery_rating"] = round(float(gstats[0]), 2) if gstats[0] else 0.0
     gallery_count = int(d.get("gallery_count") or 0)
     cum_count     = int(d.get("cum_count") or 0)
+    edge_count    = int(d.get("edge_count") or 0)
     view_secs     = int(d.get("total_view_seconds") or 0)
 
     # ── Engagement ratios (the degenerate KPIs) ─────────────────────────────────
     d["os_per_gallery"]    = round(cum_count / gallery_count, 2) if gallery_count else 0.0
     d["views_per_gallery"] = round(d["total_views"] / gallery_count, 1) if gallery_count else 0.0
     d["os_per_hour"]       = round(cum_count / (view_secs / 3600), 2) if view_secs else 0.0
+    # How many times she made you pull back for each finish.
+    d["edges_per_cum"]     = round(edge_count / cum_count, 1) if cum_count else 0.0
+    d["edges_per_hour"]    = round(edge_count / (view_secs / 3600), 2) if view_secs else 0.0
 
     # Share of your entire lifetime attention
     prof = db.query(UserProfile).first()
     total_cum_all = int(prof.total_cum_count or 0) if prof else 0
+    total_edge_all = int(prof.total_edge_count or 0) if prof else 0
     total_secs_all = int(db.query(func.sum(Image.view_seconds)).scalar() or 0)
     d["share_of_total_cum"]  = round(100 * cum_count / total_cum_all, 1) if total_cum_all else 0.0
+    d["share_of_total_edges"] = round(100 * edge_count / total_edge_all, 1) if total_edge_all else 0.0
     d["share_of_total_time"] = round(100 * view_secs / total_secs_all, 1) if total_secs_all else 0.0
 
     # ── Standout media (ids + thumbs) ───────────────────────────────────────────
     def _top_image(order_col):
         sqi = _creator_image_ids_subq(creator_id)
-        row = (db.query(Image.id, Image.filename, Image.cum_count, Image.view_count,
-                        Image.rating, Image.gallery_id, Image.is_video)
+        row = (db.query(Image.id, Image.filename, Image.cum_count, Image.edge_count,
+                        Image.view_count, Image.rating, Image.gallery_id, Image.is_video)
                  .join(sqi, Image.id == sqi.c.id)
                  .order_by(order_col.desc())
                  .first())
-        if not row or (order_col is Image.cum_count and (row.cum_count or 0) == 0):
+        if not row:
+            return None
+        # A "top" image with a zero count is just the arbitrary first row.
+        if order_col is Image.cum_count and (row.cum_count or 0) == 0:
+            return None
+        if order_col is Image.edge_count and (row.edge_count or 0) == 0:
             return None
         return {"id": row.id, "filename": row.filename, "cum_count": row.cum_count,
+                "edge_count": row.edge_count,
                 "view_count": row.view_count, "rating": row.rating,
                 "gallery_id": row.gallery_id, "is_video": bool(row.is_video)}
     d["most_gooned_image"] = _top_image(Image.cum_count)
+    d["most_edged_image"]  = _top_image(Image.edge_count)
     d["most_viewed_image"] = _top_image(Image.view_count)
 
     top_gallery = (
@@ -1430,31 +1460,27 @@ def creator_stats(creator_id: int, db: Session = Depends(get_db)):
         CompanionMessage.persona_id == creator_id
     ).count()
 
-    # ── Rank among all creators (same composite score as the HoF list) ──────────
-    score_rows = (
-        db.query(
-            gallery_creators.c.creator_id,
-            func.sum(Gallery.view_count),
-            func.sum(Gallery.cum_count),
-        )
-        .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-        .group_by(gallery_creators.c.creator_id).all()
-    )
-    vs_rows = (
-        db.query(gallery_creators.c.creator_id, func.sum(Image.view_seconds))
-          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
-          .group_by(gallery_creators.c.creator_id).all()
-    )
-    vs_map = {cid: int(s or 0) for cid, s in vs_rows}
-    se_rows = (
-        db.query(SessionLog.creator_id, func.count(SessionLog.id))
-          .group_by(SessionLog.creator_id).all()
-    )
-    se_map = {cid: int(n or 0) for cid, n in se_rows}
-    def _score(cid, v, cm):
-        return vs_map.get(cid, 0) + int(cm or 0) * 120 + se_map.get(cid, 0) * 300 + int(v or 0) * 5
-    all_scores = sorted(((_score(cid, v, cm), cid) for cid, v, cm in score_rows), reverse=True)
-    d["total_creators"] = len(all_scores)
-    d["rank"] = next((i + 1 for i, (_, cid) in enumerate(all_scores) if cid == creator_id), None)
+    # ── Rank among all creators ────────────────────────────────────────────────
+    # Uses the SAME scoring service as /hall-of-fame. This block used to carry
+    # its own copy of the formula, which drifted and made a creator's modal
+    # disagree with her position in the Hall of Fame.
+    scores = ranking.score_all_creators(db)
+    order  = ranking.ranked_creator_ids(scores)
+    d["total_creators"] = len(order)
+    d["rank"] = (order.index(creator_id) + 1) if creator_id in order else None
+
+    mine = scores.get(creator_id)
+    if mine:
+        d["hof_score"]         = mine["score"]
+        d["avg_dwell_seconds"] = mine["avg_dwell_seconds"]
+        d["engagement_factor"] = mine["engagement_factor"]
+        d["median_dwell"]      = scores["_median_dwell"]
+        # What the leader has, so the modal can say what it would take to pass her.
+        if order:
+            leader = order[0]
+            d["leader_name"]  = (db.query(Creator.name).filter(Creator.id == leader).scalar()
+                                 if leader != creator_id else None)
+            d["leader_score"] = scores[leader]["score"]
+            d["points_to_first"] = max(0, scores[leader]["score"] - mine["score"])
 
     return d

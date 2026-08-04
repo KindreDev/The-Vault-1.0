@@ -1265,15 +1265,26 @@ export default function MultiPanel() {
                 })
               })
 
+              // Everything actually on the panel wall right now. The orgasm is
+              // credited to all of it, but only once toward XP and the lifetime
+              // total — the skip_xp entries below don't count it again.
+              // true = also credit the previous shot on each panel.
+              const visibleIds = useVaultStore.getState().getOrgasmImageIds(true)
+
               if (sessionsToLog.length === 0) {
-                sessionMutation.mutate({ duration_sec: dur })
+                sessionMutation.mutate({ duration_sec: dur, image_ids: visibleIds })
               } else {
                 // First entry gets XP; the rest are logged silently with skip_xp
                 sessionsToLog.forEach((s, i) => {
-                  sessionMutation.mutate({ duration_sec: dur, ...s, skip_xp: i > 0 })
+                  sessionMutation.mutate({
+                    duration_sec: dur, ...s, skip_xp: i > 0,
+                    ...(i === 0 ? { image_ids: visibleIds } : {}),
+                  })
                 })
               }
-              toast.success('Session logged ❤️')
+              toast.success(visibleIds.length
+                ? `💦 Session logged · counted on ${visibleIds.length} ${visibleIds.length === 1 ? 'file' : 'files'}`
+                : 'Session logged ❤️')
             } else {
               startSession()
               toast.success('Session started ❤️')

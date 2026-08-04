@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Crown, Clock, Droplets, Eye, Images, Film, Camera, Star, Heart,
   Tag as TagIcon, Sparkles, TrendingUp, Calendar, HardDrive, Layers,
-  MessageCircle, Gift, ArrowUpRight,
+  MessageCircle, Gift, ArrowUpRight, Waves,
 } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
 import BondHearts, { BOND_TIERS } from './BondHearts'
@@ -231,12 +231,25 @@ function StatsBody({ d, onNavigate, onClose }) {
                   {num(d.cum_count)}
                 </span>
               </div>
+              {d.edge_count > 0 && (
+                <div className="flex flex-col">
+                  <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
+                    <Waves size={15} /> Edges
+                  </span>
+                  <span style={{ fontSize: 34, fontWeight: 800, color: '#A89FE8', lineHeight: 1.1 }}>
+                    {num(d.edge_count)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', maxWidth: 640, lineHeight: 1.5 }}>
               In your collection for <b style={{ color: 'rgba(255,255,255,0.85)' }}>{num(d.days_in_collection)} days</b> (since {fmtDate(d.first_media_at)}).
               She holds <b style={{ color: '#CECBF6' }}>{d.share_of_total_time}%</b> of all your viewing time
-              and <b style={{ color: '#ED93B1' }}>{d.share_of_total_cum}%</b> of your lifetime Os.
+              and <b style={{ color: '#ED93B1' }}>{d.share_of_total_cum}%</b> of your lifetime Os
+              {d.edge_count > 0 && (
+                <> — plus <b style={{ color: '#A89FE8' }}>{d.share_of_total_edges}%</b> of every edge you've held</>
+              )}.
             </div>
 
             {!d.bond_excluded && (
@@ -258,9 +271,24 @@ function StatsBody({ d, onNavigate, onClose }) {
             <Stat label="Galleries" value={num(d.gallery_count)} />
             <Stat label="Photos" value={num(d.photo_count)} />
             <Stat label="Videos" value={num(d.video_count)} />
-            <Stat label="Total views" value={num(d.total_views)} />
+            <Stat label="Total views" value={num(d.total_views)}
+                  sub={`${num(d.image_views)} media · ${num(d.gallery_views)} gallery`} />
             <Stat label="On disk" value={`${d.total_size_gb ?? 0} GB`} />
-            <Stat label="Video runtime" value={fmtDuration(d.total_runtime_sec)} />
+            {/* Time actually spent watching — what people read "video runtime"
+                as meaning, and unlike runtime it's accurate today. */}
+            <Stat label="Time on videos" value={fmtDuration(d.video_watch_seconds) || '—'} accent="#9F99E8" />
+            {/* Runtime is the combined length of her video files. It's only
+                known for videos scanned since the duration probe existed, so
+                say so rather than presenting a fraction as the total. */}
+            <Stat
+              label="Video runtime"
+              value={d.video_count_known_len > 0 ? fmtDuration(d.total_runtime_sec) : '—'}
+              sub={
+                d.video_count_total > 0 && d.video_count_known_len < d.video_count_total
+                  ? `length known for ${d.video_count_known_len}/${d.video_count_total}`
+                  : undefined
+              }
+            />
           </div>
         </Panel>
 
@@ -274,7 +302,36 @@ function StatsBody({ d, onNavigate, onClose }) {
             <Stat label="Share of your Os" value={`${d.share_of_total_cum ?? 0}%`} accent="#ED93B1" />
             <Stat label="Share of your time" value={`${d.share_of_total_time ?? 0}%`} accent="#CECBF6" />
             <Stat label="Sessions logged" value={num(d.session_count)} />
+            {d.edge_count > 0 && <>
+              <Stat label="Edges / hour" value={d.edges_per_hour ?? 0} accent="#A89FE8" />
+              <Stat label="Edges per O" value={d.edges_per_cum ? `${d.edges_per_cum}×` : '—'} accent="#A89FE8" />
+              <Stat label="Share of your edges" value={`${d.share_of_total_edges ?? 0}%`} accent="#A89FE8" />
+            </>}
+            {d.avg_dwell_seconds > 0 && <>
+              <Stat label="Seconds per photo" value={`${d.avg_dwell_seconds}s`} accent="#9FE1CB"
+                    sub={d.median_dwell ? `you average ${d.median_dwell}s` : undefined} />
+              <Stat label="Attention multiplier" value={`×${d.engagement_factor ?? 1}`} accent="#9FE1CB"
+                    sub="applied to her ranking" />
+            </>}
+            <Stat label="Hall of Fame score" value={num(d.hof_score)} accent="#FAC775"
+                  sub={`#${d.rank ?? '—'} of ${num(d.total_creators)}`} />
           </div>
+
+          {/* What it would take to reach #1 — the league-table question */}
+          {d.points_to_first > 0 && d.leader_name && (
+            <div className="rounded-[10px] px-4 py-3 mb-3"
+                 style={{ background: 'rgba(250,199,117,0.07)', border: '0.5px solid rgba(250,199,117,0.22)' }}>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                {/* Her attention multiplier scales everything she earns, so the
+                    raw gap has to be divided by it before converting to Os or
+                    hours — otherwise this overstates the work by ~50%. */}
+                <b style={{ color: '#FAC775' }}>{num(d.points_to_first)} points</b> behind {d.leader_name}. That's
+                roughly <b style={{ color: '#FAC775' }}>{Math.ceil(d.points_to_first / (120 * (d.engagement_factor || 1)))} more Os</b>,
+                or <b style={{ color: '#FAC775' }}>{fmtDuration(Math.ceil(d.points_to_first / (d.engagement_factor || 1)))}</b> more
+                time spent with her.
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             {d.most_gooned_image && (
               <Standout label="Most-gooned shot" accent="#ED93B1"
@@ -282,6 +339,13 @@ function StatsBody({ d, onNavigate, onClose }) {
                         title={d.most_gooned_image.filename}
                         meta={`${num(d.most_gooned_image.cum_count)} Os · ${num(d.most_gooned_image.view_count)} views`}
                         onClick={() => go(`/galleries/${d.most_gooned_image.gallery_id}?openImage=${d.most_gooned_image.id}`)} />
+            )}
+            {d.most_edged_image && (
+              <Standout label="Most-edged shot" accent="#A89FE8"
+                        thumb={`/api/images/${d.most_edged_image.id}/thumb`}
+                        title={d.most_edged_image.filename}
+                        meta={`${num(d.most_edged_image.edge_count)} edges · ${num(d.most_edged_image.view_count)} views`}
+                        onClick={() => go(`/galleries/${d.most_edged_image.gallery_id}?openImage=${d.most_edged_image.id}`)} />
             )}
             {d.most_viewed_gallery && (
               <Standout label="Most-visited gallery" accent="#7F77DD"
