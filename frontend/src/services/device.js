@@ -315,6 +315,46 @@ class DeviceService {
     }
   }
 
+  // Silence every non-linear actuator by commanding intensity 0.
+  //
+  // Stopping used to mean "stop sending commands", which is only correct for a
+  // stroker: a linear device holds its position, which is what you want on
+  // pause. A vibrator holds its last *intensity* — so stopping left it buzzing
+  // at a fixed level forever, and the only way out was unplugging it.
+  //
+  // Linear devices are deliberately left alone here: they keep their position,
+  // matching how every other script player behaves.
+  //
+  // This goes out over _rawSend rather than the SDK's stopAllDevices() for the
+  // same reason every other command in this file does — the SDK emits a payload
+  // shape Intiface v4 rejects outright, and the rejection is invisible because
+  // it is swallowed by the caller's catch.
+  _stopScalarActuators() {
+    if (store().provider !== 'intiface') return   // Handy + serial are linear-only
+    const maps = [
+      [this._vibrateFeatures,   'Vibrate'],
+      [this._rotateFeatures,    'Rotate'],
+      [this._oscillateFeatures, 'Oscillate'],
+    ]
+    const storeDevs = store().devices
+    for (const [featureMap, actuatorType] of maps) {
+      for (const [devIndex, feats] of featureMap) {
+        const d = storeDevs.find(sd => sd.index === devIndex)
+        if (d?.canLinear) continue   // stroker — holds position, must not be zeroed
+        for (const f of feats) {
+          this._rawSend({
+            OutputCmd: {
+              Id: this._msgId++,
+              DeviceIndex: devIndex,
+              FeatureIndex: f.featureIndex,
+              Command: { [actuatorType]: { Value: 0 } },
+            },
+          })
+        }
+      }
+    }
+  }
+
   // ── Test stroke ─────────────────────────────────────────────────────────────
 
   // Send raw WS message bypassing the SDK (for fallback/debug)
@@ -360,6 +400,7 @@ class DeviceService {
     if (store().edgeModeEnabled) useDeviceStore.getState().setEdgeModeEnabled(false)
     const { provider } = store()
     if (provider === 'intiface' && this._client) {
+      // stopAllDevices() alone was not enough — see _stopScalarActuators.
       try { await this._client.stopAllDevices() } catch (_) {}
     } else if (provider === 'serial') {
       this._sendLinearSerial(0, 1500)
@@ -384,6 +425,9 @@ class DeviceService {
     this._stopPatternEngine()
     this._stopRamp()
     this._stopScheduler()
+    // Killing the engine stops new commands but leaves a vibrator running at
+    // whatever intensity it last received. Silence it explicitly.
+    this._stopScalarActuators()
     useDeviceStore.setState({ mode: 'off' })
   }
 
@@ -768,8 +812,12 @@ class DeviceService {
   }
 
   onVideoPause() {
-    // Stop scheduling future commands — device stays at last position silently
+    // Stop scheduling future commands. A stroker holds its last position, which
+    // is the right behaviour on pause — but a vibrator would hold its last
+    // intensity and keep buzzing through the pause, so scalar actuators are
+    // zeroed. onVideoPlay() re-arms the scheduler and they pick straight back up.
     if (store().mode === 'funscript') this._stopFunscriptPlayer()
+    this._stopScalarActuators()
   }
 
   onVideoPlay() {
@@ -859,6 +907,8 @@ class DeviceService {
     this._stopRamp()
     this._stopScheduler()
     this._stopEdgeMode()
+    // Every driver is dead; make sure nothing is still humming on its own.
+    this._stopScalarActuators()
     clearTimeout(this._cumTimer)
     this._finisherActive = false
     this._finisherPrev   = null

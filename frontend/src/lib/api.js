@@ -69,8 +69,8 @@ export const galleriesApi = {
   delete:        (id, delete_files)=> api.delete(`/galleries/${id}`, { params: { delete_files } }),
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
   random:        ()                => api.get('/galleries/random'),
-  hof:           (n = 10, offset = 0) => api.get('/galleries/hall-of-fame', { params: { limit: n, offset } }),
-  galleryHof:    (n = 5, offset = 0)  => api.get('/galleries/gallery-hof', { params: { limit: n, offset } }),
+  hof:           (n = 10, offset = 0, period = 'all') => api.get('/galleries/hall-of-fame', { params: { limit: n, offset, period } }),
+  galleryHof:    (n = 5, offset = 0, period = 'all')  => api.get('/galleries/gallery-hof', { params: { limit: n, offset, period } }),
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
@@ -107,8 +107,11 @@ export const creatorsApi = {
   delete:            (id)     => api.delete(`/creators/${id}`),
   favorites:         ()       => api.get('/creators/favorites'),
   franchises:        ()       => api.get('/creators/franchises'),
-  hof:               (n = 5, offset = 0) => api.get('/creators/hall-of-fame', { params: { limit: n, offset } }),
+  hof:               (n = 5, offset = 0, period = 'all') => api.get('/creators/hall-of-fame', { params: { limit: n, offset, period } }),
   distribution:      ()      => api.get('/creators/distribution'),
+  // Full ranked list behind each Stats chart (metric: time_spent|sessions|edges|cum|views)
+  leaderboard:       (metric, limit = 30, offset = 0) =>
+    api.get('/creators/leaderboard', { params: { metric, limit, offset } }),
   topImages:         (id, n)  => api.get(`/creators/${id}/top-images`, { params: { limit: n } }),
   stats:             (id)     => api.get(`/creators/${id}/stats`),
   collage:           (id, n = 30) => api.get(`/creators/${id}/collage`, { params: { limit: n } }),
@@ -173,6 +176,10 @@ export const imagesApi = {
   removeCreator:      (id, creatorId) => api.delete(`/images/${id}/creators/${creatorId}`),
   clearCreators:      (id)            => api.delete(`/images/${id}/creators`),
   bulkClearCreators:  (imageIds)      => api.post('/images/bulk-clear-creators', { image_ids: imageIds }),
+  // One round-trip for a whole selection — the per-file loop it replaces is why
+  // assigning across many files used to sit there spinning.
+  bulkAddCreator:     (imageIds, creatorId) =>
+    api.post('/images/bulk-assign-creator', { image_ids: imageIds, creator_id: creatorId }),
   linkFunscript:      (id, content)   => api.post(`/images/${id}/funscript`, { content }),
   unlinkFunscript:    (id, deleteFile = false) => api.delete(`/images/${id}/funscript`, { params: { delete_file: deleteFile } }),
 }
@@ -182,6 +189,16 @@ export const sessionsApi = {
   log:   (d)  => api.post('/sessions/', d),
   list:  (p)  => api.get('/sessions/', { params: p }),
   stats: ()   => api.get('/sessions/stats'),
+  // Manual correction of the session record — duration, when it happened, who
+  // it was. Sessions are logged automatically, so a crash or a forgotten stop
+  // leaves rows only the user can put right.
+  update:     (id, d) => api.patch(`/sessions/${id}`, d),
+  delete:     (id)    => api.delete(`/sessions/${id}`),
+  // A multi-panel session writes one row per creator — deleting what looks like
+  // one entry has to take the whole group.
+  bulkDelete: (ids)   => api.post('/sessions/bulk-delete', { ids }),
+  // Long-range analysis: the six-year collecting story + the computed read.
+  almanac: () => api.get('/sessions/almanac'),
 }
 
 // ── Gamification ──────────────────────────────────────────────────────────────
@@ -320,6 +337,8 @@ export const taggerApi = {
 // ── TCG: Cards ────────────────────────────────────────────────────────────────
 export const cardsApi = {
   inventory:           (params)   => api.get('/cards/inventory', { params }),
+  // Only creators you actually own cards of — populates the collection filter.
+  collectionCreators:  ()         => api.get('/cards/creators'),
   get:                 (id)       => api.get(`/cards/${id}`),
   openPack:            (data)     => api.post('/cards/packs/open', data),
   openPackFromInventory: (data)   => api.post('/cards/packs/open-from-inventory', data),
@@ -374,6 +393,7 @@ export const systemApi = {
   checkUpdate:   () => api.get('/system/update/check'),
   installUpdate: (download_url) => api.post('/system/update/install', { download_url }),
   updateStatus:  () => api.get('/system/update/status'),
+  activityTracking:   () => api.get('/system/activity-tracking'),
   getPersonalMode:    () => api.get('/system/personal-mode'),
   unlockPersonalMode: (password) => api.post('/system/personal-mode/unlock', { password }),
   lockPersonalMode:   () => api.post('/system/personal-mode/lock'),

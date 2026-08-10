@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
 from models import SessionLog, Image, Gallery, Creator
-from schemas import SessionCreate, SessionOut
+from schemas import SessionCreate, SessionUpdate, SessionOut
 import services.gamification as gami
 
 router = APIRouter()
@@ -21,8 +21,13 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
             elif g.creators:
                 data = data.model_copy(update={"creator_id": g.creators[0].id})
 
-    # Transport-only flags — strip before writing to the DB
-    session = SessionLog(**data.model_dump(exclude={'skip_xp', 'image_ids', 'count_orgasm'}))
+    # Transport-only flags — strip before writing to the DB.
+    # logged_at is dropped when absent so the column default (now) still applies;
+    # a manual add or a recovered session sends the real timestamp instead.
+    fields = data.model_dump(exclude={'skip_xp', 'image_ids', 'count_orgasm'})
+    if fields.get("logged_at") is None:
+        fields.pop("logged_at", None)
+    session = SessionLog(**fields)
     db.add(session)
     db.flush()
 
@@ -112,6 +117,86 @@ def list_sessions(db: Session = Depends(get_db), skip: int = 0, limit: int = 50)
             "gallery_name": gallery.name if gallery else None,
         })
     return result
+
+
+@router.patch("/{session_id}")
+def update_session(session_id: int, data: SessionUpdate, db: Session = Depends(get_db)):
+    """Correct a logged session by hand.
+
+    Sessions are recorded automatically, so a crash, a forgotten stop, or a
+    mis-attributed creator leaves a row that is simply wrong. Only the fields
+    actually sent are written — the UI patches one number at a time.
+
+    XP is deliberately left alone: the XP already earned is not re-scored when a
+    duration is corrected, because the system rewards and never punishes.
+    """
+    session = db.query(SessionLog).filter(SessionLog.id == session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    changes = data.model_dump(exclude_unset=True)
+    if "duration_sec" in changes and changes["duration_sec"] is not None:
+        # A negative duration would poison every average on the stats page.
+        changes["duration_sec"] = max(0, int(changes["duration_sec"]))
+
+    # Re-derive the creator when the gallery moves and no creator was named,
+    # matching what log_session does on the way in.
+    if changes.get("gallery_id") and "creator_id" not in changes:
+        g = db.query(Gallery).filter(Gallery.id == changes["gallery_id"]).first()
+        if g:
+            if g.creator_id:
+                changes["creator_id"] = g.creator_id
+            elif g.creators:
+                changes["creator_id"] = g.creators[0].id
+
+    for field, value in changes.items():
+        setattr(session, field, value)
+
+    db.commit()
+    db.refresh(session)
+    return SessionOut.model_validate(session, from_attributes=True).model_dump()
+
+
+@router.delete("/{session_id}")
+def delete_session(session_id: int, db: Session = Depends(get_db)):
+    """Remove one logged session.
+
+    The XP it earned stays banked and lifetime cum/edge counts are untouched —
+    those are lifetime totals by design, and clawing XP back would be a penalty.
+    This deletes the record of the session, not its consequences.
+    """
+    session = db.query(SessionLog).filter(SessionLog.id == session_id).first()
+    if not session:
+        raise HTTPException(404, "Session not found")
+    db.delete(session)
+    db.commit()
+    return {"deleted": session_id}
+
+
+@router.post("/bulk-delete")
+def bulk_delete_sessions(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Delete several session rows at once.
+
+    A multi-panel session writes one row per creator, so what the user sees as a
+    single entry in Session History is often several rows. Deleting it has to
+    take the whole group or the entry comes back half-alive.
+    """
+    ids = [int(i) for i in (data.get("ids") or []) if i]
+    if not ids:
+        return {"deleted": 0}
+    deleted = db.query(SessionLog).filter(SessionLog.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted or 0}
+
+
+@router.get("/almanac")
+def almanac(db: Session = Depends(get_db)):
+    """Long-range analysis — the six-year collecting story plus the habits read.
+
+    Deliberately separate from /stats, which answers "what is happening now".
+    """
+    from services import almanac as alm
+    return alm.the_read(db)
 
 
 @router.get("/stats")

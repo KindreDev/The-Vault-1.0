@@ -303,7 +303,12 @@ class Image(Base):
     perceptual_hash  = Column(String, nullable=True, index=True)
 
     last_viewed_at   = Column(DateTime, nullable=True)
+    # Two different real-world dates, and the distinction matters for the almanac:
+    #   file_modified_at = when the content was authored/published — its vintage
+    #   file_created_at  = when it landed on your drive — when YOU acquired it
+    # The gap between them is your acquisition lag.
     file_modified_at = Column(DateTime, nullable=True)   # on-disk mtime, populated by scanner
+    file_created_at  = Column(DateTime, nullable=True)   # on-disk ctime/birthtime
     created_at       = Column(DateTime, default=func.now())
 
     gallery          = relationship("Gallery", back_populates="images")
@@ -749,7 +754,66 @@ class FeedDMPing(Base):
     creator    = relationship("Creator")
 
 
+# ── Engagement event log ──────────────────────────────────────────────────────
+class ActivityEvent(Base):
+    """One row per engagement action, with the timestamp the counters throw away.
+
+    view_count / cum_count / edge_count / view_seconds on Image and Gallery are
+    lifetime scalars. They can answer "who is my top creator" but never "who was
+    my top creator this week" — and not just retroactively: without this table
+    that question stays unanswerable no matter how long the app runs. This is
+    what makes the periodic Hall of Fame possible. Written everywhere those
+    counters are incremented; the counters stay the source of truth for all-time
+    so six years of history keeps working.
+
+    Creators are deliberately NOT denormalised onto these rows. A file's
+    creators are resolved at read time through the same gallery_creators /
+    image_creators union the all-time ranking uses, so assigning a gallery to a
+    creator later retroactively corrects her past periods, and the periodic and
+    all-time rankings can never drift apart the way the two scoring copies did
+    before services/ranking.py existed.
+
+    kind is split by entity because the weights differ: a gallery view is worth
+    5 and a photo view 1, and a cum tap counts once per gallery and once per
+    file on screen.
+    """
+    __tablename__ = "activity_events"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    # view | seconds | cum | edge  (image-level)
+    # gallery_view | gallery_cum | gallery_edge  (gallery-level)
+    kind       = Column(String, index=True)
+    image_id   = Column(Integer, ForeignKey("images.id"),    nullable=True, index=True)
+    gallery_id = Column(Integer, ForeignKey("galleries.id"), nullable=True, index=True)
+    amount     = Column(Integer, default=1)   # seconds when kind='seconds', else a count
+    logged_at  = Column(DateTime, default=func.now(), index=True)
+
+
 # ── Creator Showcase: 5 card display slots on a creator's profile ─────────────
+# ── Daily activity rollup ─────────────────────────────────────────────────────
+class DailyActivity(Base):
+    """One row per day of usage.
+
+    Exists because images.view_count / view_seconds are lifetime scalars with no
+    time dimension — without this table "watch time per month" is impossible not
+    just retroactively but forever, no matter how long the app runs. Written
+    incrementally as things happen; cheap to keep, impossible to reconstruct.
+    """
+    __tablename__ = "daily_activity"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    day           = Column(String, index=True)      # YYYY-MM-DD, local date
+    views         = Column(Integer, default=0)
+    view_seconds  = Column(Integer, default=0)
+    cum_count     = Column(Integer, default=0)
+    edge_count    = Column(Integer, default=0)
+    sessions      = Column(Integer, default=0)
+    session_seconds = Column(Integer, default=0)
+    xp_earned     = Column(Integer, default=0)
+    files_added   = Column(Integer, default=0)
+    updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 # ── Hall of Fame rank movement ────────────────────────────────────────────────
 class HofRank(Base):
     """Last known Hall of Fame rank per entity, so the UI can show how many

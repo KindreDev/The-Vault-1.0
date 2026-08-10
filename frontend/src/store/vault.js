@@ -228,6 +228,46 @@ function applySessionGlow(color) {
   document.documentElement.style.setProperty('--session-glow', color)
 }
 
+// ── Goon session liveness ─────────────────────────────────────────────────────
+// An active session is persisted so a refresh or a browser switch doesn't kill
+// it. That persistence had no liveness signal, so closing the app mid-session
+// and reopening it two days later produced a two-day session: elapsed time was
+// simply `now - startAt`, and nothing knew the app hadn't been running.
+//
+// The fix is a heartbeat — while a session runs the app stamps the clock every
+// SESSION_HEARTBEAT_MS. On startup, a heartbeat older than SESSION_STALE_MS
+// means the app was not running, so the session is not resumed. It is held as a
+// `staleSession` for the user to confirm, and `lastSeen` is the honest upper
+// bound on how long it actually ran.
+export const SESSION_HEARTBEAT_MS = 30 * 1000
+export const SESSION_STALE_MS     = 5 * 60 * 1000
+
+function readSessionBoot() {
+  const active  = localStorage.getItem('vault_session_active') === 'true'
+  const startAt = parseInt(localStorage.getItem('vault_session_start_at') || '0', 10) || null
+  if (!active || !startAt) {
+    return { sessionActive: false, sessionStartAt: null, staleSession: null }
+  }
+  // Sessions predating the heartbeat have no stamp — fall back to startAt,
+  // which correctly flags a long-abandoned one as stale.
+  const lastSeen = parseInt(localStorage.getItem('vault_session_last_seen') || '0', 10) || startAt
+
+  if (Date.now() - lastSeen <= SESSION_STALE_MS) {
+    return { sessionActive: true, sessionStartAt: startAt, staleSession: null }
+  }
+  // Deliberately NOT resumed: leaving sessionActive true would let the running
+  // clock show the dead time before the user ever sees the prompt. The
+  // localStorage keys stay put until it is resolved, so a refresh mid-prompt
+  // doesn't lose the session.
+  return {
+    sessionActive: false,
+    sessionStartAt: null,
+    staleSession: { startAt, lastSeen, elapsedMs: Math.max(0, lastSeen - startAt) },
+  }
+}
+
+const sessionBoot = readSessionBoot()
+
 // ── Synchronous startup application ───────────────────────────────────────────
 // Apply stored theme settings immediately at module-load time so there is no
 // flash of the default Inter font / default palette before the Layout useEffect
@@ -514,18 +554,47 @@ export const useVaultStore = create((set, get) => ({
   // ── Goon session mode ────────────────────────────────────────────────────────
   // sessionActive + sessionStartAt are persisted so a browser switch or refresh
   // doesn't kill an in-progress session.
-  sessionActive:  localStorage.getItem('vault_session_active') === 'true',
-  sessionStartAt: parseInt(localStorage.getItem('vault_session_start_at') || '0', 10) || null,
+  sessionActive:  sessionBoot.sessionActive,
+  sessionStartAt: sessionBoot.sessionStartAt,
+  // A session the app was still "in" when it last closed. Null in the normal
+  // case; set on boot when the heartbeat went cold. See readSessionBoot.
+  staleSession:   sessionBoot.staleSession,
   // Accumulated ms across all past sessions (persisted in localStorage)
   sessionTotalMs: parseInt(localStorage.getItem('vault_session_total_ms') || '0', 10),
   // Whether to show the neon border during a session
   showGoonBorder: localStorage.getItem('vault_goon_border') !== 'false',
 
+  // ── End-of-session behaviour ────────────────────────────────────────────────
+  // Ending a session counts a climax against everything on screen. That is the
+  // right default — it's why the button exists, and on a multi-panel wall it
+  // saves marking every file by hand — but not every session ends that way, and
+  // a counter that can only ever be too high is a counter you stop trusting.
+  //   always → count it, no questions (previous behaviour, still the default)
+  //   ask    → prompt on every finish
+  //   never  → log the time, never the climax; mark them by hand instead
+  sessionEndClimax: localStorage.getItem('vault_session_end_climax') || 'always',
+  setSessionEndClimax: (v) => {
+    localStorage.setItem('vault_session_end_climax', v)
+    set({ sessionEndClimax: v })
+  },
+
+  // Drives the "did you finish?" prompt under the `ask` setting. The resolver
+  // itself lives in lib/session.js — the store only carries the open flag.
+  climaxPromptOpen: false,
+  setClimaxPromptOpen: (v) => set({ climaxPromptOpen: v }),
+
   startSession: () => {
     const now = Date.now()
     localStorage.setItem('vault_session_active',   'true')
     localStorage.setItem('vault_session_start_at', String(now))
+    localStorage.setItem('vault_session_last_seen', String(now))
     set({ sessionActive: true, sessionStartAt: now })
+  },
+
+  // Heartbeat — proof the app is still running. Driven by lib/session.js.
+  touchSession: () => {
+    if (!get().sessionActive) return
+    localStorage.setItem('vault_session_last_seen', String(Date.now()))
   },
 
   endSession: () => {
@@ -536,8 +605,25 @@ export const useVaultStore = create((set, get) => ({
     localStorage.setItem('vault_session_total_ms', String(newTotal))
     localStorage.removeItem('vault_session_active')
     localStorage.removeItem('vault_session_start_at')
+    localStorage.removeItem('vault_session_last_seen')
     set({ sessionActive: false, sessionStartAt: null, sessionTotalMs: newTotal })
     return elapsed
+  },
+
+  // Dismiss the recovered session — whether it was logged or thrown away, the
+  // persisted keys go with it so it can never be offered twice.
+  // `keptMs` is folded into the lifetime total only when the session was kept.
+  clearStaleSession: (keptMs = 0) => {
+    localStorage.removeItem('vault_session_active')
+    localStorage.removeItem('vault_session_start_at')
+    localStorage.removeItem('vault_session_last_seen')
+    const patch = { staleSession: null }
+    if (keptMs > 0) {
+      const newTotal = get().sessionTotalMs + keptMs
+      localStorage.setItem('vault_session_total_ms', String(newTotal))
+      patch.sessionTotalMs = newTotal
+    }
+    set(patch)
   },
 
   setShowGoonBorder: (v) => {

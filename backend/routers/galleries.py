@@ -10,6 +10,7 @@ from database import get_db
 from models import Gallery, Image, Creator, Tag, gallery_creators, UserProfile, SessionLog, image_tags, mix_images
 from schemas import GalleryOut, GalleryCreate, GalleryUpdate
 import services.gamification as gami
+from services import activity
 from services import recommend as recommend_svc
 from services import ranking
 from services import entity_stats
@@ -538,18 +539,43 @@ def track_gallery_view(gallery_id: int, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gallery not found")
     g.view_count = (g.view_count or 0) + 1
+    activity.record(db, "gallery_view", gallery_id=g.id)
     db.commit()
     return {"view_count": g.view_count}
 
 
 @router.get("/hall-of-fame")
-def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0):
+def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0,
+                 period: str = "all"):
     """Images ranked by composite engagement score.
        cum_count is the strongest signal (deliberate action), then edges, then
        view_count (intentional re-opens), then view_seconds lightly weighted to
        avoid passive watch time dominating the ranking.
        Formula: (cum × 500) + (edges × 250) + (views × 30) + (view_seconds × 0.1)
+
+       period is day | week | month | all; anything but all is scored from the
+       activity_events log so it covers only what happened in the window.
     """
+    since = activity.period_start(period)
+
+    if since is not None:
+        scores = ranking.score_all_images_in_period(db, since)
+        ordered_ids = ranking.ranked_ids(scores)
+        deltas = ranking.apply_rank_movement(db, f"image:{period}", ordered_ids)
+        page = ordered_ids[offset:offset + limit]
+        by_id = {i.id: i for i in db.query(Image).filter(Image.id.in_(page)).all()}
+        # Counters shown are the window's, not lifetime — a file that tops today
+        # should not display the 400 views it earned last year.
+        return [{"id": iid, "rank": offset + n + 1,
+                 "rank_change": deltas.get(iid, 0),
+                 "filename": by_id[iid].filename, "thumb_path": by_id[iid].thumb_path,
+                 "view_count": scores[iid]["period_views"],
+                 "cum_count": scores[iid]["period_cum"],
+                 "edge_count": scores[iid]["period_edges"],
+                 "view_seconds": scores[iid]["period_view_seconds"],
+                 "gallery_id": by_id[iid].gallery_id, "is_video": by_id[iid].is_video}
+                for n, iid in enumerate(page) if iid in by_id]
+
     # Weights live in services/ranking.py so this list and a file's own stats
     # modal can never disagree about its rank.
     score_expr = ranking.image_score_expr()
@@ -584,20 +610,26 @@ def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0
 
 
 @router.get("/gallery-hof")
-def gallery_hof(db: Session = Depends(get_db), limit: int = 5, offset: int = 0):
+def gallery_hof(db: Session = Depends(get_db), limit: int = 5, offset: int = 0,
+                period: str = "all"):
     """Galleries ranked by composite engagement score — see services/ranking.py.
 
     Scoring lives there so this list and a gallery's own stats modal can never
-    disagree about its rank.
+    disagree about its rank. period is day | week | month | all.
     """
-    scores = ranking.score_all_galleries(db)
-    order  = ranking.ranked_gallery_ids(scores)
+    since = activity.period_start(period)
+    if since is None:
+        scores = ranking.score_all_galleries(db)
+        order  = ranking.ranked_gallery_ids(scores)
+    else:
+        scores = ranking.score_all_galleries_in_period(db, since)
+        order  = ranking.ranked_ids(scores)
     if not order:
         return []
 
     # Movement over the full ranking, so a drop is true globally, not just
     # within the slice being returned.
-    deltas = ranking.apply_rank_movement(db, "gallery", order)
+    deltas = ranking.apply_rank_movement(db, "gallery" if since is None else f"gallery:{period}", order)
 
     page = order[offset:offset + limit]
     rows = (
@@ -955,6 +987,7 @@ def log_cum(gallery_id: int, db: Session = Depends(get_db)):
     if not g:
         raise HTTPException(404, "Gallery not found")
     g.cum_count += 1
+    activity.record(db, "gallery_cum", gallery_id=g.id)
     db.commit()
     xp = gami.notify_action(db, "cum_logged")
     return {"cum_count": g.cum_count, "xp": xp}

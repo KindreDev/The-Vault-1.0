@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from models import Image, Gallery
 import services.gamification as gami
+from services import activity
 
 
 def log_edge(db: Session, image_ids: list[int]) -> dict:
@@ -39,6 +40,9 @@ def log_edge(db: Session, image_ids: list[int]) -> dict:
     if gallery_ids:
         for gal in db.query(Gallery).filter(Gallery.id.in_(gallery_ids)).all():
             gal.edge_count = (gal.edge_count or 0) + 1
+
+    activity.record_many(db, "edge", image_ids=[i.id for i in images])
+    activity.record_many(db, "gallery_edge", gallery_ids=list(gallery_ids))
 
     db.commit()
 

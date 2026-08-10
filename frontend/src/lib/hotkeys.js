@@ -55,6 +55,13 @@ export const HOTKEY_ACTIONS = [
     group:   'Session',
     default: 'ctrl+d',
   },
+  {
+    id:      'log_edge',
+    label:   'Log an edge',
+    hint:    'Counts one edge against everything on screen. No device needed.',
+    group:   'Session',
+    default: 'ctrl+shift+e',
+  },
 ]
 
 export const HOTKEY_DEFAULTS = Object.fromEntries(

@@ -19,6 +19,7 @@ from models import (
 )
 from schemas import CreatorCreate, CreatorUpdate, CreatorOut
 import services.gamification as gami
+from services import activity
 from services import ranking
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
@@ -405,18 +406,33 @@ def creator_distribution(db: Session = Depends(get_db)):
 
 
 @router.get("/hall-of-fame")
-def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: int = 0):
+def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: int = 0,
+                         period: str = "all"):
     """Creators ranked by composite engagement score — see services/ranking.py
     for the formula. Scoring lives there so this endpoint and the per-creator
-    stats endpoint can never disagree about a creator's rank again."""
-    scores = ranking.score_all_creators(db)
-    order  = ranking.ranked_creator_ids(scores)
+    stats endpoint can never disagree about a creator's rank again.
+
+    period is day | week | month | all. Anything but all is scored from the
+    activity_events log rather than the lifetime counters, so it reflects only
+    what happened inside the window.
+    """
+    since = activity.period_start(period)
+    if since is None:
+        scores = ranking.score_all_creators(db)
+        order  = ranking.ranked_creator_ids(scores)
+    else:
+        scores = ranking.score_all_creators_in_period(db, since)
+        order  = ranking.ranked_ids(scores)
     if not order:
         return []
 
     # Movement is computed over the FULL ranking, not just the page being
-    # returned, so "dropped 10 places" is true globally.
-    deltas = ranking.apply_rank_movement(db, "creator", order)
+    # returned, so "dropped 10 places" is true globally. Each period keeps its
+    # own movement table so today's climb isn't overwritten by the all-time
+    # ordering; all-time keeps the original unsuffixed key so the arrows that
+    # were already on screen survive this change.
+    entity_key = "creator" if since is None else f"creator:{period}"
+    deltas = ranking.apply_rank_movement(db, entity_key, order)
 
     # offset lets the "know more" list page through the whole ranking while
     # keeping each entry's true global rank.
@@ -431,6 +447,57 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
         d["rank"]         = rank
         d["rank_change"]  = deltas.get(cid, 0)
         out.append(d)
+    return out
+
+
+@router.get("/leaderboard")
+def creator_leaderboard(metric: str = "time_spent", limit: int = 30, offset: int = 0,
+                        db: Session = Depends(get_db)):
+    """Every creator ranked by one specific stat, paged.
+
+    The Stats page shows only the top six of each chart; this is the full list
+    behind them. Scores come from the same ranking service the Hall of Fame
+    uses, so a creator's numbers are identical wherever they appear.
+    """
+    METRICS = {
+        "time_spent": ("total_view_seconds", "watch time"),
+        "sessions":   ("session_count",      "sessions"),
+        "edges":      ("total_edges",        "edges"),
+        "cum":        ("total_cum",          "orgasms"),
+        "views":      ("total_views",        "views"),
+    }
+    if metric not in METRICS:
+        raise HTTPException(400, f"metric must be one of {', '.join(METRICS)}")
+    key, label = METRICS[metric]
+
+    scores = ranking.score_all_creators(db)
+    scores.pop("_median_dwell", None)
+    order = [cid for cid, _ in sorted(
+        ((cid, v.get(key) or 0) for cid, v in scores.items()),
+        key=lambda kv: kv[1], reverse=True,
+    ) if scores[cid].get(key)]
+
+    page = order[offset:offset + limit]
+    rows = db.query(Creator).filter(Creator.id.in_(page)).all() if page else []
+    by_id = {c.id: c for c in rows}
+
+    out = []
+    for n, cid in enumerate(page):
+        c = by_id.get(cid)
+        if not c:
+            continue
+        s = scores[cid]
+        out.append({
+            "id": c.id, "name": c.name, "creator_type": c.creator_type,
+            "card_rarity": c.card_rarity, "avatar_path": c.avatar_path,
+            "rank": offset + n + 1,
+            "metric": metric, "metric_label": label, "value": s.get(key) or 0,
+            "total_views": s.get("total_views"), "total_cum": s.get("total_cum"),
+            "total_edges": s.get("total_edges"),
+            "total_view_seconds": s.get("total_view_seconds"),
+            "session_count": s.get("session_count"),
+            "avg_dwell_seconds": s.get("avg_dwell_seconds"),
+        })
     return out
 
 

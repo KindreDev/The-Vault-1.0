@@ -266,6 +266,22 @@ class SessionCreate(BaseModel):
     # counts an orgasm against all of it — see gamification.credit_orgasm.
     image_ids: List[int] = []
     count_orgasm: bool = True
+    # Set when the row is typed in by hand (manual add) or reconstructed from a
+    # session the app lost track of. Lets the router place the row at the time it
+    # actually happened instead of "now".
+    logged_at: Optional[datetime] = None
+
+
+class SessionUpdate(BaseModel):
+    """Manual correction of a logged session. Every field optional — only what
+    is sent gets written, so the UI can patch one number at a time."""
+    logged_at: Optional[datetime] = None
+    duration_sec: Optional[int] = None
+    image_id: Optional[int] = None
+    gallery_id: Optional[int] = None
+    creator_id: Optional[int] = None
+    notes: Optional[str] = None
+
 
 class SessionOut(BaseModel):
     id: int

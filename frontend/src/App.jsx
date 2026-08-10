@@ -6,6 +6,9 @@ import { gamiApi } from './lib/api'
 import { useVaultStore } from './store/vault'
 import { xpEvents } from './lib/xpEvents'
 import queryClient from './lib/queryClient'
+import SessionRecoveryModal from './components/SessionRecoveryModal'
+import SessionEndPrompt from './components/SessionEndPrompt'
+import { startSessionHeartbeat, stopSessionHeartbeat } from './lib/session'
 
 // ── Route-level code splitting ────────────────────────────────────────────────
 // Each page becomes its own chunk — only downloaded when first visited.
@@ -71,6 +74,13 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname)
       testOverlayRef.current = true
     }
+  }, [])
+
+  // A session that survived a refresh is genuinely still running — restart its
+  // heartbeat so the next launch can tell it apart from an abandoned one.
+  useEffect(() => {
+    if (useVaultStore.getState().sessionActive) startSessionHeartbeat()
+    return () => stopSessionHeartbeat()
   }, [])
 
   // Level-up overlay — fires when the interceptor emits a level_up event
@@ -142,6 +152,10 @@ export default function App() {
           <Route path="erika"         element={<ErikaAI />} />
         </Route>
       </Routes>
+      {/* Renders itself only when the last run left a session open. */}
+      <SessionRecoveryModal />
+      {/* Only under Settings → Session → "Ask me each time". */}
+      <SessionEndPrompt />
     </BrowserRouter>
   )
 }

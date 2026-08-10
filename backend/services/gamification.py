@@ -619,6 +619,10 @@ def credit_orgasm(db: Session, image_ids: list) -> dict:
         for gal in db.query(_Gallery).filter(_Gallery.id.in_(gallery_ids)).all():
             gal.cum_count = (gal.cum_count or 0) + 1
 
+    from services import activity
+    activity.record_many(db, "cum", image_ids=[i.id for i in images])
+    activity.record_many(db, "gallery_cum", gallery_ids=list(gallery_ids))
+
     db.commit()
 
     # Profile totals, achievements and quest progress — once for the event.

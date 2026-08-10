@@ -48,17 +48,19 @@ def _inv_to_dict(db: Session, inv: CardInventory) -> dict:
 def get_inventory(
     card_type: Optional[str] = None,
     rarity: Optional[str] = None,
+    rarity_class: Optional[str] = None,
+    creator_id: Optional[int] = None,
+    search: Optional[str] = None,
     sort: str = "rarity_desc",
     skip: int = 0,
     limit: int = 10000,
     db: Session = Depends(get_db),
 ):
-    q = db.query(CardInventory).join(Card)
-
-    if card_type:
-        q = q.filter(Card.card_type == card_type)
-    if rarity:
-        q = q.filter(Card.rarity == rarity)
+    q = card_svc.apply_inventory_filters(
+        db.query(CardInventory).join(Card),
+        card_type=card_type, rarity=rarity, rarity_class=rarity_class,
+        creator_id=creator_id, search=search,
+    )
 
     from config import RARITY_ORDER
     from services.cards import norm_rarity, rarity_score
@@ -89,6 +91,12 @@ def get_inventory(
         "total": len(invs),
         "items": [_inv_to_dict(db, inv) for inv in page],
     }
+
+
+@router.get("/creators")
+def get_collection_creators(db: Session = Depends(get_db)):
+    """Creators you own cards of, with counts — populates the collection filter."""
+    return card_svc.collection_creators(db)
 
 
 @router.get("/rarity-distribution")

@@ -2,12 +2,15 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard } from 'lucide-react'
+import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Pencil, Trash2, Plus, Droplets, Waves } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
 import { useT, LANGUAGES } from '../i18n'
 import HotkeySettings from '../components/settings/HotkeySettings'
+import Almanac from '../components/stats/Almanac'
+import HofFullListModal from '../components/HofFullListModal'
+import CreatorStatsModal from '../components/CreatorStatsModal'
 import { useSession } from '../hooks/useSession'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
@@ -747,7 +750,8 @@ function getLevelColor(lvl) {
 
 // ── Sessions history modal ────────────────────────────────────────────────────
 function SessionsModal({ onClose }) {
-  const t = useT()
+  const t  = useT()
+  const qc = useQueryClient()
   const { data: allSessions } = useQuery({
     queryKey: ['all-sessions'],
     queryFn: () => sessionsApi.list({ limit: 500 }).then(r => r.data),
@@ -757,6 +761,34 @@ function SessionsModal({ onClose }) {
   const [visible, setVisible] = React.useState(false)
   React.useEffect(() => { const id = requestAnimationFrame(() => setVisible(true)); return () => cancelAnimationFrame(id) }, [])
 
+  // Sessions are recorded automatically, so a crash, a forgotten stop or a
+  // mis-attributed creator leaves a row only the user can put right. Editing
+  // targets the group's first row (the one carrying the duration); deleting
+  // takes every row in the group, since one multi-panel session writes several.
+  const [editing,  setEditing]  = React.useState(null)   // group object
+  const [adding,   setAdding]   = React.useState(false)
+  const [busyIds,  setBusyIds]  = React.useState(new Set())
+
+  const refresh = () => {
+    for (const key of ['all-sessions', 'recent-sessions', 'ses-stats', 'profile']) {
+      qc.invalidateQueries({ queryKey: [key] })
+    }
+  }
+
+  const deleteGroup = async (g) => {
+    if (busyIds.has(g.ids[0])) return
+    setBusyIds(prev => new Set([...prev, g.ids[0]]))
+    try {
+      await sessionsApi.bulkDelete(g.ids)
+      toast.success(g.ids.length > 1 ? `${g.ids.length} session rows deleted` : 'Session deleted')
+      refresh()
+    } catch {
+      toast.error('Could not delete that session')
+    } finally {
+      setBusyIds(prev => { const n = new Set(prev); n.delete(g.ids[0]); return n })
+    }
+  }
+
   const groups = React.useMemo(() => {
     if (!allSessions?.length) return []
     const result = []
@@ -764,11 +796,20 @@ function SessionsModal({ onClose }) {
     for (const s of allSessions) {
       const tm = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
       if (!cur || Math.abs(tm - cur.refTime) > 5000) {
-        cur = { refTime: tm, logged_at: s.logged_at, creators: s.creator_name ? [s.creator_name] : [], gallery_name: s.gallery_name, duration_sec: s.duration_sec }
+        cur = {
+          refTime: tm, logged_at: s.logged_at,
+          creators: s.creator_name ? [s.creator_name] : [],
+          gallery_name: s.gallery_name, duration_sec: s.duration_sec,
+          ids: [s.id],
+          // The row that actually carries the duration — not always the first,
+          // so an edit has to patch this one or the correction goes nowhere.
+          durationId: s.duration_sec ? s.id : null,
+        }
         result.push(cur)
       } else {
         if (s.creator_name && !cur.creators.includes(s.creator_name)) cur.creators.push(s.creator_name)
-        if (!cur.duration_sec && s.duration_sec) cur.duration_sec = s.duration_sec
+        if (!cur.duration_sec && s.duration_sec) { cur.duration_sec = s.duration_sec; cur.durationId = s.id }
+        cur.ids.push(s.id)
       }
     }
     return result
@@ -863,12 +904,32 @@ function SessionsModal({ onClose }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{t('Session History')}</div>
-          <button
-            onClick={onClose}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* For sessions the app never saw — logged offline, or the start
+                button was never pressed. */}
+            <button
+              onClick={() => setAdding(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 8,
+                fontSize: 16, cursor: 'pointer',
+                background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)',
+                color: 'color-mix(in srgb, var(--c-accent) 82%, white)',
+                border: '0.5px solid color-mix(in srgb, var(--c-accent) 38%, transparent)',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 28%, transparent)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 16%, transparent)' }}
+            >
+              <Plus size={14} /> {t('Add')}
+            </button>
+            <button
+              onClick={onClose}
             style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s, background 0.15s' }}
             onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; e.currentTarget.style.background = 'transparent' }}
           ><X size={16} /></button>
+          </div>
         </div>
 
         {/* Scrollable list */}
@@ -909,14 +970,30 @@ function SessionsModal({ onClose }) {
                       {/* Expanded detail */}
                       <div style={{
                         overflow: 'hidden',
-                        maxHeight: isOpen ? 120 : 0,
+                        maxHeight: isOpen ? 200 : 0,
                         opacity: isOpen ? 1 : 0,
                         transition: 'max-height 0.25s ease, opacity 0.2s ease',
                       }}>
                         <div style={{ padding: '2px 24px 14px 52px', fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>
                           {t('You gooned to')} {creatorSentence(g.creators, i)} {t('on')}{' '}
                           <span style={{ color: 'rgba(255,255,255,0.6)' }}>{fullDate(g.logged_at)}</span>
-                          {dur && <>{' '}{t('for')} <span style={{ color: '#D4537E' }}>{dur}</span></>}.
+                          {dur && <>{' '}{t('for')} <span style={{ color: 'var(--c-pink)' }}>{dur}</span></>}.
+
+                          {/* Manual correction. Sessions log themselves, so a
+                              crash or a forgotten stop can only be fixed here. */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                            <RowAction
+                              icon={Pencil}
+                              label={t('Edit')}
+                              onClick={(e) => { e.stopPropagation(); setEditing(g) }}
+                            />
+                            <RowAction
+                              icon={Trash2}
+                              label={busyIds.has(g.ids[0]) ? t('Deleting…') : t('Delete')}
+                              danger
+                              onClick={(e) => { e.stopPropagation(); deleteGroup(g) }}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -925,12 +1002,214 @@ function SessionsModal({ onClose }) {
           }
         </div>
       </div>
+
+      {(editing || adding) && (
+        <SessionEditor
+          session={editing}
+          onClose={() => { setEditing(null); setAdding(false) }}
+          onSaved={() => { setEditing(null); setAdding(false); refresh() }}
+        />
+      )}
     </div>,
     document.body
   )
 }
 
+// Small text button used inside an expanded session row.
+function RowAction({ icon: Icon, label, danger, onClick }) {
+  const base   = danger ? 'var(--c-pink)' : 'var(--c-accent)'
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '5px 11px', borderRadius: 8,
+        fontSize: 16, cursor: 'pointer',
+        background: `color-mix(in srgb, ${base} 12%, transparent)`,
+        color: `color-mix(in srgb, ${base} 80%, white)`,
+        border: `0.5px solid color-mix(in srgb, ${base} 32%, transparent)`,
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = `color-mix(in srgb, ${base} 24%, transparent)` }}
+      onMouseLeave={e => { e.currentTarget.style.background = `color-mix(in srgb, ${base} 12%, transparent)` }}
+    >
+      <Icon size={13} /> {label}
+    </button>
+  )
+}
+
+/**
+ * Manual create / correct for a session record.
+ *
+ * `session` null = adding one the app never recorded. Otherwise it is a group
+ * from the history list, and the patch goes to the row that actually carries
+ * the duration — in a multi-panel session that is not necessarily the first.
+ *
+ * Manual adds are logged with skip_xp: XP is for gooning, not for typing, and
+ * an editable XP source would make the whole progression meaningless. Editing
+ * an existing session never re-scores its XP either — the system rewards and
+ * never penalises.
+ */
+function SessionEditor({ session, onClose, onSaved }) {
+  const t = useT()
+  const isEdit = !!session
+
+  // datetime-local wants local wall-clock; stored timestamps are naive UTC.
+  const toLocalInput = (ts) => {
+    const d = ts ? new Date(ts + (ts.endsWith('Z') ? '' : 'Z')) : new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const [when,    setWhen]    = React.useState(() => toLocalInput(session?.logged_at))
+  const [minutes, setMinutes] = React.useState(() =>
+    String(Math.max(0, Math.round((session?.duration_sec || 0) / 60))))
+  const [busy,    setBusy]    = React.useState(false)
+
+  const save = async () => {
+    if (busy) return
+    const mins = Math.max(0, parseInt(minutes || '0', 10) || 0)
+    // The datetime-local value is local time; the API stores naive UTC.
+    const loggedAt = new Date(when).toISOString().replace('Z', '')
+    setBusy(true)
+    try {
+      if (isEdit) {
+        await sessionsApi.update(session.durationId ?? session.ids[0], {
+          duration_sec: mins * 60,
+          logged_at: loggedAt,
+        })
+        // Sibling rows of a multi-panel session share the timestamp — moving
+        // only one would split the group into two entries in the history.
+        for (const id of session.ids) {
+          if (id === (session.durationId ?? session.ids[0])) continue
+          await sessionsApi.update(id, { logged_at: loggedAt })
+        }
+        toast.success(t('Session updated'))
+      } else {
+        await sessionsApi.log({
+          duration_sec: mins * 60,
+          logged_at: loggedAt,
+          count_orgasm: false,
+          skip_xp: true,
+        })
+        toast.success(t('Session added'))
+      }
+      onSaved()
+    } catch {
+      toast.error(isEdit ? t('Could not update that session') : t('Could not add that session'))
+      setBusy(false)
+    }
+  }
+
+  const fieldStyle = {
+    width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 16,
+    background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.9)',
+    border: '0.5px solid rgba(255,255,255,0.12)', outline: 'none',
+    colorScheme: 'dark',
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[260] flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--c-surface)',
+          border: '0.5px solid rgba(255,255,255,0.1)',
+          borderRadius: 14, width: '100%', maxWidth: 400,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)',
+          fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)',
+        }}>
+          {isEdit ? t('Edit session') : t('Add session')}
+        </div>
+
+        <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label htmlFor="ses-when" style={{ display: 'block', fontSize: 16, marginBottom: 7, color: 'rgba(255,255,255,0.4)' }}>
+              {t('When')}
+            </label>
+            <input id="ses-when" type="datetime-local" value={when}
+                   onChange={e => setWhen(e.target.value)} style={fieldStyle} />
+          </div>
+          <div>
+            <label htmlFor="ses-mins" style={{ display: 'block', fontSize: 16, marginBottom: 7, color: 'rgba(255,255,255,0.4)' }}>
+              {t('Duration (minutes)')}
+            </label>
+            <input id="ses-mins" type="number" min="0" value={minutes}
+                   onChange={e => setMinutes(e.target.value)} style={fieldStyle} />
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+          padding: '12px 20px 16px', borderTop: '0.5px solid rgba(255,255,255,0.07)',
+        }}>
+          <button onClick={onClose} disabled={busy}
+                  style={{
+                    padding: '8px 15px', borderRadius: 9, fontSize: 16,
+                    cursor: busy ? 'default' : 'pointer',
+                    background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)',
+                    border: '0.5px solid rgba(255,255,255,0.1)',
+                  }}>
+            {t('Cancel')}
+          </button>
+          <button onClick={save} disabled={busy}
+                  style={{
+                    padding: '8px 17px', borderRadius: 9, fontSize: 16, fontWeight: 600,
+                    cursor: busy ? 'default' : 'pointer',
+                    background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)',
+                    color: 'color-mix(in srgb, var(--c-accent) 80%, white)',
+                    border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
+                    opacity: busy ? 0.5 : 1,
+                  }}>
+            {busy ? t('Saving…') : t('Save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Opens the full ranked list behind a Top-Creators chart.
+function SeeAllCreators({ onClick }) {
+  const t = useT()
+  return (
+    <div className="flex justify-center mt-4">
+      <button onClick={onClick}
+              className="flex items-center gap-2 px-4 py-2 rounded-[9px] cursor-pointer transition-colors hover:bg-white/10"
+              style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)',
+                       background: 'rgba(255,255,255,0.04)',
+                       border: '0.5px solid rgba(255,255,255,0.12)' }}>
+        {t('See all creators')} <ChevronDown size={15} />
+      </button>
+    </div>
+  )
+}
+
 export function Stats() {
+  // The existing page is all "right now" — last 7 days, 13 weeks, all-time
+  // totals. The Almanac is the long view. Tabs rather than one longer page:
+  // this component is already ~770 lines.
+  const [statsTab, setStatsTab] = React.useState('overview')
+  // Each Top-Creators chart shows six; these open the full ranked list behind
+  // it, reusing the same infinite-scroll modal the Hall of Fame uses.
+  const [leaderboard, setLeaderboard] = React.useState(null)   // metric key
+  const [statsCreatorId, setStatsCreatorId] = React.useState(null)
+  const fetchLeaderboard = React.useCallback(
+    (limit, offset) => creatorsApi.leaderboard(leaderboard, limit, offset).then(r => r.data),
+    [leaderboard])
+  const LEADERBOARDS = {
+    time_spent: { title: 'All creators · time spent', subtitle: 'Ranked by hours you have spent with her' },
+    sessions:   { title: 'All creators · session count', subtitle: 'Ranked by sessions logged' },
+    edges:      { title: 'All creators · edges', subtitle: 'Ranked by edges held' },
+  }
   const addXpToast     = useVaultStore(s => s.addXpToast)
   const sessionActive  = useVaultStore(s => s.sessionActive)
   const { startSession, finishSession } = useSession()
@@ -1102,6 +1381,39 @@ export function Stats() {
           ❤️ {sessionActive ? t('End session') : t('Start session')}
         </button>
       </div>
+
+      {/* Tabs — Overview is everything that was here before, untouched */}
+      <div className="flex items-center gap-2">
+        {[
+          { id: 'overview', label: 'Overview' },
+          { id: 'almanac',  label: 'The Almanac' },
+        ].map(tab => {
+          const active = statsTab === tab.id
+          return (
+            <button key={tab.id} onClick={() => setStatsTab(tab.id)}
+                    className="px-4 py-2 rounded-[9px] cursor-pointer transition-all"
+                    style={{ fontSize: 17, fontWeight: 600,
+                             background: active ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.04)',
+                             color: active ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+                             border: `0.5px solid ${active ? 'var(--c-accent)' : 'rgba(255,255,255,0.1)'}` }}>
+              {t(tab.label)}
+            </button>
+          )
+        })}
+      </div>
+
+      <HofFullListModal
+        open={!!leaderboard}
+        title={LEADERBOARDS[leaderboard]?.title}
+        subtitle={LEADERBOARDS[leaderboard]?.subtitle}
+        fetchPage={fetchLeaderboard}
+        onRowClick={(item) => { setLeaderboard(null); setStatsCreatorId(item.id) }}
+        onClose={() => setLeaderboard(null)}
+      />
+      <CreatorStatsModal creatorId={statsCreatorId} onClose={() => setStatsCreatorId(null)} />
+
+      {statsTab === 'almanac' && <Almanac />}
+      {statsTab === 'overview' && (<>
 
       {/* Wrapped Hero Banner — split with world map */}
       <div className="flex gap-4" style={{ alignItems: 'stretch' }}>
@@ -1362,6 +1674,7 @@ export function Stats() {
                 color="#7F77DD" gradientEnd="#CECBF6" />
             ))}
           </div>
+          <SeeAllCreators onClick={() => setLeaderboard('time_spent')} />
         </div>
       )}
 
@@ -1377,6 +1690,7 @@ export function Stats() {
                 color="#D4537E" gradientEnd="#F47AA0" />
             ))}
           </div>
+          <SeeAllCreators onClick={() => setLeaderboard('sessions')} />
         </div>
       )}
 
@@ -1392,6 +1706,7 @@ export function Stats() {
                 color="#7F77DD" gradientEnd="#A89FE8" />
             ))}
           </div>
+          <SeeAllCreators onClick={() => setLeaderboard('edges')} />
         </div>
       )}
 
@@ -1749,6 +2064,7 @@ export function Stats() {
           <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>{t('Start a session to begin tracking your stats.')}</div>
         </div>
       )}
+      </>)}
     </div>
   )
 }
@@ -2093,6 +2409,7 @@ const SETTINGS_TABS = [
   { id: 'scanner',    label: 'Scanner',    icon: ScanLine       },
   { id: 'tagging',    label: 'AI Tagging', icon: Cpu            },
   { id: 'appearance', label: 'Appearance', icon: Sparkles       },
+  { id: 'session',    label: 'Session',    icon: Droplets       },
   { id: 'hotkeys',    label: 'Hotkeys',    icon: Keyboard       },
   { id: 'backup',     label: 'Backup',     icon: Archive        },
   { id: 'system',     label: 'System',     icon: ShieldCheck    },
@@ -2101,6 +2418,8 @@ const SETTINGS_TABS = [
 export function Settings() {
   const showGoonBorder    = useVaultStore(s => s.showGoonBorder)
   const setShowGoonBorder = useVaultStore(s => s.setShowGoonBorder)
+  const sessionEndClimax    = useVaultStore(s => s.sessionEndClimax)
+  const setSessionEndClimax = useVaultStore(s => s.setSessionEndClimax)
   const currentPalette    = useVaultStore(s => s.palette)
   const setPalette        = useVaultStore(s => s.setPalette)
   const currentFont         = useVaultStore(s => s.font)
@@ -3212,6 +3531,7 @@ export function Settings() {
                   </div>
                 </SettingsSection>
 
+
                 <SettingsSection title={t('Vault identity')} icon={Sparkles} accentColor="var(--c-amber)" defaultOpen={false}>
                   <div className="mb-5">
                     <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Vault name')}</div>
@@ -3300,6 +3620,63 @@ export function Settings() {
                       </a>
                     )}
                   </div>
+                </SettingsSection>
+              </div>
+            )}
+
+            {/* ── Session tab ──────────────────────────── */}
+            {settingsTab === 'session' && (
+              <div className="space-y-3">
+                <SettingsSection title={t('End session behaviour')} icon={Droplets} accentColor="var(--c-pink)">
+                  <div className="mb-2">
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { value: 'always', label: 'Always count it',
+                          hint: 'Ending a session logs a climax. The original behaviour.' },
+                        { value: 'ask',    label: 'Ask me each time',
+                          hint: 'Prompts on every finish. Backing out leaves the session running.' },
+                        { value: 'never',  label: 'Never count it',
+                          hint: 'Logs the time only. Mark climaxes yourself with the 💦 button.' },
+                      ].map(opt => {
+                        const active = sessionEndClimax === opt.value
+                        return (
+                          <button key={opt.value} onClick={() => setSessionEndClimax(opt.value)}
+                                  className="text-left px-3 py-2.5 rounded-[9px] cursor-pointer transition-all"
+                                  style={{
+                                    background: active
+                                      ? 'color-mix(in srgb, var(--c-pink) 16%, transparent)'
+                                      : 'rgba(255,255,255,0.04)',
+                                    border: `1px solid ${active
+                                      ? 'color-mix(in srgb, var(--c-pink) 45%, transparent)'
+                                      : 'rgba(255,255,255,0.08)'}`,
+                                  }}>
+                            <div className="text-[16px]" style={{
+                              color: active ? 'color-mix(in srgb, var(--c-pink) 75%, white)' : 'rgba(255,255,255,0.7)',
+                              fontWeight: active ? 600 : 400,
+                            }}>{t(opt.label)}</div>
+                            <div className="text-[14px] text-white/30 mt-0.5">{t(opt.hint)}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title={t('Edges')} icon={Waves} accentColor="var(--c-accent)" defaultOpen={false}>
+                  <div className="text-[15px] text-white/35">
+                    {t('Edge Mode logs an edge whenever the device cuts out. Without a device, log one yourself with the Edge button in any viewer, or the "Log an edge" hotkey.')}
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title={t('Session history')} icon={Clock} accentColor="var(--c-amber)" defaultOpen={false}>
+                  <div className="text-[15px] text-white/35">
+                    {t('Sessions are logged automatically, so a crash or a forgotten stop can leave one that is wrong. Every entry in Session History can be edited or deleted, and you can add sessions the app never saw.')}
+                  </div>
+                  <a href="/stats" className="inline-flex items-center gap-1.5 mt-3 text-[15px] px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
+                     style={{ color: 'color-mix(in srgb, var(--c-amber) 80%, white)',
+                              border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
+                    <Clock size={12} /> {t('Open Session History')} →
+                  </a>
                 </SettingsSection>
               </div>
             )}

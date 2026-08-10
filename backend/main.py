@@ -194,8 +194,14 @@ from routers import galleries, creators, images, tags, sessions, gamification, s
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
-from routers.group_chat import router as group_chat_router
 from routers.showcase import router as showcase_router
+
+# Group Chat is personal-mode content and isn't part of the public source tree.
+# Absent, the app runs normally — the feature simply isn't mounted.
+try:
+    from routers.group_chat import router as group_chat_router
+except ImportError:
+    group_chat_router = None
 
 Base.metadata.create_all(bind=engine)
 
@@ -350,6 +356,13 @@ def _migrate_add_columns():
         "ALTER TABLE user_profile ADD COLUMN last_edge_date DATETIME",
         # Hall of Fame rank movement (green/red place-change arrows)
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_hof_ranks_entity ON hof_ranks(entity_type, entity_id)",
+        # Almanac — real on-disk acquisition date, alongside the existing mtime
+        "ALTER TABLE images ADD COLUMN file_created_at DATETIME",
+        "CREATE INDEX IF NOT EXISTS ix_images_file_created ON images(file_created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_images_file_modified ON images(file_modified_at)",
+        # Daily activity rollup — the only way usage trends over time ever exist,
+        # since view_count/view_seconds are lifetime scalars with no time axis.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_daily_activity_day ON daily_activity(day)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -780,7 +793,8 @@ app.include_router(system_router,            prefix="/api/system",        tags=[
 app.include_router(dedup.router,             prefix="/api/dedup",          tags=["dedup"])
 app.include_router(tasks.router,             prefix="/api/tasks",          tags=["tasks"])
 app.include_router(companion_router,         prefix="/api/companion",      tags=["companion"])
-app.include_router(group_chat_router,        prefix="/api/companion/groups", tags=["group-chat"])
+if group_chat_router is not None:
+    app.include_router(group_chat_router,    prefix="/api/companion/groups", tags=["group-chat"])
 app.include_router(showcase_router,          prefix="/api/creators",       tags=["showcase"])
 app.include_router(feed.router,              prefix="/api/feed",           tags=["feed"])
 

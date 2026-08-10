@@ -5,14 +5,13 @@ import {
   ChevronDown, Check, X,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { companionApi, creatorsApi, systemApi } from '../lib/api'
+import { companionApi, creatorsApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
+import { usePersonalMode } from '../hooks/usePersonalMode'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
 import CompanionChat from '../components/companion/CompanionChat'
-import GroupChat from '../components/companion/GroupChat'
-import GroupsPanel from '../components/companion/GroupsPanel'
-import SimulationSection from '../components/companion/SimulationSection'
+import { GroupChat, GroupsPanel, SimulationSection } from '../components/companion/personalModules'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -208,11 +207,7 @@ export default function ErikaAI() {
   const [personaPanelOpen, setPersonaPanelOpen] = useState(false)
   const [personaPanelSearch, setPersonaPanelSearch] = useState('')
 
-  const { data: personalMode } = useQuery({
-    queryKey: ['personal-mode'],
-    queryFn:  () => systemApi.getPersonalMode().then(r => r.data.enabled),
-    initialData: false,
-  })
+  const personalMode = usePersonalMode()
 
   useEffect(() => {
     if (!personalMode && activeTab === 'groups') setActiveTab('chat')
@@ -594,7 +589,7 @@ export default function ErikaAI() {
         )}
 
         {/* ── Groups tab ────────────────────────────────────────────────────── */}
-        {activeTab === 'groups' && personalMode && (
+        {activeTab === 'groups' && personalMode && GroupsPanel && (
           <div className="flex h-full">
             <div className="w-[340px] flex-shrink-0 border-r flex flex-col min-h-0"
                  style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
@@ -851,7 +846,7 @@ export default function ErikaAI() {
             </div>
 
             {/* Simulation ("Drama") Mode */}
-            {personalMode && <SimulationSection config={config} updateField={updateField} />}
+            {personalMode && SimulationSection && <SimulationSection config={config} updateField={updateField} />}
 
             {/* Danger zone */}
             <div className="pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>

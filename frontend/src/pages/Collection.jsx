@@ -9,6 +9,7 @@ import PackOpening from '../components/PackOpening'
 import ShopTab from '../components/ShopTab'
 import DismantleEffect from '../components/DismantleEffect'
 import GalleryPagination from '../components/GalleryPagination'
+import CollectionFilters, { VaultDropdown } from '../components/collection/CollectionFilters'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50]
@@ -30,6 +31,16 @@ const RARITY_OPTIONS = [
   { value: 'All', label: 'All' },
   ...RARITY_ORDER.map(r => ({ value: r, label: RARITY_CONFIG[r]?.label ?? r })),
 ]
+// Scarcity class (the R / SR / SSR / UR badge on the card face). Separate axis
+// from the tier above: the class is a card's percentile *within* its own tier,
+// so a Core card can be UR. Filtering the two independently is the point.
+const CLASS_OPTIONS = [
+  { value: 'All', label: 'All' },
+  { value: 'UR',  label: 'UR' },
+  { value: 'SSR', label: 'SSR' },
+  { value: 'SR',  label: 'SR' },
+  { value: 'R',   label: 'R' },
+]
 const TYPE_OPTIONS = [
   'All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant', 'Collab', 'HOF',
 ].map(t => ({ value: t, label: t }))
@@ -44,68 +55,6 @@ const SORT_OPTIONS  = [
 // ── Rarity color dots (4-tier rework: purple → orange → gold → cosmic) ────────
 const RARITY_COLORS = {
   common: '#9F8FEF', epic: '#ff8800', legendary: '#FFD700', celestial: '#E8E8FF',
-}
-
-// ── Standard vault dropdown — matches GalleryList style exactly ──────────────
-function VaultDropdown({ value, onChange, options, colorMap }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const getOpt  = v => options.find(o => (o.value ?? o) === v) ?? options[0]
-  const getLabel = v => { const o = getOpt(v); return o?.label ?? o }
-  const isDefault = value === (options[0]?.value ?? options[0])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] cursor-pointer"
-        style={{
-          background: !isDefault ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-          color: !isDefault ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-          border: `0.5px solid ${!isDefault ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
-          transition: 'all 0.15s ease',
-        }}>
-        {!isDefault && colorMap?.[value] && (
-          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorMap[value] }} />
-        )}
-        {getLabel(value)}
-        <ChevronDown size={10} />
-      </button>
-      {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 rounded-[10px] shadow-2xl animate-menu-pop overflow-hidden"
-             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 140 }}>
-          {options.map(opt => {
-            const v = opt.value ?? opt
-            const l = opt.label ?? opt
-            const active = v === value
-            return (
-              <button key={String(v)} type="button"
-                      onMouseDown={() => { onChange(v); setOpen(false) }}
-                      className="w-full text-left px-3 py-2 text-[12px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
-                      style={{
-                        background: active ? 'rgba(127,119,221,0.15)' : 'transparent',
-                        color: active ? '#CECBF6' : 'rgba(255,255,255,0.7)',
-                      }}>
-                {colorMap?.[v]
-                  ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colorMap[v] }} />
-                  : <span className="w-1.5 h-1.5 flex-shrink-0" />}
-                {l}
-                {active && <Check size={10} className="ml-auto" style={{ color: '#7F77DD' }} />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
 }
 
 const CO_STATE_KEY = 'vault_collection_state'
@@ -135,7 +84,10 @@ export default function Collection() {
 
   // ── Derive filter state from URL search params ───────────────────────────────
   const rarityFilter = searchParams.get('rarity') || 'All'
+  const classFilter   = searchParams.get('class') || 'All'
   const typeFilter    = searchParams.get('type') || 'All'
+  const creatorFilter = searchParams.get('creator') || ''
+  const searchQuery   = searchParams.get('q') || ''
   const sort           = searchParams.get('sort') || 'rarity_desc'
   const page            = parseInt(searchParams.get('page') || '1', 10) || 1
 
@@ -160,14 +112,18 @@ export default function Collection() {
   }, [setSearchParams])
 
   const setRarityFilter = useCallback(v => setParams({ rarity: v !== 'All' ? v : null, page: null }), [setParams])
+  const setClassFilter   = useCallback(v => setParams({ class: v !== 'All' ? v : null, page: null }), [setParams])
   const setTypeFilter    = useCallback(v => setParams({ type: v !== 'All' ? v : null, page: null }), [setParams])
+  const setCreatorFilter = useCallback(v => setParams({ creator: v || null, page: null }), [setParams])
+  const setSearchQuery   = useCallback(v => setParams({ q: v || null, page: null }), [setParams])
   const setSort           = useCallback(v => setParams({ sort: v !== 'rarity_desc' ? v : null, page: null }), [setParams])
   const setPage = useCallback((v) => {
     const p = typeof v === 'function' ? v(page) : v
     setParam('page', p > 1 ? p : null)
   }, [setParam, page])
 
-  const hasActiveFilters = rarityFilter !== 'All' || typeFilter !== 'All' || sort !== 'rarity_desc'
+  const hasActiveFilters = rarityFilter !== 'All' || classFilter !== 'All' || typeFilter !== 'All'
+    || creatorFilter !== '' || searchQuery !== '' || sort !== 'rarity_desc'
   const resetFilters = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams])
 
   const [selected, setSelected]         = useState([])
@@ -191,13 +147,25 @@ export default function Collection() {
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: invData, isLoading: invLoading } = useQuery({
-    queryKey: ['card-inventory', rarityFilter, typeFilter, sort],
+    queryKey: ['card-inventory', rarityFilter, classFilter, typeFilter, creatorFilter, searchQuery, sort],
     queryFn: () => cardsApi.inventory({
-      rarity:    rarityFilter !== 'All' ? rarityFilter : undefined,
-      card_type: typeFilter   !== 'All' ? (TYPE_API_MAP[typeFilter] ?? typeFilter.toLowerCase()) : undefined,
+      rarity:       rarityFilter !== 'All' ? rarityFilter : undefined,
+      rarity_class: classFilter  !== 'All' ? classFilter  : undefined,
+      card_type:    typeFilter   !== 'All' ? (TYPE_API_MAP[typeFilter] ?? typeFilter.toLowerCase()) : undefined,
+      creator_id:   creatorFilter || undefined,
+      search:       searchQuery || undefined,
       sort,
     }).then(r => r.data),
     enabled: tab === 'collection' || tab === 'forge',
+  })
+
+  // Only creators you own cards of — a filter listing every creator in the vault
+  // would be the same navigation problem in a different shape.
+  const { data: collectionCreators = [] } = useQuery({
+    queryKey: ['collection-creators'],
+    queryFn: () => cardsApi.collectionCreators().then(r => r.data),
+    enabled: tab === 'collection',
+    staleTime: 60_000,
   })
 
   const { data: balance } = useQuery({
@@ -544,41 +512,21 @@ const feedDuplicateMutation = useMutation({
       {/* ── COLLECTION TAB ──────────────────────────────────────────────────── */}
       {tab === 'collection' && (
         <div>
-          {/* Filters */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Filter size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
-            {/* Rarity filter */}
-            <VaultDropdown
-              value={rarityFilter}
-              onChange={v => { setRarityFilter(v); setForgePage(1) }}
-              options={RARITY_OPTIONS}
-              colorMap={RARITY_COLORS}
-            />
-            {/* Type filter */}
-            <VaultDropdown
-              value={typeFilter}
-              onChange={v => { setTypeFilter(v); setForgePage(1) }}
-              options={TYPE_OPTIONS}
-            />
-            {/* Sort */}
-            <VaultDropdown
-              value={sort}
-              onChange={v => setSort(v)}
-              options={SORT_OPTIONS}
-            />
-
-            {hasActiveFilters && (
-              <button onClick={resetFilters}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 5,
-                        padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)',
-                        border: '0.5px solid rgba(255,255,255,0.07)',
-                      }}>
-                Reset
-              </button>
-            )}
-
+          <CollectionFilters
+            search={searchQuery}          onSearchChange={v => { setSearchQuery(v); setForgePage(1) }}
+            rarity={rarityFilter}         onRarityChange={v => { setRarityFilter(v); setForgePage(1) }}
+            rarityOptions={RARITY_OPTIONS} rarityColors={RARITY_COLORS}
+            rarityClass={classFilter}     onRarityClassChange={v => { setClassFilter(v); setForgePage(1) }}
+            classOptions={CLASS_OPTIONS}
+            creator={creatorFilter}       onCreatorChange={v => { setCreatorFilter(v); setForgePage(1) }}
+            creators={collectionCreators}
+            type={typeFilter}             onTypeChange={v => { setTypeFilter(v); setForgePage(1) }}
+            typeOptions={TYPE_OPTIONS}
+            sort={sort}                   onSortChange={setSort}
+            sortOptions={SORT_OPTIONS}
+            hasActiveFilters={hasActiveFilters}
+            onReset={resetFilters}
+            trailing={<>
             {/* Divider */}
             <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
 
@@ -610,35 +558,12 @@ const feedDuplicateMutation = useMutation({
             }}>
               <BarChart2 size={11} /> CXP
             </button>
-          </div>
+            </>}
+          />
 
-          {/* Active filters summary */}
-          {hasActiveFilters && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, marginBottom: 14 }}>
-              <Filter size={10} style={{ color: 'rgba(255,255,255,0.3)' }} />
-              {rarityFilter !== 'All' && (
-                <span style={{ padding: '2px 8px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 4,
-                               background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
-                  {RARITY_CONFIG[rarityFilter]?.label ?? rarityFilter}
-                  <button type="button" onClick={() => setRarityFilter('All')} style={{ cursor: 'pointer', display: 'flex' }}><X size={9} /></button>
-                </span>
-              )}
-              {typeFilter !== 'All' && (
-                <span style={{ padding: '2px 8px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 4,
-                               background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
-                  {typeFilter}
-                  <button type="button" onClick={() => setTypeFilter('All')} style={{ cursor: 'pointer', display: 'flex' }}><X size={9} /></button>
-                </span>
-              )}
-              {sort !== 'rarity_desc' && (
-                <span style={{ padding: '2px 8px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 4,
-                               background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>
-                  {SORT_OPTIONS.find(o => o.value === sort)?.label ?? sort}
-                  <button type="button" onClick={() => setSort('rarity_desc')} style={{ cursor: 'pointer', display: 'flex' }}><X size={9} /></button>
-                </span>
-              )}
-            </div>
-          )}
+          {/* The old "active filters" summary row is gone: the chips above show
+              every active tier/class at a glance, and the search box and creator
+              picker carry their own state, so it was restating what is visible. */}
 
           {invLoading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>

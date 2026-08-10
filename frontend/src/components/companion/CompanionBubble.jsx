@@ -2,13 +2,13 @@ import React, { useRef, useState, useEffect } from 'react'
 import { Sparkles, X, Maximize2, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { companionApi, creatorsApi } from '../../lib/api'
 import { useAllCreators } from '../../hooks/useAllCreators'
+import { usePersonalMode } from '../../hooks/usePersonalMode'
 import CompanionChat from './CompanionChat'
-import GroupChat from './GroupChat'
-import GroupsPanel from './GroupsPanel'
+import { GroupChat, GroupsPanel, hasPersonalModules } from './personalModules'
 
 export default function CompanionBubble() {
   const companion          = useVaultStore(s => s.companion)
@@ -23,10 +23,20 @@ export default function CompanionBubble() {
   // Fetch creators for the persona switcher
   const { data: creators } = useAllCreators()
 
+  // Group chat is personal-mode content: hidden unless this build actually has
+  // the components AND the gate is currently unlocked.
+  const personalMode = usePersonalMode()
+  const groupsAvailable = hasPersonalModules && personalMode
+
   // A drama-spawned group opened from a ping banner lands here with groupId set
   useEffect(() => {
-    if (companion.groupId) setTab('groups')
-  }, [companion.groupId])
+    if (companion.groupId && groupsAvailable) setTab('groups')
+  }, [companion.groupId, groupsAvailable])
+
+  // Locking personal mode while the groups tab is open drops you back to the DM
+  useEffect(() => {
+    if (!groupsAvailable && tab === 'groups') setTab('dm')
+  }, [groupsAvailable, tab])
 
   if (!companion.enabled || !companion.config) return null
 
@@ -100,7 +110,7 @@ export default function CompanionBubble() {
                    style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
                 {[
                   { id: 'dm',     label: 'DM' },
-                  { id: 'groups', label: <Users size={13} /> },
+                  ...(groupsAvailable ? [{ id: 'groups', label: <Users size={13} /> }] : []),
                 ].map(t => (
                   <button key={t.id}
                           onClick={() => { setTab(t.id); if (t.id === 'dm') setCompanionGroup(null) }}
@@ -133,7 +143,7 @@ export default function CompanionBubble() {
 
             {/* Body — 1-on-1 chat, groups list, or an open group */}
             <div className="flex-1 min-h-0">
-              {tab === 'dm' ? (
+              {(tab === 'dm' || !groupsAvailable) ? (
                 <CompanionChat
                   config={config}
                   creators={creators || []}

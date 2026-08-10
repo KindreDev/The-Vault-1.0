@@ -10,6 +10,8 @@ import {
   Waves,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
+import { patchCachedCreators } from '../lib/creatorCache'
+import { logEdgeNow } from '../lib/edges'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
@@ -248,9 +250,12 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
          className="relative rounded-[8px] overflow-hidden group animate-fade-in"
          style={{ background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${selected ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.07)'}`, aspectRatio: '1' }}>
 
-      {/* Bulk select overlay */}
+      {/* Bulk select overlay. onMouseDown: shift+click natively drags a text
+          selection across the grid — suppress it so range-selecting doesn't
+          smear blue highlight over every tile. */}
       {bulkMode && (
         <div className="absolute top-1.5 left-1.5 z-[20]"
+             onMouseDown={(e) => { if (e.shiftKey) e.preventDefault() }}
              onClick={(e) => { e.stopPropagation(); onSelect?.(image.id, idx, e.shiftKey) }}>
           {selected
             ? <CheckSquare size={15} style={{ color: '#7F77DD', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
@@ -263,7 +268,9 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
              style={{ background: 'rgba(127,119,221,0.18)' }} />
       )}
 
-      <div onClick={(e) => bulkMode ? onSelect?.(image.id, idx, e.shiftKey) : onClick(idx)} className="cursor-pointer w-full h-full">
+      <div onMouseDown={(e) => { if (e.shiftKey) e.preventDefault() }}
+           onClick={(e) => bulkMode ? onSelect?.(image.id, idx, e.shiftKey) : onClick(idx)}
+           className="cursor-pointer w-full h-full">
         {!failed
           ? <img
               src={`/api/images/${image.id}/thumb`}
@@ -1030,12 +1037,20 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               <div className="text-[22px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
               <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
-            {/* Edges are logged by Edge Mode, never by hand — read-only */}
             <div className="text-center min-w-[36px]">
               <div className="text-[22px] font-medium leading-none" style={{ color: '#A89FE8' }}>{image?.edge_count ?? 0}</div>
               <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('edges')}</div>
             </div>
           </div>
+          {/* Edges used to come only from Edge Mode, so anyone without a device
+              had a counter they could never move. This logs one by hand. */}
+          <button onMouseDown={() => logEdgeNow()}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-[12px] font-medium cursor-pointer active:scale-95 transition-transform mt-2"
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)',
+                           color: 'color-mix(in srgb, var(--c-accent) 82%, white)',
+                           border: '0.5px solid color-mix(in srgb, var(--c-accent) 38%, transparent)' }}>
+            <Waves size={13} /> {t('Edge')}
+          </button>
         </div>
 
         {/* Rating */}
@@ -2089,14 +2104,21 @@ export default function GalleryView() {
                   key={c.id}
                   type="button"
                   onMouseDown={async () => {
-                    const targets = images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? []
+                    const ids = (images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? [])
+                      .map(i => i.id)
                     try {
-                      await Promise.all(targets.map(img => imagesApi.addCreator(img.id, c.id)))
-                      toast.success(`Creator assigned to ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
-                      qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
+                      const { data } = await imagesApi.bulkAddCreator(ids, c.id)
+                      const n = data?.assigned ?? 0
+                      toast.success(n > 0
+                        ? `${data.creator_name} assigned to ${n} ${n === 1 ? 'file' : 'files'}`
+                        : 'Already assigned')
+                      patchCachedCreators(qc, ids, {
+                        id: data.creator_id, name: data.creator_name, creator_type: data.creator_type,
+                      })
                       setBulkAssignOpen(false)
                       setBulkAssignSearch('')
-                    } catch {
+                    } catch (err) {
+                      console.error('Assign creator failed:', err)
                       toast.error(t('Failed to assign creator'))
                     }
                   }}
@@ -2137,15 +2159,35 @@ export default function GalleryView() {
                             selected={selectedIds.has(img.id)}
                             onSelect={(imgId, imgIdx, shiftKey) => {
                               const visibleImgs = images.filter(i => !deletedIds.has(i.id))
-                              if (shiftKey && lastSelectIdxRef.current !== null) {
-                                const lo = Math.min(lastSelectIdxRef.current, imgIdx)
-                                const hi = Math.max(lastSelectIdxRef.current, imgIdx)
-                                const rangeIds = visibleImgs.slice(lo, hi + 1).map(i => i.id)
-                                setSelectedIds(s => { const n = new Set(s); rangeIds.forEach(rid => n.add(rid)); return n })
-                              } else {
-                                setSelectedIds(s => { const n = new Set(s); n.has(imgId) ? n.delete(imgId) : n.add(imgId); return n })
+                              setSelectedIds(s => {
+                                // Anchor for a range. The ref is the explicit one, but it can be
+                                // unset when the selection came from somewhere that doesn't set it
+                                // (right-click "select", Select all, a restored selection). Falling
+                                // back to the nearest already-selected file means shift-click always
+                                // extends a range instead of silently toggling one file — which was
+                                // why it "only worked after shift-clicking once first".
+                                let anchor = lastSelectIdxRef.current
+                                if (shiftKey && anchor === null && s.size > 0) {
+                                  let best = null
+                                  visibleImgs.forEach((im, i) => {
+                                    if (!s.has(im.id)) return
+                                    if (best === null || Math.abs(i - imgIdx) < Math.abs(best - imgIdx)) best = i
+                                  })
+                                  anchor = best
+                                }
+                                if (shiftKey && anchor !== null) {
+                                  const lo = Math.min(anchor, imgIdx)
+                                  const hi = Math.max(anchor, imgIdx)
+                                  const n = new Set(s)
+                                  visibleImgs.slice(lo, hi + 1).forEach(im => n.add(im.id))
+                                  lastSelectIdxRef.current = imgIdx   // chain further shift-clicks
+                                  return n
+                                }
+                                const n = new Set(s)
+                                n.has(imgId) ? n.delete(imgId) : n.add(imgId)
                                 lastSelectIdxRef.current = imgIdx
-                              }
+                                return n
+                              })
                             }}
                             onContextMenu={(im, e) => {
                               // Windows behaviour: right-click on selected image → apply to whole selection
@@ -2228,6 +2270,12 @@ export default function GalleryView() {
           onSelectMode={!bulkMode ? () => {
             setBulkMode(true)
             setSelectedIds(new Set([imgCtx.image.id]))
+            // Seed the range anchor too — entering select mode this way used to
+            // leave it unset, so the next shift-click toggled a single file
+            // instead of extending a range.
+            const visibleImgs = images?.filter(i => !deletedIds.has(i.id)) ?? []
+            const seedIdx = visibleImgs.findIndex(i => i.id === imgCtx.image.id)
+            lastSelectIdxRef.current = seedIdx >= 0 ? seedIdx : null
             setImgCtx(null)
           } : undefined}
           onView={() => {
@@ -2273,10 +2321,19 @@ export default function GalleryView() {
           onAssignCreator={async (creatorId) => {
             const targets = imgCtx.bulkImages ?? [imgCtx.image]
             try {
-              await Promise.all(targets.map(img => imagesApi.addCreator(img.id, creatorId)))
-              toast.success(`Creator assigned to ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
-              qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
-            } catch {
+              // One request for the whole selection — the per-file loop this
+              // replaces is why a big selection sat there spinning.
+              const ids = targets.map(i => i.id)
+              const { data } = await imagesApi.bulkAddCreator(ids, creatorId)
+              const n = data?.assigned ?? 0
+              toast.success(n > 0
+                ? `${data.creator_name} assigned to ${n} ${n === 1 ? 'file' : 'files'}`
+                : 'Already assigned')
+              patchCachedCreators(qc, ids, {
+                id: data.creator_id, name: data.creator_name, creator_type: data.creator_type,
+              })
+            } catch (err) {
+              console.error('Assign creator failed:', err)
               toast.error(t('Failed to assign creator'))
             }
           }}

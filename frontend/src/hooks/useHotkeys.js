@@ -16,6 +16,7 @@ import { deviceService } from '../services/device'
 import { imagesApi } from '../lib/api'
 import { eventToBinding, isTypingTarget, HOTKEY_ACTIONS } from '../lib/hotkeys'
 import { startSessionNow, finishSessionNow } from '../lib/session'
+import { logEdgeNow } from '../lib/edges'
 
 const IGNORE_TYPING = new Set(
   HOTKEY_ACTIONS.filter(a => a.ignoreTypingGuard).map(a => a.id)
@@ -59,6 +60,7 @@ function runAction(actionId) {
     case 'goon_mode':       return toggleGoonMode()
     case 'finisher':        return triggerFinisher()
     case 'log_cum':         return logCum()
+    case 'log_edge':        return logEdgeNow()
     default:                return
   }
 }

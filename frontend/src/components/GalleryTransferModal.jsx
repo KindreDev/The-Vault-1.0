@@ -41,16 +41,29 @@ export default function GalleryTransferModal({
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  // Copy can only target mix galleries; move targets real ones. Filtering
-  // server-side matters here — a client-side filter over a capped page would
-  // silently miss mix galleries that sort past the window in a large library.
-  const { data: allGalleries } = useQuery({
-    queryKey: ['galleries-transfer-targets', isCopy],
+  // Debounce so each keystroke doesn't fire its own request.
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(search.trim()), 220)
+    return () => clearTimeout(id)
+  }, [search])
+
+  // Copy can only target mix galleries; move targets real ones.
+  //
+  // Move searches SERVER-SIDE. It used to pull a capped page (2 000) and filter
+  // it in the browser, which silently hid every gallery sorting past that window
+  // — on a 21 000-gallery library the fetched slice didn't even reach "A", so
+  // searching "Vampirella" only matched "12 Vampire HQ…" (it sorts under "1").
+  // Copy keeps the client-side filter: its mix-gallery pool is tiny by nature.
+  const { data: allGalleries, isFetching } = useQuery({
+    queryKey: ['galleries-transfer-targets', isCopy, isCopy ? '' : debounced],
     queryFn: () => galleriesApi.list({
-      limit: isCopy ? 500 : 2000,
+      limit: isCopy ? 500 : 60,
       sort_by: isCopy ? 'date_added' : 'name',
       is_mix: isCopy,
+      ...(isCopy ? {} : { search: debounced }),
     }).then(r => r.data),
+    enabled: isCopy || debounced.length > 0,
     staleTime: 30000,
   })
 
@@ -64,6 +77,9 @@ export default function GalleryTransferModal({
     // Copy has a small, purpose-built pool, so show it all up front rather than
     // forcing the user to guess names of playlists they just made.
     if (!q) return isCopy ? candidates.slice(0, 40) : []
+    // Move results arrive already name-filtered by the server — re-filtering here
+    // would just re-introduce a client-side cap.
+    if (!isCopy) return candidates.slice(0, 40)
     return candidates.filter(g => g.name.toLowerCase().includes(q)).slice(0, 40)
   }, [candidates, search, isCopy])
 
@@ -202,9 +218,10 @@ export default function GalleryTransferModal({
             </button>
           )}
 
-          {!isCopy && search.length > 0 && filtered.length === 0 && !targetGallery && (
+          {!isCopy && search.trim().length > 0 && filtered.length === 0 && !targetGallery && (
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', textAlign: 'center', padding: '8px 0' }}>
-              {t('No galleries found')}
+              {/* Don't claim "not found" while the query is still in flight */}
+              {(isFetching || debounced !== search.trim()) ? t('Searching…') : t('No galleries found')}
             </div>
           )}
           {isCopy && candidates.length === 0 && !search.trim() && (

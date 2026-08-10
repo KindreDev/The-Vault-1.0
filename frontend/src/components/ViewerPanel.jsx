@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { X, Plus, Tag, UserPlus, MoveRight } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi } from '../lib/api'
+import { patchCachedCreators } from '../lib/creatorCache'
 import { useAllCreators } from '../hooks/useAllCreators'
 import TagAutocompleteInput from './TagAutocompleteInput'
 import toast from 'react-hot-toast'
@@ -10,6 +11,24 @@ import toast from 'react-hot-toast'
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
+}
+
+/**
+ * Turn an axios error into something a human can read.
+ *
+ * FastAPI returns 422 validation errors as an ARRAY of objects, so the obvious
+ * `${err.response.data.detail}` rendered the useless "Failed: [object Object]"
+ * users were reporting — the actual problem (a malformed request) was never
+ * visible to anyone.
+ */
+function errText(err) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map(d => d?.msg || JSON.stringify(d)).join(', ')
+  }
+  if (detail) return JSON.stringify(detail)
+  return err?.message || 'Unknown error'
 }
 
 // ── Tag management ─────────────────────────────────────────────────────────────
@@ -83,6 +102,13 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
   const fileCrIds = fileCreatorIds ?? []
   const galCrIds  = galleryCreatorIds ?? []
 
+  // The optional callbacks let a caller wire up only what it tracks. Without
+  // these no-op fallbacks a partially-wired call site throws mid-mutation and
+  // the assignment silently half-applies.
+  const setCreators        = onCreatorsChanged          ?? (() => {})
+  const setFileIds         = onFileCreatorIdsChanged    ?? (() => {})
+  const setHasFileCreators = onHasImageCreatorsChanged  ?? (() => {})
+
   const { data: allCreators } = useAllCreators()
 
   const filtered = useMemo(() => {
@@ -97,26 +123,40 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  // Refresh what the viewer was opened from. 'images-list' is deliberately
+  // included: the Photos and Videos tabs read from it, so without it a creator
+  // assigned in the viewer only appeared in the grid after a manual refresh.
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['gallery-images'] })
+    qc.invalidateQueries({ queryKey: ['images-list'] })
     qc.invalidateQueries({ queryKey: ['galleries'] })
   }
 
-  // Add creator to this file (additive — merges with gallery creators)
+  // Add creator to this file (additive — merges with gallery creators).
+  // The imageId guard is load-bearing: a call site that forgot to pass it sent
+  // POST /images/undefined/creators/7, and the 422 that came back surfaced as
+  // "Failed: [object Object]" with the assignment silently never happening.
   const addFileMutation = useMutation({
-    mutationFn: (creatorId) => imagesApi.addCreator(imageId, creatorId),
+    mutationFn: (creatorId) => {
+      if (!imageId) return Promise.reject(new Error('No file selected'))
+      return imagesApi.addCreator(imageId, creatorId)
+    },
     onSuccess: (_, creatorId) => {
       const c = allCreators?.find(x => x.id === creatorId)
       if (c) {
-        onCreatorsChanged(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c])
-        onFileCreatorIdsChanged(prev => prev.includes(creatorId) ? prev : [...prev, creatorId])
-        onHasImageCreatorsChanged(true)
+        setCreators(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c])
+        setFileIds(prev => prev.includes(creatorId) ? prev : [...prev, creatorId])
+        setHasFileCreators(true)
         toast.success(`${c.name} assigned to this file`)
+        // Patch the grid behind the viewer rather than invalidating it — the
+        // list this came from costs about a second to refetch, and we already
+        // know precisely what changed.
+        patchCachedCreators(qc, [imageId], c)
       }
       setAddOpen(false); setSearch('')
-      invalidate()
+      qc.invalidateQueries({ queryKey: ['galleries'] })
     },
-    onError: (err) => toast.error(`Failed: ${err.response?.data?.detail || err.message}`)
+    onError: (err) => toast.error(`Failed: ${errText(err)}`)
   })
 
   // Remove creator from file-level assignment
@@ -124,23 +164,24 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
     mutationFn: (creatorId) => imagesApi.removeCreator(imageId, creatorId),
     onSuccess: (_, creatorId) => {
       const newFileIds = fileCrIds.filter(id => id !== creatorId)
-      onFileCreatorIdsChanged(newFileIds)
-      if (newFileIds.length === 0) onHasImageCreatorsChanged(false)
+      setFileIds(newFileIds)
+      if (newFileIds.length === 0) setHasFileCreators(false)
       // If creator is also gallery-inherited, keep them in the merged list (just no longer file-tagged)
       // Otherwise remove them from the display list entirely
       if (!galCrIds.includes(creatorId)) {
-        onCreatorsChanged(prev => prev.filter(c => c.id !== creatorId))
+        setCreators(prev => prev.filter(c => c.id !== creatorId))
       }
       invalidate()
     },
+    onError: (err) => toast.error(`Failed: ${errText(err)}`)
   })
 
   // Clear ALL file-level assignments on this image
   const clearFileMutation = useMutation({
     mutationFn: () => imagesApi.clearCreators(imageId),
     onSuccess: () => {
-      onHasImageCreatorsChanged(false)
-      onFileCreatorIdsChanged([])
+      setHasFileCreators(false)
+      setFileIds([])
       qc.invalidateQueries({ queryKey: ['gallery-images'] })
       toast.success('File assignments cleared')
       invalidate()

@@ -10,9 +10,10 @@ import threading
 from datetime import datetime
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from database import DB_PATH, CONFIG_FILE, CONFIG_DIR, DATA_DIR
+from sqlalchemy.orm import Session
+from database import DB_PATH, CONFIG_FILE, CONFIG_DIR, DATA_DIR, get_db
 
 router = APIRouter()
 
@@ -59,6 +60,20 @@ def _set_startup_enabled(enabled: bool):
 def health():
     """Simple liveness probe — frontend polls this after a restart."""
     return {"status": "ok"}
+
+
+@router.get("/activity-tracking")
+def activity_tracking(db: Session = Depends(get_db)):
+    """When engagement events started being recorded.
+
+    The periodic Hall of Fame can only see events, and events only exist from
+    the moment logging was added — so a "this month" window that starts before
+    this date is genuinely partial, and the UI says so rather than presenting a
+    half-month as the whole month.
+    """
+    from services import activity
+    since = activity.tracking_since(db)
+    return {"since": since.isoformat() if since else None}
 
 
 @router.get("/personal-mode")

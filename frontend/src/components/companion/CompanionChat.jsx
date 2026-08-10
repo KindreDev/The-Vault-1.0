@@ -3,6 +3,7 @@ import { Send, Loader2, Sparkles, ImagePlus, X, ChevronDown, User, Check, Refres
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { companionApi, creatorsApi, galleriesApi, systemApi } from '../../lib/api'
+import { usePersonalMode } from '../../hooks/usePersonalMode'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
 
@@ -320,11 +321,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
     enabled: !!config?.enabled,
   })
 
-  const { data: personalMode } = useQuery({
-    queryKey: ['personal-mode'],
-    queryFn:  () => systemApi.getPersonalMode().then(r => r.data.enabled),
-    initialData: false,
-  })
+  const personalMode = usePersonalMode()
   const unlockMutation = useMutation({
     mutationFn: (password) => systemApi.unlockPersonalMode(password).then(r => r.data),
     onSuccess: () => {

@@ -17,7 +17,7 @@ from sqlalchemy import func, select, union
 from sqlalchemy.orm import Session
 
 from models import (
-    Creator, Gallery, Image, SessionLog, HofRank,
+    ActivityEvent, Creator, Gallery, Image, SessionLog, HofRank,
     gallery_creators, image_creators,
 )
 
@@ -136,6 +136,239 @@ def ranked_creator_ids(scores: dict) -> list:
     """Creator ids ordered best-first, from a score_all_creators() result."""
     return [cid for cid, _ in sorted(
         ((cid, v["score"]) for cid, v in scores.items() if cid != "_median_dwell"),
+        key=lambda kv: kv[1], reverse=True,
+    )]
+
+
+# ── Windowed scoring ──────────────────────────────────────────────────────────
+# Same weights as all-time, but summed from activity_events inside a window
+# instead of read off the lifetime counters. Deliberately shares the constants
+# above: if a weight is retuned, every period moves with it.
+#
+# Note these are genuinely empty before the window has been lived through — the
+# events only exist from the moment logging started. That is the honest answer
+# and the reason nothing here falls back to the lifetime counters, which would
+# silently turn "today" into "all time" on a fresh install.
+
+_GALLERY_KIND_FIELD = {"gallery_view": "views", "gallery_cum": "cum", "gallery_edge": "edges"}
+
+
+def _creator_event_sums(db: Session, since):
+    """Per-creator {views, cum, edges, image_views, view_seconds} inside a window."""
+    totals = {}
+
+    def bucket(cid):
+        return totals.setdefault(int(cid), {
+            "views": 0, "cum": 0, "edges": 0, "image_views": 0, "view_seconds": 0,
+        })
+
+    gal_rows = (
+        db.query(gallery_creators.c.creator_id, ActivityEvent.kind,
+                 func.sum(ActivityEvent.amount))
+          .join(ActivityEvent, ActivityEvent.gallery_id == gallery_creators.c.gallery_id)
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.kind.in_(tuple(_GALLERY_KIND_FIELD)))
+          .group_by(gallery_creators.c.creator_id, ActivityEvent.kind)
+          .all()
+    )
+    for cid, kind, total in gal_rows:
+        if cid is not None:
+            bucket(cid)[_GALLERY_KIND_FIELD[kind]] += int(total or 0)
+
+    pairs = _creator_image_pairs()
+    img_rows = (
+        db.query(pairs.c.creator_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
+          .join(ActivityEvent, ActivityEvent.image_id == pairs.c.image_id)
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.kind.in_(("view", "seconds")))
+          .group_by(pairs.c.creator_id, ActivityEvent.kind)
+          .all()
+    )
+    for cid, kind, total in img_rows:
+        if cid is not None:
+            key = "image_views" if kind == "view" else "view_seconds"
+            bucket(cid)[key] += int(total or 0)
+
+    return totals
+
+
+def _creator_dwell(db: Session, since):
+    """Per-creator seconds-per-photo inside a window. Photos only — a 20-minute
+    video and a photo studied for 20 seconds are not the same attention."""
+    pairs = _creator_image_pairs()
+    rows = (
+        db.query(pairs.c.creator_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
+          .join(ActivityEvent, ActivityEvent.image_id == pairs.c.image_id)
+          .join(Image, Image.id == pairs.c.image_id)
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.kind.in_(("view", "seconds")),
+                  Image.is_video == False)  # noqa: E712
+          .group_by(pairs.c.creator_id, ActivityEvent.kind)
+          .all()
+    )
+    secs, views = {}, {}
+    for cid, kind, total in rows:
+        if cid is None:
+            continue
+        (views if kind == "view" else secs)[int(cid)] = int(total or 0)
+
+    return {
+        cid: secs.get(cid, 0) / v
+        for cid, v in views.items()
+        if v >= MIN_DWELL_VIEWS
+    }
+
+
+def score_all_creators_in_period(db: Session, since) -> dict:
+    """score_all_creators() restricted to events since `since`."""
+    sums = _creator_event_sums(db, since)
+
+    session_map = {
+        cid: int(n or 0)
+        for cid, n in db.query(SessionLog.creator_id, func.count(SessionLog.id))
+                        .filter(SessionLog.creator_id.isnot(None),
+                                SessionLog.logged_at >= since)
+                        .group_by(SessionLog.creator_id).all()
+    }
+    # A session is engagement even if nothing else was recorded for her.
+    for cid in session_map:
+        sums.setdefault(int(cid), {
+            "views": 0, "cum": 0, "edges": 0, "image_views": 0, "view_seconds": 0,
+        })
+
+    dwell_map = _creator_dwell(db, since)
+    median_dwell = statistics.median(dwell_map.values()) if dwell_map else 0
+
+    out = {}
+    for cid, s in sums.items():
+        dwell = dwell_map.get(cid)
+        engagement = 1.0
+        if dwell and median_dwell:
+            engagement = max(DWELL_CLAMP[0], min(DWELL_CLAMP[1], dwell / median_dwell))
+
+        sessions = session_map.get(cid, 0)
+        volume = (
+            s["view_seconds"]
+            + s["cum"] * CUM_WEIGHT
+            + s["edges"] * EDGE_WEIGHT
+            + sessions * SESSION_WEIGHT
+            + s["views"] * GALLERY_VIEW_WEIGHT
+            + s["image_views"] * IMAGE_VIEW_WEIGHT
+        )
+        if volume <= 0:
+            continue
+
+        out[cid] = {
+            "gallery_views":      s["views"],
+            "image_views":        s["image_views"],
+            "total_views":        s["views"] + s["image_views"],
+            "total_cum":          s["cum"],
+            "total_edges":        s["edges"],
+            "total_view_seconds": s["view_seconds"],
+            "session_count":      sessions,
+            "avg_dwell_seconds":  round(dwell, 1) if dwell else None,
+            "engagement_factor":  round(engagement, 2),
+            "volume_score":       int(volume),
+            "score":              int(volume * engagement),
+        }
+    out["_median_dwell"] = round(median_dwell, 1)
+    return out
+
+
+def score_all_galleries_in_period(db: Session, since) -> dict:
+    """score_all_galleries() restricted to events since `since`."""
+    totals = {}
+
+    def bucket(gid):
+        return totals.setdefault(int(gid), {"views": 0, "cum": 0, "edges": 0, "seconds": 0})
+
+    for gid, kind, total in (
+        db.query(ActivityEvent.gallery_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.gallery_id.isnot(None),
+                  ActivityEvent.kind.in_(tuple(_GALLERY_KIND_FIELD)))
+          .group_by(ActivityEvent.gallery_id, ActivityEvent.kind).all()
+    ):
+        bucket(gid)[_GALLERY_KIND_FIELD[kind]] += int(total or 0)
+
+    # Watch time is recorded per file, so it reaches the gallery through its images.
+    for gid, total in (
+        db.query(Image.gallery_id, func.sum(ActivityEvent.amount))
+          .join(ActivityEvent, ActivityEvent.image_id == Image.id)
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.kind == "seconds",
+                  Image.gallery_id.isnot(None))
+          .group_by(Image.gallery_id).all()
+    ):
+        bucket(gid)["seconds"] += int(total or 0)
+
+    sess_map = {
+        gid: int(n or 0)
+        for gid, n in db.query(SessionLog.gallery_id, func.count(SessionLog.id))
+                        .filter(SessionLog.gallery_id.isnot(None),
+                                SessionLog.logged_at >= since)
+                        .group_by(SessionLog.gallery_id).all()
+    }
+    for gid in sess_map:
+        bucket(gid)
+
+    out = {}
+    for gid, s in totals.items():
+        sess = sess_map.get(gid, 0)
+        score = (
+            s["seconds"]
+            + s["cum"] * CUM_WEIGHT
+            + s["edges"] * EDGE_WEIGHT
+            + sess * SESSION_WEIGHT
+            + s["views"] * GALLERY_VIEW_WEIGHT
+        )
+        if score <= 0:
+            continue
+        out[gid] = {
+            "view_seconds":  s["seconds"],
+            "session_count": sess,
+            "score":         int(score),
+        }
+    return out
+
+
+def score_all_images_in_period(db: Session, since) -> dict:
+    """{image_id: {...components..., "score": int}} inside a window, using the
+    file-level weights (a cum tap dominates, passive watch time barely counts)."""
+    totals = {}
+    for iid, kind, total in (
+        db.query(ActivityEvent.image_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
+          .filter(ActivityEvent.logged_at >= since,
+                  ActivityEvent.image_id.isnot(None),
+                  ActivityEvent.kind.in_(("view", "seconds", "cum", "edge")))
+          .group_by(ActivityEvent.image_id, ActivityEvent.kind).all()
+    ):
+        totals.setdefault(int(iid), {"view": 0, "seconds": 0, "cum": 0, "edge": 0})[kind] += int(total or 0)
+
+    out = {}
+    for iid, s in totals.items():
+        score = (
+            s["cum"] * IMAGE_CUM_WEIGHT
+            + s["edge"] * IMAGE_EDGE_WEIGHT
+            + s["view"] * IMAGE_VIEW_WEIGHT_
+            + s["seconds"] * IMAGE_SECOND_WEIGHT
+        )
+        if score <= 0:
+            continue
+        out[iid] = {
+            "period_views":        s["view"],
+            "period_cum":          s["cum"],
+            "period_edges":        s["edge"],
+            "period_view_seconds": s["seconds"],
+            "score":               score,
+        }
+    return out
+
+
+def ranked_ids(scores: dict) -> list:
+    """Ids ordered best-first from any of the windowed score maps."""
+    return [k for k, _ in sorted(
+        ((k, v["score"]) for k, v in scores.items() if k != "_median_dwell"),
         key=lambda kv: kv[1], reverse=True,
     )]
 

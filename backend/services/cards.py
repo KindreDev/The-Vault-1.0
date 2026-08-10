@@ -30,6 +30,156 @@ from config import (
 )
 
 
+# ── Inventory browsing (search + filters) ─────────────────────────────────────
+#
+# A card has no name column of its own — what you read on its face is the name of
+# the creator, character or gallery it was minted from. So "search" and "filter
+# by creator" both resolve down to: which cards belong to which creators?
+#
+# That is not just source_creator_id. A gallery card carries no creator link at
+# all; its creator comes from the gallery's assignment, and a photo card's comes
+# from its image's gallery. Matching only the direct FK would silently hide most
+# of a creator's cards, so all four paths are covered.
+
+def _galleries_of_creators(creator_ids):
+    """Subquery: gallery ids belonging to any of these creators (FK + M2M)."""
+    from sqlalchemy import select, union
+    from models import gallery_creators
+    return union(
+        select(Gallery.id).where(Gallery.creator_id.in_(creator_ids)),
+        select(gallery_creators.c.gallery_id).where(gallery_creators.c.creator_id.in_(creator_ids)),
+    )
+
+
+def _cards_of_creators(creator_ids):
+    """OR-clause matching every card that belongs to any of these creators.
+
+    `creator_ids` is a subquery/select, never a materialised list — a popular
+    creator can own tens of thousands of images and we must not build an IN list
+    that big.
+    """
+    from sqlalchemy import or_, select
+    gal = _galleries_of_creators(creator_ids)
+    return or_(
+        Card.source_creator_id.in_(creator_ids),      # creator card
+        Card.linked_character_id.in_(creator_ids),    # variant card's character
+        Card.source_gallery_id.in_(gal),              # gallery card
+        Card.source_image_id.in_(                     # photo / goon card
+            select(Image.id).where(Image.gallery_id.in_(gal))
+        ),
+    )
+
+
+def apply_inventory_filters(q, *, card_type=None, rarity=None, rarity_class=None,
+                            creator_id=None, search=None):
+    """Apply the collection browser's filters to a CardInventory query joined to Card."""
+    from sqlalchemy import or_, select
+
+    if card_type:
+        q = q.filter(Card.card_type == card_type)
+    if rarity:
+        q = q.filter(Card.rarity == rarity)
+    # R / SR / SSR / UR — scarcity class, a card's percentile within its own
+    # tier. Independent of the tier, so the two stack.
+    if rarity_class:
+        q = q.filter(Card.rarity_class == rarity_class)
+
+    if creator_id:
+        q = q.filter(_cards_of_creators(select(Creator.id).where(Creator.id == creator_id)))
+
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        # Cards whose own linked names match…
+        SrcCreator  = aliased(Creator)
+        CharCreator = aliased(Creator)
+        SrcGallery  = aliased(Gallery)
+        q = (q.outerjoin(SrcCreator,  Card.source_creator_id == SrcCreator.id)
+              .outerjoin(CharCreator, Card.linked_character_id == CharCreator.id)
+              .outerjoin(SrcGallery,  Card.source_gallery_id == SrcGallery.id))
+        # …plus every card belonging to a creator whose name matches, which is
+        # how a search for her name also returns her gallery and photo cards.
+        matching_creators = select(Creator.id).where(Creator.name.ilike(pattern))
+        q = q.filter(or_(
+            SrcCreator.name.ilike(pattern),
+            CharCreator.name.ilike(pattern),
+            SrcGallery.name.ilike(pattern),
+            _cards_of_creators(matching_creators),
+        ))
+
+    return q
+
+
+def collection_creators(db: Session) -> list:
+    """Creators you actually own cards of, with counts — for the collection filter.
+
+    Deliberately not "all creators": a filter listing hundreds of names you have
+    no cards for is the navigation problem, not the fix.
+    """
+    counts = {}
+    invs = (
+        db.query(CardInventory)
+          .join(Card)
+          .options()
+          .all()
+    )
+    # Resolving each card's creator reuses the same rules the card face uses, so
+    # the filter list can never disagree with what is printed on the cards.
+    creator_of = _card_creator_map(db, [inv.card for inv in invs])
+    for inv in invs:
+        cid = creator_of.get(inv.card.id)
+        if cid:
+            counts[cid] = counts.get(cid, 0) + 1
+
+    if not counts:
+        return []
+    rows = db.query(Creator).filter(Creator.id.in_(list(counts.keys()))).all()
+    out = [{
+        "id": c.id,
+        "name": c.name,
+        "creator_type": c.creator_type.value if hasattr(c.creator_type, "value") else c.creator_type,
+        "card_count": counts.get(c.id, 0),
+    } for c in rows]
+    out.sort(key=lambda r: (-r["card_count"], r["name"].lower()))
+    return out
+
+
+def _card_creator_map(db: Session, cards: list) -> dict:
+    """card_id -> primary creator id, following the same four paths as the filter."""
+    from models import gallery_creators
+
+    gallery_ids = {c.source_gallery_id for c in cards if c.source_gallery_id}
+    image_ids   = {c.source_image_id   for c in cards if c.source_image_id}
+
+    # image -> gallery
+    img_gal = {}
+    if image_ids:
+        for iid, gid in db.query(Image.id, Image.gallery_id).filter(Image.id.in_(image_ids)).all():
+            if gid:
+                img_gal[iid] = gid
+                gallery_ids.add(gid)
+
+    # gallery -> creator (FK first, then M2M as fallback)
+    gal_creator = {}
+    if gallery_ids:
+        for gid, cid in db.query(Gallery.id, Gallery.creator_id).filter(Gallery.id.in_(gallery_ids)).all():
+            if cid:
+                gal_creator[gid] = cid
+        for gid, cid in db.query(gallery_creators.c.gallery_id, gallery_creators.c.creator_id)\
+                          .filter(gallery_creators.c.gallery_id.in_(gallery_ids)).all():
+            gal_creator.setdefault(gid, cid)
+
+    out = {}
+    for c in cards:
+        cid = c.source_creator_id or c.linked_character_id
+        if not cid and c.source_gallery_id:
+            cid = gal_creator.get(c.source_gallery_id)
+        if not cid and c.source_image_id:
+            cid = gal_creator.get(img_gal.get(c.source_image_id))
+        if cid:
+            out[c.id] = cid
+    return out
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def norm_rarity(rarity) -> str:

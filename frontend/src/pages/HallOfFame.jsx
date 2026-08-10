@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock, TrendingUp, ArrowUp, ArrowDown, ChevronDown, X } from 'lucide-react'
-import { galleriesApi, creatorsApi } from '../lib/api'
+import { galleriesApi, creatorsApi, systemApi } from '../lib/api'
+import HofPeriodToggle, { HOF_PERIODS, loadHofPeriod, saveHofPeriod } from '../components/HofPeriodToggle'
 import CreatorCollageBackground from '../components/CreatorCollageBackground'
 import CreatorStatsModal from '../components/CreatorStatsModal'
 import HofFullListModal from '../components/HofFullListModal'
@@ -46,6 +47,43 @@ function creatorAvatarUrl(creator, size = 480) {
   if (!creator.avatar_path) return null
   const bust = encodeURIComponent(creator.avatar_path.split(/[\\/]/).pop() || '')
   return `/api/creators/${creator.id}/avatar-thumb?size=${size}&v=${bust}`
+}
+
+// Local-calendar start of a period — mirrors activity.period_start() on the
+// backend so the "partial window" warning agrees with what was actually scored.
+function periodStartLocal(period) {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  if (period === 'day')   return d
+  if (period === 'week')  { const back = (d.getDay() + 6) % 7; d.setDate(d.getDate() - back); return d }  // Monday
+  if (period === 'month') { d.setDate(1); return d }
+  return null
+}
+
+// A window that opened before engagement logging existed can only ever show
+// part of itself. Say so, rather than passing four days off as a whole month.
+function partialWindowNote(period, trackingSince) {
+  const start = periodStartLocal(period)
+  if (!start) return null
+  // No events recorded yet means tracking effectively begins now — which is the
+  // state where this warning matters most, so it must not be the silent case.
+  const since = trackingSince ? new Date(trackingSince) : new Date()
+  if (since <= start) return null
+  return since.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+const PERIOD_SUBTITLE = {
+  day:   'Who you actually spent today with — resets at midnight',
+  week:  'This week so far — resets Monday',
+  month: 'This month so far — resets on the 1st',
+  all:   'Your most visited content — ranked by views, cum count shown alongside',
+}
+
+const PERIOD_EMPTY = {
+  day:   'Nothing logged today yet. Open a gallery, and today\'s board starts filling.',
+  week:  'Nothing logged this week yet.',
+  month: 'Nothing logged this month yet.',
+  all:   'Browse your collection to start building this list.',
 }
 
 // ── Shared stat row ───────────────────────────────────────────────────────────
@@ -716,14 +754,19 @@ export default function HallOfFame() {
   const [galleryStatsId, setGalleryStatsId] = useState(null)
   const [mediaStatsId, setMediaStatsId]     = useState(null)
 
+  // Opens on whichever board was last looked at.
+  const [period, setPeriod] = useState(loadHofPeriod)
+  const selectPeriod = useCallback((p) => { setPeriod(p); saveHofPeriod(p) }, [])
+
   // Page fetchers for the "know more" list. Wrapped in useCallback so the modal
-  // resets its rows when you switch sections rather than appending to them.
+  // resets its rows when you switch sections rather than appending to them —
+  // and so it re-fetches when the period changes underneath it.
   const fetchCreators = useCallback((limit, offset) =>
-    creatorsApi.hof(limit, offset).then(r => r.data), [])
+    creatorsApi.hof(limit, offset, period).then(r => r.data), [period])
   const fetchMedia = useCallback((limit, offset) =>
-    galleriesApi.hof(limit, offset).then(r => r.data), [])
+    galleriesApi.hof(limit, offset, period).then(r => r.data), [period])
   const fetchGalleries = useCallback((limit, offset) =>
-    galleriesApi.galleryHof(limit, offset).then(r => r.data), [])
+    galleriesApi.galleryHof(limit, offset, period).then(r => r.data), [period])
 
   const LISTS = {
     creators:  { title: 'All creators',  subtitle: 'Ranked by engagement — tap any of them for her full stats', fetch: fetchCreators,
@@ -735,10 +778,24 @@ export default function HallOfFame() {
   }
   const activeList = fullList ? LISTS[fullList] : null
 
-  const { data: imageHof }   = useQuery({ queryKey: ['hof',         30], queryFn: () => galleriesApi.hof(30).then(r => r.data),   staleTime: 0 })
-  const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30], queryFn: () => galleriesApi.galleryHof(30).then(r => r.data), staleTime: 0 })
-  const { data: creatorHof } = useQuery({ queryKey: ['creator-hof', 30], queryFn: () => creatorsApi.hof(30).then(r => r.data),   staleTime: 0, refetchInterval: 15000 })
+  const { data: imageHof }   = useQuery({ queryKey: ['hof',         30, period], queryFn: () => galleriesApi.hof(30, 0, period).then(r => r.data),   staleTime: 0 })
+  const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30, period], queryFn: () => galleriesApi.galleryHof(30, 0, period).then(r => r.data), staleTime: 0 })
+  const { data: creatorHof } = useQuery({ queryKey: ['creator-hof', 30, period], queryFn: () => creatorsApi.hof(30, 0, period).then(r => r.data),   staleTime: 0, refetchInterval: 15000 })
 
+  // When engagement logging started. A window that opened before this date is
+  // genuinely partial, so the page says so rather than passing off four days as
+  // a whole month.
+  const { data: trackingSince } = useQuery({
+    queryKey: ['activity-tracking'],
+    queryFn:  () => systemApi.activityTracking().then(r => r.data.since),
+    staleTime: 60_000,
+  })
+
+  const periodLabel = HOF_PERIODS.find(p => p.id === period)?.label ?? 'All time'
+  const partialSince = partialWindowNote(period, trackingSince)
+
+  // The backdrop follows whoever leads the board you're looking at, so switching
+  // to "This week" swaps the whole page's identity to that week's girl.
   const topCreatorId = creatorHof?.[0]?.id ?? null
 
   return (
@@ -773,22 +830,58 @@ export default function HallOfFame() {
 
       <div className="max-w-[1400px] mx-auto px-8 py-10" style={{ position: 'relative', zIndex: 1 }}>
 
-        <div className="flex items-center gap-4 mb-14">
-          <div className="flex items-center justify-center w-14 h-14 rounded-[14px]"
-               style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)',
-                        boxShadow: '0 0 30px 4px rgba(186,117,23,0.12)' }}>
-            <Trophy size={26} style={{ color: '#FAC775' }} />
+        <div className="flex flex-wrap items-center justify-between gap-6 mb-14">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center w-14 h-14 rounded-[14px]"
+                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)',
+                          boxShadow: '0 0 30px 4px rgba(186,117,23,0.12)' }}>
+              <Trophy size={26} style={{ color: '#FAC775' }} />
+            </div>
+            <div>
+              <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">
+                Hall of Fame
+                {period !== 'all' && (
+                  <span className="ml-3 text-[20px] font-semibold" style={{ color: '#FAC775' }}>
+                    {periodLabel}
+                  </span>
+                )}
+              </h1>
+              <p className="text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5">
+                {PERIOD_SUBTITLE[period]}
+              </p>
+              {partialSince && (
+                <p className="text-[16px] mt-1" style={{ color: 'rgba(186,117,23,0.75)' }}>
+                  Partial — engagement has only been tracked since {partialSince}
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">Hall of Fame</h1>
-            <p className="text-[14px] text-[rgba(255,255,255,0.35)] mt-0.5">
-              Your most visited content — ranked by views, cum count shown alongside
-            </p>
-          </div>
+
+          <HofPeriodToggle value={period} onChange={selectPeriod} />
         </div>
 
         <div className="flex flex-col gap-20">
 
+          {/* CreatorSection renders nothing when empty, which on a freshly-reset
+              board reads as a broken page rather than an empty one. */}
+          {(creatorHof ?? []).length === 0 && (imageHof ?? []).length === 0 ? (
+            <div className="rounded-[14px] p-16 text-center"
+                 style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+              <Trophy size={32} style={{ color: 'rgba(186,117,23,0.35)', margin: '0 auto 16px' }} />
+              <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {PERIOD_EMPTY[period]}
+              </p>
+              {period !== 'all' && (
+                <button onClick={() => selectPeriod('all')}
+                        className="mt-5 px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
+                        style={{ background: 'rgba(186,117,23,0.15)',
+                                 border: '0.5px solid rgba(186,117,23,0.35)', color: '#FAC775' }}>
+                  See all time instead
+                </button>
+              )}
+            </div>
+          ) : (
+          <>
           <CreatorSection creators={creatorHof} onCreatorClick={setStatsId}
                           onKnowMore={() => setFullList('creators')} />
 
@@ -822,6 +915,8 @@ export default function HallOfFame() {
               onKnowMore={() => setFullList('galleries')}
               knowMoreLabel="See all galleries"
             />
+          )}
+          </>
           )}
 
         </div>

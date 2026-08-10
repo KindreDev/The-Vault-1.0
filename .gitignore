@@ -149,8 +149,11 @@ VAULT_1.1.2_GUIDE.md
 .vs/ProjectSettings.json
 *.vsidx
 AGENTS.md
+# Personal-mode content (Drama Mode + Group Chat). The gate itself
+# (backend/services/access.py) IS committed — it holds no secret, and the rest
+# of the app imports it. Only the feature code below stays local; every import
+# of it is optional so a clone still runs with these absent.
 backend/routers/group_chat.py
-backend/services/access.py
 backend/services/group_chat.py
 backend/services/simulation.py
 frontend/src/components/companion/GroupChat.jsx

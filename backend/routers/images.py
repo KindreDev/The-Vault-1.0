@@ -13,6 +13,7 @@ from database import get_db, _read_config
 from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
 from schemas import ImageOut, ImageUpdate, CumCountUpdate, EdgeLogIn
 import services.gamification as gami
+from services import activity
 from services import dedup as dedup_svc
 from services import edges as edges_svc
 from services import entity_stats
@@ -306,6 +307,7 @@ def track_view(image_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Image not found")
     img.view_count += 1
     img.last_viewed_at = datetime.now(timezone.utc)
+    activity.record(db, "view", image_id=img.id)
     db.commit()
     return {"view_count": img.view_count}
 
@@ -318,7 +320,9 @@ def track_duration(image_id: int, data: dict = Body(default={}), db: Session = D
         raise HTTPException(404, "Image not found")
     secs = int(data.get("seconds", 0))
     if secs > 0:
-        img.view_seconds = (img.view_seconds or 0) + min(secs, 3600)  # cap single session at 1h
+        capped = min(secs, 3600)  # cap single session at 1h
+        img.view_seconds = (img.view_seconds or 0) + capped
+        activity.record(db, "seconds", image_id=img.id, amount=capped)
         db.commit()
     return {"view_seconds": img.view_seconds}
 
@@ -379,11 +383,13 @@ def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
     if not img:
         raise HTTPException(404, "Image not found")
     img.cum_count += 1
+    activity.record(db, "cum", image_id=img.id)
     # Also bump gallery count
     if img.gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == img.gallery_id).first()
         if gallery:
             gallery.cum_count += 1
+            activity.record(db, "gallery_cum", gallery_id=gallery.id)
     db.commit()
     xp = gami.notify_action(db, "cum_logged")
     return {"cum_count": img.cum_count, "xp": xp}
@@ -492,6 +498,57 @@ def clear_image_creators(image_id: int, db: Session = Depends(get_db)):
     db.execute(image_creators.delete().where(image_creators.c.image_id == image_id))
     db.commit()
     return {"cleared": image_id}
+
+
+@router.post("/bulk-assign-creator")
+def bulk_assign_image_creator(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    """Assign one creator to many files in a single round-trip.
+
+    The context menu used to fire one POST per selected file, which is why
+    assigning across a big selection sat there spinning. Existing links are
+    skipped so re-assigning is idempotent.
+    """
+    image_ids = [int(i) for i in (data.get("image_ids") or []) if i]
+    creator_id = data.get("creator_id")
+    if not image_ids or not creator_id:
+        return {"assigned": 0, "already_linked": 0}
+
+    creator = db.query(Creator).filter(Creator.id == int(creator_id)).first()
+    if not creator:
+        raise HTTPException(404, "Creator not found")
+
+    # Only real images — a stale id from the client must not create a dangling row.
+    valid_ids = [
+        r.id for r in db.query(Image.id).filter(Image.id.in_(image_ids)).all()
+    ]
+    if not valid_ids:
+        return {"assigned": 0, "already_linked": 0}
+
+    existing = {
+        r.image_id for r in db.execute(
+            select(image_creators.c.image_id).where(
+                image_creators.c.image_id.in_(valid_ids),
+                image_creators.c.creator_id == creator.id,
+            )
+        ).all()
+    }
+    new_ids = [i for i in valid_ids if i not in existing]
+    if new_ids:
+        db.execute(
+            image_creators.insert(),
+            [{"image_id": i, "creator_id": creator.id} for i in new_ids],
+        )
+        db.commit()
+
+    return {
+        "assigned": len(new_ids),
+        "already_linked": len(existing),
+        "creator_id": creator.id,
+        "creator_name": creator.name,
+        # Lets the client patch its cached rows in place instead of refetching
+        # the whole page just to learn the creator's type.
+        "creator_type": creator.creator_type,
+    }
 
 
 @router.post("/bulk-clear-creators")

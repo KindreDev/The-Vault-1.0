@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Search, X, ChevronLeft, ChevronRight, Droplets, Heart,
+  Search, X, ChevronLeft, ChevronRight, Droplets, Heart, Waves,
   ZoomIn, ZoomOut, Maximize, Minimize, Images as ImagesIcon,
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
@@ -11,6 +11,8 @@ import {
   FolderOpen, Zap, FolderOutput, FolderInput, Copy,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
+import { patchCachedCreators } from '../lib/creatorCache'
+import { logEdgeNow } from '../lib/edges'
 import ImageContextMenu from '../components/ImageContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import GalleryPagination from '../components/GalleryPagination'
@@ -241,6 +243,11 @@ function ImageViewer({ images, startIdx, onClose }) {
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
+  // File-level creator assignment. The viewer used to render CreatorPanel
+  // without any of this, so assigning a creator posted to /images/undefined/…
+  // and failed every time — the bug users hit from the Photos/Videos tabs.
+  const [hasImageCreators, setHasImageCreators] = useState(false)
+  const [fileCreatorIds,   setFileCreatorIds]   = useState([])
 
   const dragStart         = useRef({ x: 0, y: 0 })
   const stageRef          = useRef(null)
@@ -271,6 +278,8 @@ function ImageViewer({ images, startIdx, onClose }) {
     setCumCount(image.cum_count ?? 0)
     setLocalTags(image.tags ?? [])
     setLocalCreators(image.creators ?? [])
+    setHasImageCreators(image.has_image_creators ?? false)
+    setFileCreatorIds(image.file_creator_ids ?? [])
     setLiveViewCount(null)
     if (!image.is_video) {
       imagesApi.view(image.id).then(r => setLiveViewCount(r.data.view_count)).catch(() => { })
@@ -649,9 +658,17 @@ function ImageViewer({ images, startIdx, onClose }) {
 
         {/* Creator(s) */}
         <CreatorPanel
+          imageId={image.id}
           galleryId={image.gallery_id}
           creators={localCreators}
+          hasImageCreators={hasImageCreators}
+          fileCreatorIds={fileCreatorIds}
+          galleryCreatorIds={(image.creators ?? [])
+            .filter(c => !(image.file_creator_ids ?? []).includes(c.id))
+            .map(c => c.id)}
           onCreatorsChanged={setLocalCreators}
+          onHasImageCreatorsChanged={setHasImageCreators}
+          onFileCreatorIdsChanged={setFileCreatorIds}
         />
 
         {/* Gallery link */}
@@ -737,6 +754,14 @@ function ImageViewer({ images, startIdx, onClose }) {
               <div className="text-[11px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
           </div>
+          {/* Edges only ever came from a device cutting out — this logs one by hand. */}
+          <button type="button" onMouseDown={() => logEdgeNow()}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-[14px] font-medium cursor-pointer active:scale-95 transition-transform mt-2"
+            style={{ background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)',
+                     color: 'color-mix(in srgb, var(--c-accent) 82%, white)',
+                     border: '0.5px solid color-mix(in srgb, var(--c-accent) 38%, transparent)' }}>
+            <Waves size={13} /> {t('Edge')}
+          </button>
         </div>
 
         {/* Rating */}
@@ -1682,6 +1707,25 @@ export default function ImageList({ onlyVideos = false }) {
           }}
           onTransfer={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'move' })}
           onCopyTo={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'copy' })}
+          onAssignCreator={async (creatorId) => {
+            const ids = (imageCtxMenu.bulkImages ?? [imageCtxMenu.image]).map(i => i.id)
+            try {
+              const { data } = await imagesApi.bulkAddCreator(ids, creatorId)
+              const n = data?.assigned ?? 0
+              toast.success(n > 0
+                ? `${data.creator_name} assigned to ${n} ${n === 1 ? 'file' : 'files'}`
+                : 'Already assigned')
+              patchCachedCreators(queryClient, ids, {
+                id: data.creator_id, name: data.creator_name, creator_type: data.creator_type,
+              })
+            } catch (err) {
+              // Never swallow this silently — a bare catch here once hid a
+              // ReferenceError that fired AFTER the assignment had succeeded,
+              // so the toast said it failed while the creator was assigned.
+              console.error('Assign creator failed:', err)
+              toast.error(t('Failed to assign creator'))
+            }
+          }}
           onSendToViewer={() => {
             const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]
             let added = 0, skipped = 0

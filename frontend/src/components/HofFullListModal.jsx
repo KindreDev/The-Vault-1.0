@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Eye, Droplets, Clock, TrendingUp, ArrowUp, ArrowDown, Loader2 } from 'lucide-react'
+import { X, Eye, Droplets, Clock, TrendingUp, ArrowUp, ArrowDown, Loader2, Waves, Heart } from 'lucide-react'
 
 const PAGE_SIZE = 30
 
@@ -207,6 +207,18 @@ export default function HofFullListModal({
                     {(item.total_cum ?? item.cum_count) > 0 && (
                       <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#D4537E' }}>
                         <Droplets size={13} /> {(item.total_cum ?? item.cum_count).toLocaleString()}
+                      </span>
+                    )}
+                    {item.total_edges > 0 && (
+                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#A89FE8' }}
+                            title="Edges">
+                        <Waves size={13} /> {item.total_edges.toLocaleString()}
+                      </span>
+                    )}
+                    {item.session_count > 0 && (
+                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#F4C0D1' }}
+                            title="Sessions logged">
+                        <Heart size={13} /> {item.session_count.toLocaleString()}
                       </span>
                     )}
                     {fmtTime(item.total_view_seconds ?? item.view_seconds) && (
