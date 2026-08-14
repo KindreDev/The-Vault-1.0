@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Sparkles, X, ArrowRight, Check, Clock, Trash2, Loader2, Heart,
-  Crosshair, FolderInput, Wand2, AlertTriangle, Flame,
+  Crosshair, FolderInput, Wand2, AlertTriangle, Flame, Scissors,
 } from 'lucide-react'
-import { curationApi, galleriesApi, taggerApi } from '../../lib/api'
+import { curationApi, galleriesApi, taggerApi, imagesApi } from '../../lib/api'
 import { useVaultStore } from '../../store/vault'
 import { useT } from '../../i18n'
 import toast from 'react-hot-toast'
@@ -76,6 +76,23 @@ export default function CurationRun({ onClose }) {
   const [relocating, setRelocating]       = useState(false)
   const [state, setState]     = useState(null)
   const [done, setDone]       = useState(0)      // galleries curated this sitting
+
+  // ── File selection ────────────────────────────────────────────────────────
+  // Every gallery-level edit here is staged, but file moves are NOT: they touch
+  // the disk, like Delete and Relocate. Selection lives here rather than in the
+  // browser so the action bar can sit with the other immediate actions.
+  const [selected, setSelected]   = useState(() => new Set())
+  const [movingFiles, setMovingFiles] = useState(false)
+  const [splitting, setSplitting] = useState(false)
+  const [splitName, setSplitName] = useState('')
+  const [confirmFileDelete, setConfirmFileDelete] = useState(false)
+  const [loadingAll, setLoadingAll] = useState(false)
+
+  const toggleSelect = useCallback((id) => setSelected(s => {
+    const n = new Set(s)
+    n.has(id) ? n.delete(id) : n.add(id)
+    return n
+  }), [])
 
   // Ids already served this sitting — an unbroken run never doubles back.
   const seen = useRef([])
@@ -231,6 +248,53 @@ export default function CurationRun({ onClose }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // ── File-level actions (immediate — these move bytes on disk) ─────────────
+  const refreshGallery = async (all = false) => {
+    const r = await curationApi.gallery(gallery.id, all)
+    // Keep the lane badge; only the file list and counts are being refreshed.
+    setGallery(g => ({ ...r.data.gallery, lane: g?.lane }))
+    setSelected(new Set())
+  }
+
+  const loadAllFiles = async () => {
+    setLoadingAll(true)
+    try { await refreshGallery(true) }
+    catch { toast.error(t('Could not load the rest of the files')) }
+    finally { setLoadingAll(false) }
+  }
+
+  const splitSelection = async () => {
+    const name = splitName.trim()
+    if (!name || !selected.size) return
+    setSaving(true)
+    try {
+      await galleriesApi.extract(gallery.id, [...selected], name)
+      toast.success(t('{n} files split into a new gallery').replace('{n}', selected.size))
+      setSplitting(false); setSplitName('')
+      invalidate(); refreshState()
+      await refreshGallery()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('Could not split those files'))
+    } finally { setSaving(false) }
+  }
+
+  const deleteSelection = async () => {
+    if (!selected.size) return
+    setSaving(true)
+    try {
+      // bulkDelete's second arg is keepFile — false means the file really goes
+      // from disk, which is what "delete" means here.
+      await imagesApi.bulkDelete([...selected], false)
+      toast.success(t('{n} files deleted').replace('{n}', selected.size))
+      setConfirmFileDelete(false)
+      invalidate()
+      await refreshGallery()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('Could not delete those files'))
+      setConfirmFileDelete(false)
+    } finally { setSaving(false) }
   }
 
   const runAiTagging = async () => {
@@ -466,7 +530,92 @@ export default function CurationRun({ onClose }) {
               images={gallery.images}
               coverImageId={draft.cover_image_id}
               onSetCover={id => patch({ cover_image_id: id })}
+              selected={selected}
+              onToggleSelect={toggleSelect}
+              onSelectAll={() => setSelected(s =>
+                s.size === gallery.images.length ? new Set() : new Set(gallery.images.map(i => i.id)))}
+              filesTotal={gallery.files_total}
+              filesShown={gallery.files_shown}
+              onLoadAll={loadAllFiles}
+              loadingAll={loadingAll}
             />
+
+            {/* ── Selection bar ────────────────────────────────────────────
+                Appears only with a selection. These actions move or destroy
+                files immediately — they cannot be staged like the sidebar. */}
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0 flex-wrap"
+                   style={{ borderTop: '0.5px solid var(--c-pink-line)',
+                            background: 'var(--c-pink-fill)' }}>
+                <span style={{ fontSize: 16, color: 'var(--c-pink-text)', fontWeight: 500 }}>
+                  {selected.size} {t('selected')}
+                </span>
+                <button onClick={() => setSelected(new Set())}
+                        className="px-2.5 py-1 rounded-full cursor-pointer"
+                        style={{ fontSize: 16, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                  {t('Clear')}
+                </button>
+
+                <div className="flex-1" />
+
+                {confirmFileDelete ? (
+                  <>
+                    <span style={{ fontSize: 16, color: 'var(--c-pink-text)' }}>
+                      {t('Delete')} {selected.size} {t('files from disk?')}
+                    </span>
+                    <button onClick={() => setConfirmFileDelete(false)}
+                            className="px-3 py-1.5 rounded-full cursor-pointer"
+                            style={{ fontSize: 16, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)' }}>
+                      {t('Cancel')}
+                    </button>
+                    <button onClick={deleteSelection} disabled={saving}
+                            className="px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50"
+                            style={{ fontSize: 16, background: 'var(--c-pink)', color: 'white' }}>
+                      {saving ? t('Deleting…') : t('Delete for real')}
+                    </button>
+                  </>
+                ) : splitting ? (
+                  <>
+                    <input autoFocus value={splitName}
+                           onChange={e => setSplitName(e.target.value)}
+                           onKeyDown={e => { if (e.key === 'Enter') splitSelection() }}
+                           placeholder={t('New folder name…')}
+                           style={{ fontSize: 16, padding: '7px 11px', borderRadius: 8, width: 260,
+                                    background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.9)',
+                                    border: '0.5px solid rgba(255,255,255,0.15)', outline: 'none' }} />
+                    <button onClick={() => { setSplitting(false); setSplitName('') }}
+                            className="px-3 py-1.5 rounded-full cursor-pointer"
+                            style={{ fontSize: 16, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)' }}>
+                      {t('Cancel')}
+                    </button>
+                    <button onClick={splitSelection} disabled={saving || !splitName.trim()}
+                            className="px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
+                            style={{ fontSize: 16, background: 'var(--c-accent)', color: 'white' }}>
+                      {saving ? t('Splitting…') : t('Create gallery')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setMovingFiles(true)}
+                            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full cursor-pointer"
+                            style={{ fontSize: 16, background: 'var(--c-accent-fill-2)',
+                                     color: 'var(--c-accent-text)', border: '0.5px solid var(--c-accent-line)' }}>
+                      <FolderInput size={15} /> {t('Move to gallery')}
+                    </button>
+                    <button onClick={() => setSplitting(true)}
+                            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full cursor-pointer"
+                            style={{ fontSize: 16, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>
+                      <Scissors size={15} /> {t('Split into new gallery')}
+                    </button>
+                    <button onClick={() => setConfirmFileDelete(true)}
+                            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full cursor-pointer"
+                            style={{ fontSize: 16, background: 'var(--c-pink-fill)', color: 'var(--c-pink)' }}>
+                      <Trash2 size={15} /> {t('Delete')}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <CurationEditor draft={draft} patch={patch} gallery={gallery} />
@@ -590,6 +739,17 @@ export default function CurationRun({ onClose }) {
           galleries={[{ id: gallery.id, name: gallery.name, folder_path: gallery.folder_path }]}
           onClose={() => setRelocating(false)}
           onDone={() => { setRelocating(false); load() }}
+        />
+      )}
+
+      {/* Moving files reuses the same modal the rest of the app uses, in its
+          images mode — files land inside a real gallery's folder, never loose. */}
+      {movingFiles && gallery && selected.size > 0 && (
+        <RelocateModal
+          mode="images"
+          images={gallery.images.filter(i => selected.has(i.id))}
+          onClose={() => setMovingFiles(false)}
+          onDone={() => { setMovingFiles(false); invalidate(); refreshGallery() }}
         />
       )}
     </div>,

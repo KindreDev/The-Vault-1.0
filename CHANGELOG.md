@@ -14,10 +14,6 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
-### Changed
-- **Stats → The Almanac is now Stats → History**, and its written read uses plain headlines — "Most of your time goes to a few creators" rather than "You collect widely and goon narrowly". Every number, comparison and finding is unchanged.
-- **Themes now apply everywhere.** Large parts of the app had the default violet baked in, so switching palette recoloured some things and left others behind — the Stats tab rendered as a violet button with a green outline. 1,833 hardcoded colours across 70 files now follow whichever palette you pick, on every page. Card rarity, tag category and device-status colours stay fixed on purpose: those tell you *what something is*, so they shouldn't shift with the theme.
-
 ## [1.8.0] - 2026-08-13
 
 ### Added
@@ -25,6 +21,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - The run doesn't pick at random — it ranks by how broken a gallery's curation actually is, so no creator, no tags, a scraper-hash folder name, never opened and unrated all float to the top, weighted by how long ago the gallery was imported. Every gallery tells you why it was pulled up.
 - **Roughly four in ten galleries come from creators you love**, rotated so the one creator with a thousand messy galleries can't monopolise the run. "Beloved" is not just the favourite star — it blends how much you actually use her (the same engagement score the Hall of Fame ranks by), the rating you gave her, and the star, so the creators you clearly adore but never got round to starring are in the rotation too. Each shows her own curated/total progress bar and why she qualified, and one click puts the run in Focus on her until you clear it.
 - Creators can be **created from inside the run** — search a name that doesn't exist, pick a type, and she's made and assigned without leaving the gallery.
+- **Files that don't belong can be dealt with without leaving the run.** Ctrl-click (or the corner checkbox) selects files in the gallery you're curating, then move them into another gallery, split them off into a new gallery of their own, or delete them. Moving and splitting shift the files on disk, and a video's funscript travels with it. Galleries larger than 300 files load a first page for speed, with a **Load all** button so a misfiled file deep in a big set is still reachable.
 - Preview cards in the run are large by default (about 440px, nine times the area of a gallery-grid tile), with S/M/L sizing that's remembered between runs.
 - **Erika's chat bubble can be dragged anywhere on screen** and stays where you put it. It used to be pinned to the bottom-right corner, where it sat on top of whatever was underneath. The chat window opens from whichever corner she's parked nearest, so it never opens off-screen, and she's pulled back into view if the window shrinks.
 - Deleting from the run is two-step: the first click names the gallery, its file count and its full path on disk, and only the second click destroys anything.
@@ -63,6 +60,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - **Help → Hotkeys** — the full list with your current bindings, generated from the same registry Settings uses, so it can never fall out of date.
 
 ### Changed
+- **Stats → The Almanac is now Stats → History**, and its written read uses plain headlines — "Most of your time goes to a few creators" rather than "You collect widely and goon narrowly". Every number, comparison and finding is unchanged.
+- **Themes now apply everywhere.** Large parts of the app had the default violet baked in, so switching palette recoloured some things and left others behind — the Stats tab rendered as a violet button with a green outline. 1,833 hardcoded colours across 70 files now follow whichever palette you pick, on every page. Card rarity, tag category and device-status colours stay fixed on purpose: those tell you *what something is*, so they shouldn't shift with the theme.
 - The multi-panel queue cap is now effectively gone (25,000, up from 999), so a whole collection can be sent to the viewer. Adding many galleries at once is also one request instead of one per gallery, so bulk-adding no longer crawls.
 - The slideshow controls are now identical wherever they appear — the gallery view and the Photos/Videos tabs shared none of their code and had drifted apart.
 - The slideshow interval picker hides itself while a video or GIF is playing, since the timer isn't what's driving playback then. It comes back for stills.

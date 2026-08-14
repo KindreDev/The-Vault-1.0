@@ -43,6 +43,7 @@ SNOOZE_DAYS           = 14    # "not now" — a skip shouldn't cost a full quart
 BELOVED_SHARE         = 0.40  # ~4 in 10 pulls come from favourite creators
 SHORTLIST             = 200   # rows re-scored in Python per pull
 PICK_BAND             = 25    # winner drawn from the top N of the shortlist
+IMAGE_PAGE            = 300   # files sent per gallery before "load all"
 
 # Debt weights. Structural holes (no creator, no tags, junk name) outrank
 # cosmetic ones (no cover) by roughly 5x — that ordering is the whole product.
@@ -336,7 +337,7 @@ def creator_progress(db: Session, creator_id: int):
             "pct": round(100.0 * curated / total, 1) if total else 0.0}
 
 
-def gallery_payload(db: Session, g: Gallery, lane: str = None):
+def gallery_payload(db: Session, g: Gallery, lane: str = None, all_images: bool = False):
     """Everything the run UI needs for one gallery, in a single response."""
     creators = list(g.creators or [])
     if g.creator_id and not any(c.id == g.creator_id for c in creators):
@@ -344,10 +345,14 @@ def gallery_payload(db: Session, g: Gallery, lane: str = None):
         if legacy:
             creators.append(legacy)
 
-    images = (db.query(Image)
-                .filter(Image.gallery_id == g.id)
-                .order_by(Image.sort_order, Image.id)
-                .limit(300).all())
+    # Capped by default so a 5,000-file gallery doesn't stall the run, but the
+    # cap has to be liftable: if the file that doesn't belong here is #412, a
+    # 300-file window means you can never select it.
+    img_q = (db.query(Image)
+               .filter(Image.gallery_id == g.id)
+               .order_by(Image.sort_order, Image.id))
+    total_images = img_q.count()
+    images = img_q.all() if all_images else img_q.limit(IMAGE_PAGE).all()
 
     folder_name = os.path.basename((g.folder_path or "").rstrip("/\\"))
     beloved_ids = set(beloved_creator_ids(db))
@@ -381,7 +386,9 @@ def gallery_payload(db: Session, g: Gallery, lane: str = None):
         "is_favorite": bool(g.is_favorite),
         "cover_thumb": g.cover_thumb,
         "cover_path": g.cover_path,
-        "image_count": g.image_count or len(images),
+        "image_count": g.image_count or total_images,
+        "files_total": total_images,
+        "files_shown": len(images),
         "cum_count": g.cum_count or 0,
         "view_count": g.view_count or 0,
         "period_month": g.period_month,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, X, Star, ImageIcon, Crown, Play } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Star, ImageIcon, Crown, Play, Check } from 'lucide-react'
 import { useT } from '../../i18n'
 
 // Judging a gallery means actually seeing it, so these start large. The choice
@@ -16,12 +16,17 @@ const SIZE_KEY = 'vault.curation.thumbSize'
  * itself inside the page, and pulling the global viewer/panel store in here
  * would fight the run for keyboard focus and history.
  */
-export default function CurationBrowser({ images = [], coverImageId, onSetCover }) {
+export default function CurationBrowser({
+  images = [], coverImageId, onSetCover,
+  selected, onToggleSelect, onSelectAll, filesTotal, filesShown, onLoadAll, loadingAll,
+}) {
   const t = useT()
   const [lightbox, setLightbox] = useState(null)   // index into images
   const [size, setSize] = useState(() => localStorage.getItem(SIZE_KEY) || 'L')
 
   const pickSize = (k) => { setSize(k); localStorage.setItem(SIZE_KEY, k) }
+  const sel = selected || new Set()
+  const hasMore = (filesTotal || 0) > (filesShown || 0)
 
   const step = useCallback((dir) => {
     setLightbox(i => {
@@ -73,8 +78,26 @@ export default function CurationBrowser({ images = [], coverImageId, onSetCover 
             {k}
           </button>
         ))}
-        <span className="ml-auto" style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
-          {images.length} {t('shown')}
+        <button onClick={onSelectAll}
+                className="ml-3 px-2.5 py-0.5 rounded-full cursor-pointer"
+                style={{ fontSize: 16, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)' }}>
+          {sel.size === images.length && images.length ? t('Select none') : t('Select all')}
+        </button>
+
+        <span className="ml-auto flex items-center gap-3" style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
+          {hasMore
+            ? <>{filesShown} {t('of')} {filesTotal?.toLocaleString()} {t('shown')}</>
+            : <>{images.length} {t('shown')}</>}
+          {/* Without this, a file past the first page can never be selected —
+              which is exactly the file most likely to be in the wrong gallery. */}
+          {hasMore && (
+            <button onClick={onLoadAll} disabled={loadingAll}
+                    className="px-3 py-0.5 rounded-full cursor-pointer disabled:opacity-50"
+                    style={{ background: 'var(--c-accent-fill-2)', color: 'var(--c-accent-text)',
+                             border: '0.5px solid var(--c-accent-line)' }}>
+              {loadingAll ? t('Loading…') : `${t('Load all')} ${filesTotal?.toLocaleString()}`}
+            </button>
+          )}
         </span>
       </div>
 
@@ -83,15 +106,39 @@ export default function CurationBrowser({ images = [], coverImageId, onSetCover 
              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${SIZES[size]}px, 1fr))` }}>
           {images.map((img, idx) => (
             <div key={img.id}
-                 onClick={() => setLightbox(idx)}
+                 onClick={e => {
+                   // Ctrl/Cmd/Shift-click selects instead of opening — the same
+                   // gesture the file lists already use.
+                   if (e.ctrlKey || e.metaKey || e.shiftKey) { onToggleSelect?.(img.id); return }
+                   setLightbox(idx)
+                 }}
                  className="relative rounded-[10px] overflow-hidden cursor-pointer group"
                  style={{
                    aspectRatio: '3 / 4',
                    background: 'rgba(255,255,255,0.04)',
-                   border: coverImageId === img.id
-                     ? '2px solid var(--accent, var(--c-accent))'
-                     : '0.5px solid rgba(255,255,255,0.08)',
+                   border: sel.has(img.id)
+                     ? '2px solid var(--c-pink)'
+                     : coverImageId === img.id
+                       ? '2px solid var(--accent, var(--c-accent))'
+                       : '0.5px solid rgba(255,255,255,0.08)',
                  }}>
+
+              {/* Checkbox — always visible once anything is selected, so the
+                  selection can be extended without remembering the modifier. */}
+              <button
+                onClick={e => { e.stopPropagation(); onToggleSelect?.(img.id) }}
+                title={t('Select')}
+                className={`absolute top-1.5 left-1.5 z-10 rounded-[6px] cursor-pointer transition-opacity ${
+                  sel.size ? '' : 'opacity-0 group-hover:opacity-100'}`}
+                style={{
+                  width: 22, height: 22,
+                  background: sel.has(img.id) ? 'var(--c-pink)' : 'rgba(0,0,0,0.6)',
+                  border: `1.5px solid ${sel.has(img.id) ? 'var(--c-pink)' : 'rgba(255,255,255,0.5)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                {sel.has(img.id) && <Check size={14} color="white" strokeWidth={3} />}
+              </button>
+
               {/* Always the thumbnail. Thumbs are 640px / ~41 KB; the originals
                   average 10 MB and reach 35 MB, so serving those to fill a 440px
                   card costs ~250x the bytes for a picture that is then scaled

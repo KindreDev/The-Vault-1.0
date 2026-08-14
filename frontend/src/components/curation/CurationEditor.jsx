@@ -50,6 +50,7 @@ export default function CurationEditor({ draft, patch, gallery }) {
   const qc = useQueryClient()
   const [creatorSearch, setCreatorSearch] = useState('')
   const [creating, setCreating] = useState(false)
+  const [ratingHover, setRatingHover] = useState(0)
 
   const { data: creatorList = [] } = useQuery({
     queryKey: ['curation-creators'],
@@ -226,18 +227,28 @@ export default function CurationEditor({ draft, patch, gallery }) {
         />
       </Section>
 
-      {/* ── Rating ───────────────────────────────────────────────────────── */}
-      <Section icon={Star} title={t('Rating')}>
-        <div className="flex items-center gap-1.5">
-          {[1, 2, 3, 4, 5].map(n => (
-            <button key={n}
-                    onClick={() => patch({ rating: draft.rating === n ? 0 : n })}
-                    className="cursor-pointer">
-              <Star size={24}
-                    fill={draft.rating >= n ? 'var(--c-amber-text)' : 'none'}
-                    color={draft.rating >= n ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.25)'} />
-            </button>
-          ))}
+      {/* ── Rating ───────────────────────────────────────────────────────────
+          Ten stars, not five: galleries are rated 0-10 everywhere else in the
+          app and the backend rejects anything above 10. A five-star control
+          here silently wrote half the intended value. */}
+      <Section icon={Star} title={t('Rating')}
+               hint={draft.rating > 0 ? `${draft.rating}/10` : null}>
+        <div className="flex items-center gap-0.5" onMouseLeave={() => setRatingHover(0)}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => {
+            const filled = ratingHover ? n <= ratingHover : n <= draft.rating
+            return (
+              <button key={n} type="button"
+                      onMouseEnter={() => setRatingHover(n)}
+                      onClick={() => patch({ rating: draft.rating === n ? 0 : n })}
+                      className="cursor-pointer transition-transform hover:scale-125"
+                      title={`${t('Rate')} ${n}/10`}>
+                <Star size={20}
+                      fill={filled ? (ratingHover ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'var(--c-amber)') : 'none'}
+                      stroke={filled ? 'var(--c-amber)' : 'rgba(255,255,255,0.25)'}
+                      strokeWidth={1.5} />
+              </button>
+            )
+          })}
           {draft.rating > 0 && (
             <button onClick={() => patch({ rating: 0 })}
                     className="ml-2 cursor-pointer"

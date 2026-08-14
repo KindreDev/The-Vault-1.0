@@ -35,12 +35,14 @@ def next_gallery(exclude: str = "", db: Session = Depends(get_db)):
 
 
 @router.get("/gallery/{gallery_id}")
-def get_gallery(gallery_id: int, db: Session = Depends(get_db)):
+def get_gallery(gallery_id: int, all_images: bool = False, db: Session = Depends(get_db)):
+    """One gallery's payload. `all_images=true` lifts the file cap, for when a
+    misfiled file sits past the first page and has to be selectable."""
     from models import Gallery
     g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
     if not g:
         raise HTTPException(404, "Gallery not found")
-    return {"gallery": curation.gallery_payload(db, g)}
+    return {"gallery": curation.gallery_payload(db, g, all_images=all_images)}
 
 
 @router.post("/save")

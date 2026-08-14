@@ -486,7 +486,7 @@ export const curationApi = {
   debt:       ()            => api.get('/curation/debt'),
   // `exclude` is the ids already seen this sitting, so a long run never doubles back.
   next:       (exclude = []) => api.get('/curation/next', { params: { exclude: exclude.join(',') } }),
-  gallery:    (id)          => api.get(`/curation/gallery/${id}`),
+  gallery:    (id, allImages = false) => api.get(`/curation/gallery/${id}`, { params: { all_images: allImages } }),
   save:       (body)        => api.post('/curation/save', body),
   snooze:     (id, days)    => api.post('/curation/snooze', { gallery_id: id, days }),
   pin:        (id)          => api.post('/curation/pin', { gallery_id: id }),
