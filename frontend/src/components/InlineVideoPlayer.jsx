@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Zap, Link2, Loader2, Minus, Plus, RotateCcw } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Zap, Link2, Loader2, Minus, Plus, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { deviceService } from '../services/device'
 import { useDeviceStore } from '../store/deviceStore'
@@ -164,6 +164,11 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   videoPan     = { x: 0, y: 0 },
   isFullscreen = false,
   showControls = true,
+  // Shuffle playback. The owning list passes its CURRENT filtered selection, so
+  // shuffling inside a tag/funscript filter can only ever pick from that
+  // filtered set — never from the library at large.
+  shuffle       = false,
+  onToggleShuffle = null,
   // Whether this player is allowed to drive the connected device. Defaults to
   // true so single-video contexts (gallery/image viewers) behave as before; the
   // multi-panel viewer sets it false on every panel except the one the user
@@ -181,6 +186,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const [volume,       setVolume]       = useState(1)
   const [muted,        setMuted]        = useState(false)
   const [loopVideo,    setLoopVideo]    = useState(false)
+  // Playback rate is keyboard-only for now; kept in state so a re-render (a
+  // seek, a script load) can't quietly reset the element back to 1×.
+  const [rate,         setRate]         = useState(1)
   const [funscript,    setFunscript]    = useState(null)
   const [scriptSynced, setScriptSynced] = useState(false)
   const [videoError,   setVideoError]   = useState(null)
@@ -212,6 +220,65 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       if (!dur || isNaN(dur)) return
       v.currentTime = Math.max(0, Math.min(dur - 0.05, v.currentTime + delta))
       deviceService.onVideoSeek()
+    },
+
+    // ── Keyboard surface ──────────────────────────────────────────────────
+    // Everything below exists so the hotkeys work identically in every viewer
+    // that mounts this player. Each returns the value it settled on, so the
+    // caller can put the real number in its toast rather than guessing.
+    restart: () => {
+      const v = videoRef.current
+      if (!v) return
+      v.currentTime = 0
+      deviceService.onVideoSeek()
+      if (v.paused) deviceService.primedPlay(v)
+    },
+    toggleMute: () => {
+      const v = videoRef.current
+      if (!v) return false
+      v.muted = !v.muted
+      setMuted(v.muted)
+      return v.muted
+    },
+    adjustVolume: (delta) => {
+      const v = videoRef.current
+      if (!v) return 0
+      const next = Math.max(0, Math.min(1, Math.round((v.volume + delta) * 20) / 20))
+      v.volume = next
+      setVolume(next)
+      // Nudging the volume up off zero should actually make noise, not leave
+      // you fiddling with a slider that is already at 40% behind a mute.
+      if (next > 0 && v.muted) { v.muted = false; setMuted(false) }
+      return next
+    },
+    toggleLoop: () => {
+      let result = false
+      setLoopVideo(l => { result = !l; return result })
+      return result
+    },
+    adjustRate: (delta) => {
+      const v = videoRef.current
+      if (!v) return 1
+      const next = Math.max(0.25, Math.min(4, Math.round((v.playbackRate + delta) * 100) / 100))
+      v.playbackRate = next
+      setRate(next)
+      return next
+    },
+    setRate: (value) => {
+      const v = videoRef.current
+      if (!v) return 1
+      const next = Math.max(0.25, Math.min(4, value))
+      v.playbackRate = next
+      setRate(next)
+      return next
+    },
+    hasScript: () => !!funscript,
+    // null means "nothing to sync" so the caller can say so instead of
+    // silently doing nothing.
+    toggleScriptSync: () => {
+      if (!funscript) return null
+      toggleScriptSync()
+      return !scriptSynced
     },
     // Load a File (or File-like) and surface the same link-confirmation
     // dialog used by drag-and-drop, so the sidebar "Load .funscript" button
@@ -515,8 +582,8 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
             onClick={() => { setVideoError(null); videoRef.current?.load() }}
             style={{
               marginTop: 4, padding: '6px 18px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-              background: 'rgba(127,119,221,0.25)', color: '#CECBF6',
-              border: '0.5px solid rgba(127,119,221,0.4)',
+              background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)',
+              border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
             }}>
             Retry
           </button>
@@ -554,6 +621,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
           setDuration(v.duration)
           lastTimeRef.current = 0
           setVideoError(null)   // clear any previous error if a new src loaded OK
+          // A fresh media element always loads at 1×; re-apply the rate the
+          // user picked so it survives moving between videos.
+          v.playbackRate = rate
           // Explicitly call play() — browsers occasionally ignore the autoPlay
           // attribute after rapid navigation, e.g. jumping between funscript videos.
           v.play().catch(() => {})
@@ -600,7 +670,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
                                     : `${AXIS_LABELS[id] || id} muted — click to enable`}
                           className="px-2 py-0.5 rounded-full text-[12px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
                           style={on
-                            ? { background: 'rgba(127,119,221,0.28)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
+                            ? { background: 'color-mix(in srgb, var(--c-accent) 28%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
                             : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                     <span className="font-mono">{id}</span>
                     <span style={{ opacity: 0.7 }}>{AXIS_LABELS[id] || ''}</span>
@@ -613,7 +683,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
           <div ref={seekBarRef}
                className="mb-3 h-1.5 rounded-full cursor-pointer relative group"
                style={{ background: 'rgba(255,255,255,0.18)' }}>
-            <div className="h-full rounded-full transition-none" style={{ width: `${pct}%`, background: '#BA7517' }} />
+            <div className="h-full rounded-full transition-none" style={{ width: `${pct}%`, background: 'var(--c-amber)' }} />
             <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                  style={{ left: `calc(${pct}% - 6px)`, background: '#EF9F27', boxShadow: '0 0 6px rgba(239,159,39,0.6)' }} />
           </div>
@@ -628,19 +698,29 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
               <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
                      onMouseDown={e => e.stopPropagation()}
                      onChange={handleVolumeChange}
-                     className="w-24 h-1.5 cursor-pointer accent-[#BA7517]" />
+                     className="w-24 h-1.5 cursor-pointer accent-[var(--c-amber)]" />
               <button onMouseDown={e => { e.stopPropagation(); setLoopVideo(l => !l) }}
                       title={loopVideo ? 'Loop on' : 'Loop off'}
                       className="cursor-pointer flex-shrink-0 ml-1 p-1"
-                      style={{ color: loopVideo ? '#BA7517' : 'rgba(255,255,255,0.35)' }}>
+                      style={{ color: loopVideo ? 'var(--c-amber)' : 'rgba(255,255,255,0.35)' }}>
                 {loopVideo ? <Repeat1 size={16} /> : <Repeat size={16} />}
               </button>
+              {onToggleShuffle && (
+                <button onMouseDown={e => { e.stopPropagation(); onToggleShuffle() }}
+                        title={shuffle
+                          ? 'Shuffle on — plays a random one from the current selection'
+                          : 'Shuffle off — plays the next one in order'}
+                        className="cursor-pointer flex-shrink-0 p-1"
+                        style={{ color: shuffle ? 'var(--c-amber)' : 'rgba(255,255,255,0.35)' }}>
+                  <Shuffle size={16} />
+                </button>
+              )}
               {deviceConnected && funscript && (
                 <button onMouseDown={e => { e.stopPropagation(); toggleScriptSync() }}
                         title={scriptSynced ? 'Device synced to script — click to disable' : 'Sync device to funscript'}
                         className="cursor-pointer flex-shrink-0 ml-1 px-2 py-0.5 rounded text-[12px] font-semibold flex items-center gap-1 transition-all"
                         style={scriptSynced
-                          ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
+                          ? { background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
                           : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
                   <Zap size={10} fill={scriptSynced ? 'currentColor' : 'none'} />
                   {scriptSynced ? 'Synced' : 'Sync'}

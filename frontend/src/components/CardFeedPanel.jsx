@@ -173,12 +173,12 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
         }
         .cfp-feed-btn.cfp-active:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(29,158,117,0.35), 0 0 0 1px rgba(110,231,195,0.25);
+          box-shadow: 0 6px 20px color-mix(in srgb, var(--c-green) 35%, transparent), 0 0 0 1px rgba(110,231,195,0.25);
           filter: brightness(1.12);
         }
         .cfp-feed-btn.cfp-active:active {
           transform: scale(0.96) translateY(0);
-          box-shadow: 0 2px 8px rgba(29,158,117,0.2);
+          box-shadow: 0 2px 8px color-mix(in srgb, var(--c-green) 20%, transparent);
           filter: brightness(0.95);
         }
         .cfp-feed-btn.cfp-popped {
@@ -221,7 +221,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
         flexShrink: 0,
       }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#CECBF6', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-accent-text)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <TrendingUp size={14} /> Level Up
           </div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
@@ -280,7 +280,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
             {/* Existing CXP */}
             <div style={{
               height: '100%', width: `${currentPct}%`,
-              background: 'rgba(127,119,221,0.45)',
+              background: 'color-mix(in srgb, var(--c-accent) 45%, transparent)',
               flexShrink: 0,
             }} />
             {/* Gain from selection */}
@@ -294,7 +294,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
           </div>
 
           {totals.overflow > 0 && (
-            <div style={{ fontSize: 10, color: '#FAC775', marginTop: 6 }}>
+            <div style={{ fontSize: 10, color: 'var(--c-amber-text)', marginTop: 6 }}>
               {totals.overflow.toLocaleString()} overflow → +{totals.credits} Credits
             </div>
           )}
@@ -317,7 +317,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
         <button
           onClick={toggleAll}
           style={{
-            fontSize: 11, color: '#CECBF6',
+            fontSize: 11, color: 'var(--c-accent-text)',
             background: 'none', border: 'none', cursor: 'pointer',
             padding: 0, display: 'flex', alignItems: 'center', gap: 5,
           }}
@@ -398,7 +398,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
                       </div>
                       <div style={{ fontSize: 10, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
                         {item.card_type === 'goon' && (
-                          <span style={{ color: '#D4537E', fontWeight: 700 }}>GOON ×1.5</span>
+                          <span style={{ color: 'var(--c-pink)', fontWeight: 700 }}>GOON ×1.5</span>
                         )}
                         {item.card_type === 'variant' && (
                           <span style={{ color: '#c9a84c', fontWeight: 700 }}>VARIANT ×2</span>
@@ -432,7 +432,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
       <div style={{ padding: '10px 14px 14px', borderTop: '0.5px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
         {selected.size > 0 && totals.credits > 0 && (
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 8, textAlign: 'center' }}>
-            Overflow → <span style={{ color: '#FAC775' }}>+{totals.credits} Credits</span>
+            Overflow → <span style={{ color: 'var(--c-amber-text)' }}>+{totals.credits} Credits</span>
           </div>
         )}
         <button
@@ -454,9 +454,9 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
             width: '100%', padding: '11px 0', borderRadius: 10,
             fontSize: 13, fontWeight: 700,
             cursor: selected.size === 0 ? 'default' : 'pointer',
-            background: selected.size > 0 ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.04)',
+            background: selected.size > 0 ? 'color-mix(in srgb, var(--c-green) 20%, transparent)' : 'rgba(255,255,255,0.04)',
             color:  selected.size > 0 ? '#6EE7C3' : 'rgba(255,255,255,0.2)',
-            border: selected.size > 0 ? '1px solid rgba(29,158,117,0.4)' : '0.5px solid rgba(255,255,255,0.07)',
+            border: selected.size > 0 ? '1px solid color-mix(in srgb, var(--c-green) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.07)',
             opacity: feedMutation.isPending ? 0.6 : 1,
           }}
         >

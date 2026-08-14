@@ -55,7 +55,7 @@ export function FormDropdown({ value, onChange, options, placeholder = "Select..
               filteredOptions.map((o, i) => (
                 <button key={i} type="button" onMouseDown={() => { onChange(o.value); setOpen(false) }}
                         className="w-full text-left px-3 py-2.5 cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center"
-                        style={{ color: String(value) === String(o.value) ? '#CECBF6' : 'rgba(255,255,255,0.75)' }}>
+                        style={{ color: String(value) === String(o.value) ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)' }}>
                   {o.label}
                 </button>
               ))

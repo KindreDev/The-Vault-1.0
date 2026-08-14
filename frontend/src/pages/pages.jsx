@@ -400,9 +400,9 @@ function WorldMapModal({ byCountry, onClose }) {
 }
 
 const TYPE_STYLES = {
-  daily:  { label: 'Daily',      color: '#7F77DD', bg: 'rgba(127,119,221,0.1)' },
-  weekly: { label: 'Weekly',     color: '#BA7517', bg: 'rgba(186,117,23,0.1)'  },
-  boss:   { label: 'Challenge',  color: '#D4537E', bg: 'rgba(212,83,126,0.1)'  },
+  daily:  { label: 'Daily',      color: 'var(--c-accent)', bg: 'color-mix(in srgb, var(--c-accent) 10%, transparent)' },
+  weekly: { label: 'Weekly',     color: 'var(--c-amber)', bg: 'color-mix(in srgb, var(--c-amber) 10%, transparent)'  },
+  boss:   { label: 'Challenge',  color: 'var(--c-pink)', bg: 'color-mix(in srgb, var(--c-pink) 10%, transparent)'  },
 }
 
 function QuestCard({ quest }) {
@@ -442,7 +442,7 @@ function QuestCard({ quest }) {
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
           <div className="text-[11px] font-medium" style={{ color: ts.color }}>+{quest.xp_reward} {t('XP')}</div>
           {quest.credit_reward > 0 && (
-            <div className="text-[10px] font-medium" style={{ color: '#FAC775' }}>+{quest.credit_reward} 💰</div>
+            <div className="text-[10px] font-medium" style={{ color: 'var(--c-amber-text)' }}>+{quest.credit_reward} 💰</div>
           )}
         </div>
       </div>
@@ -455,9 +455,9 @@ function AchievementCard({ ach }) {
   return (
     <div className="vault-card p-3 flex items-center gap-3" style={{ opacity: ach.unlocked ? 1 : 0.45 }}>
       <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-           style={{ background: ach.unlocked ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)' }}>
+           style={{ background: ach.unlocked ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)' }}>
         {ach.unlocked
-          ? <Trophy size={16} style={{ color: '#CECBF6' }} />
+          ? <Trophy size={16} style={{ color: 'var(--c-accent-text)' }} />
           : <Lock size={14} style={{ color: 'rgba(255,255,255,0.25)' }} />
         }
       </div>
@@ -466,11 +466,11 @@ function AchievementCard({ ach }) {
         <div className="text-[10px] text-[rgba(255,255,255,0.35)]">{ach.description}</div>
       </div>
       <div className="flex flex-col items-end gap-0.5">
-        <div className="text-[11px] font-medium" style={{ color: ach.unlocked ? '#7F77DD' : 'rgba(255,255,255,0.2)' }}>
+        <div className="text-[11px] font-medium" style={{ color: ach.unlocked ? 'var(--c-accent)' : 'rgba(255,255,255,0.2)' }}>
           +{ach.xp_reward} {t('XP')}
         </div>
         {ach.credit_reward > 0 && (
-          <div className="text-[10px] font-medium" style={{ color: ach.unlocked ? '#FAC775' : 'rgba(255,255,255,0.15)' }}>
+          <div className="text-[10px] font-medium" style={{ color: ach.unlocked ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.15)' }}>
             +{ach.credit_reward} 💰
           </div>
         )}
@@ -499,12 +499,12 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
         <span className="text-[12px] font-medium" style={{ color: textColor }}>{t(label)}</span>
         {claimable ? (
           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium animate-pulse"
-                style={{ background: 'rgba(250,199,117,0.2)', color: '#FAC775' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)' }}>
             🎁 {t('Ready!')}
           </span>
         ) : alreadyClaimed ? (
           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)' }}>
             ✓ {t('Claimed')}
           </span>
         ) : (
@@ -594,10 +594,10 @@ export function Quests() {
         <div className="vault-card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="text-[13px] font-semibold" style={{ color: '#7F77DD' }}>{t('Daily')}</div>
+              <div className="text-[13px] font-semibold" style={{ color: 'var(--c-accent)' }}>{t('Daily')}</div>
               <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets midnight')}</div>
             </div>
-            <div className="text-[11px] font-medium" style={{ color: dailyDone === daily.length && daily.length > 0 ? '#9FE1CB' : 'rgba(255,255,255,0.3)' }}>
+            <div className="text-[11px] font-medium" style={{ color: dailyDone === daily.length && daily.length > 0 ? 'var(--c-green-text)' : 'rgba(255,255,255,0.3)' }}>
               {dailyDone}/{daily.length}
             </div>
           </div>
@@ -610,10 +610,10 @@ export function Quests() {
         <div className="vault-card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="text-[13px] font-semibold" style={{ color: '#BA7517' }}>{t('Weekly')}</div>
+              <div className="text-[13px] font-semibold" style={{ color: 'var(--c-amber)' }}>{t('Weekly')}</div>
               <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets Monday')}</div>
             </div>
-            <div className="text-[11px] font-medium" style={{ color: weeklyDone === weekly.length && weekly.length > 0 ? '#9FE1CB' : 'rgba(255,255,255,0.3)' }}>
+            <div className="text-[11px] font-medium" style={{ color: weeklyDone === weekly.length && weekly.length > 0 ? 'var(--c-green-text)' : 'rgba(255,255,255,0.3)' }}>
               {weeklyDone}/{weekly.length}
             </div>
           </div>
@@ -629,9 +629,9 @@ export function Quests() {
           {/* Daily bonus */}
           <CompletionRewardPanel
             label="Daily sweep"
-            accentColor="#7F77DD"
+            accentColor="var(--c-accent)"
             accentRgb="127,119,221"
-            textColor="#CECBF6"
+            textColor="var(--c-accent-text)"
             progressPct={dailyPct}
             done={dailyDone}
             total={daily.length}
@@ -645,9 +645,9 @@ export function Quests() {
           {/* Weekly bonus */}
           <CompletionRewardPanel
             label="Weekly sweep"
-            accentColor="#BA7517"
+            accentColor="var(--c-amber)"
             accentRgb="186,117,23"
-            textColor="#FAC775"
+            textColor="var(--c-amber-text)"
             progressPct={weeklyPct}
             done={weeklyDone}
             total={weekly.length}
@@ -663,9 +663,9 @@ export function Quests() {
             <div className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.45)' }}>{t('Also earning XP from each quest')}</div>
             <div className="flex flex-col gap-1">
               {[
-                { label: 'Daily quest', xp: '+25–100 XP', color: '#7F77DD' },
-                { label: 'Weekly quest', xp: '+50–300 XP', color: '#BA7517' },
-                { label: 'Challenge', xp: '+100–500 XP', color: '#D4537E' },
+                { label: 'Daily quest', xp: '+25–100 XP', color: 'var(--c-accent)' },
+                { label: 'Weekly quest', xp: '+50–300 XP', color: 'var(--c-amber)' },
+                { label: 'Challenge', xp: '+100–500 XP', color: 'var(--c-pink)' },
               ].map(r => (
                 <div key={r.label} className="flex items-center justify-between">
                   <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(r.label)}</span>
@@ -680,7 +680,7 @@ export function Quests() {
       {/* ── Row 2: Challenges ────────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <div className="text-[13px] font-semibold" style={{ color: '#D4537E' }}>⚔ {t('Challenges')}</div>
+          <div className="text-[13px] font-semibold" style={{ color: 'var(--c-pink)' }}>⚔ {t('Challenges')}</div>
           <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('permanent · no expiry')}</div>
           <div className="text-[11px] ml-auto" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {boss.filter(q => q.status === 'completed').length}/{boss.length} {t('completed')}
@@ -703,12 +703,12 @@ export function Quests() {
 }
 
 const PERSONALITY = [
-  { test: h => h >= 0  && h < 5,  label: 'Night Owl',         emoji: '🦉', desc: 'You come alive after midnight. Most active in the dead of night.',        color: '#9F99E8' },
-  { test: h => h >= 5  && h < 9,  label: 'Early Bird',        emoji: '🌅', desc: 'Up with the sun and already deep in the vault.',                           color: '#BA7517' },
-  { test: h => h >= 9  && h < 13, label: 'Morning Lurker',    emoji: '☕', desc: 'Coffee in one hand, the vault in the other.',                              color: '#FAC775' },
-  { test: h => h >= 13 && h < 17, label: 'Afternoon Delight', emoji: '☀️', desc: 'Peak hours fall right in the afternoon. Classic.',                         color: '#1D9E75' },
-  { test: h => h >= 17 && h < 21, label: 'Evening Gooner',    emoji: '🌆', desc: 'After work, the real work begins. You know what you came home for.',       color: '#D4537E' },
-  { test: h => h >= 21,           label: 'Midnight Lurker',   emoji: '🌙', desc: 'Late night sessions are your specialty. The vault never sleeps, and neither do you.', color: '#7F77DD' },
+  { test: h => h >= 0  && h < 5,  label: 'Night Owl',         emoji: '🦉', desc: 'You come alive after midnight. Most active in the dead of night.',        color: 'var(--c-accent-text)' },
+  { test: h => h >= 5  && h < 9,  label: 'Early Bird',        emoji: '🌅', desc: 'Up with the sun and already deep in the vault.',                           color: 'var(--c-amber)' },
+  { test: h => h >= 9  && h < 13, label: 'Morning Lurker',    emoji: '☕', desc: 'Coffee in one hand, the vault in the other.',                              color: 'var(--c-amber-text)' },
+  { test: h => h >= 13 && h < 17, label: 'Afternoon Delight', emoji: '☀️', desc: 'Peak hours fall right in the afternoon. Classic.',                         color: 'var(--c-green)' },
+  { test: h => h >= 17 && h < 21, label: 'Evening Gooner',    emoji: '🌆', desc: 'After work, the real work begins. You know what you came home for.',       color: 'var(--c-pink)' },
+  { test: h => h >= 21,           label: 'Midnight Lurker',   emoji: '🌙', desc: 'Late night sessions are your specialty. The vault never sleeps, and neither do you.', color: 'var(--c-accent)' },
 ]
 
 function fmtSeconds(sec) {
@@ -719,7 +719,7 @@ function fmtSeconds(sec) {
   return `${m}m`
 }
 
-function CreatorBar({ name, value, maxVal, label, color = '#D4537E', gradientEnd = '#F47AA0', rank }) {
+function CreatorBar({ name, value, maxVal, label, color = 'var(--c-pink)', gradientEnd = '#F47AA0', rank }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.3)', width: 28, textAlign: 'right', flexShrink: 0 }}>#{rank}</div>
@@ -740,11 +740,11 @@ function getLevelColor(lvl) {
   if (lvl >= 81) return '#C084FC'
   if (lvl >= 71) return '#FF6B35'
   if (lvl >= 61) return '#E24B4A'
-  if (lvl >= 51) return '#BA7517'
-  if (lvl >= 41) return '#D4537E'
-  if (lvl >= 31) return '#7F77DD'
+  if (lvl >= 51) return 'var(--c-amber)'
+  if (lvl >= 41) return 'var(--c-pink)'
+  if (lvl >= 31) return 'var(--c-accent)'
   if (lvl >= 21) return '#378ADD'
-  if (lvl >= 11) return '#1D9E75'
+  if (lvl >= 11) return 'var(--c-green)'
   return '#888780'
 }
 
@@ -856,8 +856,8 @@ function SessionsModal({ onClose }) {
         <span style={{ position: 'relative', display: 'inline-block' }}>
           <span
             style={{
-              color: '#D4537E', fontWeight: 700, cursor: 'default',
-              borderBottom: '1px dotted rgba(212,83,126,0.5)',
+              color: 'var(--c-pink)', fontWeight: 700, cursor: 'default',
+              borderBottom: '1px dotted color-mix(in srgb, var(--c-pink) 50%, transparent)',
               transition: 'color 0.15s, border-color 0.15s',
             }}
             onMouseEnter={() => setHoveredMore(idx)}
@@ -1195,7 +1195,7 @@ function SeeAllCreators({ onClick }) {
 
 export function Stats() {
   // The existing page is all "right now" — last 7 days, 13 weeks, all-time
-  // totals. The Almanac is the long view. Tabs rather than one longer page:
+  // totals. The History tab (components/stats/Almanac.jsx) is the long view. Tabs
   // this component is already ~770 lines.
   const [statsTab, setStatsTab] = React.useState('overview')
   // Each Top-Creators chart shows six; these open the full ranked list behind
@@ -1353,9 +1353,9 @@ export function Stats() {
   const heatColor = (count) => {
     if (count === 0) return 'rgba(255,255,255,0.05)'
     const intensity = Math.min(1, count / Math.max(maxHeat, 1))
-    if (intensity < 0.33) return 'rgba(212,83,126,0.3)'
-    if (intensity < 0.66) return 'rgba(212,83,126,0.6)'
-    return '#D4537E'
+    if (intensity < 0.33) return 'color-mix(in srgb, var(--c-pink) 30%, transparent)'
+    if (intensity < 0.66) return 'color-mix(in srgb, var(--c-pink) 60%, transparent)'
+    return 'var(--c-pink)'
   }
 
   const totalViewFmt   = fmtSeconds(stats?.total_view_seconds)
@@ -1376,8 +1376,8 @@ export function Stats() {
         <button onClick={handleSession}
                 className="flex items-center gap-1.5 font-medium px-5 py-2.5 rounded-full cursor-pointer transition-all"
                 style={{ fontSize: 17, ...(sessionActive
-                  ? { background: 'rgba(212,83,126,0.35)', color: '#FFD4E2', border: '1px solid rgba(212,83,126,0.7)', boxShadow: '0 0 12px rgba(212,83,126,0.4)' }
-                  : { background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }) }}>
+                  ? { background: 'color-mix(in srgb, var(--c-pink) 35%, transparent)', color: '#FFD4E2', border: '1px solid color-mix(in srgb, var(--c-pink) 70%, transparent)', boxShadow: '0 0 12px color-mix(in srgb, var(--c-pink) 40%, transparent)' }
+                  : { background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }) }}>
           ❤️ {sessionActive ? t('End session') : t('Start session')}
         </button>
       </div>
@@ -1386,15 +1386,15 @@ export function Stats() {
       <div className="flex items-center gap-2">
         {[
           { id: 'overview', label: 'Overview' },
-          { id: 'almanac',  label: 'The Almanac' },
+          { id: 'almanac',  label: 'History' },
         ].map(tab => {
           const active = statsTab === tab.id
           return (
             <button key={tab.id} onClick={() => setStatsTab(tab.id)}
                     className="px-4 py-2 rounded-[9px] cursor-pointer transition-all"
                     style={{ fontSize: 17, fontWeight: 600,
-                             background: active ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.04)',
-                             color: active ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+                             background: active ? 'var(--c-accent-fill-2)' : 'rgba(255,255,255,0.04)',
+                             color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
                              border: `0.5px solid ${active ? 'var(--c-accent)' : 'rgba(255,255,255,0.1)'}` }}>
               {t(tab.label)}
             </button>
@@ -1423,7 +1423,7 @@ export function Stats() {
                style={{ background: `linear-gradient(135deg, rgba(${accentRgb},0.14) 0%, #0e0e0e 55%, rgba(${accentRgb},0.07) 100%)`, border: `0.5px solid rgba(${accentRgb},0.25)`, padding: '28px 32px' }}>
             {/* Decorative glow */}
             <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: 320, background: `radial-gradient(circle, rgba(${accentRgb},0.12) 0%, transparent 65%)`, transform: 'translate(25%, -25%)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: 0, left: '30%', width: 200, height: 200, background: 'radial-gradient(circle, rgba(212,83,126,0.08) 0%, transparent 65%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: 0, left: '30%', width: 200, height: 200, background: 'radial-gradient(circle, color-mix(in srgb, var(--c-pink) 8%, transparent) 0%, transparent 65%)', pointerEvents: 'none' }} />
 
             <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>{t('Your vault · all time')}</div>
             <div style={{ fontSize: 58, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>
@@ -1436,7 +1436,7 @@ export function Stats() {
               {stats?.total_duration_sec > 0 && (
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Session time')}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#D4537E' }}>{fmtDuration(stats.total_duration_sec)}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-pink)' }}>{fmtDuration(stats.total_duration_sec)}</div>
                 </div>
               )}
               {totalViewFmt && (
@@ -1454,7 +1454,7 @@ export function Stats() {
               {stats?.total_edge_count > 0 && (
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('Edges')}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#CECBF6' }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-accent-text)' }}>
                     {stats.total_edge_count.toLocaleString()} 🌊
                   </div>
                 </div>
@@ -1579,14 +1579,14 @@ export function Stats() {
       {/* Stats grid */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))' }}>
         {[
-          { label: 'Sessions total',     value: totalCount,                                       color: '#D4537E' },
+          { label: 'Sessions total',     value: totalCount,                                       color: 'var(--c-pink)' },
           { label: 'This week',          value: stats?.this_week ?? 0 },
-          { label: 'Session time',       value: fmtDuration(stats?.total_duration_sec),            color: '#D4537E' },
+          { label: 'Session time',       value: fmtDuration(stats?.total_duration_sec),            color: 'var(--c-pink)' },
           { label: 'Avg session',        value: fmtDuration(stats?.avg_duration_sec) },
-          { label: 'Viewing time',       value: totalViewFmt ?? '—',                              color: '#7F77DD' },
+          { label: 'Viewing time',       value: totalViewFmt ?? '—',                              color: 'var(--c-accent)' },
           { label: 'Cummed (all-time)',   value: (stats?.total_cum_count ?? 0).toLocaleString(),   color: '#F47AA0' },
-          { label: 'Edges (all-time)',    value: (stats?.total_edge_count ?? 0).toLocaleString(), color: '#CECBF6' },
-          { label: 'Edges per O',         value: stats?.edges_per_cum ? `${stats.edges_per_cum}×` : '—', color: '#CECBF6' },
+          { label: 'Edges (all-time)',    value: (stats?.total_edge_count ?? 0).toLocaleString(), color: 'var(--c-accent-text)' },
+          { label: 'Edges per O',         value: stats?.edges_per_cum ? `${stats.edges_per_cum}×` : '—', color: 'var(--c-accent-text)' },
           { label: 'Peak hour',          value: fmtHour(stats?.peak_hour) },
           { label: 'XP from sessions',   value: `${(totalCount * 25).toLocaleString()} XP` },
         ].map(s => (
@@ -1623,9 +1623,9 @@ export function Stats() {
                 const pct = d.count / maxDay
                 return (
                   <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                    <div style={{ fontSize: 16, fontWeight: 700, color: d.count > 0 ? '#D4537E' : 'transparent' }}>{d.count}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: d.count > 0 ? 'var(--c-pink)' : 'transparent' }}>{d.count}</div>
                     <div className="w-full rounded-t-[4px] transition-all"
-                         style={{ height: `${Math.max(4, pct * 110)}px`, background: d.count > 0 ? 'linear-gradient(to top, #D4537E, #F47AA0)' : 'rgba(255,255,255,0.07)' }} />
+                         style={{ height: `${Math.max(4, pct * 110)}px`, background: d.count > 0 ? 'linear-gradient(to top, var(--c-pink), #F47AA0)' : 'rgba(255,255,255,0.07)' }} />
                     <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</div>
                   </div>
                 )
@@ -1644,7 +1644,7 @@ export function Stats() {
                 return (
                   <div key={d.hour} className="flex-1 flex flex-col items-center min-w-0" style={{ gap: 3 }}>
                     <div className="w-full rounded-t-[2px]"
-                         style={{ height: `${Math.max(2, pct * 110)}px`, background: d.count > 0 ? (isAM ? 'rgba(186,117,23,0.85)' : 'rgba(127,119,221,0.85)') : 'rgba(255,255,255,0.06)' }} />
+                         style={{ height: `${Math.max(2, pct * 110)}px`, background: d.count > 0 ? (isAM ? 'color-mix(in srgb, var(--c-amber) 85%, transparent)' : 'color-mix(in srgb, var(--c-accent) 85%, transparent)') : 'rgba(255,255,255,0.06)' }} />
                     {d.hour % 6 === 0 && (
                       <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap', marginTop: 3 }}>
                         {d.hour === 0 ? '12a' : d.hour === 12 ? '12p' : d.hour < 12 ? `${d.hour}a` : `${d.hour - 12}p`}
@@ -1655,8 +1655,8 @@ export function Stats() {
               })}
             </div>
             <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-              <span style={{ fontSize: 16, color: 'rgba(186,117,23,0.8)' }}>{t('■ AM')}</span>
-              <span style={{ fontSize: 16, color: 'rgba(127,119,221,0.8)' }}>{t('■ PM')}</span>
+              <span style={{ fontSize: 16, color: 'color-mix(in srgb, var(--c-amber) 80%, transparent)' }}>{t('■ AM')}</span>
+              <span style={{ fontSize: 16, color: 'color-mix(in srgb, var(--c-accent) 80%, transparent)' }}>{t('■ PM')}</span>
             </div>
           </div>
         )}
@@ -1671,7 +1671,7 @@ export function Stats() {
               <CreatorBar key={c.name} rank={i + 1} name={c.name}
                 value={c.seconds} maxVal={maxViewSecs}
                 label={fmtSeconds(c.seconds) ?? '<1m'}
-                color="#7F77DD" gradientEnd="#CECBF6" />
+                color="var(--c-accent)" gradientEnd="var(--c-accent-text)" />
             ))}
           </div>
           <SeeAllCreators onClick={() => setLeaderboard('time_spent')} />
@@ -1687,7 +1687,7 @@ export function Stats() {
               <CreatorBar key={c.name} rank={i + 1} name={c.name}
                 value={c.count} maxVal={maxSessionCount}
                 label={String(c.count)}
-                color="#D4537E" gradientEnd="#F47AA0" />
+                color="var(--c-pink)" gradientEnd="#F47AA0" />
             ))}
           </div>
           <SeeAllCreators onClick={() => setLeaderboard('sessions')} />
@@ -1703,7 +1703,7 @@ export function Stats() {
               <CreatorBar key={c.name} rank={i + 1} name={c.name}
                 value={c.edges} maxVal={maxEdges}
                 label={String(c.edges)}
-                color="#7F77DD" gradientEnd="#A89FE8" />
+                color="var(--c-accent)" gradientEnd="#A89FE8" />
             ))}
           </div>
           <SeeAllCreators onClick={() => setLeaderboard('edges')} />
@@ -1727,14 +1727,14 @@ export function Stats() {
                     return (
                       <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                         {/* value label — always reserve space so bars align */}
-                        <div style={{ fontSize: 13, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, #7F77DD)' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, var(--c-accent))' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
                           {d.xp > 0 ? d.xp.toLocaleString() : '0'}
                         </div>
                         {/* bar area — grows to fill; bar rises from the bottom */}
                         <div className="flex-1 w-full flex flex-col justify-end min-h-0">
                           <div className="w-full rounded-t-[4px] transition-all"
                                style={{ height: d.xp > 0 ? `${Math.max(2, pct * 100)}%` : '2px',
-                                        background: d.xp > 0 ? 'linear-gradient(to top, var(--accent, #7F77DD), #CECBF6)' : 'rgba(255,255,255,0.07)' }} />
+                                        background: d.xp > 0 ? 'linear-gradient(to top, var(--accent, var(--c-accent)), var(--c-accent-text))' : 'rgba(255,255,255,0.07)' }} />
                         </div>
                         {/* date label */}
                         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>{d.date.slice(5)}</div>
@@ -1771,10 +1771,10 @@ export function Stats() {
               const byType = vaultStats?.images_by_creator_type ?? {}
               const totalPhotos = vaultStats?.total_images ?? 0
               const TYPE_META = [
-                { key: 'cosplayer', label: 'Cosplayer', color: '#1D9E75' },
-                { key: 'ethot',     label: 'E-girl',    color: '#D4537E' },
-                { key: 'artist',    label: 'Artist',    color: '#7F77DD' },
-                { key: 'character', label: 'Character', color: '#BA7517' },
+                { key: 'cosplayer', label: 'Cosplayer', color: 'var(--c-green)' },
+                { key: 'ethot',     label: 'E-girl',    color: 'var(--c-pink)' },
+                { key: 'artist',    label: 'Artist',    color: 'var(--c-accent)' },
+                { key: 'character', label: 'Character', color: 'var(--c-amber)' },
                 { key: 'actress',   label: 'Actress',   color: '#378ADD' },
                 { key: 'custom',    label: 'Model/Other', color: '#888780' },
               ]
@@ -1784,7 +1784,7 @@ export function Stats() {
                 <div className="vault-card p-4 flex flex-col gap-3">
                   <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Photo library')}</div>
                   <div className="flex items-baseline gap-2">
-                    <span style={{ fontSize: 40, fontWeight: 900, lineHeight: 1, color: '#7F77DD', letterSpacing: '-0.03em' }}>{totalPhotos.toLocaleString()}</span>
+                    <span style={{ fontSize: 40, fontWeight: 900, lineHeight: 1, color: 'var(--c-accent)', letterSpacing: '-0.03em' }}>{totalPhotos.toLocaleString()}</span>
                     <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('photos')}</span>
                     {(vaultStats?.total_videos ?? 0) > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>· {vaultStats.total_videos.toLocaleString()} {t('videos')}</span>}
                   </div>
@@ -1830,10 +1830,10 @@ export function Stats() {
               const dist = creatorDist?.by_type ?? {}
               const total = creatorDist?.total || 1
               const TYPE_META = [
-                { key: 'cosplayer', label: 'Cosplayer', color: '#1D9E75' },
-                { key: 'ethot',     label: 'E-girl',    color: '#D4537E' },
-                { key: 'artist',    label: 'Artist',    color: '#7F77DD' },
-                { key: 'character', label: 'Character', color: '#BA7517' },
+                { key: 'cosplayer', label: 'Cosplayer', color: 'var(--c-green)' },
+                { key: 'ethot',     label: 'E-girl',    color: 'var(--c-pink)' },
+                { key: 'artist',    label: 'Artist',    color: 'var(--c-accent)' },
+                { key: 'character', label: 'Character', color: 'var(--c-amber)' },
                 { key: 'actress',   label: 'Actress',   color: '#378ADD' },
                 { key: 'custom',    label: 'Model/Other', color: '#888780' },
               ]
@@ -1866,10 +1866,10 @@ export function Stats() {
               const dist = creatorDist?.by_rarity ?? {}
               const total = creatorDist?.total || 1
               const RARITY_META = [
-                { key: 'legendary', label: 'Grand Collection', color: '#BA7517' },
-                { key: 'epic',      label: 'Library',          color: '#7F77DD' },
+                { key: 'legendary', label: 'Grand Collection', color: 'var(--c-amber)' },
+                { key: 'epic',      label: 'Library',          color: 'var(--c-accent)' },
                 { key: 'rare',      label: 'Big Portfolio',    color: '#378ADD' },
-                { key: 'uncommon',  label: 'Album',            color: '#1D9E75' },
+                { key: 'uncommon',  label: 'Album',            color: 'var(--c-green)' },
                 { key: 'common',    label: 'Snapshot',         color: '#888780' },
               ]
               const rareAndAbove = ['legendary','epic','rare'].reduce((s, k) => s + (dist[k] || 0), 0)
@@ -1934,13 +1934,13 @@ export function Stats() {
               <div className="flex items-end gap-1 flex-1" style={{ minHeight: 90 }}>
                 {byWeekday.map(d => {
                   const pct = d.count / maxWeekday
-                  const color = d.isWeekend ? '#D4537E' : '#7F77DD'
-                  const gradEnd = d.isWeekend ? '#F47AA0' : '#CECBF6'
+                  const color = d.isWeekend ? 'var(--c-pink)' : 'var(--c-accent)'
+                  const gradEnd = d.isWeekend ? '#F47AA0' : 'var(--c-accent-text)'
                   return (
                     <div key={d.label} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                       <div className="w-full rounded-t-[3px] transition-all"
                            style={{ height: `${Math.max(3, pct * 70)}px`, background: d.count > 0 ? `linear-gradient(to top, ${color}, ${gradEnd})` : 'rgba(255,255,255,0.07)' }} />
-                      <div style={{ fontSize: 16, color: d.isWeekend ? '#D4537E' : 'rgba(255,255,255,0.3)', fontWeight: d.isWeekend ? 600 : 400 }}>{t(d.label)}</div>
+                      <div style={{ fontSize: 16, color: d.isWeekend ? 'var(--c-pink)' : 'rgba(255,255,255,0.3)', fontWeight: d.isWeekend ? 600 : 400 }}>{t(d.label)}</div>
                     </div>
                   )
                 })}
@@ -1948,7 +1948,7 @@ export function Stats() {
               {byWeekday.some(d => d.count > 0) && (() => {
                 const peak = byWeekday.reduce((a, b) => b.count > a.count ? b : a)
                 return <div style={{ marginTop: 10, fontSize: 16, color: 'rgba(255,255,255,0.28)' }}>
-                  {t('Peak:')} <span style={{ color: peak.isWeekend ? '#D4537E' : '#CECBF6', fontWeight: 600 }}>{t(peak.label)}s</span>
+                  {t('Peak:')} <span style={{ color: peak.isWeekend ? 'var(--c-pink)' : 'var(--c-accent-text)', fontWeight: 600 }}>{t(peak.label)}s</span>
                 </div>
               })()}
             </div>
@@ -1959,23 +1959,23 @@ export function Stats() {
               <div className="flex items-center gap-4 flex-1">
                 <div style={{
                   width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
-                  background: `conic-gradient(#BA7517 ${amPct * 3.6}deg, #7F77DD 0deg)`,
+                  background: `conic-gradient(var(--c-amber) ${amPct * 3.6}deg, var(--c-accent) 0deg)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#1a1a1a' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 16, color: '#FAC775', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#BA7517', display: 'inline-block' }} />{t('AM')}
+                    <span style={{ fontSize: 16, color: 'var(--c-amber-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--c-amber)', display: 'inline-block' }} />{t('AM')}
                     </span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#FAC775' }}>{amPct}%</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-amber-text)' }}>{amPct}%</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 16, color: '#CECBF6', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#7F77DD', display: 'inline-block' }} />{t('PM')}
+                    <span style={{ fontSize: 16, color: 'var(--c-accent-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--c-accent)', display: 'inline-block' }} />{t('PM')}
                     </span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#CECBF6' }}>{pmPct}%</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-accent-text)' }}>{pmPct}%</span>
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
                     {pmPct >= 70 ? t('Night person') : pmPct >= 55 ? t('Mostly evenings') : amPct >= 70 ? t('Early riser') : t('Balanced')}
@@ -1988,7 +1988,7 @@ export function Stats() {
             <div className="vault-card p-4 flex flex-col justify-between">
               <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Packs opened')}</div>
               <div>
-                <div style={{ fontSize: 56, fontWeight: 900, lineHeight: 1, color: '#BA7517', letterSpacing: '-0.03em', textShadow: '0 0 28px rgba(186,117,23,0.4)' }}>
+                <div style={{ fontSize: 56, fontWeight: 900, lineHeight: 1, color: 'var(--c-amber)', letterSpacing: '-0.03em', textShadow: '0 0 28px color-mix(in srgb, var(--c-amber) 40%, transparent)' }}>
                   {(profile?.total_packs_opened ?? 0).toLocaleString()}
                 </div>
                 <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>
@@ -2012,11 +2012,11 @@ export function Stats() {
               const total = cardRarityDist?.total || 1
               const RARITY_META = [
                 { key: 'celestial', label: 'Celestial', color: '#EDD87A' },
-                { key: 'relic',     label: 'Relic',     color: '#BA7517' },
-                { key: 'legendary', label: 'Legendary', color: '#D4537E' },
-                { key: 'epic',      label: 'Epic',      color: '#7F77DD' },
+                { key: 'relic',     label: 'Relic',     color: 'var(--c-amber)' },
+                { key: 'legendary', label: 'Legendary', color: 'var(--c-pink)' },
+                { key: 'epic',      label: 'Epic',      color: 'var(--c-accent)' },
                 { key: 'rare',      label: 'Rare',      color: '#378ADD' },
-                { key: 'uncommon',  label: 'Uncommon',  color: '#1D9E75' },
+                { key: 'uncommon',  label: 'Uncommon',  color: 'var(--c-green)' },
                 { key: 'common',    label: 'Core',      color: '#888780' },
               ]
               const entries = RARITY_META.filter(r => (dist[r.key] || 0) > 0)
@@ -2073,7 +2073,7 @@ export function XPHistory() {
   const t = useT()
   return (
     <div className="p-5 flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
-      <Cpu size={72} style={{ color: '#CECBF6', marginBottom: 28 }} />
+      <Cpu size={72} style={{ color: 'var(--c-accent-text)', marginBottom: 28 }} />
       <div style={{ fontSize: 56, fontWeight: 900, color: '#ffffff', letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 1 }}>
         {t('Coming Soon')}
       </div>
@@ -2112,7 +2112,7 @@ function GpuStatusPanel() {
   if (gpu.cuda_available) {
     return (
       <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium w-fit"
-            style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.35)' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 35%, transparent)' }}>
         {t('⚡ GPU ready (CUDA)')}
       </span>
     )
@@ -2124,9 +2124,9 @@ function GpuStatusPanel() {
     const doneMB = Math.round(gpu.bytes_done / (1024 * 1024))
     const totalMB = Math.round(gpu.bytes_total / (1024 * 1024))
     return (
-      <div className="rounded-[10px] p-3" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.25)' }}>
+      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-medium" style={{ color: '#CECBF6' }}>
+          <span className="text-[11px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
             {t('Downloading GPU support')} ({gpu.package_index}/{gpu.package_total}) — {gpu.package}
           </span>
           <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
@@ -2135,8 +2135,8 @@ function GpuStatusPanel() {
         </div>
         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
           {pct !== null
-            ? <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#7F77DD' }} />
-            : <div className="h-full rounded-full animate-pulse" style={{ width: '100%', background: 'rgba(127,119,221,0.5)' }} />
+            ? <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--c-accent)' }} />
+            : <div className="h-full rounded-full animate-pulse" style={{ width: '100%', background: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
           }
         </div>
         {gpu.phase === 'extracting' && (
@@ -2150,8 +2150,8 @@ function GpuStatusPanel() {
   if (gpu.phase === 'done' && gpu.dlls_present && !gpu.cuda_available) {
     return (
       <div className="rounded-[10px] p-3 flex items-center justify-between"
-           style={{ background: 'rgba(29,158,117,0.1)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-        <span className="text-[11px]" style={{ color: '#9FE1CB' }}>
+           style={{ background: 'color-mix(in srgb, var(--c-green) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
+        <span className="text-[11px]" style={{ color: 'var(--c-green-text)' }}>
           {t('✓ GPU DLLs downloaded — restart the backend to activate GPU')}
         </span>
       </div>
@@ -2161,11 +2161,11 @@ function GpuStatusPanel() {
   // Download error
   if (gpu.phase === 'error') {
     return (
-      <div className="rounded-[10px] p-3" style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
         <div className="text-[11px] mb-2" style={{ color: '#F4C0D1' }}>{t('GPU download failed:')} {gpu.error}</div>
         <button onClick={() => downloadMutation.mutate()}
                 className="text-[11px] px-3 py-1 rounded-full cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
           {t('Retry')}
         </button>
       </div>
@@ -2175,10 +2175,10 @@ function GpuStatusPanel() {
   // NVIDIA GPU detected but DLLs not present — offer download
   if (gpu.has_nvidia_gpu && !gpu.dlls_present) {
     return (
-      <div className="rounded-[10px] p-3" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
+      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[12px] font-medium mb-0.5" style={{ color: '#CECBF6' }}>{t('⚡ NVIDIA GPU detected')}</div>
+            <div className="text-[12px] font-medium mb-0.5" style={{ color: 'var(--c-accent-text)' }}>{t('⚡ NVIDIA GPU detected')}</div>
             <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
               {t('Download GPU acceleration (~1.6 GB, one-time). Tagging will be dramatically faster.')}
             </div>
@@ -2187,7 +2187,7 @@ function GpuStatusPanel() {
             onClick={() => downloadMutation.mutate()}
             disabled={downloadMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium cursor-pointer flex-shrink-0"
-            style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             <Download size={11} /> {t('Download GPU support')}
           </button>
         </div>
@@ -2275,8 +2275,8 @@ function RootDropdown({ roots, value, onChange }) {
           type="button"
           onClick={() => { onChange(String(r.id)); setOpen(false) }}
           className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-          style={{ color: String(r.id) === String(value) ? '#CECBF6' : 'rgba(255,255,255,0.75)', background: String(r.id) === String(value) ? 'rgba(127,119,221,0.12)' : 'transparent' }}>
-          {r.label ? <><span style={{ color: '#CECBF6' }}>{r.label}</span> <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {r.path}</span></> : r.path}
+          style={{ color: String(r.id) === String(value) ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)', background: String(r.id) === String(value) ? 'color-mix(in srgb, var(--c-accent) 12%, transparent)' : 'transparent' }}>
+          {r.label ? <><span style={{ color: 'var(--c-accent-text)' }}>{r.label}</span> <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {r.path}</span></> : r.path}
         </button>
       ))}
     </div>,
@@ -2895,7 +2895,7 @@ export function Settings() {
            style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: 'var(--c-surface)' }}>
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-               style={{ background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
             <SlidersHorizontal size={18} style={{ color: 'var(--c-accent)' }} />
           </div>
           <div>
@@ -2910,7 +2910,7 @@ export function Settings() {
               <button key={id} onClick={() => setSettingsTab(id)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-[17px] font-medium whitespace-nowrap transition-all flex-shrink-0"
                       style={active
-                        ? { background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }
+                        ? { background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
                         : { background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '0.5px solid transparent' }
                       }>
                 <Icon size={14} />
@@ -2965,7 +2965,7 @@ export function Settings() {
                               await fetch(`/api/scanner/roots/${r.id}`, { method: 'DELETE' })
                               qc.invalidateQueries({ queryKey: ['library-roots'] })
                             }} className="text-[13px] px-2.5 py-1 rounded cursor-pointer shrink-0"
-                                    style={{ color: 'rgba(212,83,126,0.7)', background: 'rgba(212,83,126,0.1)' }}>
+                                    style={{ color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)', background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)' }}>
                               {t('Remove')}
                             </button>
                           </div>
@@ -2973,7 +2973,7 @@ export function Settings() {
                         {allRoots.length > COLLAPSE_AT && (
                           <button onClick={() => setShowAllRoots(v => !v)}
                                   className="mt-1 text-[14px] cursor-pointer"
-                                  style={{ color: 'rgba(127,119,221,0.7)' }}>
+                                  style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>
                             {showAllRoots ? t('▲ Show less') : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
                           </button>
                         )}
@@ -3001,7 +3001,7 @@ export function Settings() {
                              onKeyDown={e => e.key === 'Enter' && addRoot()} />
                       <button onClick={addRoot} disabled={!newPath.trim()}
                               className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40"
-                              style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                              style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                         {t('Add')}
                       </button>
                     </div>
@@ -3014,7 +3014,7 @@ export function Settings() {
                   </p>
                   <button onClick={handleSyncFolders} disabled={syncing}
                           className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer disabled:opacity-50"
-                          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                          style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                     <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
                     {syncing ? t('Syncing…') : t('Sync now')}
                   </button>
@@ -3032,12 +3032,12 @@ export function Settings() {
                         <div className="text-[16px] text-white/60">{scanStatus.message}</div>
                         <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[14px] cursor-pointer ml-2 flex-shrink-0"
-                                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                                style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                           <X size={10} /> {t('Cancel')}
                         </button>
                       </div>
                       <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
-                        <div className="h-full rounded-full bg-[#7F77DD] transition-all"
+                        <div className="h-full rounded-full bg-[var(--c-accent)] transition-all"
                              style={{ width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
                       </div>
                       <div className="text-[14px] text-white/30 mt-1">
@@ -3054,7 +3054,7 @@ export function Settings() {
                         <p className="text-[15px] text-white/40 mb-3">{t('Walks every library folder, creates Gallery records, generates thumbnails, detects funscripts.')}</p>
                         <button onClick={startScan}
                                 className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit"
-                                style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                                style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
                           {t('Scan entire library')}
                         </button>
                       </div>
@@ -3067,7 +3067,7 @@ export function Settings() {
                             <RootDropdown roots={roots ?? []} value={selectedRootId} onChange={setSelectedRootId} />
                             <button onClick={startFolderScan} disabled={!selectedRootId || folderScanning}
                                     className="px-4 py-2 rounded-[8px] text-[16px] cursor-pointer disabled:opacity-40 w-fit"
-                                    style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                                    style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                               {folderScanning ? t('Starting…') : t('Scan selected root')}
                             </button>
                           </div>
@@ -3094,7 +3094,7 @@ export function Settings() {
                                 finally { setTimeout(() => setRegenning(false), 3000) }
                               }}
                               className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                              style={{ background: 'rgba(212,83,126,0.15)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                              style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                         {t(b.label)}
                       </button>
                     ))}
@@ -3112,7 +3112,7 @@ export function Settings() {
                                 finally { setTimeout(() => setRegenning(false), 3000) }
                               }}
                               className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                              style={{ background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
+                              style={{ background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
                         {t(b.label)}
                       </button>
                     ))}
@@ -3138,7 +3138,7 @@ export function Settings() {
                               finally { setTimeout(() => setRegenning(false), 3000) }
                             }}
                             className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                            style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                            style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                       {t('⏱️ Read video lengths')}
                     </button>
                   </div>
@@ -3190,7 +3190,7 @@ export function Settings() {
                               finally { setTimeout(() => setFsMatching(false), 3000) }
                             }}
                             className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                            style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                            style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                       {fsMatching ? t('Starting…') : t('🔗 Match funscripts now')}
                     </button>
                   </div>
@@ -3215,7 +3215,7 @@ export function Settings() {
                            style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                         <div className="flex items-center gap-3">
                           <div className="w-2 h-2 rounded-full flex-shrink-0"
-                               style={{ background: ready ? '#1D9E75' : 'rgba(255,255,255,0.2)' }} />
+                               style={{ background: ready ? 'var(--c-green)' : 'rgba(255,255,255,0.2)' }} />
                           <div>
                             <div className="text-[16px] font-medium text-white/80">{t(label)}</div>
                             <div className="text-[14px] text-white/35">{ready ? `Downloaded · ${size ?? '?'} MB` : t(desc)}</div>
@@ -3224,7 +3224,7 @@ export function Settings() {
                         {!ready && (
                           <button disabled={tagStatus?.running} onClick={() => downloadModel(key)}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[14px] cursor-pointer disabled:opacity-40"
-                                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                             <Download size={12} /> {t('Download')}
                           </button>
                         )}
@@ -3240,21 +3240,21 @@ export function Settings() {
                         <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
                           {tagStatus.active_model && (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.2)' : 'rgba(212,83,126,0.2)',
+                                  style={{ background: tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.2)' : 'color-mix(in srgb, var(--c-pink) 20%, transparent)',
                                            color:      tagStatus.active_model === 'WD14' ? '#7AB8F5' : '#F4C0D1' }}>
                               <Cpu size={9} /> {tagStatus.active_model}
                             </span>
                           )}
                           {tagStatus.device && (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: tagStatus.device === 'gpu' ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.07)',
-                                           color:      tagStatus.device === 'gpu' ? '#9FE1CB' : 'rgba(255,255,255,0.4)' }}>
+                                  style={{ background: tagStatus.device === 'gpu' ? 'color-mix(in srgb, var(--c-green) 20%, transparent)' : 'rgba(255,255,255,0.07)',
+                                           color:      tagStatus.device === 'gpu' ? 'var(--c-green-text)' : 'rgba(255,255,255,0.4)' }}>
                               {tagStatus.device === 'gpu' ? t('⚡ GPU') : t('🖥 CPU')}
                             </span>
                           )}
                           {tagStatus.total === 0 ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: 'rgba(186,117,23,0.18)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.35)' }}>
+                                  style={{ background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
                               {t('⬇ Downloading model')}
                             </span>
                           ) : (
@@ -3263,7 +3263,7 @@ export function Settings() {
                         </div>
                         <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer ml-2 flex-shrink-0"
-                                style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                                style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                           <X size={10} /> {t('Cancel')}
                         </button>
                       </div>
@@ -3271,10 +3271,10 @@ export function Settings() {
                         {tagStatus.total > 0 ? (() => {
                           if (!tagRunStartRef.current && tagStatus.progress > 0)
                             tagRunStartRef.current = { ts: Date.now(), progress: tagStatus.progress }
-                          return <div className="h-full rounded-full transition-all" style={{ width: `${(tagStatus.progress / tagStatus.total) * 100}%`, background: '#7F77DD' }} />
+                          return <div className="h-full rounded-full transition-all" style={{ width: `${(tagStatus.progress / tagStatus.total) * 100}%`, background: 'var(--c-accent)' }} />
                         })() : (
                           <div className="h-full rounded-full"
-                               style={{ width: '100%', background: 'linear-gradient(90deg,rgba(186,117,23,0.25) 0%,rgba(186,117,23,0.6) 50%,rgba(186,117,23,0.25) 100%)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                               style={{ width: '100%', background: 'linear-gradient(90deg,color-mix(in srgb, var(--c-amber) 25%, transparent) 0%,color-mix(in srgb, var(--c-amber) 60%, transparent) 50%,color-mix(in srgb, var(--c-amber) 25%, transparent) 100%)', animation: 'pulse 1.5s ease-in-out infinite' }} />
                         )}
                       </div>
                       {tagStatus.total > 0 ? (() => {
@@ -3295,7 +3295,7 @@ export function Settings() {
                                 {tagStatus.tagged} {t('tagged')} · {tagStatus.skipped} {t('skipped')}
                                 {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} {t('errors')}</span>}
                               </div>
-                              {etaStr && <div className="text-[13px]" style={{ color: 'rgba(127,119,221,0.7)' }}>{etaStr}</div>}
+                              {etaStr && <div className="text-[13px]" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{etaStr}</div>}
                             </div>
                             {tagStatus.current_path && (
                               <div className="text-[13px] truncate text-white/20" title={tagStatus.current_path}>
@@ -3319,7 +3319,7 @@ export function Settings() {
                           {[{ key: 'library', label: 'Entire library' }, { key: 'folder', label: 'Specific folder' }, { key: 'creator', label: 'By creator' }].map(({ key, label }) => (
                             <button key={key} onClick={() => setTagScope(key)}
                                     className="px-3 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
-                                    style={{ background: tagScope === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagScope === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagScope === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}>
+                                    style={{ background: tagScope === key ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)', color: tagScope === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagScope === key ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}` }}>
                               {t(label)}
                             </button>
                           ))}
@@ -3335,8 +3335,8 @@ export function Settings() {
                               const sel = filteredTagCreators.find(c => String(c.id) === String(tagCreatorId)) || (allCreators ?? []).find(c => String(c.id) === String(tagCreatorId))
                               return sel ? (
                                 <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
-                                     style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                                  <span style={{ fontSize: 15, color: '#CECBF6', fontWeight: 600 }}>{sel.name}</span>
+                                     style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
+                                  <span style={{ fontSize: 15, color: 'var(--c-accent-text)', fontWeight: 600 }}>{sel.name}</span>
                                   <button onClick={() => setTagCreatorId('')} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}><X size={12} /></button>
                                 </div>
                               ) : null
@@ -3348,7 +3348,7 @@ export function Settings() {
                                   <button key={c.id} onClick={() => { setTagCreatorId(String(c.id)); setTagCreatorSearch('') }}
                                           className="w-full text-left px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
                                           style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
-                                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.12)'}
+                                          onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 12%, transparent)'}
                                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: {cosplayer:'#1D9E75',ethot:'#D4537E',artist:'#7F77DD',character:'#BA7517',actress:'#378ADD',custom:'#888780'}[c.creator_type] || '#888780', flexShrink: 0, display: 'inline-block' }} />
                                     {c.name}
@@ -3369,7 +3369,7 @@ export function Settings() {
                           {[{ key: 'auto', label: 'Auto', desc: 'Routes by creator type' }, { key: 'wd14', label: 'WD14', desc: 'Anime / art / characters', disabled: !tagModels?.wd14_downloaded }, { key: 'joytag', label: 'JoyTag', desc: 'Cosplay / real photos', disabled: !tagModels?.joytag_downloaded }].map(({ key, label, desc, disabled }) => (
                             <button key={key} disabled={disabled} onClick={() => !disabled && setTagModelOverride(key)}
                                     className="flex-1 px-2 py-1.5 rounded-[6px] text-[15px] cursor-pointer text-center disabled:opacity-30"
-                                    style={{ background: tagModelOverride === key ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)', color: tagModelOverride === key ? '#CECBF6' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagModelOverride === key ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}` }}
+                                    style={{ background: tagModelOverride === key ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)', color: tagModelOverride === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagModelOverride === key ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}` }}
                                     title={disabled ? t('Model not downloaded') : t(desc)}>
                               {t(label)}
                             </button>
@@ -3382,11 +3382,11 @@ export function Settings() {
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <div className="text-[15px] font-semibold text-white/55">{t('Confidence threshold')}</div>
-                          <div className="text-[15px] font-mono" style={{ color: '#CECBF6' }}>{Math.round(tagThreshold * 100)}%</div>
+                          <div className="text-[15px] font-mono" style={{ color: 'var(--c-accent-text)' }}>{Math.round(tagThreshold * 100)}%</div>
                         </div>
                         <input type="range" min="10" max="90" step="5" value={Math.round(tagThreshold * 100)}
                                onChange={e => setTagThreshold(Number(e.target.value) / 100)}
-                               className="w-full accent-[#7F77DD] cursor-pointer" />
+                               className="w-full accent-[var(--c-accent)] cursor-pointer" />
                         <div className="flex justify-between text-[13px] text-white/25 mt-0.5">
                           <span>{t('More tags (10%)')}</span><span>{t('Fewer, precise (90%)')}</span>
                         </div>
@@ -3395,12 +3395,12 @@ export function Settings() {
                         <div>
                           <div className="text-[16px] text-white/75">{t('GPU acceleration (NVIDIA CUDA)')}</div>
                           <div className="text-[14px] text-white/30 mt-0.5">{configData?.use_gpu !== false ? t('ON — using CUDA if available, CPU fallback otherwise') : t('OFF — running on CPU only')}</div>
-                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: '#BA7517' }}>{t('⚠ No NVIDIA GPU mode — AI tagging will be slower')}</div>}
+                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: 'var(--c-amber)' }}>{t('⚠ No NVIDIA GPU mode — AI tagging will be slower')}</div>}
                         </div>
                         <button onClick={() => gpuMutation.mutate(configData?.use_gpu === false ? true : false)}
                                 disabled={gpuMutation.isPending}
                                 className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors disabled:opacity-50"
-                                style={{ background: configData?.use_gpu !== false ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                                style={{ background: configData?.use_gpu !== false ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
                           <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                                style={{ left: configData?.use_gpu !== false ? 'calc(100% - 17px)' : '3px' }} />
                         </button>
@@ -3412,21 +3412,21 @@ export function Settings() {
                         </div>
                         <button onClick={() => setTagRetag(!tagRetag)}
                                 className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                                style={{ background: tagRetag ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                                style={{ background: tagRetag ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
                           <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                                style={{ left: tagRetag ? 'calc(100% - 17px)' : '3px' }} />
                         </button>
                       </div>
                       {aiTaskQueued ? (
                         <div className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[15px] w-fit"
-                             style={{ background: 'rgba(127,119,221,0.1)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
-                          <Clock size={12} style={{ color: '#7F77DD' }} /> {t('Queued in task queue…')}
+                             style={{ background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
+                          <Clock size={12} style={{ color: 'var(--c-accent)' }} /> {t('Queued in task queue…')}
                         </div>
                       ) : (
                         <button disabled={tagStarting || (!tagModels?.wd14_downloaded && !tagModels?.joytag_downloaded)}
                                 onClick={startTagging}
                                 className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                           <Cpu size={13} /> {tagStarting ? t('Starting…') : t('Start AI Tagging')}
                         </button>
                       )}
@@ -3543,7 +3543,7 @@ export function Settings() {
                              style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
                       <button onClick={() => setVaultName(vaultNameInput)}
                               className="px-4 py-2 rounded-[8px] text-[15px] cursor-pointer"
-                              style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                              style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                         {t('Save')}
                       </button>
                     </div>
@@ -3580,7 +3580,7 @@ export function Settings() {
                       </div>
                       <button onClick={() => setConfettiEnabled(!confettiEnabled)}
                               className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                              style={{ background: confettiEnabled ? 'rgba(212,83,126,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                              style={{ background: confettiEnabled ? 'color-mix(in srgb, var(--c-pink) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
                         <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                              style={{ left: confettiEnabled ? 'calc(100% - 17px)' : '3px' }} />
                       </button>
@@ -3592,7 +3592,7 @@ export function Settings() {
                       </div>
                       <button onClick={() => setShowGoonBorder(!showGoonBorder)}
                               className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                              style={{ background: showGoonBorder ? 'rgba(212,83,126,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                              style={{ background: showGoonBorder ? 'color-mix(in srgb, var(--c-pink) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
                         <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                              style={{ left: showGoonBorder ? 'calc(100% - 17px)' : '3px' }} />
                       </button>
@@ -3608,14 +3608,14 @@ export function Settings() {
                       </div>
                       <button onClick={toggleCompanion}
                               className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors"
-                              style={{ background: compConfig?.enabled ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                              style={{ background: compConfig?.enabled ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
                         <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                              style={{ left: compConfig?.enabled ? 'calc(100% - 17px)' : '3px' }} />
                       </button>
                     </div>
                     {compConfig?.enabled && (
                       <a href="/erika" className="inline-flex items-center gap-1.5 mt-3 text-[15px] px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
-                         style={{ color: '#A89FE8', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                         style={{ color: '#A89FE8', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                         <Sparkles size={12} /> {t('Open')} {compConfig?.name || 'Erika'} →
                       </a>
                     )}
@@ -3701,18 +3701,18 @@ export function Settings() {
                     </div>
                     <button onClick={() => { systemApi.backup(); toast.success(t('Backup download started!')) }}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
-                            style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }}>
+                            style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 40%, transparent)' }}>
                       <Download size={14} /> {t('Download backup')}
                     </button>
                   </div>
-                  <div style={{ height: '0.5px', background: 'rgba(29,158,117,0.2)' }} />
+                  <div style={{ height: '0.5px', background: 'color-mix(in srgb, var(--c-green) 20%, transparent)' }} />
                   <div className="flex items-start justify-between gap-4 pt-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-[17px] font-semibold text-white/80">{t('Restore backup')}</div>
                       <div className="text-[16px] text-white/35 mt-0.5">{t('Select a')} <code className="text-white/50">.db</code> {t('backup file. Your current database is saved automatically before overwriting.')}</div>
                       {restoreState === 'confirming' && restoreFile && (
                         <div className="mt-3 p-3 rounded-[8px]"
-                             style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+                             style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
                           <div className="text-[15px] font-medium mb-1" style={{ color: '#F4C0D1' }}>{t('⚠️ Replace entire database?')}</div>
                           <div className="text-[14px] mb-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
                             {t('File:')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{restoreFile.name}</span><br />
@@ -3721,7 +3721,7 @@ export function Settings() {
                           <div className="flex gap-2">
                             <button onClick={confirmRestore}
                                     className="px-4 py-1.5 rounded-[6px] text-[15px] font-medium cursor-pointer"
-                                    style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
+                                    style={{ background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#FFD4E2', border: '0.5px solid color-mix(in srgb, var(--c-pink) 50%, transparent)' }}>
                               {t('Yes, restore')}
                             </button>
                             <button onClick={() => { setRestoreState('idle'); setRestoreFile(null) }}
@@ -3738,7 +3738,7 @@ export function Settings() {
                             disabled={restoreState !== 'idle'}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
                             style={restoreState === 'done'
-                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
+                              ? { background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 40%, transparent)' }
                               : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
                       {restoreState === 'uploading' ? <><RefreshCw size={14} className="animate-spin" /> {t('Uploading…')}</>
                        : restoreState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> {t('Restarting…')}</>
@@ -3752,7 +3752,7 @@ export function Settings() {
                   <p className="text-[16px] text-white/45 mb-4">{t('Where')} <code className="text-white/50">vault.db</code> {t('and the thumbnail cache are stored. Move to a larger drive if C: space is limited. The server restarts automatically when saved.')}</p>
                   {configData && <div className="text-[15px] mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Active:')} <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span></div>}
                   {configData?.data_dir && configData.data_dir !== configData?.effective_data_dir && (
-                    <div className="text-[14px] mb-3" style={{ color: '#BA7517' }}>{t('⚠ Configured path')} <span className="font-mono">{configData.data_dir}</span> {t('was not available at startup.')}</div>
+                    <div className="text-[14px] mb-3" style={{ color: 'var(--c-amber)' }}>{t('⚠ Configured path')} <span className="font-mono">{configData.data_dir}</span> {t('was not available at startup.')}</div>
                   )}
                   <div className="flex gap-2">
                     <input value={storageInput} onChange={e => { setStorageInput(e.target.value); setStorageState('idle') }}
@@ -3763,8 +3763,8 @@ export function Settings() {
                             disabled={storageState === 'saving' || storageState === 'saved'}
                             className="flex items-center gap-2 px-4 py-2 rounded-[7px] text-[15px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
                             style={storageState === 'saved'
-                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
-                              : { background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                              ? { background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 40%, transparent)' }
+                              : { background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                       {storageState === 'saving' ? <><RefreshCw size={12} className="animate-spin" /> {t('Saving…')}</>
                        : storageState === 'saved' ? <><Check size={12} /> {t('Saved — restarting…')}</>
                        : <><Check size={12} /> {t('Save & restart')}</>}
@@ -3783,7 +3783,7 @@ export function Settings() {
                   </div>
                   {mobileLink?.found === false && (
                     <div className="flex items-center gap-2 text-[16px] mb-4 p-3 rounded-[8px]"
-                         style={{ background: 'rgba(186,117,23,0.12)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
+                         style={{ background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)' }}>
                       <AlertCircle size={16} /> {t("Could not find this PC's network address. Make sure you're connected to Wi-Fi or a network.")}
                     </div>
                   )}
@@ -3803,7 +3803,7 @@ export function Settings() {
                         <button onClick={() => { if (mobileLink?.url) { navigator.clipboard?.writeText(mobileLink.url); toast.success(t('Address copied')) } }}
                                 disabled={!mobileLink?.url}
                                 className="flex items-center gap-2 px-3 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-40"
-                                style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#B8B4F0', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                           <Copy size={15} /> {t('Copy')}
                         </button>
                       </div>
@@ -3824,7 +3824,7 @@ export function Settings() {
                     <button disabled={!startupData?.available || startupMutation.isPending}
                             onClick={() => startupMutation.mutate(!startupData?.enabled)}
                             className="w-10 h-5 rounded-full relative flex-shrink-0 ml-4 transition-colors disabled:opacity-30"
-                            style={{ background: startupData?.enabled ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)', cursor: startupData?.available ? 'pointer' : 'not-allowed' }}>
+                            style={{ background: startupData?.enabled ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)', cursor: startupData?.available ? 'pointer' : 'not-allowed' }}>
                       <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
                            style={{ left: startupData?.enabled ? 'calc(100% - 17px)' : '3px' }} />
                     </button>
@@ -3840,18 +3840,18 @@ export function Settings() {
                     <button onClick={handleCheckUpdate}
                             disabled={['checking','downloading','installing'].includes(updateState)}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-50"
-                            style={{ background: 'rgba(127,119,221,0.2)', color: '#B8B4F0', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                            style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#B8B4F0', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                       {updateState === 'checking' ? <><RefreshCw size={14} className="animate-spin" /> {t('Checking…')}</> : <><RefreshCw size={14} /> {t('Check for updates')}</>}
                     </button>
                   </div>
-                  {updateState === 'up_to_date' && <div className="flex items-center gap-2 text-[16px]" style={{ color: '#9FE1CB' }}><CheckCircle2 size={14} /> {t("You're on the latest version.")}</div>}
+                  {updateState === 'up_to_date' && <div className="flex items-center gap-2 text-[16px]" style={{ color: 'var(--c-green-text)' }}><CheckCircle2 size={14} /> {t("You're on the latest version.")}</div>}
                   {updateState === 'available' && updateInfo && (
-                    <div className="rounded-[8px] p-4 space-y-2" style={{ background: 'rgba(127,119,221,0.1)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                    <div className="rounded-[8px] p-4 space-y-2" style={{ background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                       <div className="text-[17px] font-semibold" style={{ color: '#D0CEFD' }}>v{updateInfo.latest_version} {t('available')}</div>
                       {updateInfo.changelog && <div className="text-[16px] whitespace-pre-line text-white/45">{updateInfo.changelog}</div>}
                       <button onClick={handleInstallUpdate}
                               className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer mt-1"
-                              style={{ background: 'rgba(127,119,221,0.3)', color: '#D0CEFD', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                              style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: '#D0CEFD', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
                         <Download size={14} /> {t('Download & Install')}
                       </button>
                     </div>
@@ -3860,7 +3860,7 @@ export function Settings() {
                     <div className="space-y-2">
                       <div className="text-[16px] text-white/50">{updateState === 'installing' ? t('Launching installer — the app will close and restart…') : `Downloading… ${updateProgress}%`}</div>
                       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${updateProgress}%`, background: 'rgba(127,119,221,0.7)' }} />
+                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${updateProgress}%`, background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }} />
                       </div>
                     </div>
                   )}
@@ -3888,8 +3888,8 @@ export function Settings() {
                             disabled={restartState === 'restarting'}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4 disabled:opacity-60"
                             style={restartState === 'done'
-                              ? { background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.4)' }
-                              : { background: 'rgba(186,117,23,0.2)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.4)' }}>
+                              ? { background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 40%, transparent)' }
+                              : { background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)' }}>
                       {restartState === 'restarting' ? <><RefreshCw size={14} className="animate-spin" /> {t('Restarting…')}</>
                        : restartState === 'done' ? <><Check size={14} /> {t('Back online')}</>
                        : <><RefreshCw size={14} /> {t('Restart server')}</>}
@@ -3905,7 +3905,7 @@ export function Settings() {
                     </div>
                     <button onClick={() => setShowResetModal(true)}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 ml-4"
-                            style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+                            style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
                       <AlertCircle size={14} /> {t('Reset collection')}
                     </button>
                   </div>
@@ -3923,7 +3923,7 @@ export function Settings() {
              style={{ background: 'rgba(0,0,0,0.75)' }}
              onClick={resetState === 'idle' ? () => setShowResetModal(false) : undefined}>
           <div className="rounded-[16px] p-7 max-w-md w-full"
-               style={{ background: '#1a1a1a', border: '1px solid rgba(212,83,126,0.4)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+               style={{ background: '#1a1a1a', border: '1px solid color-mix(in srgb, var(--c-pink) 40%, transparent)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
                onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#F4C0D1', marginBottom: 10 }}>{t('Wipe entire collection?')}</div>
@@ -3935,14 +3935,14 @@ export function Settings() {
               <li>{t('All cards, packs, and TCG progress')}</li>
               <li>{t('All XP, levels, and achievements')}</li>
             </ul>
-            <div className="p-3 rounded-[8px] mb-6" style={{ background: 'rgba(212,83,126,0.12)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+            <div className="p-3 rounded-[8px] mb-6" style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#F4C0D1', marginBottom: 4 }}>{t('This cannot be undone.')}</div>
               <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>{t('The only way to recover your data is from a backup file. Use')} <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{t('Download backup')}</strong> {t('first if you want to keep a copy.')}</div>
             </div>
             <div className="flex gap-3">
               <button onClick={resetState === 'idle' ? handleReset : undefined} disabled={resetState !== 'idle'}
                       className="flex items-center gap-2 px-5 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-50"
-                      style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '0.5px solid rgba(212,83,126,0.5)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#FFD4E2', border: '0.5px solid color-mix(in srgb, var(--c-pink) 50%, transparent)' }}>
                 {resetState === 'resetting' ? <><RefreshCw size={15} className="animate-spin" /> {t('Wiping & restarting…')}</> : t('💣 Yes, wipe everything')}
               </button>
               <button onClick={() => setShowResetModal(false)} disabled={resetState === 'resetting'}
@@ -3991,19 +3991,19 @@ export function ScanLog() {
   return (
     <div className="p-5 flex flex-col gap-4 h-full">
       <div className="flex items-center gap-3">
-        <ScrollText size={15} style={{ color: '#7F77DD' }} />
+        <ScrollText size={15} style={{ color: 'var(--c-accent)' }} />
         <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">{t('Scan Log')}</div>
         {scanStatus?.running && (
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px]"
-               style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-            <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#1D9E75' }} />
+               style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
+            <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--c-green)' }} />
             {t('Scanning…')}
           </div>
         )}
         {scanStatus?.running && (
           <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] cursor-pointer"
-                  style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <X size={10} /> {t('Cancel scan')}
           </button>
         )}
@@ -4013,10 +4013,10 @@ export function ScanLog() {
       </div>
 
       {scanStatus?.running && (
-        <div className="rounded-[8px] p-3" style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
+        <div className="rounded-[8px] p-3" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 20%, transparent)' }}>
           <div className="text-[11px] text-[rgba(255,255,255,0.6)] mb-1.5">{scanStatus.message}</div>
           <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ background: '#1D9E75', width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
+            <div className="h-full rounded-full transition-all" style={{ background: 'var(--c-green)', width: `${scanStatus.total ? (scanStatus.progress / scanStatus.total) * 100 : 0}%` }} />
           </div>
           <div className="text-[9px] text-[rgba(255,255,255,0.3)] mt-1">
             {scanStatus.progress} / {scanStatus.total} {t('folders')}
@@ -4033,7 +4033,7 @@ export function ScanLog() {
         ) : (
           [...log].reverse().map((line, i) => (
             <div key={i} className="py-0.5 leading-relaxed"
-                 style={{ color: line.startsWith('ERROR') ? '#F4C0D1' : line.startsWith('Scan') || line.startsWith('Folder') ? '#9FE1CB' : 'rgba(255,255,255,0.5)' }}>
+                 style={{ color: line.startsWith('ERROR') ? '#F4C0D1' : line.startsWith('Scan') || line.startsWith('Folder') ? 'var(--c-green-text)' : 'rgba(255,255,255,0.5)' }}>
               {line}
             </div>
           ))

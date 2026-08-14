@@ -153,7 +153,7 @@ def ranked_creator_ids(scores: dict) -> list:
 _GALLERY_KIND_FIELD = {"gallery_view": "views", "gallery_cum": "cum", "gallery_edge": "edges"}
 
 
-def _creator_event_sums(db: Session, since):
+def _creator_event_sums(db: Session, since, until=None):
     """Per-creator {views, cum, edges, image_views, view_seconds} inside a window."""
     totals = {}
 
@@ -162,28 +162,27 @@ def _creator_event_sums(db: Session, since):
             "views": 0, "cum": 0, "edges": 0, "image_views": 0, "view_seconds": 0,
         })
 
-    gal_rows = (
+    def bound(q):
+        return q if until is None else q.filter(ActivityEvent.logged_at < until)
+
+    gal_rows = bound(
         db.query(gallery_creators.c.creator_id, ActivityEvent.kind,
                  func.sum(ActivityEvent.amount))
           .join(ActivityEvent, ActivityEvent.gallery_id == gallery_creators.c.gallery_id)
           .filter(ActivityEvent.logged_at >= since,
                   ActivityEvent.kind.in_(tuple(_GALLERY_KIND_FIELD)))
-          .group_by(gallery_creators.c.creator_id, ActivityEvent.kind)
-          .all()
-    )
+    ).group_by(gallery_creators.c.creator_id, ActivityEvent.kind).all()
     for cid, kind, total in gal_rows:
         if cid is not None:
             bucket(cid)[_GALLERY_KIND_FIELD[kind]] += int(total or 0)
 
     pairs = _creator_image_pairs()
-    img_rows = (
+    img_rows = bound(
         db.query(pairs.c.creator_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
           .join(ActivityEvent, ActivityEvent.image_id == pairs.c.image_id)
           .filter(ActivityEvent.logged_at >= since,
                   ActivityEvent.kind.in_(("view", "seconds")))
-          .group_by(pairs.c.creator_id, ActivityEvent.kind)
-          .all()
-    )
+    ).group_by(pairs.c.creator_id, ActivityEvent.kind).all()
     for cid, kind, total in img_rows:
         if cid is not None:
             key = "image_views" if kind == "view" else "view_seconds"
@@ -192,20 +191,21 @@ def _creator_event_sums(db: Session, since):
     return totals
 
 
-def _creator_dwell(db: Session, since):
+def _creator_dwell(db: Session, since, until=None):
     """Per-creator seconds-per-photo inside a window. Photos only — a 20-minute
     video and a photo studied for 20 seconds are not the same attention."""
     pairs = _creator_image_pairs()
-    rows = (
+    q = (
         db.query(pairs.c.creator_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
           .join(ActivityEvent, ActivityEvent.image_id == pairs.c.image_id)
           .join(Image, Image.id == pairs.c.image_id)
           .filter(ActivityEvent.logged_at >= since,
                   ActivityEvent.kind.in_(("view", "seconds")),
                   Image.is_video == False)  # noqa: E712
-          .group_by(pairs.c.creator_id, ActivityEvent.kind)
-          .all()
     )
+    if until is not None:
+        q = q.filter(ActivityEvent.logged_at < until)
+    rows = q.group_by(pairs.c.creator_id, ActivityEvent.kind).all()
     secs, views = {}, {}
     for cid, kind, total in rows:
         if cid is None:
@@ -219,24 +219,26 @@ def _creator_dwell(db: Session, since):
     }
 
 
-def score_all_creators_in_period(db: Session, since) -> dict:
-    """score_all_creators() restricted to events since `since`."""
-    sums = _creator_event_sums(db, since)
+def score_all_creators_in_period(db: Session, since, until=None) -> dict:
+    """score_all_creators() restricted to events since `since`.
 
-    session_map = {
-        cid: int(n or 0)
-        for cid, n in db.query(SessionLog.creator_id, func.count(SessionLog.id))
-                        .filter(SessionLog.creator_id.isnot(None),
-                                SessionLog.logged_at >= since)
-                        .group_by(SessionLog.creator_id).all()
-    }
+    `until` closes the window at the far end — needed to score a period that has
+    already finished (yesterday, last month) rather than one running up to now.
+    """
+    sums = _creator_event_sums(db, since, until)
+
+    sess_q = (db.query(SessionLog.creator_id, func.count(SessionLog.id))
+                .filter(SessionLog.creator_id.isnot(None), SessionLog.logged_at >= since))
+    if until is not None:
+        sess_q = sess_q.filter(SessionLog.logged_at < until)
+    session_map = {cid: int(n or 0) for cid, n in sess_q.group_by(SessionLog.creator_id).all()}
     # A session is engagement even if nothing else was recorded for her.
     for cid in session_map:
         sums.setdefault(int(cid), {
             "views": 0, "cum": 0, "edges": 0, "image_views": 0, "view_seconds": 0,
         })
 
-    dwell_map = _creator_dwell(db, since)
+    dwell_map = _creator_dwell(db, since, until)
     median_dwell = statistics.median(dwell_map.values()) if dwell_map else 0
 
     out = {}

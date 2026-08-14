@@ -18,6 +18,7 @@ import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useAllCreators } from '../hooks/useAllCreators'
 import GalleryContextMenu from '../components/GalleryContextMenu'
+import RelocateModal from '../components/RelocateModal'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 
@@ -65,7 +66,7 @@ function CreateGalleryModal({ onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
-          <FolderPlus size={14} style={{ color: '#7F77DD' }} /> {t('New gallery')}
+          <FolderPlus size={14} style={{ color: 'var(--c-accent)' }} /> {t('New gallery')}
         </div>
         <input
           autoFocus value={name} onChange={e => setName(e.target.value)}
@@ -82,7 +83,7 @@ function CreateGalleryModal({ onClose }) {
           </button>
           <button type="button" onMouseDown={submit} disabled={!name.trim() || createMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             {createMutation.isPending ? t('Creating…') : t('Create')}
           </button>
         </div>
@@ -116,7 +117,7 @@ function RenameFolderModal({ gallery, onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-96 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-1 flex items-center gap-2">
-          <FolderSymlink size={13} style={{ color: '#7F77DD' }} /> {t('Rename folder on disk')}
+          <FolderSymlink size={13} style={{ color: 'var(--c-accent)' }} /> {t('Rename folder on disk')}
         </div>
         <div className="text-[13px] mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
           {t('This renames the actual directory — files will move and all paths will update.')}
@@ -136,7 +137,7 @@ function RenameFolderModal({ gallery, onClose }) {
           <button type="button" onMouseDown={submit}
                   disabled={!name.trim() || name.trim() === folderName || renameMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             {renameMutation.isPending ? t('Renaming…') : t('Rename folder')}
           </button>
         </div>
@@ -170,7 +171,7 @@ function RenameModal({ gallery, onClose }) {
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
-          <Pencil size={13} style={{ color: '#7F77DD' }} /> {t('Rename gallery')}
+          <Pencil size={13} style={{ color: 'var(--c-accent)' }} /> {t('Rename gallery')}
         </div>
         <input
           autoFocus value={name} onChange={e => setName(e.target.value)}
@@ -187,7 +188,7 @@ function RenameModal({ gallery, onClose }) {
           <button type="button" onMouseDown={submit}
                   disabled={!name.trim() || name.trim() === gallery.name || renameMutation.isPending}
                   className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             {renameMutation.isPending ? t('Saving…') : t('Rename')}
           </button>
         </div>
@@ -221,15 +222,15 @@ function StarRating({ value = 0, onRate, className = '' }) {
             title={`Rate ${n}/10`}>
             <Star
               size={9}
-              fill={filled ? (hovered ? 'rgba(186,117,23,0.7)' : '#BA7517') : 'none'}
-              stroke={filled ? '#BA7517' : 'rgba(255,255,255,0.2)'}
+              fill={filled ? (hovered ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'var(--c-amber)') : 'none'}
+              stroke={filled ? 'var(--c-amber)' : 'rgba(255,255,255,0.2)'}
               strokeWidth={1.5}
             />
           </button>
         )
       })}
       {value > 0 && !hovered && (
-        <span className="text-[10px] ml-0.5" style={{ color: '#BA7517' }}>{value}</span>
+        <span className="text-[10px] ml-0.5" style={{ color: 'var(--c-amber)' }}>{value}</span>
       )}
     </div>
   )
@@ -327,14 +328,14 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         <div className="absolute top-2 left-2 z-20"
              onClick={e => { e.stopPropagation(); onSelect(gallery.id, e) }}>
           {selected
-            ? <CheckSquare size={16} style={{ color: '#7F77DD' }} />
+            ? <CheckSquare size={16} style={{ color: 'var(--c-accent)' }} />
             : <Square size={16} style={{ color: 'rgba(255,255,255,0.5)', fill: 'rgba(0,0,0,0.4)' }} />
           }
         </div>
       )}
       {selected && (
         <div className="absolute inset-0 z-10 pointer-events-none rounded-[10px]"
-             style={{ border: '1.5px solid #7F77DD', background: 'rgba(127,119,221,0.08)' }} />
+             style={{ border: '1.5px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)' }} />
       )}
       <div className="relative overflow-hidden" style={{ height: thumbSize, background: 'rgba(255,255,255,0.03)' }}>
         <div className="absolute inset-0">
@@ -362,13 +363,13 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
 
         {gallery.cum_count > 0 && (
           <div className="absolute top-2 right-2 flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full z-10"
-               style={{ background: 'rgba(0,0,0,0.6)', color: '#ED93B1' }}>
+               style={{ background: 'rgba(0,0,0,0.6)', color: 'var(--c-pink-text)' }}>
             <Droplets size={9} /> {gallery.cum_count}
           </div>
         )}
         {gallery.creators?.length === 0 && (
           <div className="absolute bottom-2 left-2 text-[11px] px-1.5 py-0.5 rounded-full z-10"
-               style={{ background: 'rgba(186,117,23,0.7)', color: '#FAC775' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-amber) 70%, transparent)', color: 'var(--c-amber-text)' }}>
             {t('unassigned')}
           </div>
         )}
@@ -389,13 +390,13 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
             <span className="text-[12px] text-[rgba(255,255,255,0.35)]">{gallery.image_count} {t('items')}</span>
             {gallery.is_mix && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
                 {t('Mix')}
               </span>
             )}
             {gallery.period_month && gallery.period_year && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)' }}>
                 {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
               </span>
             )}
@@ -544,9 +545,9 @@ function CreatorDropdown({ value, onChange, placeholder }) {
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
         style={{
-          background: hasSelection ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-          color: hasSelection ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-          border: `0.5px solid ${hasSelection ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          background: hasSelection ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: hasSelection ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${hasSelection ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
         }}>
         {hasSelection
           ? (selectedCreators.length === 1
@@ -589,15 +590,15 @@ function CreatorDropdown({ value, onChange, placeholder }) {
                   onMouseDown={() => toggle(c.id)}
                   className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
                   style={{
-                    background: isSelected ? 'rgba(127,119,221,0.15)' : 'transparent',
-                    color: isSelected ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                    background: isSelected ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                    color: isSelected ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)',
                   }}>
                   {isMulti ? (
                     isSelected
-                      ? <CheckSquare size={12} style={{ color: '#7F77DD', flexShrink: 0 }} />
+                      ? <CheckSquare size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />
                       : <Square size={12} style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
                   ) : (
-                    isSelected && <Check size={12} style={{ color: '#7F77DD', flexShrink: 0 }} />
+                    isSelected && <Check size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />
                   )}
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{ background: TYPE_COLORS[c.creator_type] || '#D3D1C7' }} />
@@ -646,12 +647,12 @@ function CreatorTypeDropdown({ value, onChange }) {
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
         style={{
-          background: active ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-          color: active ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-          border: `0.5px solid ${active ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          background: active ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${active ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
         }}>
         {active
-          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
+          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || 'var(--c-accent-text)' }} />
           : null}
         {t(selected.label)}
         {active
@@ -668,14 +669,14 @@ function CreatorTypeDropdown({ value, onChange }) {
               onMouseDown={() => { onChange(opt.value); setOpen(false) }}
               className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
               style={{
-                background: value === opt.value ? 'rgba(127,119,221,0.15)' : 'transparent',
-                color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                background: value === opt.value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                color: value === opt.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)',
               }}>
               {opt.value
                 ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
                 : <span className="w-1.5 h-1.5 flex-shrink-0" />}
               {t(opt.label)}
-              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
+              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: 'var(--c-accent)' }} />}
             </button>
           ))}
         </div>
@@ -743,7 +744,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
           <div className="flex items-center gap-2">
-            <GitMerge size={16} style={{ color: '#CECBF6' }} />
+            <GitMerge size={16} style={{ color: 'var(--c-accent-text)' }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
               {t('Merge')} {galleries.length} {t('galleries')}
             </span>
@@ -771,19 +772,19 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                     <button key={g.id} onClick={() => setTargetId(g.id)}
                             className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer text-left transition-colors"
                             style={{
-                              background: targetId === g.id ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                              border: `0.5px solid ${targetId === g.id ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.07)'}`,
+                              background: targetId === g.id ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                              border: `0.5px solid ${targetId === g.id ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.07)'}`,
                             }}>
                       <div className="w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0"
-                           style={{ borderColor: targetId === g.id ? '#CECBF6' : 'rgba(255,255,255,0.2)', background: targetId === g.id ? '#7F77DD' : 'transparent' }}>
+                           style={{ borderColor: targetId === g.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.2)', background: targetId === g.id ? 'var(--c-accent)' : 'transparent' }}>
                         {targetId === g.id && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div style={{ fontSize: 13, color: targetId === g.id ? '#CECBF6' : 'rgba(255,255,255,0.75)', fontWeight: targetId === g.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
+                        <div style={{ fontSize: 13, color: targetId === g.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)', fontWeight: targetId === g.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{g.image_count ?? 0} {t('images')}</div>
                       </div>
                       {targetId === g.id && (
-                        <span style={{ fontSize: 10, color: '#CECBF6', background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.4)', padding: '1px 6px', borderRadius: 4 }}>{t('TARGET')}</span>
+                        <span style={{ fontSize: 10, color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', padding: '1px 6px', borderRadius: 4 }}>{t('TARGET')}</span>
                       )}
                     </button>
                   ))}
@@ -799,7 +800,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                   </div>
                 </div>
                 <button onClick={() => setMoveFiles(v => !v)} className="flex-shrink-0 mt-0.5"
-                        style={{ width: 38, height: 20, borderRadius: 10, background: moveFiles ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
+                        style={{ width: 38, height: 20, borderRadius: 10, background: moveFiles ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
                   <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: moveFiles ? 'calc(100% - 17px)' : '3px', transition: 'left 0.2s' }} />
                 </button>
               </div>
@@ -817,17 +818,17 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                       <button key={key} onClick={() => setCollision(key)}
                               className="flex-1 px-2 py-2 rounded-[8px] text-center cursor-pointer"
                               style={{
-                                background: collision === key ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                                border: `0.5px solid ${collision === key ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                background: collision === key ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                                border: `0.5px solid ${collision === key ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
-                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
+                        <div style={{ fontSize: 12, color: collision === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
                   {collision === 'replace' && (
                     <div className="mt-2 px-3 py-2 rounded-[8px]"
-                         style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', fontSize: 11, color: '#F4C0D1' }}>
+                         style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)', fontSize: 11, color: '#F4C0D1' }}>
                       ⚠ {t('Replace permanently deletes existing files in the target folder that share a filename.')}
                     </div>
                   )}
@@ -837,13 +838,13 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
           ) : merging ? (
             /* Progress view */
             <div className="flex flex-col items-center gap-4 py-4">
-              <GitMerge size={28} style={{ color: '#CECBF6' }} className="animate-pulse" />
+              <GitMerge size={28} style={{ color: 'var(--c-accent-text)' }} className="animate-pulse" />
               <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>
                 {t('Merging')} {progress?.done ?? 0} {t('of')} {progress?.total ?? 0}…
               </div>
               <div className="w-full h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
                 <div className="h-full rounded-full transition-all"
-                     style={{ width: `${progress ? (progress.done / progress.total) * 100 : 0}%`, background: '#7F77DD' }} />
+                     style={{ width: `${progress ? (progress.done / progress.total) * 100 : 0}%`, background: 'var(--c-accent)' }} />
               </div>
               {(progress?.errors ?? 0) > 0 && (
                 <div style={{ fontSize: 12, color: '#F4C0D1' }}>{progress.errors} {t('errors so far')}</div>
@@ -853,8 +854,8 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
             /* Confirm view */
             <>
               <div className="rounded-[8px] px-3 py-3 flex flex-col gap-1"
-                   style={{ background: 'rgba(186,117,23,0.1)', border: '1px solid rgba(186,117,23,0.35)' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>⚠ {t('Confirm merge')}</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-amber) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-amber-text)' }}>⚠ {t('Confirm merge')}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginTop: 2 }}>
                   {sources.length} {sources.length === 1 ? t('gallery') : t('galleries')} {t('will be merged into')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{target?.name}</b>.
                   {' '}{t('Merged galleries will be deleted if all their images are moved successfully.')}
@@ -865,21 +866,21 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                 {sources.map(g => (
                   <div key={g.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px]"
                        style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                    <GitMerge size={11} style={{ color: 'rgba(127,119,221,0.5)', flexShrink: 0 }} />
+                    <GitMerge size={11} style={{ color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)', flexShrink: 0 }} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
                     <span style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{g.image_count ?? 0} {t('imgs')}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-2 px-3 py-2 rounded-[8px] mt-1"
-                     style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.4)', fontSize: 12, color: '#CECBF6' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', fontSize: 12, color: 'var(--c-accent-text)' }}>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>→ {target?.name}</span>
-                  <span style={{ color: 'rgba(127,119,221,0.6)', flexShrink: 0, fontSize: 10 }}>{t('TARGET')}</span>
+                  <span style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)', flexShrink: 0, fontSize: 10 }}>{t('TARGET')}</span>
                 </div>
               </div>
 
               {moveFiles ? (
                 <div className="px-3 py-2 rounded-[8px]"
-                     style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.25)', fontSize: 11, color: '#F4C0D1' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)', fontSize: 11, color: '#F4C0D1' }}>
                   {t('Files will be physically moved on disk · Conflicts:')} <b>{collision}</b>
                 </div>
               ) : (
@@ -903,7 +904,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                 </button>
                 <button onClick={() => setStep('confirm')} disabled={!targetId}
                         className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
-                        style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                   {t('Review →')}
                 </button>
               </>
@@ -916,7 +917,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                 </button>
                 <button onClick={doMerge}
                         className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer flex items-center gap-2"
-                        style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
                   <GitMerge size={13} /> {t('Confirm merge')}
                 </button>
               </>
@@ -965,8 +966,8 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
           <div className="flex flex-col gap-2">
             <button onClick={onVault} disabled={busy}
               className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
-              style={{ background: 'rgba(127,119,221,0.12)', border: '1px solid rgba(127,119,221,0.3)' }}>
-              <div className="text-[15px] font-medium" style={{ color: '#CECBF6' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+              <div className="text-[15px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
                 {activeOp === 'vault' ? t('Removing…') : t('Remove from vault')}
               </div>
               <div className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{t('Files stay on disk — only removed from The Vault')}</div>
@@ -974,7 +975,7 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
 
             <button onClick={onDisk} disabled={busy}
               className="w-full py-3 px-4 rounded-[10px] text-left cursor-pointer disabled:opacity-40 transition-colors"
-              style={{ background: 'rgba(212,83,126,0.12)', border: '1px solid rgba(212,83,126,0.3)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
               <div className="text-[15px] font-medium" style={{ color: '#F4C0D1' }}>
                 {activeOp === 'disk' ? t('Deleting…') : t('Delete from drive')}
               </div>
@@ -1067,17 +1068,21 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     let added = 0
     let skipped = 0
     toast(t('Adding galleries...'), { icon: '⏳', id: 'bulk-add' })
-    for (const g of selectedGalleries) {
-      if (queue.length + added >= MAX) break
-      try {
-        const res = await galleriesApi.images(g.id)
-        const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
+    // Single round trip for the whole selection — see galleriesApi.bulkImages.
+    const room = Math.max(0, MAX - queue.length)
+    const batch = selectedGalleries.slice(0, room)
+    skipped += selectedGalleries.length - batch.length
+    try {
+      const { data: byGallery } = await galleriesApi.bulkImages(batch.map(g => g.id))
+      for (const g of batch) {
+        const ok = addToMultiViewer({
+          id: `gal-${g.id}`, type: 'gallery', media: g,
+          images: byGallery[String(g.id)] || [],
+        })
         if (ok) added++
         else skipped++
-      } catch (e) {
-        skipped++
       }
-    }
+    } catch (e) { skipped += batch.length }
     toast.dismiss('bulk-add')
     if (added > 0) toast.success(`Sent ${added} galleries to viewer`)
     if (skipped > 0) toast(t('Some were already queued or queue is full'), { icon: 'ℹ️' })
@@ -1151,22 +1156,22 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 rounded-[10px] flex-wrap animate-slide-up"
-         style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-      <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
+         style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+      <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
         {selectedIds.length} {t('selected')}
       </span>
 
       {/* Action: Send to viewer */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={assigning || zipping}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[rgba(127,119,221,0.2)] disabled:opacity-40"
-              style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] disabled:opacity-40"
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
         <LayoutTemplate size={12} /> {t('Send to viewer')}
       </button>
 
       {/* Action: Export as zip */}
       <button type="button" onMouseDown={handleExportZip} disabled={assigning || zipping}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
         <Archive size={12} /> {zipping ? t('Zipping…') : t('Export as zip')}
       </button>
 
@@ -1175,7 +1180,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
           <button type="button" onMouseDown={() => setShowMergeModal(true)} disabled={assigning || removing}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
             <GitMerge size={12} /> {t('Merge')}
           </button>
         </>
@@ -1193,7 +1198,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         onMouseDown={() => { if (creatorId && !assignMutation.isPending && !assigning) assignMutation.mutate() }}
         disabled={!creatorId || assignMutation.isPending || assigning}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
         <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning...') : t('Assign')}
       </button>
 
@@ -1209,7 +1214,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         onMouseDown={() => { if (removeCreatorId && !removing && !assigning) handleBulkRemove() }}
         disabled={!removeCreatorId || removing || assigning}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
         <UserMinus size={12} /> {removing ? t('Removing...') : t('Remove')}
       </button>
 
@@ -1220,7 +1225,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         disabled={removing || assigning}
         title={t('Remove every creator assignment from the selected galleries')}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
         <UserX size={12} /> {t('Clear all')}
       </button>
 
@@ -1229,7 +1234,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       {/* Action: Delete */}
       <button onMouseDown={() => setShowDeleteModal(true)} disabled={assigning || removing || deleteOp !== null}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
         <Trash2 size={12} /> {t('Delete')}
       </button>
 
@@ -1330,6 +1335,7 @@ export default function GalleryList() {
   const [contextMenu, setContextMenu]           = useState(null) // { gallery, x, y }
   const [showCreate, setShowCreate]             = useState(false)
   const [ctxMergingGalleries, setCtxMergingGalleries]   = useState(null)
+  const [relocating, setRelocating]                     = useState(null)
   const [ctxDeletingGalleries, setCtxDeletingGalleries] = useState(null) // array
   const [ctxDeleteOp, setCtxDeleteOp]                   = useState(null)
 
@@ -1506,15 +1512,20 @@ export default function GalleryList() {
     const targets = Array.isArray(galleries) ? galleries : [galleries]
     const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : t('Adding to Multi-panel…'))
     let added = 0, skipped = 0
-    for (const gallery of targets) {
-      if (multiViewerQueue.length + added >= MULTIVIEWER_MAX) { skipped += targets.length - added; break }
-      try {
-        const res = await galleriesApi.images(gallery.id)
-        const ok = addToMultiViewer({ id: `gal-${gallery.id}`, type: 'gallery', media: gallery, images: res.data })
+    // One request for the whole selection. This used to be a sequential fetch
+    // per gallery, so sending a few hundred meant a few hundred round trips.
+    const room = Math.max(0, MULTIVIEWER_MAX - multiViewerQueue.length)
+    const batch = targets.slice(0, room)
+    skipped += targets.length - batch.length
+    try {
+      const { data: byGallery } = await galleriesApi.bulkImages(batch.map(g => g.id))
+      for (const gallery of batch) {
+        const images = byGallery[String(gallery.id)] || []
+        const ok = addToMultiViewer({ id: `gal-${gallery.id}`, type: 'gallery', media: gallery, images })
         if (ok) added++
         else skipped++
-      } catch { skipped++ }
-    }
+      }
+    } catch { skipped += batch.length }
     toast.dismiss(tid)
     if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Multi-panel`)
     if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
@@ -1634,39 +1645,39 @@ export default function GalleryList() {
         <button type="button" onMouseDown={() => setUnassignedOnly(!unassignedOnly)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                 style={{
-                  background: unassignedOnly ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: unassignedOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${unassignedOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: unassignedOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
           <AlertCircle size={11} /> {t('Unassigned')}
         </button>
         <button type="button" onMouseDown={() => setFavOnly(!favOnly)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                 style={{
-                  background: favOnly ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: favOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${favOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: favOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: favOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${favOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
           <Star size={11} /> {t('Favorites')}
         </button>
         <button type="button" onMouseDown={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           <FolderPlus size={11} /> {t('New')}
         </button>
         {hasActiveFilters && (
           <button type="button" onMouseDown={resetFilters}
                   className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer transition-colors"
-                  style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <RotateCcw size={11} /> {t('Reset')}
           </button>
         )}
         <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer ml-auto"
                 style={{
-                  background: bulkMode ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: bulkMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${bulkMode ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
           <CheckSquare size={11} /> {t('Select')}
         </button>
@@ -1679,7 +1690,7 @@ export default function GalleryList() {
           <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
                  onChange={e => setThumbSize(Number(e.target.value))}
-                 className="w-24 h-1 cursor-pointer accent-[#7F77DD]" />
+                 className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -1688,9 +1699,9 @@ export default function GalleryList() {
             <button key={n} type="button" onMouseDown={() => setPageSize(n)}
                     className="text-[12px] px-2 py-0.5 rounded-full cursor-pointer"
                     style={{
-                      background: pageSize === n ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                      color: pageSize === n ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                      border: `0.5px solid ${pageSize === n ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                      background: pageSize === n ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                      color: pageSize === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                      border: `0.5px solid ${pageSize === n ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.07)'}`,
                     }}>
               {n}
             </button>
@@ -1724,13 +1735,13 @@ export default function GalleryList() {
           )}
           {unassignedOnly && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)' }}>
               {t('Unassigned only')} <button type="button" onMouseDown={() => setUnassignedOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
           {creatorFilter.length > 0 && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
               {creatorFilter.length} creator{creatorFilter.length > 1 ? 's' : ''} {t('selected')} <button type="button" onMouseDown={() => setCreatorFilter([])} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
@@ -1812,6 +1823,14 @@ export default function GalleryList() {
         />
       )}
 
+      {relocating && (
+        <RelocateModal
+          mode="galleries"
+          galleries={relocating}
+          onClose={() => setRelocating(null)}
+        />
+      )}
+
       {/* Right-click context menu */}
       {contextMenu && (
         <GalleryContextMenu
@@ -1832,6 +1851,7 @@ export default function GalleryList() {
             targets.forEach(g => favMutation.mutate(g))
           }}
           onMerge={() => setCtxMergingGalleries(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
+          onRelocate={() => setRelocating(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onExportZip={() => handleCtxExportZip(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onSendToPanel={() => handleCtxSendToPanel(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onDelete={(mode) => {

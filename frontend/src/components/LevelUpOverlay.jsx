@@ -22,7 +22,7 @@ function Particle({ angle, color, delay }) {
 }
 
 function ParticleBurst() {
-  const colors = ['#7F77DD', '#D4537E', '#BA7517', '#ffffff', '#C45FD4', '#4A9ED9']
+  const colors = ['var(--c-accent)', 'var(--c-pink)', 'var(--c-amber)', '#ffffff', '#C45FD4', '#4A9ED9']
   const count = 32
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden rounded-full">
@@ -43,7 +43,7 @@ function ScanLine() {
   return (
     <motion.div
       className="absolute inset-x-0 h-[2px] pointer-events-none"
-      style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(127,119,221,0.8) 50%, transparent 100%)' }}
+      style={{ background: 'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--c-accent) 80%, transparent) 50%, transparent 100%)' }}
       initial={{ top: '-2px', opacity: 0 }}
       animate={{ top: ['0%', '100%'], opacity: [0, 0.8, 0] }}
       transition={{ duration: 1.8, delay: 0.3, ease: 'linear' }}
@@ -64,8 +64,8 @@ export default function LevelUpOverlay() {
       timerRef.current = setTimeout(dismissLevelUp, 5000)
       if (confettiEnabled) {
         const fire = (opts) => confetti({ particleCount: 60, spread: 70, origin: { y: 0.55 }, ...opts })
-        fire({ colors: ['#7F77DD', '#D4537E', '#BA7517', '#ffffff'], angle: 60,  origin: { x: 0.1, y: 0.6 } })
-        fire({ colors: ['#7F77DD', '#D4537E', '#BA7517', '#ffffff'], angle: 120, origin: { x: 0.9, y: 0.6 } })
+        fire({ colors: ['var(--c-accent)', 'var(--c-pink)', 'var(--c-amber)', '#ffffff'], angle: 60,  origin: { x: 0.1, y: 0.6 } })
+        fire({ colors: ['var(--c-accent)', 'var(--c-pink)', 'var(--c-amber)', '#ffffff'], angle: 120, origin: { x: 0.9, y: 0.6 } })
         setTimeout(() => fire({ colors: ['#C45FD4', '#4A9ED9'], angle: 90, origin: { x: 0.5, y: 0.5 }, particleCount: 80 }), 300)
       }
     }
@@ -95,7 +95,7 @@ export default function LevelUpOverlay() {
             className="absolute rounded-full pointer-events-none"
             style={{
               width: 600, height: 600,
-              background: 'radial-gradient(circle, rgba(127,119,221,0.18) 0%, rgba(212,83,126,0.08) 50%, transparent 75%)',
+              background: 'radial-gradient(circle, color-mix(in srgb, var(--c-accent) 18%, transparent) 0%, color-mix(in srgb, var(--c-pink) 8%, transparent) 50%, transparent 75%)',
             }}
             initial={{ scale: 0.4, opacity: 0 }}
             animate={{ scale: [0.4, 1.2, 1.0], opacity: [0, 1, 0.8] }}
@@ -107,8 +107,8 @@ export default function LevelUpOverlay() {
             className="relative flex flex-col items-center gap-5 px-16 py-12 rounded-3xl select-none"
             style={{
               background: 'linear-gradient(160deg, rgba(30,28,50,0.95) 0%, rgba(20,18,35,0.98) 100%)',
-              border: '1px solid rgba(127,119,221,0.35)',
-              boxShadow: '0 0 60px rgba(127,119,221,0.25), 0 0 120px rgba(212,83,126,0.1)',
+              border: '1px solid color-mix(in srgb, var(--c-accent) 35%, transparent)',
+              boxShadow: '0 0 60px color-mix(in srgb, var(--c-accent) 25%, transparent), 0 0 120px color-mix(in srgb, var(--c-pink) 10%, transparent)',
             }}
             initial={{ scale: 0.6, opacity: 0, y: 40 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -123,7 +123,7 @@ export default function LevelUpOverlay() {
               animate={{ opacity: 1, y: 0, letterSpacing: '0.35em' }}
               transition={{ duration: 0.55, delay: 0.25 }}
               className="text-xs font-black tracking-[0.35em] uppercase"
-              style={{ color: 'rgba(127,119,221,0.8)' }}
+              style={{ color: 'color-mix(in srgb, var(--c-accent) 80%, transparent)' }}
             >
               ✦ Level Up ✦
             </motion.div>
@@ -136,7 +136,7 @@ export default function LevelUpOverlay() {
               <motion.div
                 className="absolute inset-0 rounded-full"
                 style={{
-                  background: 'conic-gradient(from 0deg, #7F77DD, #D4537E, #BA7517, #7F77DD)',
+                  background: 'conic-gradient(from 0deg, var(--c-accent), var(--c-pink), var(--c-amber), var(--c-accent))',
                   padding: 3,
                 }}
                 animate={{ rotate: 360 }}
@@ -157,7 +157,7 @@ export default function LevelUpOverlay() {
                   className="w-full h-full object-cover"
                   onError={e => {
                     e.target.style.display = 'none'
-                    e.target.parentElement.style.background = 'linear-gradient(135deg, #7F77DD, #D4537E)'
+                    e.target.parentElement.style.background = 'linear-gradient(135deg, var(--c-accent), var(--c-pink))'
                   }}
                 />
               </motion.div>
@@ -171,7 +171,7 @@ export default function LevelUpOverlay() {
               className="font-black leading-none"
               style={{
                 fontSize: 96,
-                background: 'linear-gradient(135deg, #ffffff 0%, #7F77DD 50%, #D4537E 100%)',
+                background: 'linear-gradient(135deg, #ffffff 0%, var(--c-accent) 50%, var(--c-pink) 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -199,7 +199,7 @@ export default function LevelUpOverlay() {
               animate={{ scaleX: 1, opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.55 }}
               className="w-full h-px"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(127,119,221,0.5), transparent)' }}
+              style={{ background: 'linear-gradient(90deg, transparent, color-mix(in srgb, var(--c-accent) 50%, transparent), transparent)' }}
             />
 
             {/* Dismiss hint */}

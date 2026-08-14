@@ -720,6 +720,49 @@ def similar_galleries(gallery_id: int, limit: int = 6, db: Session = Depends(get
             for r in picked]
 
 
+@router.get("/{gallery_id}/subgalleries")
+def subgalleries(gallery_id: int, db: Session = Depends(get_db)):
+    """Galleries whose folder sits directly inside this gallery's folder.
+
+    Folder = gallery is the hard rule here, so nesting on disk is the only
+    definition of a subgallery — there is no parent_id to keep in sync. Only
+    DIRECT children are returned; deeper levels come from calling this again on
+    the child, which is what lets the UI expand one level at a time instead of
+    walking a 7,500-row tree up front.
+    """
+    g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
+    if not g:
+        raise HTTPException(404, "Gallery not found")
+    if not g.folder_path or g.folder_path.startswith("__"):
+        return []   # mix/manual galleries have no real folder
+
+    base = os.path.normpath(g.folder_path).rstrip("\\/")
+    # Match anything under this folder, then keep only direct children. A LIKE
+    # prefix would also match a sibling like "...\Alina 2" for base "...\Alina",
+    # so the separator is part of the pattern.
+    prefix = base + os.sep
+    rows = (
+        db.query(Gallery)
+          .options(selectinload(Gallery.creators))
+          .filter(Gallery.id != gallery_id, Gallery.folder_path.like(f"{prefix}%"))
+          .all()
+    )
+    out = []
+    for child in rows:
+        cpath = os.path.normpath(child.folder_path).rstrip("\\/")
+        if os.path.dirname(cpath).lower() != base.lower():
+            continue   # a grandchild — belongs to its own parent's list
+        d = _enrich(child)
+        d["subgallery_count"] = (
+            db.query(func.count(Gallery.id))
+              .filter(Gallery.folder_path.like(f"{cpath}{os.sep}%"))
+              .scalar() or 0
+        )
+        out.append(d)
+    out.sort(key=lambda d: (d.get("name") or "").lower())
+    return out
+
+
 @router.get("/{gallery_id}/stats")
 def gallery_stats(gallery_id: int, db: Session = Depends(get_db)):
     """Deep stats for one gallery — the gallery-level counterpart to a
@@ -1010,6 +1053,39 @@ def rate_gallery(gallery_id: int, rating: float, db: Session = Depends(get_db)):
 def _natural_key(s: str):
     """Key for natural (human) sort: splits on numeric runs so F2 < F10."""
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s or '')]
+
+
+@router.post("/bulk-images")
+def bulk_gallery_images(body: dict, db: Session = Depends(get_db)):
+    """Images for many galleries in one round trip.
+
+    Queueing galleries into the multi-panel viewer used to fire one request per
+    gallery, so adding a few hundred meant a few hundred sequential HTTP calls.
+    Returns {gallery_id: [images]} in the same shape the per-gallery endpoint
+    uses, so callers can swap without touching how they read the result.
+    """
+    gallery_ids = [int(g) for g in (body.get("gallery_ids") or []) if g]
+    if not gallery_ids:
+        return {}
+
+    rows = (
+        db.query(Image)
+          .options(selectinload(Image.tags))
+          .filter(Image.gallery_id.in_(gallery_ids))
+          .order_by(Image.gallery_id, Image.sort_order, Image.id)
+          .all()
+    )
+    out = {str(gid): [] for gid in gallery_ids}
+    for img in rows:
+        out.setdefault(str(img.gallery_id), []).append({
+            "id": img.id, "filename": img.filename, "gallery_id": img.gallery_id,
+            "is_video": bool(img.is_video), "funscript_path": img.funscript_path,
+            "duration": img.duration, "thumb_path": img.thumb_path,
+            "cum_count": img.cum_count or 0, "edge_count": img.edge_count or 0,
+            "view_count": img.view_count or 0, "rating": img.rating or 0,
+            "is_favorite": bool(img.is_favorite),
+        })
+    return out
 
 
 @router.get("/{gallery_id}/images")

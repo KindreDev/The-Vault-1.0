@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { gamiApi } from '../lib/api'
-import { HOTKEY_DEFAULTS } from '../lib/hotkeys'
+import { HOTKEY_DEFAULTS, HOTKEY_SETTING_DEFAULTS } from '../lib/hotkeys'
 
 // Stored bindings are merged over the defaults so an action added later picks
 // up its default binding instead of coming back unbound.
@@ -15,6 +15,13 @@ function _readHotkeys() {
     if (legacyFinisher) seeded.finisher = legacyFinisher.toLowerCase()
     return seeded
   } catch { return { ...HOTKEY_DEFAULTS } }
+}
+
+function _readHotkeySettings() {
+  try {
+    const raw = localStorage.getItem('vault_hotkey_settings')
+    return raw ? { ...HOTKEY_SETTING_DEFAULTS, ...JSON.parse(raw) } : { ...HOTKEY_SETTING_DEFAULTS }
+  } catch { return { ...HOTKEY_SETTING_DEFAULTS } }
 }
 
 // ── IndexedDB helpers (no size limit — used for glass background image) ────
@@ -59,7 +66,7 @@ async function idbDelete(key) {
 export const PALETTES = [
   {
     id: 'vault',    label: 'Vault',
-    accent: '#7F77DD', pink: '#D4537E', amber: '#BA7517', green: '#1D9E75',
+    accent: 'var(--c-accent)', pink: '#D4537E', amber: '#BA7517', green: '#1D9E75',
     bg: '#0e0e0e', surface: '#141414', card: '#1e1e1e',
   },
   {
@@ -342,7 +349,17 @@ export const useVaultStore = create((set, get) => ({
   visibleMedia: {},
   // The surface last interacted with — used when an action needs exactly one
   // target rather than everything on screen.
+  //
+  // Two layers, because hover and intent are not the same thing. Hover sets
+  // focusedSurface as it always has, which is right for a single viewer and for
+  // "whatever the mouse last crossed". But on the panel wall a keypress must
+  // land somewhere predictable, and with lubed hands the mouse is nowhere near
+  // where you want the key to go. So a click PINS a panel: the ring stays on it
+  // and every keystroke targets it until you pin another. Hover is only
+  // consulted while nothing is pinned, which keeps first-run behaviour
+  // (including the log-cum hotkey) exactly as it was.
   focusedSurface: null,
+  pinnedSurface:  null,
 
   registerVisible: (key, imageId) => set(s => {
     const entry = s.visibleMedia[key]
@@ -358,9 +375,23 @@ export const useVaultStore = create((set, get) => ({
     if (!(key in s.visibleMedia)) return s
     const next = { ...s.visibleMedia }
     delete next[key]
-    return { visibleMedia: next, focusedSurface: s.focusedSurface === key ? null : s.focusedSurface }
+    return {
+      visibleMedia:   next,
+      focusedSurface: s.focusedSurface === key ? null : s.focusedSurface,
+      pinnedSurface:  s.pinnedSurface  === key ? null : s.pinnedSurface,
+    }
   }),
   setFocusedSurface: (key) => set({ focusedSurface: key }),
+  pinSurface:        (key) => set({ pinnedSurface: key, focusedSurface: key }),
+  clearPinnedSurface: ()   => set({ pinnedSurface: null }),
+
+  // The surface keyboard actions should act on: the pinned one if there is one,
+  // otherwise whatever the mouse last touched.
+  getActiveSurface: () => {
+    const s = get()
+    const pinned = s.pinnedSurface && s.visibleMedia[s.pinnedSurface] ? s.pinnedSurface : null
+    return pinned ?? s.focusedSurface ?? null
+  },
 
   // Last count change made outside a viewer's own mutation (currently the
   // log-cum hotkey). Viewers keep their counters in local state, so without
@@ -368,6 +399,16 @@ export const useVaultStore = create((set, get) => ({
   // on screen. { imageId, cumCount } — replaced, never accumulated.
   lastCountPing: null,
   pingCount: (imageId, cumCount) => set({ lastCountPing: { imageId, cumCount } }),
+
+  // Same trick for star ratings, which the number keys change from outside any
+  // viewer's own mutation. { imageId, rating } — replaced, never accumulated.
+  lastRatingPing: null,
+  pingRating: (imageId, rating) => set({ lastRatingPing: { imageId, rating, at: Date.now() } }),
+
+  // The last file a 💦 was credited to. Lets the repeat hotkey land a second
+  // orgasm on the same file after the slideshow has already moved on.
+  lastCumImageId: null,
+  setLastCumImageId: (imageId) => set({ lastCumImageId: imageId }),
 
   // All distinct image ids currently on screen. Used by Edge Mode, which is
   // about the moment it fires — only what is actually up right now.
@@ -397,14 +438,19 @@ export const useVaultStore = create((set, get) => ({
   // one, otherwise the viewer, otherwise whatever registered first.
   getFocusedImageId: () => {
     const s = get()
-    const byFocus = s.focusedSurface ? s.visibleMedia[s.focusedSurface]?.current : null
+    const active  = s.getActiveSurface()
+    const byFocus = active ? s.visibleMedia[active]?.current : null
     return byFocus ?? s.visibleMedia.viewer?.current
            ?? Object.values(s.visibleMedia).map(e => e?.current).find(Boolean) ?? null
   },
 
   // Multi-viewer queue — files or galleries queued for the multi-panel viewer
   // Item format: { id: string (e.g. 'img-1' or 'gal-1'), type: 'image'|'gallery', media: Object, images?: Array }
-  MULTIVIEWER_MAX: 999,
+  // Was 999, which put ~95% of a 21k-gallery library out of reach of "Send to
+  // viewer". Entries are lightweight references plus their image list; the
+  // expensive part was never the count but fetching each gallery separately,
+  // which galleriesApi.bulkImages now does in one request.
+  MULTIVIEWER_MAX: 25000,
   multiViewerQueue: [],
   addToMultiViewer: (item) => {
     const s = get()
@@ -641,9 +687,25 @@ export const useVaultStore = create((set, get) => ({
     try { localStorage.setItem('vault_hotkeys', JSON.stringify(next)) } catch {}
     set({ hotkeys: next })
   },
+  // Several bindings at once — used by the arrow-key presets, which have to
+  // move four rows together or leave the keyboard in a half-swapped state.
+  setHotkeys: (patch) => {
+    const next = { ...get().hotkeys, ...patch }
+    try { localStorage.setItem('vault_hotkeys', JSON.stringify(next)) } catch {}
+    set({ hotkeys: next })
+  },
   resetHotkeys: () => {
     try { localStorage.removeItem('vault_hotkeys') } catch {}
     set({ hotkeys: { ...HOTKEY_DEFAULTS } })
+  },
+
+  // How far a seek key moves, in seconds. Lives beside the bindings because it
+  // is the other half of the same question — which key, and how far.
+  hotkeySettings: _readHotkeySettings(),
+  setHotkeySetting: (key, value) => {
+    const next = { ...get().hotkeySettings, [key]: value }
+    try { localStorage.setItem('vault_hotkey_settings', JSON.stringify(next)) } catch {}
+    set({ hotkeySettings: next })
   },
 
   // ── Persistent UI preferences ─────────────────────────────────────────────

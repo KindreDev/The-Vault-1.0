@@ -328,22 +328,22 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
       }}>
         <button onClick={() => { setIs3D(false); setRotX(0); setRotY(0) }} style={{
           padding: '6px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-          background: !is3D ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.06)',
-          color: !is3D ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-          border: !is3D ? '1px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.1)',
+          background: !is3D ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.06)',
+          color: !is3D ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+          border: !is3D ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
         }}>2D View</button>
         <button onClick={() => setIs3D(true)} style={{
           padding: '6px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-          background: is3D ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.06)',
-          color: is3D ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-          border: is3D ? '1px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.1)',
+          background: is3D ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.06)',
+          color: is3D ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+          border: is3D ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
         }}>3D View</button>
         {is3D && (
           <button onClick={() => setAutoSpin(s => !s)} style={{
             padding: '6px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-            background: autoSpin ? 'rgba(186,117,23,0.25)' : 'rgba(255,255,255,0.06)',
-            color: autoSpin ? '#FAC775' : 'rgba(255,255,255,0.5)',
-            border: autoSpin ? '1px solid rgba(186,117,23,0.4)' : '0.5px solid rgba(255,255,255,0.1)',
+            background: autoSpin ? 'color-mix(in srgb, var(--c-amber) 25%, transparent)' : 'rgba(255,255,255,0.06)',
+            color: autoSpin ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.5)',
+            border: autoSpin ? '1px solid color-mix(in srgb, var(--c-amber) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
           }}>↻ Auto-spin</button>
         )}
         <button onClick={handleClose} style={{
@@ -481,9 +481,9 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             style={{
               position: 'absolute', bottom: 8, right: 8, zIndex: 70,
               width: 28, height: 28, borderRadius: '50%',
-              background: focalMode ? 'rgba(127,119,221,0.6)' : 'rgba(0,0,0,0.55)',
-              border: focalMode ? '1.5px solid #CECBF6' : '1px solid rgba(255,255,255,0.2)',
-              color: focalMode ? '#CECBF6' : 'rgba(255,255,255,0.55)',
+              background: focalMode ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(0,0,0,0.55)',
+              border: focalMode ? '1.5px solid var(--c-accent-text)' : '1px solid rgba(255,255,255,0.2)',
+              color: focalMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.55)',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               backdropFilter: 'blur(4px)',
@@ -542,9 +542,9 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             style={{
               padding: '8px 10px', borderRadius: 10, fontSize: 11,
               fontWeight: 700, cursor: 'pointer',
-              background: 'rgba(29,158,117,0.25)', color: '#6EE7C3',
-              border: '1px solid rgba(29,158,117,0.5)',
-              boxShadow: '0 0 12px rgba(29,158,117,0.2)',
+              background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: '#6EE7C3',
+              border: '1px solid color-mix(in srgb, var(--c-green) 50%, transparent)',
+              boxShadow: '0 0 12px color-mix(in srgb, var(--c-green) 20%, transparent)',
               opacity: fuseAllMutation.isPending ? 0.5 : 1,
             }}
           >
@@ -611,9 +611,9 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '7px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
               cursor: 'pointer',
-              background: showFeedPanel ? 'rgba(29,158,117,0.25)' : 'rgba(255,255,255,0.06)',
+              background: showFeedPanel ? 'color-mix(in srgb, var(--c-green) 25%, transparent)' : 'rgba(255,255,255,0.06)',
               color: showFeedPanel ? '#6EE7C3' : 'rgba(255,255,255,0.5)',
-              border: showFeedPanel ? '1px solid rgba(29,158,117,0.5)' : '0.5px solid rgba(255,255,255,0.1)',
+              border: showFeedPanel ? '1px solid color-mix(in srgb, var(--c-green) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
               transition: 'background 0.15s ease, color 0.15s ease, border 0.15s ease',
             }}
           >

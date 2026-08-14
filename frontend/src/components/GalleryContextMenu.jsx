@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ExternalLink, Pencil, FolderSymlink,
+  ExternalLink, Pencil, FolderSymlink, HardDrive,
   Star, StarOff, GitMerge, Trash2, Archive, LayoutTemplate, MousePointer2, CheckSquare,
 } from 'lucide-react'
 
@@ -20,6 +20,7 @@ const DIVIDER = '---'
  *   onRenameFolder – rename folder on disk
  *   onToggleFav – toggle favourite
  *   onMerge       – open merge modal
+ *   onRelocate    – move the folder elsewhere on the drive
  *   onExportZip   – export gallery as a zip archive
  *   onSendToPanel – add to multi-panel viewer queue and navigate there
  *   onDelete      – open delete modal
@@ -27,7 +28,7 @@ const DIVIDER = '---'
 export default function GalleryContextMenu({
   gallery, position, onClose, bulkCount,
   onOpen, onRename, onRenameFolder,
-  onToggleFav, onMerge, onExportZip, onSendToPanel, onDelete,
+  onToggleFav, onMerge, onRelocate, onExportZip, onSendToPanel, onDelete,
   onSelectMode, onOpenSelect,
 }) {
   const menuRef = useRef(null)
@@ -66,6 +67,7 @@ export default function GalleryContextMenu({
                            label: isFav ? 'Unfavorite' : 'Favorite',
                                                         action: onToggleFav,    style: isFav ? 'normal' : 'amber' },
     { icon: GitMerge,      label: 'Merge into…',        action: onMerge,        style: 'normal' },
+    ...(onRelocate ? [{ icon: HardDrive, label: 'Relocate…', action: onRelocate, style: 'normal' }] : []),
     { icon: Archive,       label: 'Export as zip…',     action: onExportZip,    style: 'normal' },
     { icon: LayoutTemplate, label: 'Send to Multi-panel', action: onSendToPanel, style: 'accent' },
     DIVIDER,
@@ -156,7 +158,7 @@ export default function GalleryContextMenu({
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.background = item.style === 'danger'
-                  ? 'rgba(212,83,126,0.18)'
+                  ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)'
                   : 'rgba(255,255,255,0.07)'
               }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}

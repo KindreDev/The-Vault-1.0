@@ -50,9 +50,9 @@ export default function SuggestedRail({ onOpen }) {
                 alt="" onError={e => { e.target.style.visibility = 'hidden' }}
                 onClick={() => onOpen?.(c.id)}
                 className="w-11 h-11 rounded-full object-cover cursor-pointer flex-shrink-0 transition-all duration-200 hover:scale-110"
-                style={{ border: '1.5px solid rgba(127,119,221,0.4)' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(127,119,221,0.9)'; e.currentTarget.style.boxShadow = '0 0 14px rgba(127,119,221,0.4)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(127,119,221,0.4)'; e.currentTarget.style.boxShadow = 'none' }}
+                style={{ border: '1.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 90%, transparent)'; e.currentTarget.style.boxShadow = '0 0 14px color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 40%, transparent)'; e.currentTarget.style.boxShadow = 'none' }}
               />
               <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onOpen?.(c.id)}>
                 <div className="text-[15px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>

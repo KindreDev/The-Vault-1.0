@@ -29,7 +29,7 @@ function fmtDur(secs) {
 
 function EraBadge({ era }) {
   const label = era === 'collection' ? 'Collection history · 6 years' : 'Usage · since the app was built'
-  const color = era === 'collection' ? '#FAC775' : '#7F77DD'
+  const color = era === 'collection' ? 'var(--c-amber-text)' : 'var(--c-accent)'
   return (
     <span className="px-2 py-0.5 rounded-full flex-shrink-0"
           style={{ fontSize: 15, color, background: `${color}18`, border: `0.5px solid ${color}44` }}>
@@ -38,7 +38,7 @@ function EraBadge({ era }) {
   )
 }
 
-function Card({ icon: Icon, title, subtitle, era, accent = '#7F77DD', children }) {
+function Card({ icon: Icon, title, subtitle, era, accent = 'var(--c-accent)', children }) {
   return (
     <div className="vault-card p-5">
       <div className="flex items-start gap-3 mb-4 flex-wrap">
@@ -88,11 +88,11 @@ function YearChart({ years }) {
                 <div className="w-full rounded-t-[4px]"
                      title={`${y.year}: ${num(y.galleries)} galleries, ${num(y.files)} files`}
                      style={{ height: Math.max(3, gh),
-                              background: 'linear-gradient(to top, #7F77DD, #CECBF6)' }} />
+                              background: 'linear-gradient(to top, var(--c-accent), var(--c-accent-text))' }} />
                 {/* Depth marker — files per gallery, on its own scale */}
                 <div className="absolute left-0 right-0"
                      title={`${y.files_per_gallery} files per gallery`}
-                     style={{ bottom: Math.max(2, dh), height: 2, background: '#9FE1CB' }} />
+                     style={{ bottom: Math.max(2, dh), height: 2, background: 'var(--c-green-text)' }} />
               </div>
               <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
             </div>
@@ -100,8 +100,8 @@ function YearChart({ years }) {
         })}
       </div>
       <div className="flex items-center gap-4 mt-3">
-        <span style={{ fontSize: 15, color: '#CECBF6' }}>▮ galleries acquired</span>
-        <span style={{ fontSize: 15, color: '#9FE1CB' }}>▬ files per gallery (depth)</span>
+        <span style={{ fontSize: 15, color: 'var(--c-accent-text)' }}>▮ galleries acquired</span>
+        <span style={{ fontSize: 15, color: 'var(--c-green-text)' }}>▬ files per gallery (depth)</span>
       </div>
     </div>
   )
@@ -120,8 +120,8 @@ function RosterChart({ years }) {
             <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }}>{y.creators}</div>
             <div className="w-full flex flex-col justify-end rounded-t-[4px] overflow-hidden"
                  title={`${y.year}: ${y.creators} followed · ${y.new_creators} new`}
-                 style={{ height: Math.max(3, total), background: 'rgba(127,119,221,0.45)' }}>
-              <div style={{ height: fresh, background: '#FAC775' }} />
+                 style={{ height: Math.max(3, total), background: 'color-mix(in srgb, var(--c-accent) 45%, transparent)' }}>
+              <div style={{ height: fresh, background: 'var(--c-amber-text)' }} />
             </div>
             <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
           </div>
@@ -157,14 +157,14 @@ export default function Almanac() {
 
       {/* ── The Read ────────────────────────────────────────────────────── */}
       {data.lines?.length > 0 && (
-        <Card icon={Sparkles} title={t('The read')}
-              subtitle={t('Computed from your own numbers — it changes as you do')}
-              accent="#FAC775">
+        <Card icon={Sparkles} title={t('What this says')}
+              subtitle={t('Worked out from your own numbers — it updates as you use the app')}
+              accent="var(--c-amber-text)">
           <div className="flex flex-col gap-3">
             {data.lines.map((l, i) => (
               <div key={i} className="rounded-[10px] px-4 py-3"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#FAC775', marginBottom: 3 }}>{l.title}</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--c-amber-text)', marginBottom: 3 }}>{l.title}</div>
                 <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', lineHeight: 1.55 }}>{l.body}</div>
               </div>
             ))}
@@ -175,29 +175,29 @@ export default function Almanac() {
       {/* ── The long view ───────────────────────────────────────────────── */}
       <Card icon={CalendarRange} title={t('Your collecting years')}
             subtitle={t('Built from gallery subscription periods — this predates the app entirely')}
-            era="collection" accent="#7F77DD">
+            era="collection" accent="var(--c-accent)">
         <YearChart years={years} />
         <div className="grid gap-3 mt-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
           <Tile label={t('Peak year')} value={lv.peak_year ?? '—'}
                 sub={lv.peak_year_share ? `${lv.peak_year_share}% of everything` : undefined}
-                accent="#FAC775" />
+                accent="var(--c-amber-text)" />
           <Tile label={t('Collecting since')} value={lv.first_year ?? '—'} />
           <Tile label={t('Dated galleries')} value={num(lv.total_galleries_dated)} />
           <Tile label={t('Depth now')}
                 value={years.length ? `${years[years.length - 1].files_per_gallery}` : '—'}
-                sub={t('files per set')} accent="#9FE1CB" />
+                sub={t('files per set')} accent="var(--c-green-text)" />
         </div>
       </Card>
 
       {/* ── Eras ────────────────────────────────────────────────────────── */}
       {lv.eras?.length > 0 && (
         <Card icon={Layers} title={t('The phases')}
-              subtitle={t('Detected from the shape of the curve')} era="collection" accent="#BA7517">
+              subtitle={t('Detected from the shape of the curve')} era="collection" accent="var(--c-amber)">
           <div className="flex flex-col gap-2">
             {lv.eras.map((e, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3 rounded-[10px]"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#FAC775', minWidth: 130 }}>{e.name}</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--c-amber-text)', minWidth: 130 }}>{e.name}</div>
                 <div className="font-mono" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)', minWidth: 96 }}>
                   {e.from === e.to ? e.from : `${e.from}–${e.to}`}
                 </div>
@@ -211,35 +211,35 @@ export default function Almanac() {
       {/* ── Roster ──────────────────────────────────────────────────────── */}
       <Card icon={Users} title={t('Your roster over time')}
             subtitle={t('Creators followed each year — gold is new that year')}
-            era="collection" accent="#1D9E75">
+            era="collection" accent="var(--c-green)">
         <RosterChart years={years} />
         <div className="grid gap-3 mt-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
           <Tile label={t('Creators in the vault')} value={num(hb.creators_total)} />
           <Tile label={t('Ever watched')} value={num(hb.creators_watched)}
                 sub={`${num((hb.creators_total || 0) - (hb.creators_watched || 0))} never opened`} />
           <Tile label={t('Top 5 hold')} value={`${hb.top5_share ?? 0}%`}
-                sub={t('of your watch time')} accent="#ED93B1" />
-          <Tile label={t('Top 10 hold')} value={`${hb.top10_share ?? 0}%`} accent="#ED93B1" />
+                sub={t('of your watch time')} accent="var(--c-pink-text)" />
+          <Tile label={t('Top 10 hold')} value={`${hb.top10_share ?? 0}%`} accent="var(--c-pink-text)" />
         </div>
       </Card>
 
       {/* ── Habits ──────────────────────────────────────────────────────── */}
       <Card icon={TrendingUp} title={t('How you actually use it')}
             subtitle={t('Only what the app has watched — everything before it left no trace')}
-            era="usage" accent="#ED93B1">
+            era="usage" accent="var(--c-pink-text)">
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
-          <Tile label={t('Time on photos')} value={`${hrs(hb.photo_seconds)}h`} accent="#CECBF6" />
-          <Tile label={t('Time on videos')} value={`${hrs(hb.video_seconds)}h`} accent="#9F99E8"
+          <Tile label={t('Time on photos')} value={`${hrs(hb.photo_seconds)}h`} accent="var(--c-accent-text)" />
+          <Tile label={t('Time on videos')} value={`${hrs(hb.video_seconds)}h`} accent="var(--c-accent-text)"
                 sub={`of ${hrs(hb.video_runtime_owned)}h owned`} />
           <Tile label={t('Video watched')} value={`${hb.video_watched_pct ?? 0}%`}
-                sub={t('of its runtime')} accent="#9F99E8" />
-          <Tile label={t('Seconds per photo')} value={`${hb.avg_dwell_seconds ?? 0}s`} accent="#9FE1CB" />
+                sub={t('of its runtime')} accent="var(--c-accent-text)" />
+          <Tile label={t('Seconds per photo')} value={`${hb.avg_dwell_seconds ?? 0}s`} accent="var(--c-green-text)" />
           <Tile label={t('Files opened')} value={num(hb.files_touched)}
                 sub={`${hb.files_touched_pct ?? 0}% of ${num(hb.library_files)}`} />
           <Tile label={t('Galleries opened')} value={num(hb.galleries_touched)}
                 sub={`${hb.galleries_touched_pct ?? 0}% of ${num(hb.galleries_total)}`} />
           <Tile label={t('Attention spread')} value={hb.gini ?? 0}
-                sub={t('0 = even, 1 = one creator')} accent="#ED93B1" />
+                sub={t('0 = even, 1 = one creator')} accent="var(--c-pink-text)" />
           <Tile label={t('Sessions')} value={num(hb.session_count)}
                 sub={`avg ${fmtDur(hb.session_avg_sec)} · max ${fmtDur(hb.session_longest_sec)}`} />
         </div>
@@ -254,10 +254,10 @@ export default function Almanac() {
                 const max = Math.max(1, ...hb.session_buckets.map(x => x.count))
                 return (
                   <div key={b.label} className="flex-1 flex flex-col items-center gap-1">
-                    <div style={{ fontSize: 16, fontWeight: 700, color: b.count ? '#F4A8C0' : 'transparent' }}>{b.count}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: b.count ? 'var(--c-pink-text)' : 'transparent' }}>{b.count}</div>
                     <div className="w-full rounded-t-[4px]"
                          style={{ height: Math.max(3, (b.count / max) * 70),
-                                  background: b.count ? 'linear-gradient(to top, #D4537E, #F4A8C0)' : 'rgba(255,255,255,0.06)' }} />
+                                  background: b.count ? 'linear-gradient(to top, var(--c-pink), var(--c-pink-text))' : 'rgba(255,255,255,0.06)' }} />
                     <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{b.label}</div>
                   </div>
                 )
@@ -269,10 +269,10 @@ export default function Almanac() {
 
       {/* ── Curation ────────────────────────────────────────────────────── */}
       <Card icon={Info} title={t('Curation health')} subtitle={t('How well kept the archive is')}
-            accent="#1D9E75">
+            accent="var(--c-green)">
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
-          <Tile label={t('AI tagged')} value={`${hb.tagged_pct ?? 0}%`} sub={num(hb.ai_tagged_files)} accent="#CECBF6" />
-          <Tile label={t('Rated by hand')} value={`${hb.rated_pct ?? 0}%`} sub={num(hb.rated_files)} accent="#EF9F27" />
+          <Tile label={t('AI tagged')} value={`${hb.tagged_pct ?? 0}%`} sub={num(hb.ai_tagged_files)} accent="var(--c-accent-text)" />
+          <Tile label={t('Rated by hand')} value={`${hb.rated_pct ?? 0}%`} sub={num(hb.rated_files)} accent="var(--c-amber-text)" />
           <Tile label={t('Assigned to a creator')} value={`${hb.assigned_pct ?? 0}%`}
                 sub={`${num(hb.galleries_unassigned)} unassigned`} />
           <Tile label={t('Favourites')} value={num(hb.favorite_files)} />
@@ -294,7 +294,7 @@ export default function Almanac() {
                 <span className="font-mono" style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', width: 52 }}>{c.year}</span>
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', width: 110 }}>{num(c.by_period)}</span>
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', width: 110 }}>{num(c.by_file_date)}</span>
-                <span style={{ fontSize: 16, color: c.agrees ? '#9FE1CB' : '#FAC775' }}>
+                <span style={{ fontSize: 16, color: c.agrees ? 'var(--c-green-text)' : 'var(--c-amber-text)' }}>
                   {c.agrees ? `✓ within ${c.delta_pct}%` : `off by ${c.delta_pct}%`}
                 </span>
               </div>
@@ -304,7 +304,7 @@ export default function Almanac() {
             <span style={{ width: 52 }}>{t('year')}</span>
             <span style={{ width: 110 }}>{t('by period')}</span>
             <span style={{ width: 110 }}>{t('by file date')}</span>
-            <span style={{ color: '#9FE1CB' }}>{lv.cross_check_agreement}% {t('agreement')}</span>
+            <span style={{ color: 'var(--c-green-text)' }}>{lv.cross_check_agreement}% {t('agreement')}</span>
           </div>
         </Card>
       )}

@@ -41,7 +41,7 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
           {selected ? t(selected.label) : null}
           {isReversed && value !== 'random' && (
             <span className="text-[9px] px-1 py-0 rounded-full"
-                  style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)' }}>
               ↑
             </span>
           )}
@@ -63,10 +63,10 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
           {options.map(o => (
             <button key={o.value} type="button" onMouseDown={() => handleSelect(o.value)}
                     className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-between gap-2"
-                    style={{ color: value === o.value ? '#CECBF6' : 'rgba(255,255,255,0.75)' }}>
+                    style={{ color: value === o.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)' }}>
               <span>{t(o.label)}</span>
               {value === o.value && o.value !== 'random' && (
-                <ArrowUpDown size={10} style={{ color: 'rgba(127,119,221,0.6)' }} />
+                <ArrowUpDown size={10} style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }} />
               )}
             </button>
           ))}

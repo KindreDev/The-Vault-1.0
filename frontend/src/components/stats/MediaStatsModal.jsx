@@ -36,8 +36,8 @@ export default function MediaStatsModal({ imageId, onClose }) {
         <>
           {/* ── Hero ───────────────────────────────────────────────────── */}
           <div className="relative overflow-hidden rounded-[16px] mb-6"
-               style={{ border: '0.5px solid rgba(212,83,126,0.32)',
-                        boxShadow: '0 0 50px 8px rgba(212,83,126,0.12)' }}>
+               style={{ border: '0.5px solid color-mix(in srgb, var(--c-pink) 32%, transparent)',
+                        boxShadow: '0 0 50px 8px color-mix(in srgb, var(--c-pink) 12%, transparent)' }}>
             <img src={`/api/images/${d.id}/thumb`} alt="" aria-hidden
                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
                           objectFit: 'cover', opacity: 0.15, filter: 'blur(20px)' }} />
@@ -51,9 +51,9 @@ export default function MediaStatsModal({ imageId, onClose }) {
               </button>
               <div className="flex flex-col gap-3 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Trophy size={16} style={{ color: '#FAC775' }} />
+                  <Trophy size={16} style={{ color: 'var(--c-amber-text)' }} />
                   <span style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase',
-                                 letterSpacing: '0.12em', color: '#FAC775' }}>
+                                 letterSpacing: '0.12em', color: 'var(--c-amber-text)' }}>
                     #{num(d.rank)} of {num(d.total_ranked)}
                   </span>
                   <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>·</span>
@@ -71,16 +71,16 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   {d.gallery && (
                     <button onClick={() => go(`/galleries/${d.gallery.id}`)}
                             className="px-2.5 py-1 rounded-full cursor-pointer transition-colors hover:bg-white/10"
-                            style={{ fontSize: 16, color: '#CECBF6', background: 'rgba(127,119,221,0.15)',
-                                     border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                            style={{ fontSize: 16, color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)',
+                                     border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                       {d.gallery.name} <ArrowUpRight size={12} className="inline" />
                     </button>
                   )}
                   {d.creators?.map(c => (
                     <button key={c.id} onClick={() => go(`/creators/${c.id}`)}
                             className="px-2.5 py-1 rounded-full cursor-pointer transition-colors hover:bg-white/10"
-                            style={{ fontSize: 16, color: '#F4C0D1', background: 'rgba(212,83,126,0.15)',
-                                     border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                            style={{ fontSize: 16, color: '#F4C0D1', background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
+                                     border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                       {c.name} <ArrowUpRight size={12} className="inline" />
                     </button>
                   ))}
@@ -90,7 +90,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
                       <Droplets size={15} /> Os
                     </span>
-                    <span style={{ fontSize: 30, fontWeight: 800, color: '#ED93B1', lineHeight: 1.1 }}>
+                    <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-pink-text)', lineHeight: 1.1 }}>
                       {num(d.cum_count)}
                     </span>
                   </div>
@@ -108,7 +108,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
                       <Clock size={15} /> Watched
                     </span>
-                    <span style={{ fontSize: 30, fontWeight: 800, color: '#CECBF6', lineHeight: 1.1 }}>
+                    <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-accent-text)', lineHeight: 1.1 }}>
                       {fmtDuration(d.view_seconds) || '—'}
                     </span>
                   </div>
@@ -119,44 +119,44 @@ export default function MediaStatsModal({ imageId, onClose }) {
 
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
 
-            <Panel icon={TrendingUp} title="How it earned its place" accent="#ED93B1">
+            <Panel icon={TrendingUp} title="How it earned its place" accent="var(--c-pink-text)">
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
                 <Stat label="Views" value={num(d.view_count)} />
-                <Stat label="Os per view" value={d.os_per_view ?? 0} accent="#ED93B1"
+                <Stat label="Os per view" value={d.os_per_view ?? 0} accent="var(--c-pink-text)"
                       sub={d.os_per_view >= 0.5 ? 'exceptional' : undefined} />
                 {d.avg_dwell_seconds > 0 && (
-                  <Stat label="Seconds per view" value={`${d.avg_dwell_seconds}s`} accent="#9FE1CB" />
+                  <Stat label="Seconds per view" value={`${d.avg_dwell_seconds}s`} accent="var(--c-green-text)" />
                 )}
                 {d.edge_count > 0 && (
                   <Stat label="Edges per O" value={d.edges_per_cum ? `${d.edges_per_cum}×` : '—'} accent="#A89FE8" />
                 )}
                 {d.watch_throughs > 0 && (
-                  <Stat label="Watched through" value={`${d.watch_throughs}×`} accent="#9F99E8"
+                  <Stat label="Watched through" value={`${d.watch_throughs}×`} accent="var(--c-accent-text)"
                         sub="its full length" />
                 )}
-                <Stat label="Hall of Fame score" value={num(d.hof_score)} accent="#FAC775" />
+                <Stat label="Hall of Fame score" value={num(d.hof_score)} accent="var(--c-amber-text)" />
               </div>
             </Panel>
 
-            <Panel icon={Trophy} title="Where it ranks" subtitle="Three different kinds of good" accent="#FAC775">
+            <Panel icon={Trophy} title="Where it ranks" subtitle="Three different kinds of good" accent="var(--c-amber-text)">
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
-                <Stat label="In the whole vault" value={`#${num(d.rank)}`} accent="#FAC775"
+                <Stat label="In the whole vault" value={`#${num(d.rank)}`} accent="var(--c-amber-text)"
                       sub={`of ${num(d.total_ranked)} ranked`} big />
                 {d.rank_in_gallery && (
-                  <Stat label="In its gallery" value={`#${num(d.rank_in_gallery)}`} accent="#CECBF6"
+                  <Stat label="In its gallery" value={`#${num(d.rank_in_gallery)}`} accent="var(--c-accent-text)"
                         sub={`of ${num(d.gallery_siblings)}`} big />
                 )}
-                <Stat label="Share of your Os" value={`${d.share_of_total_cum ?? 0}%`} accent="#ED93B1" />
+                <Stat label="Share of your Os" value={`${d.share_of_total_cum ?? 0}%`} accent="var(--c-pink-text)" />
                 {d.share_of_gallery_cum != null && (
-                  <Stat label="Share of gallery Os" value={`${d.share_of_gallery_cum}%`} accent="#ED93B1" />
+                  <Stat label="Share of gallery Os" value={`${d.share_of_gallery_cum}%`} accent="var(--c-pink-text)" />
                 )}
                 {d.share_of_gallery_time != null && (
-                  <Stat label="Share of gallery time" value={`${d.share_of_gallery_time}%`} accent="#CECBF6" />
+                  <Stat label="Share of gallery time" value={`${d.share_of_gallery_time}%`} accent="var(--c-accent-text)" />
                 )}
               </div>
             </Panel>
 
-            <Panel icon={Info} title="The file itself" accent="#7F77DD">
+            <Panel icon={Info} title="The file itself" accent="var(--c-accent)">
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
                 <Stat label="Dimensions"
                       value={d.width && d.height ? `${d.width}×${d.height}` : '—'}
@@ -166,9 +166,9 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   <Stat label="Length" value={fmtDuration(d.duration) || '—'} />
                 )}
                 {d.is_video && d.funscript_path && (
-                  <Stat label="Funscript" value="Yes" accent="#1D9E75" sub="syncs to device" />
+                  <Stat label="Funscript" value="Yes" accent="var(--c-green)" sub="syncs to device" />
                 )}
-                <Stat label="Rating" value={d.rating ? `${d.rating}/10` : '—'} accent="#EF9F27" />
+                <Stat label="Rating" value={d.rating ? `${d.rating}/10` : '—'} accent="var(--c-amber-text)" />
                 <Stat label="Added" value={fmtDate(d.created_at)} />
                 <Stat label="Last opened" value={fmtDate(d.last_viewed_at)} />
               </div>
@@ -176,7 +176,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
 
             <Panel icon={TagIcon} title="Tags"
                    subtitle={d.tags?.length ? `${d.tags.length} on this file — purple is AI` : 'None yet'}
-                   accent="#1D9E75">
+                   accent="var(--c-green)">
               {d.tags?.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {d.tags.map(t => (
@@ -199,8 +199,8 @@ export default function MediaStatsModal({ imageId, onClose }) {
           <button onClick={() => go(`/galleries/${d.gallery_id}?openImage=${d.id}`)}
                   className="w-full mt-4 py-3 rounded-[10px] cursor-pointer transition-colors hover:bg-white/10"
                   style={{ fontSize: 17, fontWeight: 600, color: '#F4C0D1',
-                           background: 'rgba(212,83,126,0.15)',
-                           border: '0.5px solid rgba(212,83,126,0.35)' }}>
+                           background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
+                           border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             Open in the viewer →
           </button>
         </>

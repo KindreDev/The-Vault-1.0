@@ -6,6 +6,8 @@ import { ArrowLeft, Trash2, Images, Play, X, ChevronLeft, ChevronRight, Shuffle 
 import { playlistsApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import { useSession } from '../hooks/useSession'
+import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
+import { ratingHandlers } from '../lib/viewerActions'
 import toast from 'react-hot-toast'
 import { Heart } from 'lucide-react'
 
@@ -15,6 +17,7 @@ function Lightbox({ images, startIdx, onClose }) {
   const img = images[idx]
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
   const { sessionActive, startSession, finishSession } = useSession()
 
   // This view had no session handling at all — finishing here recorded nothing,
@@ -38,16 +41,46 @@ function Lightbox({ images, startIdx, onClose }) {
     }
   }, [idx])
 
-  const handleKey = useCallback((e) => {
-    if (e.key === 'ArrowLeft')  prev()
-    if (e.key === 'ArrowRight') next()
-    if (e.key === 'Escape')     onClose()
-  }, [prev, next, onClose])
+  // This lightbox drives a plain <video> rather than InlineVideoPlayer, so the
+  // transport keys act on the element directly. Same bindings as everywhere
+  // else — the keys you learn in the gallery viewer work here too.
+  const seekBy = useCallback((secs) => {
+    const v = videoRef.current
+    if (!img?.is_video || !v) { secs > 0 ? next() : prev(); return }
+    const dur = v.duration
+    if (!dur || isNaN(dur)) return
+    v.currentTime = Math.max(0, Math.min(dur - 0.05, v.currentTime + secs))
+  }, [img?.is_video, next, prev])
 
-  React.useEffect(() => {
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [handleKey])
+  const withVideo = (fn) => () => { const v = videoRef.current; if (img?.is_video && v) fn(v) }
+
+  useViewerHotkeys({
+    viewer_seek_fwd:      () => seekBy(seekStep),
+    viewer_seek_back:     () => seekBy(-seekStep),
+    viewer_seek_fwd_big:  () => seekBy(seekStepBig),
+    viewer_seek_back_big: () => seekBy(-seekStepBig),
+    viewer_next:          next,
+    viewer_prev:          prev,
+    viewer_close:         onClose,
+    viewer_shuffle: () => {
+      if (images.length < 2) return
+      setIdx(i => { let n = i; while (n === i) n = Math.floor(Math.random() * images.length); return n })
+    },
+    viewer_play_pause: () => {
+      const v = videoRef.current
+      if (!img?.is_video || !v) return
+      v.paused ? v.play().catch(() => {}) : v.pause()
+    },
+    video_restart:     withVideo(v => { v.currentTime = 0; v.play().catch(() => {}) }),
+    video_mute:        withVideo(v => { v.muted = !v.muted }),
+    video_loop:        withVideo(v => { v.loop = !v.loop }),
+    video_volume_up:   withVideo(v => { v.volume = Math.min(1, v.volume + 0.05); v.muted = false }),
+    video_volume_down: withVideo(v => { v.volume = Math.max(0, v.volume - 0.05) }),
+    video_rate_up:     withVideo(v => { v.playbackRate = Math.min(4, v.playbackRate + 0.25) }),
+    video_rate_down:   withVideo(v => { v.playbackRate = Math.max(0.25, v.playbackRate - 0.25) }),
+    video_rate_reset:  withVideo(v => { v.playbackRate = 1 }),
+    ...ratingHandlers(),
+  })
 
   if (!img) return null
 
@@ -73,8 +106,8 @@ function Lightbox({ images, startIdx, onClose }) {
             else               startSession()
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer flex-shrink-0"
-          style={{ background: sessionActive ? 'rgba(212,83,126,0.3)' : 'rgba(212,83,126,0.15)',
-                   color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+          style={{ background: sessionActive ? 'color-mix(in srgb, var(--c-pink) 30%, transparent)' : 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
+                   color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
           <Heart size={12} /> {sessionActive ? 'Stop Session' : 'Start Session'}
         </button>
       </div>
@@ -216,7 +249,7 @@ export default function PlaylistView() {
         </div>
         <button onMouseDown={handleDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] cursor-pointer"
-                style={{ background: 'rgba(212,83,126,0.15)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
           <Trash2 size={12} /> Delete
         </button>
       </div>

@@ -48,9 +48,9 @@ export default class ErrorBoundary extends React.Component {
           onClick={() => this.setState({ hasError: false, error: null })}
           className="mt-2 px-5 py-2.5 rounded-full text-[14px] font-medium cursor-pointer"
           style={{
-            background: 'rgba(127,119,221,0.15)',
-            color: '#CECBF6',
-            border: '0.5px solid rgba(127,119,221,0.3)',
+            background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)',
+            color: 'var(--c-accent-text)',
+            border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)',
           }}
         >
           Try again

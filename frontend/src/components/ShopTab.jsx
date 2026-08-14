@@ -449,20 +449,20 @@ function InfoBlock({ description, dropRates, creditCost, credits, onOpen, isPend
 // ─────────────────────────────────────────────────────────────────────────────
 const STANDARD_DROPS = [
   { label: 'Photo',     pct: '58%', color: '#c0c0c0' },
-  { label: 'Gallery',   pct: '17%', color: '#1D9E75' },
+  { label: 'Gallery',   pct: '17%', color: 'var(--c-green)' },
   { label: 'Creator',   pct: '7%',  color: '#9F8FEF' },
   { label: 'HOF 🏆',    pct: '7%',  color: '#FFD700' },
-  { label: 'Goon ★',    pct: '5%',  color: '#D4537E' },
+  { label: 'Goon ★',    pct: '5%',  color: 'var(--c-pink)' },
   { label: 'Collab ♦',  pct: '5%',  color: '#ff8800' },
   { label: 'Variant ✦', pct: '1%',  color: '#E8E8FF' },
 ]
 const PREMIUM_DROPS = [
   { label: 'Photo',     pct: '30%', color: '#c0c0c0' },
-  { label: 'Gallery',   pct: '20%', color: '#1D9E75' },
+  { label: 'Gallery',   pct: '20%', color: 'var(--c-green)' },
   { label: 'Creator',   pct: '15%', color: '#9F8FEF' },
   { label: 'Collab ♦',  pct: '12%', color: '#ff8800' },
   { label: 'HOF 🏆',    pct: '11%', color: '#FFD700' },
-  { label: 'Goon ★',    pct: '9%',  color: '#D4537E' },
+  { label: 'Goon ★',    pct: '9%',  color: 'var(--c-pink)' },
   { label: 'Variant ✦', pct: '3%',  color: '#E8E8FF' },
 ]
 
@@ -503,13 +503,13 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
         <div style={{
           marginBottom: 28,
           borderRadius: 14,
-          background: 'rgba(29,158,117,0.07)',
-          border: '1px solid rgba(29,158,117,0.25)',
+          background: 'color-mix(in srgb, var(--c-green) 7%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--c-green) 25%, transparent)',
           padding: '16px 20px',
           display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
         }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(29,158,117,0.8)', marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'color-mix(in srgb, var(--c-green) 80%, transparent)', marginBottom: 4 }}>
               Pack Inventory
             </div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>
@@ -518,21 +518,21 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginLeft: 'auto' }}>
             {standardPacks > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(127,119,221,0.1)', border: '1px solid rgba(127,119,221,0.25)', borderRadius: 10, padding: '8px 14px' }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: '#CECBF6', lineHeight: 1 }}>{standardPacks}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 25%, transparent)', borderRadius: 10, padding: '8px 14px' }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--c-accent-text)', lineHeight: 1 }}>{standardPacks}</span>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.3 }}>Standard<br/>Packs</span>
                 <div style={{ display: 'flex', gap: 6, marginLeft: 6 }}>
                   <button
                     disabled={isPendingInventory}
                     onClick={() => openFromInventoryMutation?.mutate({ pack_type: 'standard', quantity: 1 })}
-                    style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '1px solid rgba(127,119,221,0.4)', opacity: isPendingInventory ? 0.5 : 1 }}>
+                    style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '1px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', opacity: isPendingInventory ? 0.5 : 1 }}>
                     Open 1
                   </button>
                   {standardPacks > 1 && (
                     <button
                       disabled={isPendingInventory}
                       onClick={() => openFromInventoryMutation?.mutate({ pack_type: 'standard', quantity: standardPacks })}
-                      style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(127,119,221,0.15)', color: '#AFA9EC', border: '1px solid rgba(127,119,221,0.25)', opacity: isPendingInventory ? 0.5 : 1 }}>
+                      style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: '#AFA9EC', border: '1px solid color-mix(in srgb, var(--c-accent) 25%, transparent)', opacity: isPendingInventory ? 0.5 : 1 }}>
                       All
                     </button>
                   )}
@@ -541,13 +541,13 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
             )}
             {premiumPacks > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,200,30,0.08)', border: '1px solid rgba(255,200,30,0.25)', borderRadius: 10, padding: '8px 14px' }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: '#FAC775', lineHeight: 1 }}>{premiumPacks}</span>
+                <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--c-amber-text)', lineHeight: 1 }}>{premiumPacks}</span>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.3 }}>Premium<br/>Packs</span>
                 <div style={{ display: 'flex', gap: 6, marginLeft: 6 }}>
                   <button
                     disabled={isPendingInventory}
                     onClick={() => openFromInventoryMutation?.mutate({ pack_type: 'premium', quantity: 1 })}
-                    style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,200,30,0.2)', color: '#FAC775', border: '1px solid rgba(255,200,30,0.4)', opacity: isPendingInventory ? 0.5 : 1 }}>
+                    style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,200,30,0.2)', color: 'var(--c-amber-text)', border: '1px solid rgba(255,200,30,0.4)', opacity: isPendingInventory ? 0.5 : 1 }}>
                     Open 1
                   </button>
                   {premiumPacks > 1 && (
@@ -571,8 +571,8 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
         <div style={{
           width: 400,
           borderRadius: 18,
-          background: 'rgba(127,119,221,0.05)',
-          border: '1px solid rgba(127,119,221,0.22)',
+          background: 'color-mix(in srgb, var(--c-accent) 5%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--c-accent) 22%, transparent)',
           padding: 20,
           display: 'flex',
           flexDirection: 'column',
@@ -581,7 +581,7 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
           <PackVisual
             imageSrc="/booster-pack.png"
             title="Booster Pack"
-            glowColor="rgba(127,119,221,0.85)"
+            glowColor="color-mix(in srgb, var(--c-accent) 85%, transparent)"
             creators={creators}
             images={images}
           />
@@ -592,7 +592,7 @@ export default function ShopTab({ credits, openPackMutation, openFromInventoryMu
             credits={credits}
             onOpen={(qty) => openPackMutation.mutate({ pack_type: 'standard', quantity: qty })}
             isPending={openPackMutation.isPending}
-            glowColor="rgba(127,119,221,0.85)"
+            glowColor="color-mix(in srgb, var(--c-accent) 85%, transparent)"
           />
         </div>
 

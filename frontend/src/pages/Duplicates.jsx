@@ -36,11 +36,11 @@ function FilterDropdown({ icon: Icon, placeholder, value, options, onChange, onC
         className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition w-full"
         style={{
           background: 'rgba(255,255,255,0.05)',
-          borderColor: open ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.1)',
+          borderColor: open ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.1)',
           color: value ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)',
         }}
       >
-        {Icon && <Icon size={13} className="flex-shrink-0" style={{ color: value ? '#7F77DD' : 'rgba(255,255,255,0.3)' }} />}
+        {Icon && <Icon size={13} className="flex-shrink-0" style={{ color: value ? 'var(--c-accent)' : 'rgba(255,255,255,0.3)' }} />}
         <span className="flex-1 text-left truncate">{selected ? selected.label : placeholder}</span>
         {value ? (
           <X size={12} className="flex-shrink-0 hover:text-white/80 transition"
@@ -63,13 +63,13 @@ function FilterDropdown({ icon: Icon, placeholder, value, options, onChange, onC
            }}>
         <button type="button" onClick={() => { onClear(); setOpen(false) }}
                 className="w-full text-left px-3 py-2 text-sm transition"
-                style={{ color: !value ? '#7F77DD' : 'rgba(255,255,255,0.5)', background: !value ? 'rgba(127,119,221,0.1)' : 'transparent' }}>
+                style={{ color: !value ? 'var(--c-accent)' : 'rgba(255,255,255,0.5)', background: !value ? 'color-mix(in srgb, var(--c-accent) 10%, transparent)' : 'transparent' }}>
           All
         </button>
         {options.map(opt => (
           <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false) }}
                   className="w-full text-left px-3 py-2 text-sm truncate transition"
-                  style={{ color: opt.value === value ? '#7F77DD' : 'rgba(255,255,255,0.75)', background: opt.value === value ? 'rgba(127,119,221,0.1)' : 'transparent' }}>
+                  style={{ color: opt.value === value ? 'var(--c-accent)' : 'rgba(255,255,255,0.75)', background: opt.value === value ? 'color-mix(in srgb, var(--c-accent) 10%, transparent)' : 'transparent' }}>
             {opt.label}
           </button>
         ))}
@@ -104,7 +104,7 @@ function HashProgress({ status, taskState, stats, onStart, onCancel, isPending }
       ) : !isQueued ? (
         <button onClick={onStart} disabled={isPending}
                 className="w-full px-3 py-2 rounded-lg font-semibold text-sm transition disabled:opacity-60 flex items-center justify-center gap-2 mb-2"
-                style={{ background: '#7F77DD', color: '#fff' }}>
+                style={{ background: 'var(--c-accent)', color: '#fff' }}>
           <ScanLine size={14} className={isPending ? 'animate-spin' : ''} />
           {isPending ? 'Queuing…' : 'Build Index'}
         </button>
@@ -135,8 +135,8 @@ function ImageCard({ img, isKeep, onToggle }) {
   return (
     <div className="relative rounded-lg border overflow-hidden cursor-pointer transition-all"
          style={{
-           borderColor: isKeep ? '#1D9E75' : 'rgba(255,255,255,0.1)',
-           boxShadow:   isKeep ? '0 0 0 2px rgba(29,158,117,0.35)' : 'none',
+           borderColor: isKeep ? 'var(--c-green)' : 'rgba(255,255,255,0.1)',
+           boxShadow:   isKeep ? '0 0 0 2px color-mix(in srgb, var(--c-green) 35%, transparent)' : 'none',
          }}
          onClick={onToggle}>
       {thumb
@@ -185,13 +185,13 @@ function GalleryRowImageCard({ img }) {
         <p className="text-white/80 text-[14px] truncate font-medium">{img.filename}</p>
         <div className="flex gap-1.5 mt-0.5 text-[14px] flex-wrap">
           {img.width && img.height && (
-            <span style={{ color: 'rgba(127,119,221,0.75)' }}>{img.width}×{img.height}</span>
+            <span style={{ color: 'color-mix(in srgb, var(--c-accent) 75%, transparent)' }}>{img.width}×{img.height}</span>
           )}
           {img.file_size && (
             <span className="text-white/40">{(img.file_size / 1024 / 1024).toFixed(1)} MB</span>
           )}
-          {img.rating > 0 && <span style={{ color: '#BA7517' }}>★{img.rating}</span>}
-          {img.cum_count > 0 && <span style={{ color: '#D4537E' }}>♥{img.cum_count}</span>}
+          {img.rating > 0 && <span style={{ color: 'var(--c-amber)' }}>★{img.rating}</span>}
+          {img.cum_count > 0 && <span style={{ color: 'var(--c-pink)' }}>♥{img.cum_count}</span>}
         </div>
       </div>
     </div>
@@ -540,7 +540,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
   }
 
   const simPct   = Math.round(group.similarity * 100)
-  const simColor = simPct >= 95 ? '#f87171' : simPct >= 80 ? '#BA7517' : 'rgba(255,255,255,0.55)'
+  const simColor = simPct >= 95 ? '#f87171' : simPct >= 80 ? 'var(--c-amber)' : 'rgba(255,255,255,0.55)'
   const galleries = [...new Set(group.images.map(i => i.gallery_name).filter(Boolean))]
   const creators  = [...new Set(group.images.map(i => i.creator_name).filter(Boolean))]
   const subtitle  = creators.length > 0
@@ -549,7 +549,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
 
   return (
     <div className="rounded-xl border overflow-hidden"
-         style={{ borderColor: upscaleFactor ? 'rgba(29,158,117,0.25)' : 'rgba(255,255,255,0.1)',
+         style={{ borderColor: upscaleFactor ? 'color-mix(in srgb, var(--c-green) 25%, transparent)' : 'rgba(255,255,255,0.1)',
                   background: 'var(--c-card, #1e1e1e)' }}>
       <div className="flex items-center px-4 py-3">
         <button className="flex-1 flex items-center gap-2.5 hover:opacity-80 transition text-left min-w-0"
@@ -558,7 +558,7 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
           <span className="text-white/40 text-sm flex-shrink-0">{remaining.length} imgs</span>
           {upscaleFactor && (
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[14px] font-semibold flex-shrink-0"
-                  style={{ color: '#1D9E75', background: 'rgba(29,158,117,0.12)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                  style={{ color: 'var(--c-green)', background: 'color-mix(in srgb, var(--c-green) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
               <ArrowUpCircle size={10} /> {upscaleFactor}
             </span>
           )}
@@ -571,9 +571,9 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
                 disabled={keepBothBusy}
                 className="ml-2 flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition text-[14px] flex-shrink-0 disabled:opacity-50"
                 style={{
-                  color: upscaleFactor ? '#1D9E75' : 'rgba(255,255,255,0.3)',
-                  background: upscaleFactor ? 'rgba(29,158,117,0.1)' : 'transparent',
-                  border: upscaleFactor ? '1px solid rgba(29,158,117,0.25)' : '1px solid transparent',
+                  color: upscaleFactor ? 'var(--c-green)' : 'rgba(255,255,255,0.3)',
+                  background: upscaleFactor ? 'color-mix(in srgb, var(--c-green) 10%, transparent)' : 'transparent',
+                  border: upscaleFactor ? '1px solid color-mix(in srgb, var(--c-green) 25%, transparent)' : '1px solid transparent',
                 }}
                 title="Keep both permanently — removes from duplicates forever, nothing deleted">
           <Infinity size={12} /> Keep Both
@@ -661,7 +661,7 @@ function Pagination({ page, totalPages, onChange }) {
           ) : (
             <button key={p} onClick={() => onChange(p)}
                     className="w-8 h-8 rounded-lg text-sm font-medium transition"
-                    style={{ background: p === page ? '#7F77DD' : 'rgba(255,255,255,0.06)', color: p === page ? '#fff' : 'rgba(255,255,255,0.5)' }}>
+                    style={{ background: p === page ? 'var(--c-accent)' : 'rgba(255,255,255,0.06)', color: p === page ? '#fff' : 'rgba(255,255,255,0.5)' }}>
               {p}
             </button>
           )
@@ -1025,7 +1025,7 @@ export default function Duplicates() {
             </div>
             <button onClick={runSearch}
                     className="w-full px-3 py-2 rounded-lg font-semibold text-sm transition"
-                    style={{ background: '#7F77DD', color: '#fff' }}>
+                    style={{ background: 'var(--c-accent)', color: '#fff' }}>
               Find Duplicates
             </button>
           </div>
@@ -1114,8 +1114,8 @@ export default function Duplicates() {
               onClick={() => setActiveTab(tab.id)}
               className="px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px"
               style={{
-                color:       activeTab === tab.id ? '#7F77DD' : 'rgba(255,255,255,0.35)',
-                borderColor: activeTab === tab.id ? '#7F77DD' : 'transparent',
+                color:       activeTab === tab.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.35)',
+                borderColor: activeTab === tab.id ? 'var(--c-accent)' : 'transparent',
               }}
             >
               {tab.label}

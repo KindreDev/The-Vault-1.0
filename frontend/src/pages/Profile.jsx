@@ -51,16 +51,16 @@ function getTitleStyle(level) {
   if (level >= 71) return { color: '#FF6B35', glow: '0 0 6px rgba(255,107,53,0.6)', shimmer: false }
   if (level >= 66) return { color: '#E24B4A', glow: '0 0 6px rgba(226,75,74,0.6)', shimmer: false }
   if (level >= 61) return { color: '#E24B4A', glow: '0 0 4px rgba(226,75,74,0.5)', shimmer: false }
-  if (level >= 56) return { color: '#BA7517', glow: '0 0 6px rgba(186,117,23,0.6)', shimmer: false }
+  if (level >= 56) return { color: 'var(--c-amber)', glow: '0 0 6px color-mix(in srgb, var(--c-amber) 60%, transparent)', shimmer: false }
   if (level >= 51) return { color: '#D4A017', glow: '0 0 4px rgba(212,160,23,0.5)', shimmer: false }
-  if (level >= 46) return { color: '#D4537E', glow: '0 0 4px rgba(212,83,126,0.5)', shimmer: false }
-  if (level >= 41) return { color: '#D4537E', glow: '0 0 3px rgba(212,83,126,0.4)', shimmer: false }
-  if (level >= 36) return { color: '#7F77DD', glow: '0 0 4px rgba(127,119,221,0.5)', shimmer: false }
-  if (level >= 31) return { color: '#7F77DD', glow: '0 0 3px rgba(127,119,221,0.4)', shimmer: false }
+  if (level >= 46) return { color: 'var(--c-pink)', glow: '0 0 4px color-mix(in srgb, var(--c-pink) 50%, transparent)', shimmer: false }
+  if (level >= 41) return { color: 'var(--c-pink)', glow: '0 0 3px color-mix(in srgb, var(--c-pink) 40%, transparent)', shimmer: false }
+  if (level >= 36) return { color: 'var(--c-accent)', glow: '0 0 4px color-mix(in srgb, var(--c-accent) 50%, transparent)', shimmer: false }
+  if (level >= 31) return { color: 'var(--c-accent)', glow: '0 0 3px color-mix(in srgb, var(--c-accent) 40%, transparent)', shimmer: false }
   if (level >= 26) return { color: '#378ADD', glow: '0 0 3px rgba(55,138,221,0.4)', shimmer: false }
   if (level >= 21) return { color: '#378ADD', glow: 'none', shimmer: false }
-  if (level >= 16) return { color: '#1D9E75', glow: 'none', shimmer: false }
-  if (level >= 11) return { color: '#1D9E75', glow: 'none', shimmer: false }
+  if (level >= 16) return { color: 'var(--c-green)', glow: 'none', shimmer: false }
+  if (level >= 11) return { color: 'var(--c-green)', glow: 'none', shimmer: false }
   return { color: '#888780', glow: 'none', shimmer: false }
 }
 
@@ -402,7 +402,7 @@ export default function Profile() {
                   }}
                 />
                 <button onClick={() => updateMutation.mutate({ username: nameVal })}
-                  style={{ background: 'rgba(29,158,117,0.2)', border: '1px solid rgba(29,158,117,0.4)', borderRadius: 6, padding: '4px 8px', color: '#1D9E75', cursor: 'pointer' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--c-green) 40%, transparent)', borderRadius: 6, padding: '4px 8px', color: 'var(--c-green)', cursor: 'pointer' }}>
                   <Check size={14} />
                 </button>
                 <button onClick={() => setEditingName(false)}
@@ -528,10 +528,10 @@ export default function Profile() {
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               padding: '12px 16px', borderRadius: 12,
-              background: 'rgba(186,117,23,0.12)', border: '0.5px solid rgba(186,117,23,0.3)',
+              background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)',
             }}>
               <Flame size={18} style={{ color: '#FA9835' }} />
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#FAC775' }}>{profile.streak_days}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-amber-text)' }}>{profile.streak_days}</div>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Day streak</div>
             </div>
           )}
@@ -541,11 +541,11 @@ export default function Profile() {
       {/* ── Stats row ──────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
-          { icon: '💰', label: 'Vault Credits', value: credits.toLocaleString(), color: '#FAC775' },
-          { icon: '🔷', label: 'Shards', value: shards.toLocaleString(), color: '#CECBF6' },
-          { icon: '⚗️', label: 'Catalyst Tokens', value: tokens, color: '#1D9E75' },
+          { icon: '💰', label: 'Vault Credits', value: credits.toLocaleString(), color: 'var(--c-amber-text)' },
+          { icon: '🔷', label: 'Shards', value: shards.toLocaleString(), color: 'var(--c-accent-text)' },
+          { icon: '⚗️', label: 'Catalyst Tokens', value: tokens, color: 'var(--c-green)' },
           { icon: '❤️', label: 'Hearts', value: hearts.toLocaleString(), color: '#FF2D75' },
-          { icon: '⚡', label: 'Total XP', value: profile.total_xp.toLocaleString(), color: '#7F77DD' },
+          { icon: '⚡', label: 'Total XP', value: profile.total_xp.toLocaleString(), color: 'var(--c-accent)' },
         ].map(s => (
           <div key={s.label} style={{
             borderRadius: 12, padding: '14px 16px',
@@ -561,8 +561,8 @@ export default function Profile() {
         {/* Craft token button */}
         <div style={{
           borderRadius: 12, padding: '14px 16px',
-          background: 'rgba(186,117,23,0.06)',
-          border: '0.5px solid rgba(186,117,23,0.2)',
+          background: 'color-mix(in srgb, var(--c-amber) 6%, transparent)',
+          border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)',
           display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
         }}>
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
@@ -574,9 +574,9 @@ export default function Profile() {
             style={{
               padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
               cursor: shards >= 150 ? 'pointer' : 'not-allowed',
-              background: shards >= 150 ? 'rgba(186,117,23,0.3)' : 'rgba(255,255,255,0.04)',
-              color: shards >= 150 ? '#FAC775' : 'rgba(255,255,255,0.2)',
-              border: shards >= 150 ? '0.5px solid rgba(186,117,23,0.5)' : '0.5px solid rgba(255,255,255,0.06)',
+              background: shards >= 150 ? 'color-mix(in srgb, var(--c-amber) 30%, transparent)' : 'rgba(255,255,255,0.04)',
+              color: shards >= 150 ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.2)',
+              border: shards >= 150 ? '0.5px solid color-mix(in srgb, var(--c-amber) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.06)',
             }}
           >
             {craftMutation.isPending ? '…' : '⚗️ 150 shards'}
@@ -621,8 +621,8 @@ export default function Profile() {
         return (
           <div style={{
             borderRadius: 14, padding: '16px 20px', marginBottom: 20,
-            background: 'rgba(212,83,126,0.05)',
-            border: '0.5px solid rgba(212,83,126,0.2)',
+            background: 'color-mix(in srgb, var(--c-pink) 5%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)',
             display: 'flex', alignItems: 'center', gap: 16,
           }}>
             <span style={{ fontSize: 22, flexShrink: 0 }}>🎮</span>
@@ -640,7 +640,7 @@ export default function Profile() {
               )}
             </div>
             {last.xp_earned > 0 && (
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#7F77DD', flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', flexShrink: 0 }}>
                 +{last.xp_earned} XP
               </div>
             )}
@@ -651,22 +651,22 @@ export default function Profile() {
       {/* ── Gooning & Activity ─────────────────────────────────────────────── */}
       <div style={{
         borderRadius: 14, padding: 20, marginBottom: 20,
-        background: 'rgba(212,83,126,0.03)',
-        border: '0.5px solid rgba(212,83,126,0.1)',
+        background: 'color-mix(in srgb, var(--c-pink) 3%, transparent)',
+        border: '0.5px solid color-mix(in srgb, var(--c-pink) 10%, transparent)',
       }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 13 }}>💧</span> Gooning & Activity
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 10 }}>
           {[
-            { icon: '❤️', label: 'Sessions logged',  value: (vaultStats?.total_sessions ?? 0).toLocaleString(),              color: '#D4537E' },
-            { icon: '💧', label: 'Total Os',          value: (vaultStats?.total_cum_count ?? 0).toLocaleString(),             color: '#D4537E', cumStat: true },
-            { icon: '⏱️', label: 'Time gooning',      value: fmtMs(vaultStats?.session_total_ms ?? 0),                       color: '#D4537E' },
-            { icon: '⚡', label: 'Longest session',   value: fmtMs((vaultStats?.longest_session_sec ?? 0) * 1000),            color: '#7F77DD' },
+            { icon: '❤️', label: 'Sessions logged',  value: (vaultStats?.total_sessions ?? 0).toLocaleString(),              color: 'var(--c-pink)' },
+            { icon: '💧', label: 'Total Os',          value: (vaultStats?.total_cum_count ?? 0).toLocaleString(),             color: 'var(--c-pink)', cumStat: true },
+            { icon: '⏱️', label: 'Time gooning',      value: fmtMs(vaultStats?.session_total_ms ?? 0),                       color: 'var(--c-pink)' },
+            { icon: '⚡', label: 'Longest session',   value: fmtMs((vaultStats?.longest_session_sec ?? 0) * 1000),            color: 'var(--c-accent)' },
             { icon: '🔥', label: 'Current streak',    value: `${profile.streak_days ?? 0}d`,                                 color: '#FA9835' },
             { icon: '🏆', label: 'Best streak',       value: `${profile.streak_best ?? 0}d`,                                 color: '#FA9835' },
-            { icon: '📆', label: 'Peak month',        value: vaultStats?.most_active_month ? MONTHS[vaultStats.most_active_month - 1] : '—', color: '#CECBF6' },
-            { icon: '📅', label: 'Peak day',          value: (vaultStats?.most_active_day != null) ? DAYS[vaultStats.most_active_day] : '—', color: '#CECBF6' },
+            { icon: '📆', label: 'Peak month',        value: vaultStats?.most_active_month ? MONTHS[vaultStats.most_active_month - 1] : '—', color: 'var(--c-accent-text)' },
+            { icon: '📅', label: 'Peak day',          value: (vaultStats?.most_active_day != null) ? DAYS[vaultStats.most_active_day] : '—', color: 'var(--c-accent-text)' },
           ].map(s => (
             <div key={s.label} className={s.cumStat ? 'vault-cum-stat' : ''} style={{
               borderRadius: 10, padding: '12px 14px',
@@ -686,7 +686,7 @@ export default function Profile() {
         {/* XP log */}
         <div style={{ borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Zap size={13} style={{ color: '#7F77DD' }} /> XP Events
+            <Zap size={13} style={{ color: 'var(--c-accent)' }} /> XP Events
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {recentXP.length === 0 ? (
@@ -697,7 +697,7 @@ export default function Profile() {
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{SOURCE_LABELS[e.reason] || e.reason}</div>
                   <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.earned_at)}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#7F77DD' }}>+{e.amount} XP</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-accent)' }}>+{e.amount} XP</div>
               </div>
             ))}
           </div>
@@ -706,7 +706,7 @@ export default function Profile() {
         {/* Credit log */}
         <div style={{ borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Trophy size={13} style={{ color: '#FAC775' }} /> Credit Events
+            <Trophy size={13} style={{ color: 'var(--c-amber-text)' }} /> Credit Events
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {recentCredit.length === 0 ? (
@@ -717,7 +717,7 @@ export default function Profile() {
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{SOURCE_LABELS[e.source] || e.source}</div>
                   <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.logged_at)}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#FAC775' }}>+{e.amount} 💰</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-amber-text)' }}>+{e.amount} 💰</div>
               </div>
             ))}
           </div>

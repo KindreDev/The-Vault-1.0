@@ -12,11 +12,11 @@ import MediaStatsModal from '../components/stats/MediaStatsModal'
 
 // ── Color maps ────────────────────────────────────────────────────────────────
 const TYPE_COLORS = {
-  cosplayer: { bg: 'rgba(29,158,117,0.25)',  text: '#9FE1CB' },
-  ethot:     { bg: 'rgba(212,83,126,0.25)',  text: '#ED93B1' },
-  artist:    { bg: 'rgba(127,119,221,0.25)', text: '#CECBF6' },
-  character: { bg: 'rgba(186,117,23,0.25)',  text: '#FAC775' },
-  actress:   { bg: 'rgba(212,83,126,0.25)',  text: '#ED93B1' },
+  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 25%, transparent)',  text: '#9FE1CB' },
+  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 25%, transparent)',  text: '#ED93B1' },
+  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', text: '#CECBF6' },
+  character: { bg: 'color-mix(in srgb, var(--c-amber) 25%, transparent)',  text: '#FAC775' },
+  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 25%, transparent)',  text: '#ED93B1' },
   custom:    { bg: 'rgba(136,135,128,0.25)', text: '#D3D1C7' },
 }
 
@@ -38,8 +38,8 @@ const RARITY_LABELS = {
 
 const PODIUM_META = [
   { rank: 2, label: 'Silver', color: '#B8C4CC', height: 442, scale: 1 },
-  { rank: 1, label: 'Gold',   color: '#FAC775', height: 572, scale: 1.04 },
-  { rank: 3, label: 'Bronze', color: '#BA7517', height: 390, scale: 1 },
+  { rank: 1, label: 'Gold',   color: 'var(--c-amber-text)', height: 572, scale: 1.04 },
+  { rank: 3, label: 'Bronze', color: 'var(--c-amber)', height: 390, scale: 1 },
 ]
 
 // Cache-busting avatar URL — avatar_path stores a UUID filename that changes on each upload
@@ -98,17 +98,17 @@ function StatRow({ views, cum, viewSeconds, dwell, engagement, size = 12 }) {
         <Eye size={size - 2} /> {(views ?? 0).toLocaleString()}
       </span>
       {(cum ?? 0) > 0 && (
-        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#D4537E' }}>
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-pink)' }}>
           <Droplets size={size - 2} /> {cum.toLocaleString()}
         </span>
       )}
       {(viewSeconds ?? 0) > 0 && (
-        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#9F99E8' }} title="Time spent viewing — a major factor in Hall of Fame ranking">
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-accent-text)' }} title="Time spent viewing — a major factor in Hall of Fame ranking">
           <Clock size={size - 2} /> {formatViewTimeFull(viewSeconds)}
         </span>
       )}
       {(dwell ?? 0) > 0 && (
-        <span className="flex items-center gap-1" style={{ fontSize: size, color: '#9FE1CB' }}
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-green-text)' }}
               title={`You linger ${dwell}s on each of her photos — attention per photo scales her ranking${engagement ? ` (×${engagement})` : ''}`}>
           <TrendingUp size={size - 2} /> {dwell}s
         </span>
@@ -126,7 +126,7 @@ function StatRow({ views, cum, viewSeconds, dwell, engagement, size = 12 }) {
 function RankChange({ change, size = 12 }) {
   if (!change) return null
   const up = change > 0
-  const color = up ? '#1D9E75' : '#D4537E'
+  const color = up ? 'var(--c-green)' : 'var(--c-pink)'
   const Icon  = up ? ArrowUp : ArrowDown
   return (
     <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
@@ -181,8 +181,8 @@ function RarityPill({ rarity }) {
 // #1 gold shimmer + heavy glow, #2 silver + moderate glow, #3 bronze + light glow
 const PODIUM_BADGE_STYLES = {
   1: {
-    gradient:    'linear-gradient(145deg, #FFF4A0 0%, #FAC775 30%, #D48A10 60%, #FFE580 85%, #FAC775 100%)',
-    shadow:      '0 0 0 2.5px #FAC77590, 0 0 20px 6px #FAC77558, 0 0 48px 18px #FAC77530',
+    gradient:    'linear-gradient(145deg, #FFF4A0 0%, var(--c-amber-text) 30%, #D48A10 60%, #FFE580 85%, var(--c-amber-text) 100%)',
+    shadow:      '0 0 0 2.5px color-mix(in srgb, var(--c-amber) 56%, transparent), 0 0 20px 6px color-mix(in srgb, var(--c-amber) 35%, transparent), 0 0 48px 18px color-mix(in srgb, var(--c-amber) 19%, transparent)',
     color:       '#3A2200',
     size: 58, fontSize: 24,
     // Bright, fast sweep — very premium
@@ -199,8 +199,8 @@ const PODIUM_BADGE_STYLES = {
     shineDur:    '3.8s',
   },
   3: {
-    gradient:    'linear-gradient(145deg, #E8A85A 0%, #BA7517 30%, #7A4A10 60%, #D08A40 85%, #BA7517 100%)',
-    shadow:      '0 0 0 1px #BA751750, 0 0 8px 2px #BA751728',
+    gradient:    'linear-gradient(145deg, #E8A85A 0%, var(--c-amber) 30%, #7A4A10 60%, #D08A40 85%, var(--c-amber) 100%)',
+    shadow:      '0 0 0 1px color-mix(in srgb, var(--c-amber) 31%, transparent), 0 0 8px 2px color-mix(in srgb, var(--c-amber) 16%, transparent)',
     color:       '#FFF4E8',
     size: 58, fontSize: 24,
     // Very subtle, slow sweep
@@ -259,9 +259,9 @@ function formatViewTimeFull(secs) {
 
 // ── Rank badge for media/gallery cards ────────────────────────────────────────
 const RANK_BADGE_STYLES = {
-  1: { bg: 'linear-gradient(145deg, #FFF4A0, #FAC775, #D48A10)', color: '#3A2200', border: 'none', size: 30, fs: 13 },
+  1: { bg: 'linear-gradient(145deg, #FFF4A0, var(--c-amber-text), #D48A10)', color: '#3A2200', border: 'none', size: 30, fs: 13 },
   2: { bg: 'linear-gradient(145deg, #F4F8FA, #C8D8E8, #8AAABF)',  color: '#0E1E2A', border: 'none', size: 30, fs: 13 },
-  3: { bg: 'linear-gradient(145deg, #E8A85A, #BA7517, #7A4A10)',  color: '#FFF4E8', border: 'none', size: 30, fs: 13 },
+  3: { bg: 'linear-gradient(145deg, #E8A85A, var(--c-amber), #7A4A10)',  color: '#FFF4E8', border: 'none', size: 30, fs: 13 },
 }
 
 function RankBadge({ rank }) {
@@ -284,6 +284,20 @@ function RankBadge({ rank }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // CREATOR SECTION
 // ══════════════════════════════════════════════════════════════════════════════
+
+// How many Hall of Fame periods she has ever won. Shown wherever a creator is
+// ranked, because a title held is a different fact from a position held today.
+function CrownCount({ n }) {
+  if (!n) return null
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
+          style={{ background: 'color-mix(in srgb, var(--c-amber) 14%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 38%, transparent)' }}
+          title={`${n} Hall of Fame crown${n === 1 ? '' : 's'} won`}>
+      <Crown size={12} style={{ color: 'var(--c-amber-text)' }} />
+      <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-amber-text)', lineHeight: 1 }}>{n}</span>
+    </span>
+  )
+}
 
 function CreatorHero({ creator, onClick }) {
   const [imgFailed, setImgFailed] = useState(false)
@@ -324,7 +338,7 @@ function CreatorHero({ creator, onClick }) {
       </div>
       {/* Crown watermark */}
       <div style={{ position: 'absolute', top: 24, right: 28, opacity: 0.11 }}>
-        <Crown size={88} style={{ color: '#FAC775' }} />
+        <Crown size={88} style={{ color: 'var(--c-amber-text)' }} />
       </div>
 
       {/* Content */}
@@ -348,12 +362,13 @@ function CreatorHero({ creator, onClick }) {
         {/* Text block */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <Crown size={16} style={{ color: '#FAC775' }} />
+            <Crown size={16} style={{ color: 'var(--c-amber-text)' }} />
             <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
-                           letterSpacing: '0.14em', color: '#FAC775' }}>
+                           letterSpacing: '0.14em', color: 'var(--c-amber-text)' }}>
               #1 · Most Visited Creator
             </span>
             <RankChange change={creator.rank_change} size={13} />
+            <CrownCount n={creator.crown_count} />
           </div>
           <h2 style={{ fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.95)',
                        lineHeight: 1.05, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>
@@ -368,15 +383,15 @@ function CreatorHero({ creator, onClick }) {
           <StatRow views={creator.total_views} cum={creator.total_cum} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} size={15} />
           {(creator.total_view_seconds ?? 0) > 0 ? (
             <div className="flex flex-col gap-1 mt-2"
-                 style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)',
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)',
                           borderRadius: 10, padding: '10px 14px' }}>
               <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-                            letterSpacing: '0.1em', color: 'rgba(127,119,221,0.6)' }}>
+                            letterSpacing: '0.1em', color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }}>
                 Time spent with {creator.name}
               </div>
               <div className="flex items-center gap-2">
-                <Clock size={14} style={{ color: '#9F99E8' }} />
-                <span style={{ fontSize: 22, fontWeight: 700, color: '#CECBF6' }}>
+                <Clock size={14} style={{ color: 'var(--c-accent-text)' }} />
+                <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-accent-text)' }}>
                   {formatViewTimeFull(creator.total_view_seconds)}
                 </span>
               </div>
@@ -432,6 +447,7 @@ function PodiumCard({ creator, rank, meta, onClick }) {
             </span>
             <RarityPill rarity={creator.card_rarity} />
             <RankChange change={creator.rank_change} />
+            <CrownCount n={creator.crown_count} />
           </div>
           <StatRow views={creator.total_views} cum={creator.total_cum} viewSeconds={creator.total_view_seconds} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} />
         </div>
@@ -479,6 +495,7 @@ function CreatorGridCard({ creator, rank, onClick }) {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <StatRow views={creator.total_views} cum={creator.total_cum} viewSeconds={creator.total_view_seconds} dwell={creator.avg_dwell_seconds} engagement={creator.engagement_factor} />
           <div className="flex items-center gap-1.5">
+            <CrownCount n={creator.crown_count} />
             <RankChange change={creator.rank_change} />
             <RarityPill rarity={creator.card_rarity} />
           </div>
@@ -497,8 +514,8 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
     <section className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-9 h-9 rounded-[10px]"
-             style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)' }}>
-          <Trophy size={17} style={{ color: '#FAC775' }} />
+             style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
+          <Trophy size={17} style={{ color: 'var(--c-amber-text)' }} />
         </div>
         <div>
           <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">Creator Hall of Fame</div>
@@ -528,7 +545,7 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
 
       {rest.length > 0 && (
         <>
-          <TierLabel label="Honourable Mentions" color="rgba(186,117,23,0.35)" />
+          <TierLabel label="Honourable Mentions" color="color-mix(in srgb, var(--c-amber) 35%, transparent)" />
           <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
             {rest.map((c, i) => (
               <CreatorGridCard key={c.id} creator={c} rank={i + 4}
@@ -833,15 +850,15 @@ export default function HallOfFame() {
         <div className="flex flex-wrap items-center justify-between gap-6 mb-14">
           <div className="flex items-center gap-4">
             <div className="flex items-center justify-center w-14 h-14 rounded-[14px]"
-                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)',
-                          boxShadow: '0 0 30px 4px rgba(186,117,23,0.12)' }}>
-              <Trophy size={26} style={{ color: '#FAC775' }} />
+                 style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)',
+                          boxShadow: '0 0 30px 4px color-mix(in srgb, var(--c-amber) 12%, transparent)' }}>
+              <Trophy size={26} style={{ color: 'var(--c-amber-text)' }} />
             </div>
             <div>
               <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">
                 Hall of Fame
                 {period !== 'all' && (
-                  <span className="ml-3 text-[20px] font-semibold" style={{ color: '#FAC775' }}>
+                  <span className="ml-3 text-[20px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>
                     {periodLabel}
                   </span>
                 )}
@@ -850,7 +867,7 @@ export default function HallOfFame() {
                 {PERIOD_SUBTITLE[period]}
               </p>
               {partialSince && (
-                <p className="text-[16px] mt-1" style={{ color: 'rgba(186,117,23,0.75)' }}>
+                <p className="text-[16px] mt-1" style={{ color: 'color-mix(in srgb, var(--c-amber) 75%, transparent)' }}>
                   Partial — engagement has only been tracked since {partialSince}
                 </p>
               )}
@@ -867,15 +884,15 @@ export default function HallOfFame() {
           {(creatorHof ?? []).length === 0 && (imageHof ?? []).length === 0 ? (
             <div className="rounded-[14px] p-16 text-center"
                  style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-              <Trophy size={32} style={{ color: 'rgba(186,117,23,0.35)', margin: '0 auto 16px' }} />
+              <Trophy size={32} style={{ color: 'color-mix(in srgb, var(--c-amber) 35%, transparent)', margin: '0 auto 16px' }} />
               <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
                 {PERIOD_EMPTY[period]}
               </p>
               {period !== 'all' && (
                 <button onClick={() => selectPeriod('all')}
                         className="mt-5 px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
-                        style={{ background: 'rgba(186,117,23,0.15)',
-                                 border: '0.5px solid rgba(186,117,23,0.35)', color: '#FAC775' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+                                 border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)', color: 'var(--c-amber-text)' }}>
                   See all time instead
                 </button>
               )}
@@ -887,7 +904,7 @@ export default function HallOfFame() {
 
           <TieredSection
             icon={Film}
-            iconColor="#D4537E"
+            iconColor="var(--c-pink)"
             title="Media Hall of Fame"
             subtitle="Individual photos and videos ranked by view count. High-view images with many cum taps earn their place here."
             items={imageHof}
@@ -903,7 +920,7 @@ export default function HallOfFame() {
           {(galleryHof ?? []).length > 0 && (
             <TieredSection
               icon={Images}
-              iconColor="#7F77DD"
+              iconColor="var(--c-accent)"
               title="Gallery Hall of Fame"
               subtitle="Full galleries ranked by total view count. Reflects which collections you return to most — not just opened once."
               items={galleryHof}

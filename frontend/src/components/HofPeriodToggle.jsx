@@ -40,16 +40,16 @@ export default function HofPeriodToggle({ value, onChange }) {
                   onClick={() => onChange(p.id)}
                   className="relative px-4 py-2 rounded-[10px] transition-colors"
                   style={{ fontSize: 16, fontWeight: active ? 700 : 500,
-                           color: active ? '#FAC775' : 'rgba(255,255,255,0.45)' }}>
+                           color: active ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)' }}>
             {/* One shared layoutId across the four buttons is what makes the
                 highlight slide between them instead of cross-fading. */}
             {active && (
               <motion.div layoutId="hof-period-pill"
                           transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                           style={{ position: 'absolute', inset: 0, borderRadius: 10,
-                                   background: 'rgba(186,117,23,0.18)',
-                                   border: '0.5px solid rgba(186,117,23,0.4)',
-                                   boxShadow: '0 0 20px 2px rgba(186,117,23,0.12)' }} />
+                                   background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)',
+                                   border: '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)',
+                                   boxShadow: '0 0 20px 2px color-mix(in srgb, var(--c-amber) 12%, transparent)' }} />
             )}
             <span style={{ position: 'relative', zIndex: 1 }}>{p.label}</span>
           </button>

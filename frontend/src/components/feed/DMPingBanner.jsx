@@ -63,9 +63,9 @@ export default function DMPingBanner({ ping, onDismiss }) {
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="flex items-center gap-3.5 rounded-[14px] px-4 py-3.5 mb-5 cursor-pointer"
       style={{
-        background: 'linear-gradient(120deg, rgba(212,83,126,0.14), rgba(127,119,221,0.12))',
-        border: '0.5px solid rgba(212,83,126,0.35)',
-        boxShadow: '0 4px 24px rgba(212,83,126,0.12)',
+        background: 'linear-gradient(120deg, color-mix(in srgb, var(--c-pink) 14%, transparent), color-mix(in srgb, var(--c-accent) 12%, transparent))',
+        border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)',
+        boxShadow: '0 4px 24px color-mix(in srgb, var(--c-pink) 12%, transparent)',
       }}
       onClick={reply}
     >
@@ -75,7 +75,7 @@ export default function DMPingBanner({ ping, onDismiss }) {
           animate={{ scale: [1, 1.18, 1], opacity: [0.5, 0, 0.5] }}
           transition={{ repeat: Infinity, duration: 2 }}
           className="absolute inset-0 rounded-full"
-          style={{ border: '2px solid #ED93B1' }}
+          style={{ border: '2px solid var(--c-pink-text)' }}
         />
         <img
           src={ping.creator.has_avatar ? `/api/creators/${ping.creator.id}/avatar-thumb?size=96` : '/logo.png'}
@@ -87,7 +87,7 @@ export default function DMPingBanner({ ping, onDismiss }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          <MessageCircleHeart size={15} style={{ color: '#ED93B1' }} />
+          <MessageCircleHeart size={15} style={{ color: 'var(--c-pink-text)' }} />
           {ping.creator.name} {ping.group_id ? t('added you to a group') : t('sent you a message')}
         </div>
         <div className="text-[14px] italic truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
@@ -99,7 +99,7 @@ export default function DMPingBanner({ ping, onDismiss }) {
         onClick={e => { e.stopPropagation(); reply() }}
         disabled={opening}
         className="flex-shrink-0 px-4 py-2 rounded-full text-[14px] font-semibold cursor-pointer"
-        style={{ background: 'rgba(212,83,126,0.3)', color: '#FFD3E0', border: '0.5px solid rgba(212,83,126,0.5)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#FFD3E0', border: '0.5px solid color-mix(in srgb, var(--c-pink) 50%, transparent)' }}>
         {opening ? t('Opening…') : t('Reply 💜')}
       </button>
       <button

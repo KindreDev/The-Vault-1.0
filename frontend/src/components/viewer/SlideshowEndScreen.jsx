@@ -31,7 +31,7 @@ function Tile({ index, icon: Icon, label, sublabel, onClick, busy, highlighted }
       style={{
         padding: '28px 18px',
         minHeight: 160,
-        background: highlighted ? 'rgba(127,119,221,0.18)' : 'rgba(255,255,255,0.04)',
+        background: highlighted ? 'color-mix(in srgb, var(--c-accent) 18%, transparent)' : 'rgba(255,255,255,0.04)',
         border: `1px solid ${highlighted ? 'var(--c-accent)' : 'rgba(255,255,255,0.09)'}`,
         backdropFilter: 'blur(10px)',
       }}>
@@ -46,7 +46,7 @@ function Tile({ index, icon: Icon, label, sublabel, onClick, busy, highlighted }
         {index}
       </span>
 
-      <Icon size={38} style={{ color: highlighted ? '#CECBF6' : 'rgba(255,255,255,0.6)' }} />
+      <Icon size={38} style={{ color: highlighted ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)' }} />
       <div className="text-center">
         <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.88)', fontWeight: 600 }}>{label}</div>
         {sublabel && (
@@ -237,7 +237,7 @@ export default function SlideshowEndScreen({
         <button
           onClick={() => setAutoPick(a => !a)}
           className="cursor-pointer transition-colors hover:text-white"
-          style={{ fontSize: 16, color: autoPick ? '#CECBF6' : 'rgba(255,255,255,0.3)' }}>
+          style={{ fontSize: 16, color: autoPick ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)' }}>
           {autoPick
             ? `${t('More like this in')} ${countdown}s · ${t('click to cancel')}`
             : t('Auto-pick off')}

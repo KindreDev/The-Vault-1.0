@@ -11,8 +11,10 @@ import {
   Target, Trash2, Save, FolderOpen, Hash, ChevronRight,
   Info, ScanLine, Filter, RotateCcw, PanelRight, Gamepad2,
   TrendingUp, ArrowRight, Layers3, WifiOff, Bot, MessageSquare,
-  Download, CheckCircle, AlertTriangle, Hammer,
+  Download, CheckCircle, AlertTriangle, Hammer, Keyboard,
 } from 'lucide-react'
+import { HOTKEY_GROUPS, HOTKEY_ACTIONS, bindingToDisplay, SCOPE_VIEWER } from '../lib/hotkeys'
+import { useVaultStore } from '../store/vault'
 
 // ── Shared micro-components ───────────────────────────────────────────────────
 
@@ -28,7 +30,7 @@ function Pill({ children, color = 'var(--c-accent)', bg }) {
 function XpBadge({ xp }) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[16px] font-bold"
-          style={{ color: '#CECBF6', background: 'rgba(127,119,221,0.18)', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+          style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
       <Zap size={11} />+{xp.toLocaleString()} XP
     </span>
   )
@@ -114,18 +116,18 @@ const XP_ACTIONS = [
 
 const STREAK_MULTIPLIERS = [
   { range: 'Days 1–6',   mult: '1.0×', color: '#888780' },
-  { range: 'Days 7–13',  mult: '1.5×', color: '#1D9E75' },
+  { range: 'Days 7–13',  mult: '1.5×', color: 'var(--c-green)' },
   { range: 'Days 14–29', mult: '2.0×', color: '#4682DC' },
   { range: 'Days 30+',   mult: '3.0×', color: '#ff8800' },
 ]
 
 const LEVEL_TIERS = [
   { range: 'Lv 1–10',   color: '#888780', titles: 'Lurker, Wanderer' },
-  { range: 'Lv 11–20',  color: '#1D9E75', titles: 'Seeker, Delver' },
+  { range: 'Lv 11–20',  color: 'var(--c-green)', titles: 'Seeker, Delver' },
   { range: 'Lv 21–30',  color: '#4682DC', titles: 'Collector, Acolyte' },
-  { range: 'Lv 31–40',  color: '#7F77DD', titles: 'Devotee, Archivist' },
-  { range: 'Lv 41–50',  color: '#D4537E', titles: 'Disciple, Connoisseur' },
-  { range: 'Lv 51–60',  color: '#BA7517', titles: 'Curator, Zealot' },
+  { range: 'Lv 31–40',  color: 'var(--c-accent)', titles: 'Devotee, Archivist' },
+  { range: 'Lv 41–50',  color: 'var(--c-pink)', titles: 'Disciple, Connoisseur' },
+  { range: 'Lv 51–60',  color: 'var(--c-amber)', titles: 'Curator, Zealot' },
   { range: 'Lv 61–70',  color: '#E24B4A', titles: 'Degenerate, Gooner' },
   { range: 'Lv 71–80',  color: '#FF6B35', titles: 'Sovereign, Corruptor' },
   { range: 'Lv 81–90',  color: '#C084FC', titles: 'Obsessed, Legendary Collector' },
@@ -134,7 +136,7 @@ const LEVEL_TIERS = [
 
 // 2026-07 rework: 4 tiers, fixed at birth. Rarity never transmutes.
 const RARITY_DATA = [
-  { label: 'Core',      color: '#9F8FEF', shard: 10,   bg: 'rgba(127,119,221,0.15)', note: 'Photo & gallery cards — the foundation the collection is built on' },
+  { label: 'Core',      color: '#9F8FEF', shard: 10,   bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', note: 'Photo & gallery cards — the foundation the collection is built on' },
   { label: 'Epic',      color: '#ff8800', shard: 75,   bg: 'rgba(255,136,0,0.12)',   note: 'Creator & collab cards' },
   { label: 'Legendary', color: '#FFD700', shard: 300,  bg: 'rgba(255,215,0,0.12)',   note: 'Goon, variant & Hall of Fame cards' },
   { label: 'Celestial', color: '#E8E8FF', shard: 2500, bg: 'rgba(200,200,255,0.1)',  note: 'The pinnacle — top goon image, My Queen creators, top-3 HOF' },
@@ -189,7 +191,7 @@ function OverviewContent({ search }) {
             ].map(({ n, title, body }) => (
               <div key={n} className="flex gap-3">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                     style={{ background: 'rgba(127,119,221,0.25)', color: 'var(--c-accent)' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent)' }}>
                   {n}
                 </div>
                 <div>
@@ -233,7 +235,7 @@ function NavContent() {
     <div className="space-y-3">
       <Section title="Main" icon={LayoutDashboard} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
-          <NavRow icon={LayoutDashboard} label="Dashboard"  path="/dashboard"  color="var(--c-accent)" desc="Command center. Shows stats overview, Hall of Fame highlights, random picks, daily quests, spin wheel, and the AI tagging mission." />
+          <NavRow icon={LayoutDashboard} label="Dashboard"  path="/dashboard"  color="var(--c-accent)" desc="Command center. Shows stats overview, Hall of Fame highlights, random picks, daily quests, spin wheel, and Collection Curating." />
           <NavRow icon={Images}          label="Galleries"  path="/galleries"  color="var(--c-accent)" desc="Browse all scanned gallery folders. Filter by creator, rating, or search by name. Bulk-assign creators. Set cover photos." />
           <NavRow icon={Film}            label="Photos"     path="/images"     color="var(--c-accent)" desc="Every individual image across all galleries. Sort by rating, orgasm count, or date added." />
           <NavRow icon={Video}           label="Videos"     path="/videos"     color="var(--c-accent)" desc="Same as Photos but videos only. Shows a ⚡ funscript badge when a matching .funscript file is detected." />
@@ -245,7 +247,7 @@ function NavContent() {
         <SectionBody>
           <NavRow icon={Columns3} label="Multi-panel"    path="/multi-panel"    color="var(--c-pink)" desc="Open 1–4 content panels side-by-side for an immersive session. Queue images/videos from any gallery. Supports simultaneous playback." />
           <NavRow icon={Cpu}      label="Device Control" path="/device-control" color="var(--c-pink)" desc="Connect and control your physical device. Supports Intiface Central (Buttplug), The Handy REST API, and direct USB serial (T-Code)." />
-          <NavRow icon={Wifi}     label="Device status"  path=""                color="#1D9E75"        desc="Quick-connect button in the sidebar. Shows Idle (connected, no motion) or Live (freestyle mode active). Click to connect/disconnect." />
+          <NavRow icon={Wifi}     label="Device status"  path=""                color="var(--c-green)"        desc="Quick-connect button in the sidebar. Shows Idle (connected, no motion) or Live (freestyle mode active). Click to connect/disconnect." />
         </SectionBody>
       </Section>
 
@@ -336,7 +338,7 @@ function GamificationContent() {
             ))}
           </div>
           <div className="p-3 rounded-lg text-[16px] text-white/45 flex gap-2"
-               style={{ background: 'rgba(186,117,23,0.08)', border: '0.5px solid rgba(186,117,23,0.2)' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
             <Info size={14} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
             <span><strong className="text-white/60">Grace token:</strong> You get 1 per week. If you miss exactly one day, a grace token is consumed automatically to keep your streak alive. You can hold at most 1 grace token at any time.</span>
           </div>
@@ -381,8 +383,8 @@ function GamificationContent() {
               { label: 'Per gallery', desc: 'Sum of all image cum counts. Also trackable at gallery level.' },
               { label: 'Lifetime total', desc: 'Drives boss quests (50, 100, 500 Os) and achievement unlocks.' },
             ].map(({ label, desc }) => (
-              <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
-                <div className="font-semibold text-[#ED93B1] mb-1">{label}</div>
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
+                <div className="font-semibold text-[var(--c-pink-text)] mb-1">{label}</div>
                 <p className="text-white/40 leading-snug">{desc}</p>
               </div>
             ))}
@@ -752,11 +754,11 @@ function CardsContent() {
             Rarity never changes — instead a card grows in <strong className="text-white/75">Level (1→10)</strong> by earning CXP. Level nudges the card's rarity score, so a maxed card ranks higher. CXP comes from two places:
           </p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
-            <div className="p-3 rounded-lg" style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.25)' }}>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
               <div className="font-semibold text-[var(--c-green)] mb-1">Sessions</div>
               <p className="text-white/45 leading-snug">Logging a session tied to that card's creator/gallery grants CXP.</p>
             </div>
-            <div className="p-3 rounded-lg" style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.25)' }}>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
               <div className="font-semibold text-[var(--c-green)] mb-1">Feeding duplicates</div>
               <p className="text-white/45 leading-snug">Feed a spare copy (or goon/variant cards) into a card to pour in CXP. Overflow past max level converts to Vault Credits.</p>
             </div>
@@ -767,9 +769,9 @@ function CardsContent() {
       <Section title="The two packs" icon={Package} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <div className="grid grid-cols-2 gap-3 text-[16px]">
-            <div className="p-4 rounded-lg" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+            <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[#CECBF6]">Booster</span>
+                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Booster</span>
                 <Pill color="#9F8FEF">400 cr</Pill>
               </div>
               <p className="text-white/50 leading-snug">Your history — pulls lean into what you've actually watched, gooned, and rated. The pack that surfaces your favourites.</p>
@@ -893,15 +895,15 @@ function DevicesContent() {
       <Section title="Ramp mode, scheduler & edging" icon={TrendingUp} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <div className="space-y-3 text-[17px]">
-            <div className="p-3 rounded-lg" style={{ background: 'rgba(186,117,23,0.08)', border: '0.5px solid rgba(186,117,23,0.2)' }}>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
               <div className="font-semibold text-[var(--c-amber)] mb-1">Ramp Mode</div>
               <p className="text-white/55">Smoothly interpolates between a Start Pattern and an End Pattern over a set duration (1–120 min). Great for gradual escalation during a session. Mutually exclusive with the scheduler.</p>
             </div>
-            <div className="p-3 rounded-lg" style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
               <div className="font-semibold text-[var(--c-accent)] mb-1">Pattern Scheduler</div>
               <p className="text-white/55">Queue a sequence of patterns, each with a duration. The device cycles through them in order when Freestyle is active. Supports looping or play-once mode.</p>
             </div>
-            <div className="p-3 rounded-lg" style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
               <div className="font-semibold text-[var(--c-pink)] mb-1">Edge Mode</div>
               <p className="text-white/55">Arm it and the device cuts out — or slows to a set percentage — at random (or fixed) intervals, holds for a random (or fixed) stretch, then eases back. Works in Freestyle and during funscript playback, and can be toggled from the device panel in any viewer or by hotkey. Every edge adds +1 to the edge count of whatever is on screen.</p>
             </div>
@@ -925,13 +927,13 @@ function DevicesContent() {
 function ErikaContent() {
   const BOND_TIERS = [
     { tier: 'Acquaintance', xp: 0,     color: '#888780', desc: 'Warm but just met. No NSFW — she reacts naturally as she would with a stranger.' },
-    { tier: 'Friend',       xp: 500,   color: '#1D9E75', desc: 'Real warmth and easy conversation. Light flirting and suggestive topics are fine.' },
+    { tier: 'Friend',       xp: 500,   color: 'var(--c-green)', desc: 'Real warmth and easy conversation. Light flirting and suggestive topics are fine.' },
     { tier: 'Crush',        xp: 1500,  color: '#4682DC', desc: 'Unmistakable attraction. Explicit topics welcome when the mood calls for it.' },
     { tier: 'Waifu',        xp: 4000,  color: '#9F8FEF', desc: 'Deep intimacy. Completely open, genuinely devoted.' },
     { tier: 'Soulbound',    xp: 10000, color: '#FFD700', desc: 'Total bond. No limits, no distance — she belongs to you and you to her.' },
   ]
   const PERSONALITIES = [
-    { name: 'Warm',     color: '#ED93B1', desc: 'Nurturing and emotionally present. She cares, checks in, and responds with genuine warmth.' },
+    { name: 'Warm',     color: 'var(--c-pink-text)', desc: 'Nurturing and emotionally present. She cares, checks in, and responds with genuine warmth.' },
     { name: 'Teasing',  color: '#FFD700', desc: 'Playful and cheeky. Provokes, teases, and enjoys the push-and-pull.' },
     { name: 'Dominant', color: '#E24B4A', desc: 'Assertive and in control. She leads, commands, and doesn\'t wait to be asked.' },
     { name: 'Shy',      color: '#4682DC', desc: 'Reserved and slow to open up. Builds trust gradually — more rewarding as bond grows.' },
@@ -951,7 +953,7 @@ function ErikaContent() {
           <div className="grid grid-cols-3 gap-3">
             {[
               { icon: Bot,          color: 'var(--c-pink)',   label: 'Fully local',     desc: 'Runs on your GPU (or CPU). Nothing is sent to any server.' },
-              { icon: Heart,        color: '#ED93B1',         label: 'Bond system',     desc: 'She remembers you and grows closer as you talk. 5 relationship tiers.' },
+              { icon: Heart,        color: 'var(--c-pink-text)',         label: 'Bond system',     desc: 'She remembers you and grows closer as you talk. 5 relationship tiers.' },
               { icon: MessageSquare,color: 'var(--c-accent)', label: 'Vault-aware',     desc: 'She knows your top creators, recent sessions, and collection stats.' },
             ].map(({ icon: Icon, color, label, desc }) => (
               <div key={label} className="p-4 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
@@ -996,7 +998,7 @@ function ErikaContent() {
           <div className="space-y-3">
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                   style={{ background: 'rgba(29,158,117,0.25)', color: 'var(--c-green)' }}>1</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}>1</div>
               <div>
                 <div className="text-[18px] font-semibold text-white/80 mb-0.5">Download Ollama</div>
                 <p className="text-[16px] text-white/50 leading-snug">Go to <span className="font-mono text-[15px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>https://ollama.com</span> and download the Windows installer. Run it — Ollama installs as a background service and starts automatically.</p>
@@ -1004,7 +1006,7 @@ function ErikaContent() {
             </div>
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                   style={{ background: 'rgba(29,158,117,0.25)', color: 'var(--c-green)' }}>2</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}>2</div>
               <div>
                 <div className="text-[18px] font-semibold text-white/80 mb-0.5">Verify it's running</div>
                 <p className="text-[16px] text-white/50 leading-snug mb-2">Open a Command Prompt or PowerShell and run:</p>
@@ -1013,7 +1015,7 @@ function ErikaContent() {
               </div>
             </div>
             <div className="p-3 rounded-lg flex gap-2 text-[16px]"
-                 style={{ background: 'rgba(29,158,117,0.07)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-green) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 20%, transparent)' }}>
               <Info size={14} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />
               <span className="text-white/50">Ollama listens on <span className="font-mono text-[15px] text-white/70">http://localhost:11434</span> by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port.</span>
             </div>
@@ -1029,7 +1031,7 @@ function ErikaContent() {
             roleplay and explicit content well. Pull it with:
           </p>
           <code className="block px-4 py-3 rounded-lg text-[15px] font-mono mb-4 leading-relaxed break-all"
-                style={{ background: 'rgba(0,0,0,0.4)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
             ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
           </code>
           <p className="text-[16px] text-white/40 mb-4">This is ~15 GB. It will take a few minutes depending on your connection. Ollama shows download progress in the terminal.</p>
@@ -1050,7 +1052,7 @@ function ErikaContent() {
             ))}
           </div>
           <div className="mt-3 p-3 rounded-lg flex gap-2 text-[16px]"
-               style={{ background: 'rgba(212,83,126,0.07)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-pink) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
             <AlertTriangle size={14} style={{ color: 'var(--c-pink)' }} className="flex-shrink-0 mt-0.5" />
             <span className="text-white/50">Standard (censored) models from Ollama's library will refuse explicit requests regardless of bond tier. You must use an uncensored or abliterated model for Erika to be fully functional.</span>
           </div>
@@ -1070,7 +1072,7 @@ function ErikaContent() {
             ].map(({ n, title, body }) => (
               <div key={n} className="flex gap-3">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                     style={{ background: 'rgba(127,119,221,0.25)', color: 'var(--c-accent)' }}>{n}</div>
+                     style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent)' }}>{n}</div>
                 <div>
                   <div className="text-[18px] font-semibold text-white/80 mb-0.5">{title}</div>
                   <p className="text-[16px] text-white/50 leading-snug">{body}</p>
@@ -1151,6 +1153,80 @@ function ErikaContent() {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// ── Hotkeys ───────────────────────────────────────────────────────────────────
+// Rendered from the live registry and the user's own bindings, so this page can
+// never go stale against Settings → Hotkeys — there is nothing here to update
+// when an action is added.
+function HotkeysContent() {
+  const hotkeys = useVaultStore(s => s.hotkeys)
+  const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
+
+  const byGroup = useMemo(() => {
+    const out = {}
+    for (const a of HOTKEY_ACTIONS) (out[a.group] ||= []).push(a)
+    return out
+  }, [])
+
+  return (
+    <>
+      <Section title="How the two kinds of shortcut differ" icon={Keyboard} defaultOpen accentColor="var(--c-accent)">
+        <SectionBody>
+          <p className="text-white/55">
+            <b>Anywhere</b> shortcuts work on any page and use modifier combos so they never collide with typing.
+            <b> Viewer</b> shortcuts are bare keys — they only exist while a viewer or the panel wall is open, and they
+            win over an anywhere-shortcut on the same key. Nothing fires while you are typing in a box, with the single
+            exception of Emergency stop.
+          </p>
+          <p className="mt-3 text-white/55">
+            On the panel wall, <b>click a panel to pin it</b>. The pinned panel gets an accent ring, and it is what the
+            viewer keys — including the number-key ratings — act on. The <b>wall</b> keys ignore the pin and drive every
+            panel at once.
+          </p>
+          <p className="mt-3 text-[15px] text-white/30">
+            Every binding below is yours to change in Settings → Hotkeys. Seek currently moves {seekStep}s,
+            long seek {seekStepBig}s.
+          </p>
+        </SectionBody>
+      </Section>
+
+      {HOTKEY_GROUPS.map(group => {
+        const actions = byGroup[group.name] ?? []
+        if (!actions.length) return null
+        return (
+          <Section key={group.name}
+                   title={`${group.name} — ${group.scope === SCOPE_VIEWER ? 'viewers only' : 'anywhere'}`}
+                   icon={Keyboard}
+                   defaultOpen={group.name === 'Viewer'}
+                   accentColor={group.scope === SCOPE_VIEWER ? 'var(--c-accent)' : 'var(--c-amber)'}>
+            <SectionBody>
+              <p className="text-white/40 mb-3">{group.blurb}</p>
+              <div className="flex flex-col gap-1.5">
+                {actions.map(a => (
+                  <div key={a.id} className="flex items-center justify-between gap-4 py-1.5"
+                       style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+                    <div className="min-w-0">
+                      <div className="text-[16px] text-white/70">{a.label}</div>
+                      <div className="text-[15px] text-white/30">{a.hint}</div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-[6px] text-[16px] font-mono flex-shrink-0"
+                          style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '0.5px solid rgba(255,255,255,0.1)',
+                            color: hotkeys[a.id] ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.25)',
+                          }}>
+                      {bindingToDisplay(hotkeys[a.id])}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </SectionBody>
+          </Section>
+        )
+      })}
+    </>
+  )
+}
+
 const TABS = [
   { id: 'overview',  label: 'Overview',     icon: BookOpen   },
   { id: 'nav',       label: 'Navigation',   icon: Map        },
@@ -1159,6 +1235,7 @@ const TABS = [
   { id: 'achieve',   label: 'Achievements', icon: Star       },
   { id: 'cards',     label: 'Cards',        icon: CreditCard },
   { id: 'devices',   label: 'Devices',      icon: Cpu        },
+  { id: 'hotkeys',   label: 'Hotkeys',      icon: Keyboard   },
   { id: 'erika',     label: 'Erika',        icon: Bot        },
 ]
 
@@ -1175,6 +1252,7 @@ export default function Help() {
       case 'achieve':   return <AchievementsContent />
       case 'cards':     return <CardsContent />
       case 'devices':   return <DevicesContent />
+      case 'hotkeys':   return <HotkeysContent />
       case 'erika':     return <ErikaContent />
       default: return null
     }
@@ -1189,7 +1267,7 @@ export default function Help() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                   style={{ background: 'rgba(127,119,221,0.2)', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                   style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                 <BookOpen size={18} style={{ color: 'var(--c-accent)' }} />
               </div>
               <h1 className="text-[27px] font-bold text-white/90">Help & Reference</h1>
@@ -1222,7 +1300,7 @@ export default function Help() {
                 onClick={() => setActiveTab(id)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-[17px] font-medium whitespace-nowrap transition-all flex-shrink-0"
                 style={active
-                  ? { background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }
+                  ? { background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
                   : { background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '0.5px solid transparent' }
                 }
               >

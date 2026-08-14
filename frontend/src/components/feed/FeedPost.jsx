@@ -9,11 +9,11 @@ import VerifiedBadge from './VerifiedBadge'
 import { useT } from '../../i18n'
 
 const TYPE_META = {
-  on_this_day: { icon: CalendarHeart, label: 'On this day',  color: '#ED93B1' },
+  on_this_day: { icon: CalendarHeart, label: 'On this day',  color: 'var(--c-pink-text)' },
   throwback:   { icon: History,       label: 'Throwback',    color: '#A79FF0' },
-  theme_day:   { icon: Sparkles,      label: 'Theme day',    color: '#FAC775' },
-  fresh_drop:  { icon: Flame,         label: 'New drop',     color: '#9FE1CB' },
-  daily:       { icon: Camera,        label: 'Daily',        color: '#CECBF6' },
+  theme_day:   { icon: Sparkles,      label: 'Theme day',    color: 'var(--c-amber-text)' },
+  fresh_drop:  { icon: Flame,         label: 'New drop',     color: 'var(--c-green-text)' },
+  daily:       { icon: Camera,        label: 'Daily',        color: 'var(--c-accent-text)' },
   saved:       { icon: Bookmark,      label: 'Saved',        color: '#8AB4F8' },
 }
 
@@ -222,7 +222,7 @@ export default function FeedPost({ post, onCreatorClick }) {
           alt="" onError={e => { e.target.style.visibility = 'hidden' }}
           onClick={() => onCreatorClick?.(post.creator.id)}
           className="w-11 h-11 rounded-full object-cover cursor-pointer flex-shrink-0"
-          style={{ border: '2px solid rgba(127,119,221,0.55)' }}
+          style={{ border: '2px solid color-mix(in srgb, var(--c-accent) 55%, transparent)' }}
         />
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onCreatorClick?.(post.creator.id)}>
           <div className="flex items-center gap-1.5 min-w-0">
@@ -386,12 +386,12 @@ export default function FeedPost({ post, onCreatorClick }) {
                        }}>
                     <span
                       className={`font-semibold ${(cm.is_erika || cm.is_user) ? '' : 'cursor-pointer'}`}
-                      style={{ color: cm.is_user ? 'var(--accent, #7F77DD)' : cm.is_erika ? '#CE93F8' : 'rgba(255,255,255,0.92)' }}
+                      style={{ color: cm.is_user ? 'var(--accent, var(--c-accent))' : cm.is_erika ? '#CE93F8' : 'rgba(255,255,255,0.92)' }}
                       onClick={() => !cm.is_erika && !cm.is_user && cm.creator_id && onCreatorClick?.(cm.creator_id)}>
                       {cm.is_erika ? `✦ ${cm.handle}` : cm.handle}
                     </span>{' '}
                     {cm.reply_to && (
-                      <span style={{ color: 'var(--accent, #7F77DD)', opacity: 0.85 }}>@{cm.reply_to} </span>
+                      <span style={{ color: 'var(--accent, var(--c-accent))', opacity: 0.85 }}>@{cm.reply_to} </span>
                     )}
                     {cm.text}
                   </div>
@@ -413,7 +413,7 @@ export default function FeedPost({ post, onCreatorClick }) {
               {commentText.trim() && (
                 <button onClick={submitComment} disabled={posting}
                         className="text-[14px] font-semibold flex-shrink-0"
-                        style={{ color: 'var(--accent, #7F77DD)', background: 'none', border: 'none' }}>
+                        style={{ color: 'var(--accent, var(--c-accent))', background: 'none', border: 'none' }}>
                   {posting ? '…' : t('Post')}
                 </button>
               )}

@@ -20,8 +20,8 @@ const FRAME_ASSET = {
 
 export const RARITY_CONFIG = {
   common: {
-    border: '#7F77DD',
-    glow:   'rgba(127,119,221,0.35)',
+    border: 'var(--c-accent)',
+    glow:   'color-mix(in srgb, var(--c-accent) 35%, transparent)',
     badge:  '#9F8FEF',
     label:  'Core',
     animated: false,
@@ -54,7 +54,7 @@ export const RARITY_CONFIG = {
 // bevel); SSR additionally gets a subtle twinkling-stars overlay. UR & Prestige
 // are untouched.
 const METAL_GRADIENT = {
-  common:    'linear-gradient(135deg,#E8DEFF,#7F77DD 20%,#453f86 42%,#9a90ef 60%,#EDE6FF 80%,#6a62c4)',
+  common:    'linear-gradient(135deg,#E8DEFF,var(--c-accent) 20%,#453f86 42%,#9a90ef 60%,#EDE6FF 80%,#6a62c4)',
   epic:      'linear-gradient(135deg,#FFDCA6,#ff8800 20%,#7a3200 42%,#ff9f42 60%,#FFE8C0 80%,#cf5a08)',
   legendary: 'linear-gradient(135deg,#FFF8CC,#FFD700 20%,#8a6a12 42%,#ffe268 60%,#FFFBE6 80%,#c9a84c)',
   celestial: 'linear-gradient(135deg,#FFFFFF,#cfd3f4 20%,#868ec0 42%,#e8ebff 60%,#FFFFFF 80%,#b8bee8)',
@@ -379,7 +379,7 @@ function VaultCard({
     rarity === 'celestial' ? '#E8E8FF' :
     rarity === 'legendary' ? '#FFD700' :
     rarity === 'epic'      ? '#FFB347' :
-    '#CECBF6'
+    'var(--c-accent-text)'
 
   const nameAnim = cfg.animated ? (
     rarity === 'celestial' ? { animation: 'cosmic-name-glow 2s ease-in-out infinite' } :
@@ -407,7 +407,7 @@ function VaultCard({
     if (rarity === 'legendary') {
       return {
         border: `0.5px solid ${cfg.border}`,
-        boxShadow: `0 0 18px ${cfg.glow}, 0 0 36px rgba(186,117,23,0.2)`,
+        boxShadow: `0 0 18px ${cfg.glow}, 0 0 36px color-mix(in srgb, var(--c-amber) 20%, transparent)`,
       }
     }
     if (rarity === 'epic') {

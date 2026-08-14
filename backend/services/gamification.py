@@ -53,7 +53,9 @@ XP_REWARDS = {
     # PLACEHOLDER RATE — pending the XP/credit economy rework. Awarded once per
     # edge event, not per image credited, so a 4-panel wall can't farm it.
     "edge_logged":          3,
-    "tagging_mission":    300,
+    # Collection Curating — always passed an override_amount (10 base + 8 per fix,
+    # capped at 70). The entry exists so the reason resolves for xp_events.
+    "gallery_curated":     10,
     "pack_opened":          5,
     "card_dismantled":     15,
     "gallery_assigned":     0,   # override_amount = image count; base unused
@@ -72,6 +74,7 @@ ALL_DAILY_QUESTS = [
     {"key": "tag_spree",       "title": "Tag spree",          "description": "Add 10 tags in one day",            "xp_reward": 95,  "credit_reward": 35,  "target": 10, "icon": "ti-tags"},
     {"key": "rate_spree",      "title": "Rating spree",       "description": "Rate 10 images today",              "xp_reward": 75,  "credit_reward": 25,  "target": 10, "icon": "ti-star-filled"},
     {"key": "double_goon",     "title": "Double tap",         "description": "Count 2 Os today",                  "xp_reward": 95,  "credit_reward": 35,  "target": 2,  "icon": "ti-droplet-filled"},
+    {"key": "curate_galleries","title": "Curator's eye",      "description": "Curate 5 galleries",                "xp_reward": 70,  "credit_reward": 25,  "target": 5,  "icon": "ti-sparkles"},
 ]
 DAILY_POOL_SIZE = 4
 
@@ -86,6 +89,7 @@ ALL_WEEKLY_QUESTS = [
     {"key": "pack_spree",       "title": "Pack addict",         "description": "Open 5 packs this week",            "xp_reward": 350,  "credit_reward": 125, "target": 5,  "icon": "ti-cards"},
     {"key": "tag_master_week",  "title": "Weekly tagger",       "description": "Add 50 tags this week",             "xp_reward": 400,  "credit_reward": 150, "target": 50, "icon": "ti-tags"},
     {"key": "forge_week",       "title": "The Recycler",        "description": "Dismantle 10 cards this week",      "xp_reward": 400,  "credit_reward": 150, "target": 10, "icon": "ti-hammer"},
+    {"key": "curate_week",      "title": "Deep clean",          "description": "Curate 30 galleries this week",     "xp_reward": 450,  "credit_reward": 175, "target": 30, "icon": "ti-sparkles"},
 ]
 WEEKLY_POOL_SIZE = 4
 
@@ -208,6 +212,7 @@ QUEST_TRIGGER_MAP = {
     "pack_opened":      ["open_pack", "pack_spree"],
     "card_dismantled":  ["forge_week"],
     "daily_login":      ["open_the_vault", "month_streak", "two_month_streak"],
+    "gallery_curated":  ["curate_galleries", "curate_week"],
 }
 
 

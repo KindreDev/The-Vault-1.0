@@ -42,7 +42,7 @@ export function Stat({ label, value, sub, accent = 'rgba(255,255,255,0.92)', big
   )
 }
 
-export function Panel({ icon: Icon, title, subtitle, accent = '#7F77DD', children }) {
+export function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)', children }) {
   return (
     <div className="rounded-[14px] p-5"
          style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
@@ -88,9 +88,9 @@ export function TagChip({ name, source, confidence, count }) {
           title={confidence != null ? `AI confidence ${Math.round(confidence * 100)}%` : undefined}
           style={{
             fontSize: 16,
-            background: ai ? 'rgba(127,119,221,0.16)' : 'rgba(255,255,255,0.07)',
-            color:      ai ? '#CECBF6' : 'rgba(255,255,255,0.85)',
-            border: `0.5px solid ${ai ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.14)'}`,
+            background: ai ? 'color-mix(in srgb, var(--c-accent) 16%, transparent)' : 'rgba(255,255,255,0.07)',
+            color:      ai ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.85)',
+            border: `0.5px solid ${ai ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.14)'}`,
           }}>
       {name}
       {count > 1 && <span style={{ opacity: 0.5 }}>×{count}</span>}

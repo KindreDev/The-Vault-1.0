@@ -245,6 +245,11 @@ class Gallery(Base):
     updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
     scanned_at    = Column(DateTime, nullable=True)
 
+    # Collection Curating — when this gallery was last curated (90-day cooldown) and,
+    # separately, a short "not now" snooze so a skip doesn't cost a full quarter.
+    curated_at           = Column(DateTime, nullable=True, index=True)
+    curate_snooze_until  = Column(DateTime, nullable=True, index=True)
+
     creator           = relationship(
         "Creator",
         back_populates="galleries",
@@ -473,6 +478,16 @@ class UserProfile(Base):
     daily_bonus_claimable  = Column(Boolean, default=False)   # True = all dailies done, packs not yet claimed
     weekly_bonus_claimable = Column(Boolean, default=False)   # True = all weeklies done, packs not yet claimed
     total_cards_dismantled = Column(Integer, default=0)
+
+    # ── Collection Curating ───────────────────────────────────────────────────────────
+    # Pinned gallery: set when a run is closed mid-edit, so reopening lands you
+    # back on the gallery you walked away from instead of a fresh random one.
+    curate_pinned_gallery_id = Column(Integer, nullable=True)
+    # Focus mode: locks the beloved lane to one favourite creator.
+    curate_focus_creator_id  = Column(Integer, nullable=True)
+    curate_streak_days       = Column(Integer, default=0)
+    last_curate_date         = Column(DateTime, nullable=True)
+    total_galleries_curated  = Column(Integer, default=0)
 
 
 class Quest(Base):
@@ -752,6 +767,50 @@ class FeedDMPing(Base):
     created_at = Column(DateTime, default=func.now())
 
     creator    = relationship("Creator")
+
+
+# ── Hall of Fame crowns ───────────────────────────────────────────────────────
+class HofCrown(Base):
+    """One creator winning one Hall of Fame period. The permanent record.
+
+    Identity is (period_type, period_key) — 'day'/'2026-08-10' happens exactly
+    once in history, so a crown can never be re-won or duplicated, and the card
+    minted from it is unrepeatable by construction rather than by a uniqueness
+    flag we have to defend.
+
+    The winning numbers are snapshotted onto the row rather than recomputed on
+    read: reassigning a gallery months later would otherwise silently rewrite
+    who won last August. A result is a result.
+
+    field_size — how many creators had any score that period. A Tuesday won
+    over thirty is genuinely scarcer than one won over two, and this is what
+    lets scarcity reflect that.
+    """
+    __tablename__ = "hof_crowns"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    period_type  = Column(String, index=True)    # day | week | month
+    period_key   = Column(String, index=True)    # 2026-08-10 | 2026-W33 | 2026-08
+    creator_id   = Column(Integer, ForeignKey("creators.id"), index=True)
+
+    won_at       = Column(DateTime, default=func.now())
+    score        = Column(Integer, default=0)
+    field_size   = Column(Integer, default=0)
+
+    # The winning line, frozen.
+    sessions     = Column(Integer, default=0)
+    cum          = Column(Integer, default=0)
+    view_seconds = Column(Integer, default=0)
+
+    # The file she won on — the card's art, and a time capsule of that period.
+    image_id     = Column(Integer, ForeignKey("images.id"), nullable=True)
+    card_id      = Column(Integer, ForeignKey("cards.id"), nullable=True)
+
+    creator      = relationship("Creator")
+
+    __table_args__ = (
+        UniqueConstraint("period_type", "period_key", name="uq_crown_period"),
+    )
 
 
 # ── Engagement event log ──────────────────────────────────────────────────────

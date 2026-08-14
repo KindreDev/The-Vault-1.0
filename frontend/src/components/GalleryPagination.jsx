@@ -53,7 +53,7 @@ export default function GalleryPagination({ page, totalPages, onChange, t = (s) 
   }
 
   const pages = getPageWindow(page, totalPages)
-  const jumpGlow = jumpState === 'invalid' ? 'rgba(212,83,126,0.6)' : jumpState === 'success' ? 'rgba(127,119,221,0.6)' : null
+  const jumpGlow = jumpState === 'invalid' ? 'color-mix(in srgb, var(--c-pink) 60%, transparent)' : jumpState === 'success' ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : null
 
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -81,12 +81,12 @@ export default function GalleryPagination({ page, totalPages, onChange, t = (s) 
             key={p}
             onClick={() => onChange(p)}
             className="relative w-8 h-8 rounded-[6px] text-[16px] font-medium cursor-pointer transition-colors duration-150 active:scale-95"
-            style={{ color: p === page ? '#CECBF6' : 'rgba(255,255,255,0.4)' }}>
+            style={{ color: p === page ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)' }}>
             {p === page ? (
               <motion.span
                 layoutId={`gallery-pager-highlight-${id}`}
                 className="absolute inset-0 rounded-[6px]"
-                style={{ background: 'rgba(127,119,221,0.25)', border: '0.5px solid rgba(127,119,221,0.4)' }}
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
                 transition={{ type: 'spring', stiffness: 500, damping: 32 }}
               />
             ) : (
@@ -128,7 +128,7 @@ export default function GalleryPagination({ page, totalPages, onChange, t = (s) 
           onChange={e => { setJumpValue(e.target.value); if (jumpState !== 'idle') setJumpState('idle') }}
           onKeyDown={e => { if (e.key === 'Enter') submitJump() }}
           placeholder={t('Page…')}
-          className="w-16 px-2 py-1.5 rounded-[8px] text-[16px] outline-none transition-all duration-150 focus:ring-2 focus:ring-[rgba(127,119,221,0.5)]"
+          className="w-16 px-2 py-1.5 rounded-[8px] text-[16px] outline-none transition-all duration-150 focus:ring-2 focus:ring-[color-mix(in_srgb,_var(--c-accent)_50%,_transparent)]"
           style={{
             background: 'rgba(255,255,255,0.05)',
             border: `1px solid ${jumpGlow ?? 'rgba(255,255,255,0.1)'}`,

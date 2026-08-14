@@ -120,7 +120,7 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
                 <div style={{
                   position: 'absolute', inset: 0,
                   backfaceVisibility: 'hidden', borderRadius: 10, overflow: 'hidden',
-                  boxShadow: '0 0 20px rgba(127,119,221,0.25)',
+                  boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 25%, transparent)',
                   opacity: isFlipping ? 0.5 : 1, transition: 'opacity 0.2s',
                 }}>
                   <img src="/card-back.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -166,9 +166,9 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
             style={{
               padding: '10px 28px', borderRadius: 20, fontSize: 13, fontWeight: 600,
               cursor: 'pointer',
-              background: 'linear-gradient(135deg, rgba(127,119,221,0.35), rgba(127,119,221,0.2))',
-              color: '#CECBF6', border: '1px solid rgba(127,119,221,0.5)',
-              boxShadow: '0 0 20px rgba(127,119,221,0.2)',
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 35%, transparent), color-mix(in srgb, var(--c-accent) 20%, transparent))',
+              color: 'var(--c-accent-text)', border: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)',
+              boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 20%, transparent)',
               letterSpacing: '0.05em',
             }}
           >
@@ -181,9 +181,9 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
             style={{
               padding: '10px 28px', borderRadius: 20, fontSize: 13, fontWeight: 600,
               cursor: 'pointer',
-              background: 'linear-gradient(135deg, rgba(127,119,221,0.4), rgba(212,83,126,0.3))',
-              color: '#fff', border: '1px solid rgba(127,119,221,0.5)',
-              boxShadow: '0 0 20px rgba(127,119,221,0.3)',
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 40%, transparent), color-mix(in srgb, var(--c-pink) 30%, transparent))',
+              color: '#fff', border: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)',
+              boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 30%, transparent)',
               letterSpacing: '0.05em',
             }}
           >

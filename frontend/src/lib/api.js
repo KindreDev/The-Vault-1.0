@@ -74,6 +74,8 @@ export const galleriesApi = {
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
+  // Many galleries in one round trip — used when queueing into multi-panel.
+  bulkImages:    (galleryIds)      => api.post('/galleries/bulk-images', { gallery_ids: galleryIds }),
   cum:           (id)              => api.post(`/galleries/${id}/cum`),
   addCreator:    (id, creatorId)   => api.post(`/galleries/${id}/creators/${creatorId}`),
   removeCreator: (id, creatorId)   => api.delete(`/galleries/${id}/creators/${creatorId}`),
@@ -88,6 +90,8 @@ export const galleriesApi = {
   // Rarity-weighted match used by the end-of-slideshow "More like this" tile.
   moreLikeThis:  (id, limit = 3)  => api.get(`/galleries/${id}/more-like-this`, { params: { limit } }),
   detailStats:   (id)             => api.get(`/galleries/${id}/stats`),
+  // Direct children only — the panel expands one level at a time.
+  subgalleries:  (id)             => api.get(`/galleries/${id}/subgalleries`),
   merge:         (targetId, body) => api.post(`/galleries/${targetId}/merge`, body),
   renameFolder:  (id, folderName) => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }),
   extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
@@ -96,6 +100,23 @@ export const galleriesApi = {
   addMixImages:  (id, imageIds)   => api.post(`/galleries/${id}/mix-images`, { image_ids: imageIds }),
   pickFolder:    ()               => api.post('/galleries/pick-folder'),
   exportZip:     (galleryIds, outputPath) => api.post('/galleries/export-zip', { gallery_ids: galleryIds, output_path: outputPath }, { timeout: 300000 }),
+}
+
+// ── Relocate ──────────────────────────────────────────────────────────────────
+// Physically moves folders and files on the drive. `suggest` and `plan` are
+// read-only — nothing touches the disk until moveGalleries / moveImages.
+export const relocateApi = {
+  suggest:       (galleryIds)     => api.post('/relocate/suggest', { gallery_ids: galleryIds }),
+  plan:          (galleryIds, destRoot) =>
+                    api.post('/relocate/plan', { gallery_ids: galleryIds, dest_root: destRoot }),
+  moveGalleries: (galleryIds, destRoot, strategy) =>
+                    api.post('/relocate/galleries',
+                             { gallery_ids: galleryIds, dest_root: destRoot, strategy },
+                             { timeout: 1800000 }),
+  moveImages:    (imageIds, targetGalleryId) =>
+                    api.post('/relocate/images',
+                             { image_ids: imageIds, target_gallery_id: targetGalleryId },
+                             { timeout: 600000 }),
 }
 
 // ── Creators ──────────────────────────────────────────────────────────────────
@@ -170,7 +191,9 @@ export const imagesApi = {
   random:        (tag)     => api.get('/images/random/pick', { params: { tag } }),
   randomPicks:   (n = 8)   => api.get('/images/', { params: { sort_by: 'random', limit: n, is_video: false } }),
   randomVideos:  (n = 8)   => api.get('/images/', { params: { sort_by: 'random', limit: n, is_video: true } }),
-  transfer:           (id, galleryId) => api.patch(`/images/${id}`, { gallery_id: galleryId }),
+  // No `transfer` here on purpose: moving a file between galleries goes through
+  // relocateApi.moveImages, which moves it on disk. Reassigning gallery_id alone
+  // left the file where it was and the next scan wiped its history.
   focalPoint:         (id, x, y) => api.patch(`/images/${id}/focal-point`, { focal_x: x, focal_y: y }),
   addCreator:         (id, creatorId) => api.post(`/images/${id}/creators/${creatorId}`),
   removeCreator:      (id, creatorId) => api.delete(`/images/${id}/creators/${creatorId}`),
@@ -210,8 +233,6 @@ export const gamiApi = {
   achievements:     ()  => api.get('/gamification/achievements'),
   xpHistory:        ()  => api.get('/gamification/xp-history'),
   updateProfile:    (d) => api.patch('/gamification/profile', d),
-  taggingMission:       ()     => api.get('/gamification/tagging-mission'),
-  completeMission:      ()     => api.post('/gamification/tagging-mission/complete'),
   claimCompletionBonus: (type) => api.post('/gamification/claim-completion-bonus', { type }),
   uploadAvatar:     (file) => {
     const fd = new FormData()
@@ -450,6 +471,27 @@ export const companionApi = {
   group:        (id)                => api.get(`/companion/groups/${id}`),
   groupSend:    (id, text)          => api.post(`/companion/groups/${id}/message`, { text }, { timeout: 600000 }),
   deleteGroup:  (id)                => api.delete(`/companion/groups/${id}`),
+}
+
+// ── Recap ─────────────────────────────────────────────────────────────────────
+export const recapApi = {
+  get: (period = 'month') => api.get('/recap', { params: { period } }),
+  // Recap is hidden until enough usage is tracked; the backend is the authority.
+  availability: () => api.get('/recap/availability'),
+}
+
+// ── Collection Curating ──────────────────────────────────────────────────────────
+export const curationApi = {
+  state:      ()            => api.get('/curation/state'),
+  debt:       ()            => api.get('/curation/debt'),
+  // `exclude` is the ids already seen this sitting, so a long run never doubles back.
+  next:       (exclude = []) => api.get('/curation/next', { params: { exclude: exclude.join(',') } }),
+  gallery:    (id)          => api.get(`/curation/gallery/${id}`),
+  save:       (body)        => api.post('/curation/save', body),
+  snooze:     (id, days)    => api.post('/curation/snooze', { gallery_id: id, days }),
+  pin:        (id)          => api.post('/curation/pin', { gallery_id: id }),
+  focus:      (creatorId)   => api.post('/curation/focus', { creator_id: creatorId }),
+  beloved:    ()            => api.get('/curation/beloved'),
 }
 
 export default api

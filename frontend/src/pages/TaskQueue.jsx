@@ -7,24 +7,24 @@ import {
 } from 'lucide-react'
 
 const TYPE_META = {
-  scan:          { label: 'Library Scan',       icon: ScanLine,   color: '#1D9E75' },
+  scan:          { label: 'Library Scan',       icon: ScanLine,   color: 'var(--c-green)' },
   regen_thumbs:  { label: 'Regen Thumbnails',   icon: Image,      color: '#378ADD' },
-  ai_tag:        { label: 'AI Tagging',         icon: Brain,      color: '#7F77DD' },
-  model_download:{ label: 'Model Download',     icon: Download,   color: '#BA7517' },
-  dedup_hash:    { label: 'Dedup Index',        icon: GitCompare, color: '#D4537E' },
+  ai_tag:        { label: 'AI Tagging',         icon: Brain,      color: 'var(--c-accent)' },
+  model_download:{ label: 'Model Download',     icon: Download,   color: 'var(--c-amber)' },
+  dedup_hash:    { label: 'Dedup Index',        icon: GitCompare, color: 'var(--c-pink)' },
 }
 
 function taskMeta(type) {
-  return TYPE_META[type] || { label: type, icon: Play, color: '#7F77DD' }
+  return TYPE_META[type] || { label: type, icon: Play, color: 'var(--c-accent)' }
 }
 
 function StatusBadge({ status }) {
   const cfg = {
     queued:    { icon: Clock,        color: 'rgba(255,255,255,0.4)',  bg: 'rgba(255,255,255,0.07)',  label: 'Queued' },
-    running:   { icon: Play,         color: '#1D9E75',                bg: 'rgba(29,158,117,0.15)',   label: 'Running' },
-    done:      { icon: CheckCircle,  color: '#1D9E75',                bg: 'rgba(29,158,117,0.12)',   label: 'Done' },
+    running:   { icon: Play,         color: 'var(--c-green)',                bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',   label: 'Running' },
+    done:      { icon: CheckCircle,  color: 'var(--c-green)',                bg: 'color-mix(in srgb, var(--c-green) 12%, transparent)',   label: 'Done' },
     cancelled: { icon: XCircle,      color: 'rgba(255,255,255,0.4)',  bg: 'rgba(255,255,255,0.07)',  label: 'Cancelled' },
-    failed:    { icon: AlertCircle,  color: '#D4537E',                bg: 'rgba(212,83,126,0.12)',   label: 'Failed' },
+    failed:    { icon: AlertCircle,  color: 'var(--c-pink)',                bg: 'color-mix(in srgb, var(--c-pink) 12%, transparent)',   label: 'Failed' },
   }[status] || { icon: Clock, color: '#aaa', bg: 'rgba(255,255,255,0.07)', label: status }
 
   const Icon = cfg.icon

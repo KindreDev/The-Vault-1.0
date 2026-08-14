@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
-import { gamiApi, companionApi } from '../../lib/api'
+import { gamiApi, companionApi, recapApi } from '../../lib/api'
 import { useT } from '../../i18n'
 
 const NAV = [
@@ -36,6 +36,7 @@ const GOON_NAV = [
 
 const COLLECT_NAV = [
   { to: '/stats',         icon: BarChart2,  label: 'Stats' },
+  { to: '/recap',         icon: Sparkles,   label: 'Recap' },
   { to: '/quests',        icon: Trophy,     label: 'Quests' },
   { to: '/hall-of-fame',  icon: Star,       label: 'Hall of Fame' },
   { to: '/collection',    icon: Layers,     label: 'Card Collection' },
@@ -53,16 +54,16 @@ const LIB_NAV = [
 const LEVEL_COLORS = {
   'Lurker':                '#888780',
   'Wanderer':              '#888780',
-  'Seeker':                '#1D9E75',
-  'Delver':                '#1D9E75',
+  'Seeker':                'var(--c-green)',
+  'Delver':                'var(--c-green)',
   'Collector':             '#378ADD',
   'Acolyte':               '#378ADD',
-  'Devotee':               '#7F77DD',
-  'Archivist':             '#7F77DD',
-  'Disciple':              '#D4537E',
-  'Connoisseur':           '#D4537E',
-  'Curator':               '#BA7517',
-  'Zealot':                '#BA7517',
+  'Devotee':               'var(--c-accent)',
+  'Archivist':             'var(--c-accent)',
+  'Disciple':              'var(--c-pink)',
+  'Connoisseur':           'var(--c-pink)',
+  'Curator':               'var(--c-amber)',
+  'Zealot':                'var(--c-amber)',
   'Degenerate':            '#E24B4A',
   'Gooner':                '#E24B4A',
   'Sovereign':             '#FF6B35',
@@ -111,7 +112,7 @@ function QuickConnect() {
       <div className="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
         {status === 'connected' ? <Wifi size={20} style={{ color }} /> : <WifiOff size={20} style={{ color }} />}
         {mode === 'freestyle' && (
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#D4537E] animate-pulse" />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--c-pink)] animate-pulse" />
         )}
       </div>
       <span className="flex-1 text-left" style={{ color }}>
@@ -129,7 +130,7 @@ function NavItem({ to, icon: Icon, label, badge }) {
       className={({ isActive }) =>
         `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] transition-all duration-150 cursor-pointer active:scale-95
          ${isActive
-           ? 'bg-[rgba(127,119,221,0.15)] text-[#CECBF6]'
+           ? 'bg-[color-mix(in_srgb,_var(--c-accent)_15%,_transparent)] text-[var(--c-accent-text)]'
            : 'text-[rgba(255,255,255,0.45)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[rgba(255,255,255,0.75)]'
          }`
       }
@@ -138,7 +139,7 @@ function NavItem({ to, icon: Icon, label, badge }) {
       <span className="flex-1">{t(label)}</span>
       {badge > 0 && (
         <span className="text-[15px] font-medium px-2 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: 'rgba(127,119,221,0.35)', color: '#CECBF6' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 35%, transparent)', color: 'var(--c-accent-text)' }}>
           {badge}
         </span>
       )}
@@ -182,6 +183,18 @@ export default function Sidebar() {
     staleTime: 30000,
   })
 
+  // Recap stays out of the nav entirely until enough usage has been tracked for
+  // it to read as anything but noise. Hidden, not disabled — a greyed-out item
+  // advertises the thing it's withholding.
+  const { data: recapAvail } = useQuery({
+    queryKey: ['recap-availability'],
+    queryFn:  () => recapApi.availability().then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+  // Hidden until proven unlocked: flashing the item and then hiding it would
+  // announce the secret to exactly the user it's being kept from.
+  const recapUnlocked = recapAvail?.unlocked === true
+
   const { data: companionConfig } = useQuery({
     queryKey: ['companion-config'],
     queryFn:  () => companionApi.getConfig().then(r => r?.data ?? null),
@@ -201,7 +214,7 @@ export default function Sidebar() {
   const activeTask    = taskState?.current ?? null
   const queuedCount   = taskState?.queued?.length ?? 0
   const progress      = profile ? xpProgress(profile.total_xp, profile.level) : 0
-  const levelColor    = profile ? (LEVEL_COLORS[profile.level_title] || '#7F77DD') : '#7F77DD'
+  const levelColor    = profile ? (LEVEL_COLORS[profile.level_title] || 'var(--c-accent)') : 'var(--c-accent)'
 
   return (
     <aside className="w-[260px] min-w-[260px] flex flex-col border-r border-[rgba(255,255,255,0.07)]"
@@ -215,7 +228,7 @@ export default function Sidebar() {
                e.target.nextSibling.style.display = 'flex'
              }} />
         <div className="w-9 h-9 rounded-[10px] items-center justify-center hidden"
-             style={{ background: '#7F77DD' }}>
+             style={{ background: 'var(--c-accent)' }}>
           <Box size={20} color="#fff" />
         </div>
         <span className="text-[22px] font-medium text-[rgba(255,255,255,0.9)]">{vaultName}</span>
@@ -236,15 +249,17 @@ export default function Sidebar() {
         <QuickConnect />
 
         <SectionLabel label="Collect" />
-        {COLLECT_NAV.map(n => <NavItem key={n.to} {...n} />)}
+        {COLLECT_NAV
+          .filter(n => n.to !== '/recap' || recapUnlocked)
+          .map(n => <NavItem key={n.to} {...n} />)}
         <SectionLabel label="Tools" />
         {activeTask && (
           <NavLink to="/task-queue" className="block mx-2 mb-1 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors" style={{ textDecoration: 'none' }}>
             <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: '#1D9E75' }} />
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: 'var(--c-green)' }} />
               <span className="text-xs text-white/60 truncate flex-1">{activeTask.label}</span>
               {queuedCount > 0 && (
-                <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(127,119,221,0.2)', color: '#7F77DD' }}>
+                <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent)' }}>
                   +{queuedCount}
                 </span>
               )}
@@ -255,11 +270,11 @@ export default function Sidebar() {
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.round((activeTask.progress / activeTask.total) * 100)}%`,
-                    background: '#1D9E75',
+                    background: 'var(--c-green)',
                   }}
                 />
               ) : (
-                <div className="h-full rounded-full animate-pulse" style={{ background: '#1D9E75', opacity: 0.5 }} />
+                <div className="h-full rounded-full animate-pulse" style={{ background: 'var(--c-green)', opacity: 0.5 }} />
               )}
             </div>
           </NavLink>
@@ -304,7 +319,7 @@ export default function Sidebar() {
                 <span className="text-[rgba(255,255,255,0.35)]">{profile.total_xp.toLocaleString()} XP</span>
                 {profile.streak_days > 0 && (
                   <span className="flex items-center gap-1.5 ml-auto px-2 py-0.5 rounded-full text-[#EF9F27]"
-                        style={{ background: 'rgba(186,117,23,0.15)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)' }}>
                     <Flame size={14} className="streak-flame" />
                     {profile.streak_days}d
                   </span>

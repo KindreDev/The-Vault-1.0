@@ -8,12 +8,13 @@ import {
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
   CheckSquare, Square, UserPlus, UserX, Check, Trash2, LayoutTemplate, GripHorizontal,
-  FolderOpen, Zap, FolderOutput, FolderInput, Copy,
+  FolderOpen, Zap, FolderOutput, HardDrive, Copy,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
 import ImageContextMenu from '../components/ImageContextMenu'
+import RelocateModal from '../components/RelocateModal'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import GalleryPagination from '../components/GalleryPagination'
 import TagAutocompleteInput from '../components/TagAutocompleteInput'
@@ -21,16 +22,19 @@ import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
-import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
+import { TagPanel, CreatorPanel } from '../components/ViewerPanel'
 import { useAllCreators } from '../hooks/useAllCreators'
 import TagFilterInput from '../components/TagFilterInput'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
+import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import DeviceControls from '../components/DeviceControls'
 import { SortDropdown } from '../components/SortDropdown'
 import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
+import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
+import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -48,7 +52,6 @@ const SORTS = [
   { value: 'random',        label: 'Random' },
 ]
 
-const SLIDESHOW_SPEEDS = [3, 5, 8, 12]
 
 // ── Thumbnail ──────────────────────────────────────────────────────────────────
 function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMenu, masonry = false }) {
@@ -119,7 +122,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
       className="relative rounded-[8px] overflow-hidden cursor-pointer group animate-fade-in"
       style={{
         background: 'rgba(255,255,255,0.04)',
-        border: `0.5px solid ${inQueue ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.07)'}`,
+        border: `0.5px solid ${inQueue ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.07)'}`,
         // In masonry mode use the image's real aspect ratio; otherwise force 1:1
         aspectRatio: masonry && image.width && image.height
           ? `${image.width} / ${image.height}`
@@ -130,14 +133,14 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         <div className="absolute top-2 left-2 z-[20]"
           onClick={e => { e.stopPropagation(); onSelect(image.id) }}>
           {selected
-            ? <CheckSquare size={16} style={{ color: '#7F77DD' }} />
+            ? <CheckSquare size={16} style={{ color: 'var(--c-accent)' }} />
             : <Square size={16} style={{ color: 'rgba(255,255,255,0.5)', fill: 'rgba(0,0,0,0.4)' }} />
           }
         </div>
       )}
       {selected && (
         <div className="absolute inset-0 z-10 pointer-events-none rounded-[8px]"
-          style={{ border: '2px solid #7F77DD', background: 'rgba(127,119,221,0.15)' }} />
+          style={{ border: '2px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)' }} />
       )}
 
       {/* Static thumbnail */}
@@ -177,7 +180,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
       {/* Funscripted badge */}
       {image.funscript_path && (
         <div className="absolute top-1 left-1 text-[10px] font-bold px-1 py-0.5 rounded"
-          style={{ background: 'rgba(127,119,221,0.85)', color: '#fff', zIndex: 4, letterSpacing: '0.05em' }}>
+          style={{ background: 'color-mix(in srgb, var(--c-accent) 85%, transparent)', color: '#fff', zIndex: 4, letterSpacing: '0.05em' }}>
           FS
         </div>
       )}
@@ -192,7 +195,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
           )}
           {image.cum_count > 0 && (
             <div className="flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,0.75)', color: '#ED93B1' }}>
+              style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--c-pink-text)' }}>
               <Droplets size={8} /> {image.cum_count}
             </div>
           )}
@@ -211,7 +214,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         title={t('Send to multi-viewer')}
         className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
         style={inQueue
-          ? { background: 'rgba(127,119,221,0.7)', opacity: 1 }
+          ? { background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)', opacity: 1 }
           : { background: 'rgba(0,0,0,0.6)', opacity: 0, transition: 'opacity 0.15s' }
         }
         onMouseEnter={e => { if (!inQueue) e.currentTarget.style.opacity = '1' }}
@@ -238,9 +241,23 @@ function ImageViewer({ images, startIdx, onClose }) {
   const [dragging, setDragging] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showFilmstrip, setShowFilmstrip] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(true)
   const [slideshowActive, setSlideshowActive] = useState(false)
+  // Shuffle draws only from `images`, which is already the current filtered
+  // page — so a tag or funscript filter constrains what shuffle can reach.
+  const [shuffle, setShuffle] = useState(false)
+  const pickNext = useCallback(() => {
+    if (!images?.length) return
+    if (images.length === 1) return
+    setIdx(i => {
+      if (!shuffle) return (i + 1) % images.length
+      let n = i
+      // Never hand back the same one twice in a row.
+      while (n === i) n = Math.floor(Math.random() * images.length)
+      return n
+    })
+  }, [images, shuffle])
   const [slideshowSpeed, setSlideshowSpeed] = useState(5)
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
   // File-level creator assignment. The viewer used to render CreatorPanel
@@ -259,6 +276,9 @@ function ImageViewer({ images, startIdx, onClose }) {
   const addXpToast = useVaultStore(s => s.addXpToast)
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
+  const lastCountPing     = useVaultStore(s => s.lastCountPing)
+  const lastRatingPing    = useVaultStore(s => s.lastRatingPing)
+  const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
   const { sessionActive, startSession, finishSession } = useSession()
   const qc = useQueryClient()
   const t = useT()
@@ -270,6 +290,19 @@ function ImageViewer({ images, startIdx, onClose }) {
     if (image?.id) registerVisible('viewer', image.id)
   }, [image?.id, registerVisible])
   useEffect(() => () => unregisterVisible('viewer'), [unregisterVisible])
+
+  // The log-cum and number-key-rating hotkeys post straight to the API, so pick
+  // their results up here rather than leaving stale numbers on screen.
+  useEffect(() => {
+    if (lastCountPing && lastCountPing.imageId === image?.id && lastCountPing.cumCount != null) {
+      setCumCount(lastCountPing.cumCount)
+    }
+  }, [lastCountPing, image?.id])
+  useEffect(() => {
+    if (lastRatingPing && lastRatingPing.imageId === image?.id && lastRatingPing.rating != null) {
+      setRating(lastRatingPing.rating)
+    }
+  }, [lastRatingPing, image?.id])
 
   useEffect(() => {
     if (!image) return
@@ -365,38 +398,67 @@ function ImageViewer({ images, startIdx, onClose }) {
     })
   }, [slideshowActive, slideshowSpeed, images, idx])
 
-  // Keyboard nav
-  useEffect(() => {
-    const h = (e) => {
-      if (e.key === 'Escape') {
-        if (isFullscreenRef.current) {
-          if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
-          else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
-          isFullscreenRef.current = false
-          setIsFullscreen(false)
-          setShowFilmstrip(true)
-          return
-        }
-        if (zoom > 1) resetZoom(); else onClose()
-        return
-      }
-      if (e.key === 'ArrowLeft') {
-        if (image.is_video) videoPlayerRef.current?.seek(-3)
-        else { setSlideshowActive(false); setIdx(i => Math.max(0, i - 1)) }
-      }
-      if (e.key === 'ArrowRight') {
-        if (image.is_video) videoPlayerRef.current?.seek(3)
-        else { setSlideshowActive(false); setIdx(i => Math.min(images.length - 1, i + 1)) }
-      }
-      if (e.key === ' ') {
-        e.preventDefault()
-        if (image.is_video) videoPlayerRef.current?.togglePlay()
-        else setSlideshowActive(a => !a)
-      }
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+  // Shares its whole vocabulary with the gallery viewer via useViewerHotkeys —
+  // these two used to be copy-pasted keyboard blocks that had already drifted.
+  const goNext = useCallback(() => {
+    setSlideshowActive(false)
+    setIdx(i => Math.min(images.length - 1, i + 1))
+  }, [images.length])
+  const goPrev = useCallback(() => {
+    setSlideshowActive(false)
+    setIdx(i => Math.max(0, i - 1))
+  }, [])
+
+  const seekOrNav = useCallback((secs) => {
+    if (image?.is_video) videoPlayerRef.current?.seek(secs)
+    else if (secs > 0) goNext()
+    else goPrev()
+  }, [image?.is_video, goNext, goPrev])
+
+  const handleEscape = useCallback(() => {
+    if (isFullscreenRef.current) {
+      if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
+      else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
+      isFullscreenRef.current = false
+      setIsFullscreen(false)
+      setShowFilmstrip(true)
+      return
     }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [images.length, onClose, zoom, resetZoom])
+    if (zoom > 1) resetZoom(); else onClose()
+  }, [zoom, resetZoom, onClose])
+
+  useViewerHotkeys({
+    viewer_seek_fwd:      () => seekOrNav(seekStep),
+    viewer_seek_back:     () => seekOrNav(-seekStep),
+    viewer_seek_fwd_big:  () => seekOrNav(seekStepBig),
+    viewer_seek_back_big: () => seekOrNav(-seekStepBig),
+    viewer_next:          goNext,
+    viewer_prev:          goPrev,
+    viewer_play_pause:    () => {
+      if (image?.is_video) videoPlayerRef.current?.togglePlay()
+      else setSlideshowActive(a => !a)
+    },
+    viewer_shuffle: () => {
+      if (images.length < 2) return
+      setIdx(i => { let n = i; while (n === i) n = Math.floor(Math.random() * images.length); return n })
+    },
+    viewer_slideshow_faster: () => setSlideshowSpeed(s => {
+      const n = Math.max(1, s - 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+    }),
+    viewer_slideshow_slower: () => setSlideshowSpeed(s => {
+      const n = Math.min(60, s + 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+    }),
+    viewer_fullscreen: toggleFullscreen,
+    viewer_favorite:   () => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) },
+    viewer_zoom_in:    () => setZoom(z => Math.min(8, z * 1.25)),
+    viewer_zoom_out:   () => setZoom(z => { const n = Math.max(1, z / 1.25); if (n === 1) setPan({ x: 0, y: 0 }); return n }),
+    viewer_zoom_reset: resetZoom,
+    viewer_sidebar:    () => setShowSidebar(v => !v),
+    viewer_close:      handleEscape,
+    ...videoHandlers(() => videoPlayerRef.current, () => !!image?.is_video),
+    ...ratingHandlers(),
+  })
 
   // Scroll-to-zoom (non-passive)
   useEffect(() => {
@@ -467,37 +529,19 @@ function ImageViewer({ images, startIdx, onClose }) {
             <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
           </button>
 
-          {/* Slideshow controls */}
-          <div className="flex items-center gap-1 relative">
-            <button type="button" onMouseDown={() => setSlideshowActive(a => !a)}
-              className="cursor-pointer p-1 rounded text-[rgba(255,255,255,0.4)] hover:text-white"
-              title={t('Play/pause slideshow (Space)')}>
-              {slideshowActive ? <Pause size={13} /> : <Play size={13} />}
-            </button>
-            <button type="button" onMouseDown={() => setShowSpeedMenu(s => !s)}
-              className="cursor-pointer text-[11px] px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)' }}
-              title={t('Slideshow speed')}>
-              {slideshowSpeed}s
-            </button>
-            {showSpeedMenu && (
-              <div className="absolute top-full right-0 mt-1 rounded-[8px] overflow-hidden z-20 shadow-xl"
-                style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                {SLIDESHOW_SPEEDS.map(s => (
-                  <button key={s} type="button"
-                    onMouseDown={() => { setSlideshowSpeed(s); setShowSpeedMenu(false) }}
-                    className="block w-full text-left px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-                    style={{ color: s === slideshowSpeed ? '#CECBF6' : 'rgba(255,255,255,0.6)' }}>
-                    {s}s
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Slideshow controls — shared component, so this viewer and the
+              gallery viewer can't drift into looking like different apps */}
+          <SlideshowControls
+            active={slideshowActive}
+            onToggle={() => setSlideshowActive(a => !a)}
+            speed={slideshowSpeed}
+            onSpeedChange={setSlideshowSpeed}
+            timedMediaPlaying={isTimedMedia(image)}
+          />
 
           {isZoomed && (
             <span className="text-[12px] px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(127,119,221,0.2)', color: '#AFA9EC', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               {Math.round(zoom * 100)}%
             </span>
           )}
@@ -536,9 +580,11 @@ function ImageViewer({ images, startIdx, onClose }) {
               showControls={showFilmstrip}
               // During a slideshow the video is what decides when to move on —
               // the slide timer deliberately doesn't run for videos.
-              onEnded={slideshowActive && images.length > 1
-                ? () => setIdx(i => (i + 1) % images.length)
-                : undefined}
+              shuffle={shuffle}
+              onToggleShuffle={() => setShuffle(v => !v)}
+              // Shuffle applies whenever a video finishes, not just in a
+              // slideshow — that is the point of the button.
+              onEnded={(slideshowActive || shuffle) && images.length > 1 ? pickNext : undefined}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -625,8 +671,8 @@ function ImageViewer({ images, startIdx, onClose }) {
           )}
           {slideshowActive && (
             <div className="absolute bottom-3 right-3 text-[12px] px-2 py-1 rounded-full pointer-events-none flex items-center gap-1"
-              style={{ background: 'rgba(0,0,0,0.6)', color: '#CECBF6' }}>
-              <Play size={9} fill="#CECBF6" /> {slideshowSpeed}s
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'var(--c-accent-text)' }}>
+              <Play size={9} fill="var(--c-accent-text)" /> {slideshowSpeed}s
             </div>
           )}
         </div>
@@ -644,7 +690,7 @@ function ImageViewer({ images, startIdx, onClose }) {
           {images.map((img, i) => (
             <div key={img.id} onMouseDown={() => setIdx(i)}
               className="w-12 h-12 rounded-[5px] overflow-hidden flex-shrink-0 cursor-pointer"
-              style={{ border: `1.5px solid ${i === idx ? '#7F77DD' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
+              style={{ border: `1.5px solid ${i === idx ? 'var(--c-accent)' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
               <img src={`/api/images/${img.id}/thumb`} alt="" className="w-full h-full object-cover"
                 onError={e => { e.target.style.display = 'none' }} />
             </div>
@@ -653,7 +699,7 @@ function ImageViewer({ images, startIdx, onClose }) {
       </div>
 
       {/* ── Right panel — hidden in fullscreen ─────────────────────────── */}
-      {!isFullscreen && <div className="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
+      {!isFullscreen && showSidebar && <div className="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
         style={{ background: '#141414', borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
 
         {/* Creator(s) */}
@@ -696,7 +742,7 @@ function ImageViewer({ images, startIdx, onClose }) {
               }} />
             <div className="flex flex-col gap-1.5">
               {image.funscript_path
-                ? <div className="text-[12px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={11} /> {t('Script attached')}</div>
+                ? <div className="text-[12px] flex items-center gap-1" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}><Zap size={11} /> {t('Script attached')}</div>
                 : <div className="text-[12px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
               }
               <button type="button" onClick={() => funscriptInputRef.current?.click()}
@@ -716,7 +762,7 @@ function ImageViewer({ images, startIdx, onClose }) {
                       }
                     }}
                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[12px] cursor-pointer"
-                    style={{ background: 'rgba(212,83,126,0.14)', color: 'var(--c-pink)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 14%, transparent)', color: 'var(--c-pink)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                     <X size={11} /> {t('Unlink script')}
                   </button>
                   <button type="button" onClick={async () => {
@@ -746,11 +792,11 @@ function ImageViewer({ images, startIdx, onClose }) {
           <div className="flex items-center gap-2">
             <button type="button" onMouseDown={() => cumMutation.mutate()}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[14px] font-medium cursor-pointer active:scale-95 transition-transform"
-              style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.4)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 40%, transparent)' }}>
               <Droplets size={13} /> {t('Count it')}
             </button>
             <div className="text-center min-w-[36px]">
-              <div className="text-[26px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
+              <div className="text-[26px] font-medium leading-none" style={{ color: 'var(--c-pink-text)' }}>{cumCount ?? 0}</div>
               <div className="text-[11px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
           </div>
@@ -800,13 +846,6 @@ function ImageViewer({ images, startIdx, onClose }) {
           </div>
         </div>
 
-        {/* Transfer to gallery */}
-        <TransferPanel imageId={image.id} currentGalleryId={image.gallery_id} onTransferred={(newGalleryId) => {
-          // Close viewer after transfer as the image is now in another gallery
-          toast.success(t('Image transferred!'))
-          onClose()
-        }} />
-
         {/* Device controls — shown only when a device is connected */}
         <DeviceControls className="mx-3 mb-2" />
 
@@ -817,7 +856,7 @@ function ImageViewer({ images, startIdx, onClose }) {
             else               startSession()
           }}
             className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer"
-            style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <Heart size={12} /> {sessionActive ? t('Stop Session') : t('Start Session')}
           </button>
         </div>
@@ -859,12 +898,12 @@ function CreatorTypeDropdown({ value, onChange }) {
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer"
         style={{
-          background: active ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
-          color: active ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-          border: `0.5px solid ${active ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.1)'}`,
+          background: active ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+          border: `0.5px solid ${active ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.1)'}`,
         }}>
         {active
-          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || '#CECBF6' }} />
+          ? <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: TYPE_COLORS[value] || 'var(--c-accent-text)' }} />
           : null}
         {t(selected.label)}
         {active
@@ -881,14 +920,14 @@ function CreatorTypeDropdown({ value, onChange }) {
               onMouseDown={() => { onChange(opt.value); setOpen(false) }}
               className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
               style={{
-                background: value === opt.value ? 'rgba(127,119,221,0.15)' : 'transparent',
-                color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                background: value === opt.value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                color: value === opt.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)',
               }}>
               {opt.value
                 ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[opt.value] || '#D3D1C7' }} />
                 : <span className="w-1.5 h-1.5 flex-shrink-0" />}
               {t(opt.label)}
-              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: '#7F77DD' }} />}
+              {value === opt.value && <Check size={11} className="ml-auto" style={{ color: 'var(--c-accent)' }} />}
             </button>
           ))}
         </div>
@@ -920,9 +959,9 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
       <button type="button" onMouseDown={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer"
         style={{
-          background: value ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
-          color: value ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-          border: `0.5px solid ${value ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.1)'}`
+          background: value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+          border: `0.5px solid ${value ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.1)'}`
         }}>
         {selected ? selected.name : t(placeholder)}
         {value
@@ -1012,7 +1051,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
         {/* Header */}
         <div>
           <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2 mb-1">
-            <FolderOutput size={14} style={{ color: '#7F77DD' }} />
+            <FolderOutput size={14} style={{ color: 'var(--c-accent)' }} />
             {t('Extract to new gallery')}
           </div>
           <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1023,7 +1062,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
 
         {noFolder ? (
           <div className="px-3 py-3 rounded-[8px] text-[13px]"
-               style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', color: '#F4C0D1' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#F4C0D1' }}>
             {t('This gallery has no real folder on disk. Extract requires a scanned gallery.')}
           </div>
         ) : (
@@ -1054,7 +1093,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
 
             {/* Info strip */}
             <div className="px-3 py-2 rounded-[8px] text-[12px]"
-                 style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
               {t("Files are physically moved on disk. Creator associations are copied from the source gallery. You'll be taken to the new gallery.")}
             </div>
           </>
@@ -1072,7 +1111,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
                     onMouseDown={() => extractMutation.mutate()}
                     disabled={!folderName.trim() || extractMutation.isPending || loadingSrc}
                     className="px-4 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
-                    style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
               <FolderOutput size={12} />
               {extractMutation.isPending ? t('Extracting…') : t('Extract')}
             </button>
@@ -1084,7 +1123,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
 }
 
 
-function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyTo }) {
+function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyTo }) {
   const [creatorId, setCreatorId] = useState(null)
   const [pendingTags, setPendingTags] = useState([])
   const [confirmDel, setConfirmDel] = useState(false)
@@ -1184,15 +1223,15 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
 
   return (
     <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] flex-wrap animate-slide-up"
-      style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)', position: 'relative', zIndex: 60 }}>
-      <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>
+      style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)', position: 'relative', zIndex: 60 }}>
+      <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
         {selectedImages.length} {t('selected')}
       </span>
 
       {/* Send to viewer */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={working}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[rgba(127,119,221,0.2)] disabled:opacity-40"
-        style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] disabled:opacity-40"
+        style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
         <LayoutGrid size={12} /> {t('Send to viewer')}
       </button>
 
@@ -1207,7 +1246,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
         onMouseDown={() => { if (creatorId && !assignMutation.isPending && !working && selectedGalleryIds.length > 0) assignMutation.mutate() }}
         disabled={!creatorId || assignMutation.isPending || working || selectedGalleryIds.length === 0}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
         <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning…') : t('Assign')}
       </button>
       <button type="button"
@@ -1215,7 +1254,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
         disabled={clearing || working}
         title={t("Remove every creator from the selected photos' galleries")}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
         <UserX size={12} /> {clearing ? t('Clearing…') : t('Clear all')}
       </button>
 
@@ -1225,7 +1264,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
       <div className="flex items-center gap-1.5" style={{ position: 'relative', zIndex: 75 }}>
         {pendingTags.map(tg => (
           <span key={tg} className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[13px]"
-            style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
             {tg}
             <button type="button" onMouseDown={() => setPendingTags(p => p.filter(x => x !== tg))}
               className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white ml-0.5">
@@ -1242,20 +1281,20 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
         </div>
         <button type="button" onMouseDown={handleAddTags} disabled={!pendingTags.length || working}
           className="text-[12px] px-2 py-1 rounded-[4px] cursor-pointer disabled:opacity-40"
-          style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6' }}>{t('Add')}</button>
+          style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)' }}>{t('Add')}</button>
       </div>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
-      {/* Move / copy to another gallery */}
-      <button type="button" onMouseDown={() => onTransfer?.(selectedImages)} disabled={working}
+      {/* Relocate on disk / copy a reference into a mix gallery */}
+      <button type="button" onMouseDown={() => onRelocate?.(selectedImages)} disabled={working}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-        <FolderInput size={12} /> {t('Move')}
+        style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
+        <HardDrive size={12} /> {t('Relocate')}
       </button>
       <button type="button" onMouseDown={() => onCopyTo?.(selectedImages)} disabled={working}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-        style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+        style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
         <Copy size={12} /> {t('Copy')}
       </button>
 
@@ -1265,13 +1304,13 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
       {confirmDel ? (
         <button onMouseDown={handleDelete} disabled={working}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer animate-pulse disabled:opacity-40"
-          style={{ background: 'rgba(212,83,126,0.35)', color: '#F4C0D1' }}>
+          style={{ background: 'color-mix(in srgb, var(--c-pink) 35%, transparent)', color: '#F4C0D1' }}>
           <Trash2 size={12} /> {t('Confirm Delete')}
         </button>
       ) : (
         <button onMouseDown={() => setConfirmDel(true)} disabled={working}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-          style={{ background: 'rgba(212,83,126,0.12)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.25)' }}>
+          style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' }}>
           <Trash2 size={12} /> {t('Delete')}
         </button>
       )}
@@ -1285,7 +1324,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onTransfer, onCopyT
             <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
             <button type="button" onMouseDown={() => setShowExtract(true)} disabled={working}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}
+              style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}
               title={t('Move selected images to a brand-new gallery folder')}>
               <FolderOutput size={12} /> {t('Extract to gallery')}
             </button>
@@ -1321,7 +1360,7 @@ export default function ImageList({ onlyVideos = false }) {
   const _ilInitial = useRef(null)
   if (_ilInitial.current === null) {
     const DEFAULTS = { search: '', sortBy: 'date_added', sortDir: 'desc', randomSeed: 0,
-                       creatorId: null, creatorType: '', favOnly: false, franchise: '', period: '', activeTags: [] }
+                       creatorId: null, creatorType: '', favOnly: false, scriptedOnly: false, franchise: '', period: '', activeTags: [] }
     const urlMulti = searchParams.get('tags')
     const urlSingle = searchParams.get('tag')
     const urlCreator = parseInt(searchParams.get('creator_id'), 10)
@@ -1346,6 +1385,8 @@ export default function ImageList({ onlyVideos = false }) {
   const [creatorId, setCreatorId] = useState(_init.creatorId)
   const [creatorType, setCreatorType] = useState(_init.creatorType)
   const [favOnly, setFavOnly] = useState(_init.favOnly)
+  // Videos only: show just the ones that have a funscript.
+  const [scriptedOnly, setScriptedOnly] = useState(_init.scriptedOnly ?? false)
   const [franchise, setFranchise] = useState(_init.franchise)
   const [period, setPeriod] = useState(_init.period)
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
@@ -1355,16 +1396,17 @@ export default function ImageList({ onlyVideos = false }) {
   useEffect(() => {
     try {
       sessionStorage.setItem(IL_STATE_KEY, JSON.stringify({
-        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, franchise, period, activeTags,
+        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags,
       }))
     } catch {}
-  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, franchise, period, activeTags])
+  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags])
   const [viewerIdx, setViewerIdx] = useState(null)
 
   const [bulkMode, setBulkMode] = useState(false)
   const [selected, setSelected] = useState(new Set())
   const [imageCtxMenu, setImageCtxMenu] = useState(null) // { image, x, y }
-  const [transferCtx, setTransferCtx]   = useState(null) // { images, mode: 'move'|'copy' }
+  const [transferCtx, setTransferCtx]   = useState(null) // { images } — copy into a mix gallery
+  const [relocatingImages, setRelocatingImages] = useState(null)
   const [avatarFramePicker, setAvatarFramePicker] = useState(null) // { creatorId, image, mode }
 
   const queryClient = useQueryClient()
@@ -1390,11 +1432,11 @@ export default function ImageList({ onlyVideos = false }) {
   const [page, setPage] = useState(1)
 
   // Reset to page 1 whenever any filter or page-size changes
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${franchise}|${period}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${scriptedOnly}|${franchise}|${period}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
   const prevFilterKeyRef = useRef(filterKey)
 
   const { data: imagesPage, isLoading, isError } = useQuery({
-    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, franchise, period, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
+    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
     queryFn: () => imagesApi.list({
       search: search || undefined,
       sort_by: sortBy,
@@ -1404,6 +1446,7 @@ export default function ImageList({ onlyVideos = false }) {
       series: franchise || undefined,
       period: period || undefined,
       favorite: favOnly || undefined,
+      has_funscript: scriptedOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
       tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
       limit: pageLimit,
@@ -1450,6 +1493,7 @@ export default function ImageList({ onlyVideos = false }) {
       creator_type: creatorType || undefined,
       series: franchise || undefined,
       favorite: favOnly || undefined,
+      has_funscript: scriptedOnly || undefined,
       is_video: onlyVideos ? true : false,
       tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
     }).then(r => r.data),
@@ -1466,9 +1510,9 @@ export default function ImageList({ onlyVideos = false }) {
     <button type="button" onMouseDown={onPress}
       className="px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer"
       style={{
-        background: active ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
-        color: active ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-        border: `0.5px solid ${active ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.1)'}`
+        background: active ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'rgba(255,255,255,0.05)',
+        color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+        border: `0.5px solid ${active ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.1)'}`
       }}>
       {label}
     </button>
@@ -1567,14 +1611,18 @@ export default function ImageList({ onlyVideos = false }) {
 
         {toggleBtn(favOnly, () => setFavOnly(f => !f), t('★ Favorites'))}
 
+        {/* Scripted-only — videos view only, since photos never have a script */}
+        {onlyVideos && toggleBtn(scriptedOnly, () => { setScriptedOnly(v => !v); setPage(1) },
+          <span className="flex items-center gap-1.5"><Zap size={12} /> {t('Funscript')}</span>)}
+
         {/* Masonry Toggle — Only for Images view */}
         {!onlyVideos && (
           <button type="button" onMouseDown={toggleMasonry}
             className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-[8px] cursor-pointer"
             style={{
-              background: masonryGrid ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-              color: masonryGrid ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-              border: `0.5px solid ${masonryGrid ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+              background: masonryGrid ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+              color: masonryGrid ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+              border: `0.5px solid ${masonryGrid ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
             }}
             title={t('Toggle Masonry Grid')}>
             <GripHorizontal size={11} /> {t('Masonry')}
@@ -1584,9 +1632,9 @@ export default function ImageList({ onlyVideos = false }) {
         <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
           className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-[8px] cursor-pointer ml-auto"
           style={{
-            background: bulkMode ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-            color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-            border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+            background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+            color: bulkMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+            border: `0.5px solid ${bulkMode ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
           }}>
           <CheckSquare size={11} /> {t('Select')}
         </button>
@@ -1598,7 +1646,7 @@ export default function ImageList({ onlyVideos = false }) {
           <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
             onChange={e => setThumbSizeStore(Number(e.target.value))}
-            className="w-24 h-1 cursor-pointer accent-[#7F77DD]" />
+            className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -1607,9 +1655,9 @@ export default function ImageList({ onlyVideos = false }) {
             <button key={n} type="button" onMouseDown={() => setPageLimit(n)}
               className="text-[12px] px-2 py-0.5 rounded-full cursor-pointer"
               style={{
-                background: pageLimit === n ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                color: pageLimit === n ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                border: `0.5px solid ${pageLimit === n ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                background: pageLimit === n ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                color: pageLimit === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                border: `0.5px solid ${pageLimit === n ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.07)'}`,
               }}>
               {n}
             </button>
@@ -1630,8 +1678,8 @@ export default function ImageList({ onlyVideos = false }) {
               selectedImages={(images || []).filter(g => selected.has(g.id))}
               onDone={exitBulk}
               onCancel={exitBulk}
-              onTransfer={(imgs) => setTransferCtx({ images: imgs, mode: 'move' })}
-              onCopyTo={(imgs) => setTransferCtx({ images: imgs, mode: 'copy' })}
+              onRelocate={(imgs) => setRelocatingImages(imgs)}
+              onCopyTo={(imgs) => setTransferCtx({ images: imgs })}
             />
           )}
         </div>
@@ -1691,6 +1739,14 @@ export default function ImageList({ onlyVideos = false }) {
       )}
 
       {/* Image right-click context menu */}
+      {relocatingImages && (
+        <RelocateModal
+          mode="images"
+          images={relocatingImages}
+          onClose={() => setRelocatingImages(null)}
+        />
+      )}
+
       {imageCtxMenu && (
         <ImageContextMenu
           image={imageCtxMenu.image}
@@ -1705,8 +1761,8 @@ export default function ImageList({ onlyVideos = false }) {
             const idx = images?.findIndex(i => i.id === imageCtxMenu.image.id) ?? -1
             if (idx >= 0) setViewerIdx(idx)
           }}
-          onTransfer={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'move' })}
-          onCopyTo={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image], mode: 'copy' })}
+          onCopyTo={() => setTransferCtx({ images: imageCtxMenu.bulkImages ?? [imageCtxMenu.image] })}
+          onRelocate={() => setRelocatingImages(imageCtxMenu.bulkImages ?? [imageCtxMenu.image])}
           onAssignCreator={async (creatorId) => {
             const ids = (imageCtxMenu.bulkImages ?? [imageCtxMenu.image]).map(i => i.id)
             try {
@@ -1783,17 +1839,11 @@ export default function ImageList({ onlyVideos = false }) {
         />
       )}
 
-      {/* Move / copy to another gallery */}
+      {/* Copy a reference into a mix gallery */}
       {transferCtx && (
         <GalleryTransferModal
           images={transferCtx.images}
-          mode={transferCtx.mode}
           onClose={() => setTransferCtx(null)}
-          onTransferred={() => {
-            setTransferCtx(null)
-            setSelected(new Set())
-            queryClient.invalidateQueries({ queryKey: ['images-list'] })
-          }}
         />
       )}
     </div>

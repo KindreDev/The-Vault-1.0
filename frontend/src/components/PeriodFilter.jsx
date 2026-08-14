@@ -31,9 +31,9 @@ export default function PeriodFilter({ value, periods = [], onChange }) {
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
         style={{
-          background: value ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-          color: value ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-          border: `0.5px solid ${value ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          background: value ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${value ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
         }}>
         <CalendarDays size={11} />
         {selected ? selected.label : t('Period')}
@@ -61,10 +61,10 @@ export default function PeriodFilter({ value, periods = [], onChange }) {
                 onMouseDown={() => { onChange(p.value); setOpen(false) }}
                 className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
                 style={{
-                  background: value === p.value ? 'rgba(127,119,221,0.15)' : 'transparent',
-                  color: value === p.value ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                  background: value === p.value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                  color: value === p.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)',
                 }}>
-                {value === p.value && <Check size={12} style={{ color: '#7F77DD', flexShrink: 0 }} />}
+                {value === p.value && <Check size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />}
                 <span className="flex-1">{p.label}</span>
                 <span className="text-[rgba(255,255,255,0.3)]">{p.count}</span>
               </button>

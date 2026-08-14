@@ -143,7 +143,7 @@ export default function SlimContextMenu({ title, subtitle, position, onClose, it
               onMouseDown={wrap(item.action)}
               className="w-full text-left cursor-pointer flex items-center gap-2.5 select-none"
               style={{ padding: '7px 14px', fontSize: 13, color: COLORS[style], background: 'transparent', transition: 'background 0.08s' }}
-              onMouseEnter={e => { e.currentTarget.style.background = style === 'danger' ? 'rgba(212,83,126,0.18)' : 'rgba(255,255,255,0.07)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = style === 'danger' ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.07)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
             >
               <Icon size={13} style={{ flexShrink: 0, opacity: 0.8 }} />

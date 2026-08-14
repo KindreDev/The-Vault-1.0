@@ -195,6 +195,9 @@ from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
 from routers.showcase import router as showcase_router
+from routers.recap import router as recap_router
+from routers.relocate import router as relocate_router
+from routers.curation import router as curation_router
 
 # Group Chat is personal-mode content and isn't part of the public source tree.
 # Absent, the app runs normally — the feature simply isn't mounted.
@@ -363,6 +366,18 @@ def _migrate_add_columns():
         # Daily activity rollup — the only way usage trends over time ever exist,
         # since view_count/view_seconds are lifetime scalars with no time axis.
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_daily_activity_day ON daily_activity(day)",
+        # Collection Curating — per-gallery cooldown after curating, short snooze for
+        # "not now", and the pin that resumes an interrupted run on the same gallery.
+        "ALTER TABLE galleries ADD COLUMN curated_at DATETIME",
+        "ALTER TABLE galleries ADD COLUMN curate_snooze_until DATETIME",
+        "ALTER TABLE user_profile ADD COLUMN curate_pinned_gallery_id INTEGER",
+        "ALTER TABLE user_profile ADD COLUMN curate_streak_days INTEGER DEFAULT 0",
+        "ALTER TABLE user_profile ADD COLUMN last_curate_date DATETIME",
+        "ALTER TABLE user_profile ADD COLUMN total_galleries_curated INTEGER DEFAULT 0",
+        "ALTER TABLE user_profile ADD COLUMN curate_focus_creator_id INTEGER",
+        # The queue filters on these constantly — index or every pull scans 21k rows.
+        "CREATE INDEX IF NOT EXISTS ix_galleries_curated_at ON galleries(curated_at)",
+        "CREATE INDEX IF NOT EXISTS ix_galleries_curate_snooze ON galleries(curate_snooze_until)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -464,6 +479,30 @@ def _compute_collection_rarity():
 
 
 _compute_collection_rarity()
+
+
+def _award_hof_crowns():
+    """Crown every Hall of Fame period that has closed since the last boot.
+
+    Also the retroactive backfill: the first run walks back through all recorded
+    history and crowns every finished day, week and month. A fresh install has
+    no history to walk, so it awards nothing — new users start accumulating from
+    the version that introduced this, which is the intent.
+    """
+    try:
+        from services.crowns import award_due_crowns
+        db = SessionLocal()
+        try:
+            n = award_due_crowns(db)
+            if n:
+                print(f"[startup] awarded {n} Hall of Fame crown(s)")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[startup] crown awarding failed: {e}")
+
+
+_award_hof_crowns()
 
 
 def _backfill_personalities():
@@ -796,7 +835,10 @@ app.include_router(companion_router,         prefix="/api/companion",      tags=
 if group_chat_router is not None:
     app.include_router(group_chat_router,    prefix="/api/companion/groups", tags=["group-chat"])
 app.include_router(showcase_router,          prefix="/api/creators",       tags=["showcase"])
+app.include_router(recap_router,             prefix="/api/recap",          tags=["recap"])
 app.include_router(feed.router,              prefix="/api/feed",           tags=["feed"])
+app.include_router(relocate_router,          prefix="/api/relocate",       tags=["relocate"])
+app.include_router(curation_router,          prefix="/api/curation",       tags=["curation"])
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 os.makedirs(THUMBS_DIR, exist_ok=True)

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { X, Plus, Tag, UserPlus, MoveRight } from 'lucide-react'
+import { X, Plus, Tag, UserPlus } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { useAllCreators } from '../hooks/useAllCreators'
@@ -62,7 +62,7 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
       <div className="flex flex-wrap gap-1 mb-2">
         {tags.map(t => (
           <span key={t.id ?? t.name} className="flex items-center gap-0.5 text-[9px] pl-1.5 pr-1 py-0.5 rounded-full"
-                style={{ background: t.source === 'ai' ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
+                style={{ background: t.source === 'ai' ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'rgba(255,255,255,0.05)',
                          color: t.source === 'ai' ? '#AFA9EC' : 'rgba(255,255,255,0.5)',
                          border: '0.5px solid rgba(255,255,255,0.08)' }}>
             {t.name}
@@ -223,7 +223,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
         Creators
         {hasImageCreators && (
           <span className="ml-1 px-1 py-0 rounded text-[8px] leading-tight"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#AFA9EC', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
             +file
           </span>
         )}
@@ -239,8 +239,8 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       <div className="flex gap-1 mb-1">
         <button type="button" onMouseDown={() => { setAddOpen(v => !v); setSearch('') }}
                 className="text-[9px] px-1.5 py-0.5 rounded-full cursor-pointer"
-                style={{ background: addOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)',
-                         color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                style={{ background: addOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)',
+                         color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           + Assign to file
         </button>
         {hasImageCreators && (
@@ -291,73 +291,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
   )
 }
 
-// ── Transfer to a different gallery ───────────────────────────────────────────
-export function TransferPanel({ imageId, currentGalleryId, onTransferred }) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const wrapperRef = useRef(null)
-  const qc = useQueryClient()
-
-  const { data: galleries } = useQuery({
-    queryKey: ['galleries-mini'],
-    queryFn: () => galleriesApi.list({ limit: 500 }).then(r => r.data),
-    enabled: open,
-  })
-
-  const filtered = useMemo(() => {
-    if (!galleries) return []
-    return galleries.filter(g => g.id !== currentGalleryId && g.name.toLowerCase().includes(search.toLowerCase()))
-  }, [galleries, currentGalleryId, search])
-
-  useEffect(() => {
-    const h = (e) => { if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const transferMutation = useMutation({
-    mutationFn: (galleryId) => imagesApi.transfer(imageId, galleryId),
-    onSuccess: (_, galleryId) => {
-      qc.invalidateQueries({ queryKey: ['images-list'] })
-      qc.invalidateQueries({ queryKey: ['gallery-images'] })
-      qc.invalidateQueries({ queryKey: ['galleries'] })
-      onTransferred(galleryId)
-      setOpen(false)
-    },
-    onError: () => toast.error('Transfer failed'),
-  })
-
-  return (
-    <div ref={wrapperRef} className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-      <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1"><MoveRight size={9} /> Transfer</span>
-        <button type="button" onMouseDown={() => setOpen(o => !o)}
-                className="text-[9px] px-1.5 py-0.5 rounded-full cursor-pointer"
-                style={{ background: open ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.06)',
-                         color: open ? '#FAC775' : 'rgba(255,255,255,0.4)',
-                         border: '0.5px solid rgba(255,255,255,0.08)' }}>
-          Move to…
-        </button>
-      </div>
-      {open && (
-        <div>
-          <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Search galleries…"
-                 className="w-full px-2 py-1.5 rounded-[6px] text-[10px] outline-none mb-1"
-                 style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)',
-                          border: '0.5px solid rgba(255,255,255,0.1)' }} />
-          <div className="rounded-[7px] overflow-y-auto" style={{ maxHeight: 140, background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {filtered.map(g => (
-              <button key={g.id} type="button" onMouseDown={() => transferMutation.mutate(g.id)}
-                      className="w-full text-left px-2 py-1.5 text-[10px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
-                      style={{ color: 'rgba(255,255,255,0.75)' }}>
-                {g.name}
-              </button>
-            ))}
-            {filtered.length === 0 && <div className="px-2 py-2 text-[10px] text-center text-[rgba(255,255,255,0.25)]">No galleries found</div>}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+// The viewer used to carry a "Move to…" panel here. It reassigned the file's
+// gallery without moving the file, which the scanner then undid — destroying the
+// file's rating, cum count, views and tags along the way. Moving files lives in
+// the right-click Relocate action, which moves them on disk.

@@ -109,7 +109,7 @@ function ExplorePostCard({ item, onOpenVault, onOpenCreator, saveTag = null }) {
                 alt="" onError={e => { if (!e.target.src.endsWith('/logo.png')) e.target.src = '/logo.png' }}
                 onClick={() => onOpenCreator(item.creator.id)}
                 className="w-11 h-11 rounded-full object-cover cursor-pointer flex-shrink-0"
-                style={{ border: '2px solid rgba(127,119,221,0.55)' }}
+                style={{ border: '2px solid color-mix(in srgb, var(--c-accent) 55%, transparent)' }}
               />
               <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onOpenCreator(item.creator.id)}>
                 <div className="text-[16px] font-semibold truncate" style={{ color: 'rgba(255,255,255,0.92)' }}>
@@ -124,7 +124,7 @@ function ExplorePostCard({ item, onOpenVault, onOpenCreator, saveTag = null }) {
             <div className="flex-1 text-[15px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{t('From your vault')}</div>
           )}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[13px] font-medium flex-shrink-0"
-               style={{ background: 'rgba(127,119,221,0.14)', color: '#A79FF0' }}>
+               style={{ background: 'color-mix(in srgb, var(--c-accent) 14%, transparent)', color: '#A79FF0' }}>
             <Sparkles size={13} /> {saveTag != null ? `#${saveTag}` : t('For you')}
           </div>
         </div>
@@ -258,7 +258,7 @@ export default function Explore() {
           ) : (
             <>
               <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-                   style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                   style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                 <Compass size={18} style={{ color: '#A79FF0' }} />
               </div>
               <div>
@@ -317,7 +317,7 @@ export default function Explore() {
                           className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer" style={{ width: 92, background: 'none', border: 'none' }}>
                     <img src={c.has_avatar ? `/api/creators/${c.id}/avatar-thumb?size=96` : '/logo.png'} alt=""
                          onError={e => { if (!e.target.src.endsWith('/logo.png')) e.target.src = '/logo.png' }}
-                         className="w-16 h-16 rounded-full object-cover" style={{ border: '2px solid rgba(127,119,221,0.5)' }} />
+                         className="w-16 h-16 rounded-full object-cover" style={{ border: '2px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
                     <span className="text-[13px] truncate w-full text-center" style={{ color: 'rgba(255,255,255,0.7)' }}>{c.name}</span>
                   </button>
                 ))}

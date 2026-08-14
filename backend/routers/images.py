@@ -89,6 +89,7 @@ def _apply_image_filters(
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
+    has_funscript: Optional[bool] = None,
     period: Optional[str] = None,
 ):
     """Apply the standard image-list filters to a query.
@@ -152,6 +153,10 @@ def _apply_image_filters(
         q = q.filter(Image.is_video == is_video)
     if favorite is not None:
         q = q.filter(Image.is_favorite == favorite)
+    # Scripted-only: a funscript is detected by filename match at scan time, so
+    # the path being set is the same thing as "this video has a script".
+    if has_funscript:
+        q = q.filter(Image.funscript_path.isnot(None), Image.funscript_path != "")
     # Period lives on Gallery — match via the image's gallery (subquery keeps this
     # independent of any join the filters above may or may not have added).
     if period:
@@ -176,6 +181,7 @@ def list_images(
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
+    has_funscript: Optional[bool] = None,   # only videos that have a funscript
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
     sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
@@ -193,7 +199,8 @@ def list_images(
         q, db,
         search=search, tag=tag, tags=tags, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
-        is_video=is_video, favorite=favorite, period=period,
+        is_video=is_video, favorite=favorite, has_funscript=has_funscript,
+        period=period,
     )
 
     # Total count under the current filters, exposed so the frontend can
@@ -339,35 +346,17 @@ def update_image(image_id: int, data: ImageUpdate, db: Session = Depends(get_db)
     if data.is_favorite is not None:
         img.is_favorite = data.is_favorite
     if data.gallery_id is not None and data.gallery_id != img.gallery_id:
-        old_gallery_id = img.gallery_id
-        target = db.query(Gallery).filter(Gallery.id == data.gallery_id).first()
-        if not target:
-            raise HTTPException(404, f"Gallery {data.gallery_id} not found")
-        moved_thumb_url = f"/thumbs/{os.path.basename(img.thumb_path)}" if img.thumb_path else None
-        img.gallery_id = data.gallery_id
-        db.flush()
-        # Recount source gallery and re-cover if we just removed its cover image
-        if old_gallery_id:
-            src = db.query(Gallery).filter(Gallery.id == old_gallery_id).first()
-            if src:
-                src.image_count = db.query(Image).filter(Image.gallery_id == old_gallery_id).count()
-                if moved_thumb_url and src.cover_thumb == moved_thumb_url:
-                    # Pick another image (prefer non-video) as new cover, or clear it
-                    replacement = (
-                        db.query(Image)
-                          .filter(Image.gallery_id == old_gallery_id, Image.thumb_path.isnot(None))
-                          .order_by(Image.is_video.asc(), Image.sort_order, Image.id)
-                          .first()
-                    )
-                    if replacement and replacement.thumb_path and os.path.exists(replacement.thumb_path):
-                        src.cover_thumb = f"/thumbs/{os.path.basename(replacement.thumb_path)}"
-                    else:
-                        src.cover_thumb = None
-        # Recount target gallery
-        target.image_count = db.query(Image).filter(Image.gallery_id == data.gallery_id).count()
-        # Give target a cover thumbnail if it doesn't have one
-        if not target.cover_thumb and img.thumb_path and os.path.exists(img.thumb_path):
-            target.cover_thumb = f"/thumbs/{os.path.basename(img.thumb_path)}"
+        # Reparenting a file by id alone used to be allowed here, and it was a
+        # trap: the row moved but the file never left its folder, so the next
+        # scan pruned the row (the file vanished from the app) and the scan
+        # after that re-imported it into its original gallery with its rating,
+        # cum count, views, favourite and tags all reset to zero. Moving a file
+        # means moving it on disk — services/relocate.py does that.
+        raise HTTPException(
+            400,
+            "Use /api/relocate/images to move a file — changing its gallery "
+            "without moving the file loses the file's history on the next scan."
+        )
     db.commit()
     db.refresh(img)
     result = _enrich_image(img, db)

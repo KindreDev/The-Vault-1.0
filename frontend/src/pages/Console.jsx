@@ -152,7 +152,7 @@ export default function Console() {
         flexShrink: 0,
         background: 'var(--c-surface, #161616)',
       }}>
-        <Terminal size={16} style={{ color: 'var(--accent, #7F77DD)', flexShrink: 0 }} />
+        <Terminal size={16} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />
         <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.03em' }}>
           Console
         </span>
@@ -160,8 +160,8 @@ export default function Console() {
         {/* Connection dot */}
         <div style={{
           width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-          background: connected ? '#1D9E75' : '#E24B4A',
-          boxShadow: connected ? '0 0 6px #1D9E7588' : '0 0 6px #E24B4A88',
+          background: connected ? 'var(--c-green)' : '#E24B4A',
+          boxShadow: connected ? '0 0 6px color-mix(in srgb, var(--c-green) 53%, transparent)' : '0 0 6px #E24B4A88',
           marginLeft: 2,
         }} />
         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginRight: 'auto' }}>
@@ -178,7 +178,7 @@ export default function Console() {
                 padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
                 cursor: 'pointer', letterSpacing: '0.04em',
                 background: filter === f
-                  ? 'var(--accent, #7F77DD)'
+                  ? 'var(--accent, var(--c-accent))'
                   : 'rgba(255,255,255,0.05)',
                 color: filter === f
                   ? '#fff'

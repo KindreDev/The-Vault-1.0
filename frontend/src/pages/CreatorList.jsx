@@ -49,11 +49,11 @@ const STATUS_OPTIONS = [
 ]
 
 const TYPE_COLORS = {
-  cosplayer: { bg: 'rgba(29,158,117,0.15)',  text: '#9FE1CB', glow: 'rgba(29,158,117,0.25)' },
-  ethot:     { bg: 'rgba(212,83,126,0.15)',  text: '#ED93B1', glow: 'rgba(212,83,126,0.25)' },
-  artist:    { bg: 'rgba(127,119,221,0.15)', text: '#CECBF6', glow: 'rgba(127,119,221,0.25)' },
-  character: { bg: 'rgba(186,117,23,0.15)',  text: '#FAC775', glow: 'rgba(186,117,23,0.25)' },
-  actress:   { bg: 'rgba(212,83,126,0.15)',  text: '#ED93B1', glow: 'rgba(212,83,126,0.25)' },
+  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',  text: '#9FE1CB', glow: 'color-mix(in srgb, var(--c-green) 25%, transparent)' },
+  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1', glow: 'color-mix(in srgb, var(--c-pink) 25%, transparent)' },
+  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', text: '#CECBF6', glow: 'color-mix(in srgb, var(--c-accent) 25%, transparent)' },
+  character: { bg: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',  text: '#FAC775', glow: 'color-mix(in srgb, var(--c-amber) 25%, transparent)' },
+  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1', glow: 'color-mix(in srgb, var(--c-pink) 25%, transparent)' },
   custom:    { bg: 'rgba(136,135,128,0.15)', text: '#D3D1C7', glow: 'rgba(136,135,128,0.25)' },
 }
 
@@ -284,7 +284,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
               <span>{creator.gallery_count} {creator.gallery_count === 1 ? t('gallery') : t('galleries')}</span>
             )}
             {creator.session_count > 0 && (
-              <span style={{ color: 'rgba(212,83,126,0.6)' }}>♥ {creator.session_count} {t('sessions')}</span>
+              <span style={{ color: 'color-mix(in srgb, var(--c-pink) 60%, transparent)' }}>♥ {creator.session_count} {t('sessions')}</span>
             )}
           </div>
         )}
@@ -348,8 +348,8 @@ function JikanSearch({ onSelect }) {
   }
 
   return (
-    <div className="mb-5 rounded-[10px] p-4" style={{ background: 'rgba(186,117,23,0.07)', border: '0.5px solid rgba(186,117,23,0.25)' }}>
-      <div className="text-[16px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: '#FAC775' }}>
+    <div className="mb-5 rounded-[10px] p-4" style={{ background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+      <div className="text-[16px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: 'var(--c-amber-text)' }}>
         <span className="text-[18px]">⚡</span> {t('Import from MyAnimeList')}
       </div>
 
@@ -365,7 +365,7 @@ function JikanSearch({ onSelect }) {
               <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{picked.series[0]}</div>
             )}
             <div className="flex gap-1.5 mt-1 flex-wrap">
-              {picked.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,83,126,0.2)', color: '#ED93B1' }}>{picked.gender}</span>}
+              {picked.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{picked.gender}</span>}
               {picked.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
               {picked.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
             </div>
@@ -373,7 +373,7 @@ function JikanSearch({ onSelect }) {
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={handleConfirm}
                     className="px-4 py-2 rounded-full text-[16px] font-medium cursor-pointer"
-                    style={{ background: 'rgba(186,117,23,0.3)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.5)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 50%, transparent)' }}>
               {t('Fill form')}
             </button>
             <button onClick={() => setPicked(null)}
@@ -391,18 +391,18 @@ function JikanSearch({ onSelect }) {
               onChange={e => setQuery(e.target.value)}
               placeholder={t('Search anime character name…')}
               className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.25)] outline-none pr-10"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(186,117,23,0.35)' }}
+              style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}
             />
             {loading && (
               <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
-                <Loader size={18} className="animate-spin" style={{ color: '#FAC775' }} />
+                <Loader size={18} className="animate-spin" style={{ color: 'var(--c-amber-text)' }} />
               </div>
             )}
           </div>
 
           {apiError && (
             <div className="mt-2 text-[14px] px-3 py-2 rounded-[8px]"
-                 style={{ background: 'rgba(186,117,23,0.1)', border: '0.5px solid rgba(186,117,23,0.3)', color: '#FAC775' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-amber) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)' }}>
               {t('MyAnimeList API is currently unavailable — try again in a moment.')}
             </div>
           )}
@@ -425,7 +425,7 @@ function JikanSearch({ onSelect }) {
                       <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{char.series[0]}</div>
                     )}
                     <div className="flex gap-1.5 mt-1 flex-wrap">
-                      {char.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,83,126,0.2)', color: '#ED93B1' }}>{char.gender}</span>}
+                      {char.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{char.gender}</span>}
                       {char.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
                       {char.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
                     </div>
@@ -538,9 +538,9 @@ function AddCreatorModal({ onClose, onSuccess }) {
               <button key={ct} onClick={() => set('creator_type', ct)}
                       className="text-[16px] px-3.5 py-2 rounded-full cursor-pointer capitalize transition-all"
                       style={{
-                        background: form.creator_type === ct ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                        color: form.creator_type === ct ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${form.creator_type === ct ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                        background: form.creator_type === ct ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)',
+                        color: form.creator_type === ct ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                        border: `0.5px solid ${form.creator_type === ct ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                       }}>
                 {t(TYPE_LABELS[ct] || ct)}
               </button>
@@ -703,7 +703,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
           <button onClick={() => mutation.mutate()}
                   disabled={!form.name.trim() || mutation.isPending}
                   className="flex-1 py-3 rounded-[8px] text-[16px] font-medium cursor-pointer"
-                  style={{ background: !form.name.trim() ? 'rgba(127,119,221,0.1)' : 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                  style={{ background: !form.name.trim() ? 'color-mix(in srgb, var(--c-accent) 10%, transparent)' : 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
             {mutation.isPending ? t('Adding...') : t('Add creator +50 XP')}
           </button>
         </div>
@@ -859,11 +859,11 @@ export default function CreatorList() {
         <button onClick={() => setFavOnly(!favOnly)}
                 className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full cursor-pointer"
                 style={{
-                  background: favOnly ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: favOnly ? '#FAC775' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${favOnly ? 'rgba(186,117,23,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: favOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: favOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${favOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
-          <Star size={12} fill={favOnly ? '#FAC775' : 'none'} /> {t('Favorites')}
+          <Star size={12} fill={favOnly ? 'var(--c-amber-text)' : 'none'} /> {t('Favorites')}
         </button>
 
         {hasActiveFilters && (
@@ -876,7 +876,7 @@ export default function CreatorList() {
 
         <button onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 text-[12px] font-medium px-4 py-2 rounded-full ml-auto cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
           <Plus size={13} /> {t('Add creator')}
         </button>
       </div>
@@ -893,19 +893,19 @@ export default function CreatorList() {
           )}
           {typeFilter !== 'all' && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
               {t(TYPE_LABELS[typeFilter] || typeFilter)} <button type="button" onClick={() => setTypeFilter('all')} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
           {franchise && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
               {franchise} <button type="button" onClick={() => setFranchise('')} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
           {favOnly && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)' }}>
               {t('Favorites only')} <button type="button" onClick={() => setFavOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
@@ -918,9 +918,9 @@ export default function CreatorList() {
           <button key={ct} onClick={() => setTypeFilter(ct)}
                   className="text-[11px] px-3 py-1 rounded-full cursor-pointer capitalize"
                   style={{
-                    background: typeFilter === ct ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                    color: typeFilter === ct ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                    border: `0.5px solid ${typeFilter === ct ? 'rgba(127,119,221,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                    background: typeFilter === ct ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                    color: typeFilter === ct ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                    border: `0.5px solid ${typeFilter === ct ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.07)'}`,
                   }}>
             {ct === 'all' ? t('All') : t(TYPE_LABELS[ct] || ct)}
           </button>
@@ -933,7 +933,7 @@ export default function CreatorList() {
             <input
               type="range" min={160} max={345} step={5} value={cardSize}
               onChange={e => setCardSize(Number(e.target.value))}
-              className="w-24 h-1 cursor-pointer accent-[#7F77DD]"
+              className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]"
               title={`Card size: ${cardSize}px`}
             />
           </div>
@@ -946,9 +946,9 @@ export default function CreatorList() {
               <button key={n} onClick={() => setPerPage(n)}
                       className="text-[11px] px-2.5 py-1 rounded-[6px] cursor-pointer"
                       style={{
-                        background: perPage === n ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
-                        color: perPage === n ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${perPage === n ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                        background: perPage === n ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.04)',
+                        color: perPage === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                        border: `0.5px solid ${perPage === n ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}`,
                       }}>
                 {n}
               </button>
@@ -992,7 +992,7 @@ export default function CreatorList() {
               ) : (
                 <button onClick={() => setShowModal(true)}
                         className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
-                        style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                   <Plus size={15} /> {t('Add your first creator')}
                 </button>
               )}

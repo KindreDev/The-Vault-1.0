@@ -89,7 +89,7 @@ export default function TagFilterInput({
       {activeTags.map(t => (
         <span key={t}
           className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[13px]"
-          style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+          style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
           {t}
           <button type="button" onMouseDown={() => onRemove(t)}
             className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white ml-0.5">

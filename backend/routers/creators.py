@@ -20,6 +20,7 @@ from models import (
 from schemas import CreatorCreate, CreatorUpdate, CreatorOut
 import services.gamification as gami
 from services import activity
+from services import crowns
 from services import ranking
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
@@ -416,6 +417,14 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
     activity_events log rather than the lifetime counters, so it reflects only
     what happened inside the window.
     """
+    # Crown anything that closed since the last sweep. Cheap once the backfill
+    # has run (it resumes from the newest crown), and it means a champion is
+    # decided at midnight without waiting for the next restart.
+    try:
+        crowns.award_due_crowns(db)
+    except Exception:
+        pass
+
     since = activity.period_start(period)
     if since is None:
         scores = ranking.score_all_creators(db)
@@ -434,6 +443,9 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
     entity_key = "creator" if since is None else f"creator:{period}"
     deltas = ranking.apply_rank_movement(db, entity_key, order)
 
+    page_ids = order[offset:offset + limit]
+    crown_counts = crowns.crown_counts_bulk(db, page_ids)
+
     # offset lets the "know more" list page through the whole ranking while
     # keeping each entry's true global rank.
     out = []
@@ -446,6 +458,7 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
         d["hof_score"]    = scores[cid]["score"]
         d["rank"]         = rank
         d["rank_change"]  = deltas.get(cid, 0)
+        d["crown_count"]  = crown_counts.get(cid, 0)
         out.append(d)
     return out
 
@@ -1550,4 +1563,15 @@ def creator_stats(creator_id: int, db: Session = Depends(get_db)):
             d["leader_score"] = scores[leader]["score"]
             d["points_to_first"] = max(0, scores[leader]["score"] - mine["score"])
 
+    # Her honours — every Hall of Fame period she has ever topped.
+    d["crowns"] = crowns.crowns_for_creator(db, creator_id)
+
     return d
+
+
+@router.get("/{creator_id}/crowns")
+def creator_crowns(creator_id: int, db: Session = Depends(get_db)):
+    """Every Hall of Fame period this creator has won."""
+    if not db.query(Creator).filter(Creator.id == creator_id).first():
+        raise HTTPException(404, "Creator not found")
+    return crowns.crowns_for_creator(db, creator_id)

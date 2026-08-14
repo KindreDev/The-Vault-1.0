@@ -7,13 +7,14 @@ import {
   Star, Droplets, Clock, Shuffle, Dice6, Target, CheckCircle2, Circle,
   Plus, Images, Eye, User, HardDrive, Video, Trophy, Flame, X, Play,
   BarChart2, Calendar, Tag as TagIcon, Hash, Activity, Zap, Info, PlayCircle, StarHalf,
-  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check, Inbox,
+  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check, Inbox, Sparkles, ArrowRight,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi } from '../lib/api'
+import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi, curationApi } from '../lib/api'
 import { useSession } from '../hooks/useSession'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
 import IntakeModal from '../components/IntakeModal'
+import CurationRun from '../components/curation/CurationRun'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
@@ -58,11 +59,11 @@ function timeAgo(ts) {
 }
 
 const TYPE_COLORS = {
-  cosplayer: { bg: 'rgba(29,158,117,0.2)',  text: '#9FE1CB' },
-  ethot:     { bg: 'rgba(212,83,126,0.2)',  text: '#ED93B1' },
-  artist:    { bg: 'rgba(127,119,221,0.2)', text: '#CECBF6' },
-  character: { bg: 'rgba(186,117,23,0.2)',  text: '#FAC775' },
-  actress:   { bg: 'rgba(212,83,126,0.2)',  text: '#ED93B1' },
+  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 20%, transparent)',  text: '#9FE1CB' },
+  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 20%, transparent)',  text: '#ED93B1' },
+  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', text: '#CECBF6' },
+  character: { bg: 'color-mix(in srgb, var(--c-amber) 20%, transparent)',  text: '#FAC775' },
+  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 20%, transparent)',  text: '#ED93B1' },
   custom:    { bg: 'rgba(136,135,128,0.2)', text: '#D3D1C7' },
 }
 
@@ -115,7 +116,7 @@ function ImageHofCard({ item, onClick }) {
             <Eye size={10} /> {item.view_count ?? 0}
           </span>
           {(item.cum_count ?? 0) > 0 && (
-            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: '#D4537E' }}>
+            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: 'var(--c-pink)' }}>
               <Droplets size={10} /> {item.cum_count}
             </span>
           )}
@@ -147,7 +148,7 @@ function GalleryHofCard({ gallery, onClick }) {
             <Eye size={10} /> {gallery.view_count ?? 0}
           </span>
           {(gallery.cum_count ?? 0) > 0 && (
-            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: '#D4537E' }}>
+            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: 'var(--c-pink)' }}>
               <Droplets size={10} /> {gallery.cum_count}
             </span>
           )}
@@ -212,7 +213,7 @@ function CreatorHofCard({ creator, onClick, avatarBust }) {
             <Eye size={10} /> {creator.total_views ?? 0}
           </span>
           {(creator.total_cum ?? 0) > 0 && (
-            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: '#D4537E' }}>
+            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: 'var(--c-pink)' }}>
               <Droplets size={10} /> {creator.total_cum}
             </span>
           )}
@@ -285,7 +286,7 @@ function HofSection({ title, icon: Icon, iconColor, items, emptyMsg, renderCard,
         <span className="text-[13px] text-[rgba(255,255,255,0.25)] ml-0.5">{t('most viewed')}</span>
         <button onClick={onSeeAll}
                 className="ml-auto text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: '#7F77DD' }}>
+                style={{ color: 'var(--c-accent)' }}>
           {t('See all →')}
         </button>
       </div>
@@ -301,179 +302,6 @@ function HofSection({ title, icon: Icon, iconColor, items, emptyMsg, renderCard,
     </div>
   )
 }
-
-// ── Inline tag input for tagging mission ─────────────────────────────────────
-function AddTagInline({ item, onTagged }) {
-  const t = useT()
-  const [newTag, setNewTag] = useState('')
-  const [busy, setBusy] = useState(false)
-  const qc = useQueryClient()
-
-  const submit = async () => {
-    const tag = newTag.trim().toLowerCase()
-    if (!tag || busy) return
-    setBusy(true)
-    try {
-      // Galleries can't be tagged — only images/videos have the tag endpoint
-      if (item.type !== 'gallery') {
-        await imagesApi.addTag(item.id, tag)
-        qc.invalidateQueries({ queryKey: ['images-list'] })
-        qc.invalidateQueries({ queryKey: ['gallery-images'] })
-      }
-      onTagged(item.id)
-      setNewTag('')
-    } catch {
-      toast.error(t('Failed to add tag'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex gap-1 mt-1.5" onMouseDown={e => e.stopPropagation()}>
-      <input value={newTag} onChange={e => setNewTag(e.target.value)}
-             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
-             placeholder={item.type === 'gallery' ? t('skip or mark done') : t('add tag + Enter')}
-             className="flex-1 px-2 py-1 rounded-[5px] text-[9px] outline-none"
-             style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', border: '0.5px solid rgba(255,255,255,0.12)' }} />
-      {item.type !== 'gallery' && (
-        <button type="button" onMouseDown={submit} disabled={busy}
-                className="px-2 py-1 rounded-[5px] text-[9px] cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          {t('+Tag')}
-        </button>
-      )}
-      <button type="button" onMouseDown={() => onTagged(item.id)}
-              className="px-2 py-1 rounded-[5px] text-[9px] cursor-pointer"
-              style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-        ✓
-      </button>
-    </div>
-  )
-}
-
-// ── Daily tagging mission overlay ─────────────────────────────────────────────
-function TaggingMission({ onClose, onComplete }) {
-  const t = useT()
-  const [items, setItems]       = useState(null)
-  const [missionType, setMissionType] = useState(null)
-  const [tagged, setTagged]     = useState({})
-  const [loading, setLoading]   = useState(true)
-  const [completing, setCompleting] = useState(false)
-  const addXpToast = useVaultStore(s => s.addXpToast)
-  const qc = useQueryClient()
-
-  useEffect(() => {
-    gamiApi.taggingMission().then(r => {
-      setItems(r.data.items)
-      setMissionType(r.data.mission_type)
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [])
-
-  const markTagged = useCallback((id) => setTagged(t => ({ ...t, [id]: true })), [])
-  const taggedCount = Object.keys(tagged).length
-  const total = items?.length ?? 0
-  const allDone = total > 0 && taggedCount >= total
-
-  const completeMission = () => {
-    setCompleting(true)
-    gamiApi.completeMission().then(() => {
-      addXpToast('+200 XP')
-      toast.success(t('Mission complete! All items tagged! 🎉'))
-      qc.invalidateQueries({ queryKey: ['profile'] })
-      qc.invalidateQueries({ queryKey: ['quests'] })
-      onComplete?.()
-      onClose()
-    }).catch(() => {
-      toast.error(t('Could not complete mission'))
-      setCompleting(false)
-    })
-  }
-
-  const typeLabel = { images: t('Photos'), videos: t('Videos'), galleries: t('Galleries') }[missionType] ?? '…'
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.85)' }}>
-      <div className="rounded-[16px] flex flex-col shadow-2xl animate-modal-pop" style={{ width: 680, maxHeight: '85vh', background: '#1a1a1a', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 flex-shrink-0" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <Dice6 size={16} style={{ color: '#BA7517' }} />
-          <div className="flex-1">
-            <div className="text-[14px] font-medium text-[rgba(255,255,255,0.9)]">
-              {t('Daily Tagging Mission')} — {typeLabel}
-            </div>
-            <div className="text-[11px] text-[rgba(255,255,255,0.35)] mt-0.5">
-              {t('Tag or assign all')} {total} {t('items to earn')} <span style={{ color: '#BA7517' }}>+200 XP</span>
-            </div>
-          </div>
-          <div className="text-[12px] font-medium px-3 py-1 rounded-full"
-               style={{ background: allDone ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.06)',
-                        color: allDone ? '#9FE1CB' : 'rgba(255,255,255,0.4)' }}>
-            {taggedCount} / {total}
-          </div>
-          <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white"><X size={14} /></button>
-        </div>
-
-        {/* Progress bar */}
-        <div className="h-[3px] flex-shrink-0" style={{ background: 'rgba(255,255,255,0.07)' }}>
-          <div className="h-full transition-all duration-300" style={{ width: `${total ? (taggedCount / total) * 100 : 0}%`, background: '#BA7517' }} />
-        </div>
-
-        {/* Items grid */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="text-center py-10 text-[rgba(255,255,255,0.3)]">{t('Loading mission…')}</div>
-          ) : !items || items.length === 0 ? (
-            <div className="text-center py-10 text-[rgba(255,255,255,0.3)]">{t('No untagged items found.')}</div>
-          ) : (
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-              {items.map(item => (
-                <div key={item.id} className="rounded-[10px] overflow-hidden relative"
-                     style={{ background: tagged[item.id] ? 'rgba(29,158,117,0.1)' : 'rgba(255,255,255,0.04)',
-                              border: `0.5px solid ${tagged[item.id] ? 'rgba(29,158,117,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
-                  {tagged[item.id] && (
-                    <div className="absolute top-2 right-2 z-10 w-5 h-5 rounded-full flex items-center justify-center"
-                         style={{ background: '#1D9E75' }}>
-                      <CheckCircle2 size={12} color="white" />
-                    </div>
-                  )}
-                  <div className="overflow-hidden" style={{ height: 120, background: 'rgba(255,255,255,0.03)' }}>
-                    {item.thumb
-                      ? <img src={item.thumb} alt={item.name} className="w-full h-full object-cover" onError={e => { e.target.style.display='none' }} />
-                      : <div className="w-full h-full flex items-center justify-center opacity-10"><Images size={32} /></div>
-                    }
-                  </div>
-                  <div className="p-2">
-                    <div className="text-[10px] text-[rgba(255,255,255,0.6)] truncate mb-1">{item.name}</div>
-                    <AddTagInline item={item} onTagged={markTagged} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 flex items-center justify-between flex-shrink-0" style={{ borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[11px] text-[rgba(255,255,255,0.3)]">
-            {allDone ? t('🎉 All tagged! Claim your reward.') : t('Tag or mark done each item to complete the mission.')}
-          </div>
-          <button
-            onMouseDown={allDone ? completeMission : undefined}
-            disabled={!allDone || completing}
-            className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-medium cursor-pointer disabled:opacity-40"
-            style={{ background: allDone ? 'rgba(186,117,23,0.3)' : 'rgba(255,255,255,0.06)',
-                     color: allDone ? '#FAC775' : 'rgba(255,255,255,0.3)',
-                     border: `0.5px solid ${allDone ? 'rgba(186,117,23,0.5)' : 'rgba(255,255,255,0.1)'}` }}>
-            <Trophy size={13} /> {completing ? t('Completing…') : t('Claim +200 XP')}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 
 // ── Daily Spin Modal (slot machine) ──────────────────────────────────────────
 function SpinModal({ onClose }) {
@@ -525,8 +353,8 @@ function SpinModal({ onClose }) {
       <div className="rounded-[24px] px-12 py-10 flex flex-col items-center gap-5 animate-modal-pop"
            style={{
              background: '#1a1a1a',
-             border: `1px solid ${phase === 'result' && !alreadySpun ? 'rgba(186,117,23,0.7)' : 'rgba(255,255,255,0.1)'}`,
-             boxShadow: phase === 'result' && !alreadySpun ? '0 0 60px rgba(186,117,23,0.25), 0 0 120px rgba(186,117,23,0.1)' : 'none',
+             border: `1px solid ${phase === 'result' && !alreadySpun ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'rgba(255,255,255,0.1)'}`,
+             boxShadow: phase === 'result' && !alreadySpun ? '0 0 60px color-mix(in srgb, var(--c-amber) 25%, transparent), 0 0 120px color-mix(in srgb, var(--c-amber) 10%, transparent)' : 'none',
              transition: 'border-color 0.4s ease, box-shadow 0.4s ease',
              minWidth: 280,
            }}>
@@ -542,8 +370,8 @@ function SpinModal({ onClose }) {
           fontVariantNumeric: 'tabular-nums',
           minWidth: 160,
           textAlign: 'center',
-          color: phase === 'spinning' ? 'rgba(255,255,255,0.12)' : alreadySpun ? 'rgba(255,255,255,0.3)' : '#FAC775',
-          textShadow: phase === 'result' && !alreadySpun ? '0 0 40px rgba(186,117,23,0.9)' : 'none',
+          color: phase === 'spinning' ? 'rgba(255,255,255,0.12)' : alreadySpun ? 'rgba(255,255,255,0.3)' : 'var(--c-amber-text)',
+          textShadow: phase === 'result' && !alreadySpun ? '0 0 40px color-mix(in srgb, var(--c-amber) 90%, transparent)' : 'none',
           transition: 'color 0.35s ease, text-shadow 0.35s ease',
         }}>
           {phase === 'spinning' ? displayNum : alreadySpun ? '—' : xpAmount}
@@ -556,7 +384,7 @@ function SpinModal({ onClose }) {
             <div className="text-[14px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Already spun today!')}</div>
           ) : (
             <>
-              <div className="text-[20px] font-semibold" style={{ color: '#FAC775' }}>{t('XP earned!')}</div>
+              <div className="text-[20px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>{t('XP earned!')}</div>
               <div className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
                 {result?.reward?.label ?? t('Bonus awarded')}
               </div>
@@ -579,7 +407,7 @@ function MoreStatsModal({ stats, onClose }) {
 
   const navigate = useNavigate()
   const t = useT()
-  const StatBox = ({ label, value, sub, icon: Icon, color = '#7F77DD', onClick }) => (
+  const StatBox = ({ label, value, sub, icon: Icon, color = 'var(--c-accent)', onClick }) => (
     <div className={`rounded-[10px] p-3 flex flex-col justify-center relative ${onClick ? 'cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-colors' : ''}`}
          style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}
          onMouseDown={onClick}>
@@ -598,12 +426,12 @@ function MoreStatsModal({ stats, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in backdrop-blur-md" 
          style={{ background: 'rgba(0,0,0,0.6)' }} onMouseDown={onClose}>
       <div className="rounded-[16px] shadow-2xl animate-modal-pop flex flex-col max-h-[85vh] w-full max-w-4xl"
-           style={{ background: '#181818', border: '0.5px solid rgba(127,119,221,0.4)' }}
+           style={{ background: '#181818', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
            onMouseDown={e => e.stopPropagation()}>
         
         <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.06)] flex-shrink-0">
           <div className="flex items-center gap-2 text-[16px] font-medium text-white">
-            <BarChart2 size={18} color="#7F77DD" /> {t('Advanced Statistics')}
+            <BarChart2 size={18} color="var(--c-accent)" /> {t('Advanced Statistics')}
           </div>
           <button onMouseDown={onClose} className="text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer"><X size={18} /></button>
         </div>
@@ -614,14 +442,14 @@ function MoreStatsModal({ stats, onClose }) {
             <h3 className="text-[13px] font-medium text-[rgba(255,255,255,0.6)] mb-3 uppercase tracking-wider">{t('Library & Content')}</h3>
             <div className="grid grid-cols-4 gap-3">
               <StatBox icon={Images} label={t('Avg files / gallery')} value={stats.avg_files_per_gallery} />
-              <StatBox icon={Video} color="#ED93B1" label={t('Total video duration')} value={fmtMs(stats.total_video_duration * 1000)} />
-              <StatBox icon={PlayCircle} color="#ED93B1" label={t('Avg video length')} value={fmtMs(stats.avg_video_length * 1000)} />
+              <StatBox icon={Video} color="var(--c-pink-text)" label={t('Total video duration')} value={fmtMs(stats.total_video_duration * 1000)} />
+              <StatBox icon={PlayCircle} color="var(--c-pink-text)" label={t('Avg video length')} value={fmtMs(stats.avg_video_length * 1000)} />
               <StatBox icon={HardDrive} label={t('Highest file size')} value={`${(stats.highest_file_size / (1024*1024)).toFixed(1)} MB`} />
               <StatBox icon={Calendar} label={t('Last added')} value={stats.last_added ? new Date(stats.last_added).toLocaleDateString() : t('Never')} />
-              <StatBox icon={User} color="#FAC775" label={t('New creators (month)')} value={stats.new_creators_month} />
-              <StatBox icon={TagIcon} color="#9FE1CB" label={t('Avg tags / file')} value={stats.avg_tags_per_file} />
-              <StatBox icon={Hash} color="#9FE1CB" label={t('Most common tag')} value={stats.most_common_tag || t('None')} />
-              <StatBox icon={StarHalf} color="#BA7517" label={t('Avg rating given')} value={stats.avg_rating} sub={t('out of 10')} />
+              <StatBox icon={User} color="var(--c-amber-text)" label={t('New creators (month)')} value={stats.new_creators_month} />
+              <StatBox icon={TagIcon} color="var(--c-green-text)" label={t('Avg tags / file')} value={stats.avg_tags_per_file} />
+              <StatBox icon={Hash} color="var(--c-green-text)" label={t('Most common tag')} value={stats.most_common_tag || t('None')} />
+              <StatBox icon={StarHalf} color="var(--c-amber)" label={t('Avg rating given')} value={stats.avg_rating} sub={t('out of 10')} />
 
             </div>
           </div>
@@ -629,14 +457,14 @@ function MoreStatsModal({ stats, onClose }) {
           <div>
             <h3 className="text-[13px] font-medium text-[rgba(255,255,255,0.6)] mb-3 uppercase tracking-wider">{t('Most Gooned Hall of Fame')}</h3>
             <div className="grid grid-cols-4 gap-3">
-              <StatBox icon={User} color="#FAC775" label={t('Most gooned creator')} value={stats.most_gooned_creator?.name || t('None')}
+              <StatBox icon={User} color="var(--c-amber-text)" label={t('Most gooned creator')} value={stats.most_gooned_creator?.name || t('None')}
                        onClick={stats.most_gooned_creator ? () => { navigate(`/creators/${stats.most_gooned_creator.id}`); onClose(); } : undefined} />
-              <StatBox icon={Images} color="#7F77DD" label={t('Most gooned gallery')} value={stats.most_gooned_gallery?.name || t('None')}
+              <StatBox icon={Images} color="var(--c-accent)" label={t('Most gooned gallery')} value={stats.most_gooned_gallery?.name || t('None')}
                        onClick={stats.most_gooned_gallery ? () => { navigate(`/galleries/${stats.most_gooned_gallery.id}`); onClose(); } : undefined} />
-              <StatBox icon={Eye} color="#D4537E" label={t('Most gooned image')} value={stats.most_gooned_image?.filename || t('None')}
+              <StatBox icon={Eye} color="var(--c-pink)" label={t('Most gooned image')} value={stats.most_gooned_image?.filename || t('None')}
                        sub={stats.most_gooned_image ? `Gallery #${stats.most_gooned_image.gallery_id}` : ''}
                        onClick={stats.most_gooned_image ? () => { navigate(`/galleries/${stats.most_gooned_image.gallery_id}?openImage=${stats.most_gooned_image.id}`); onClose(); } : undefined} />
-              <StatBox icon={Video} color="#ED93B1" label={t('Most gooned video')} value={stats.most_gooned_video?.filename || t('None')}
+              <StatBox icon={Video} color="var(--c-pink-text)" label={t('Most gooned video')} value={stats.most_gooned_video?.filename || t('None')}
                        sub={stats.most_gooned_video ? `Gallery #${stats.most_gooned_video.gallery_id}` : ''}
                        onClick={stats.most_gooned_video ? () => { navigate(`/galleries/${stats.most_gooned_video.gallery_id}?openImage=${stats.most_gooned_video.id}`); onClose(); } : undefined} />
             </div>
@@ -664,7 +492,7 @@ const CAT_COLORS = {
   style:           '#9FE1CB',
   general:         '#888780',
 }
-const catColor = (cat) => CAT_COLORS[cat] || '#7F77DD'
+const catColor = (cat) => CAT_COLORS[cat] || 'var(--c-accent)'
 
 // ── Trending Tags sidebar widget ──────────────────────────────────────────────
 function TrendingTagsWidget({ onTagClick }) {
@@ -680,7 +508,7 @@ function TrendingTagsWidget({ onTagClick }) {
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
       <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
            style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Activity size={14} style={{ color: '#1D9E75' }} /> {t('Trending Tags')}
+        <Activity size={14} style={{ color: 'var(--c-green)' }} /> {t('Trending Tags')}
       </div>
       <div className="flex flex-col gap-1.5">
         {trending.map(t => (
@@ -696,7 +524,7 @@ function TrendingTagsWidget({ onTagClick }) {
               </span>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-              <span style={{ fontSize: 14, color: '#1D9E75', fontWeight: 600 }}>+{t.recent_count}</span>
+              <span style={{ fontSize: 14, color: 'var(--c-green)', fontWeight: 600 }}>+{t.recent_count}</span>
               <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)' }}>{t.use_count}</span>
             </div>
           </button>
@@ -721,7 +549,7 @@ function TopTagsWidget({ onTagClick }) {
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
       <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
            style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Hash size={14} style={{ color: '#BA7517' }} /> {t('Top Tags')}
+        <Hash size={14} style={{ color: 'var(--c-amber)' }} /> {t('Top Tags')}
       </div>
       <div className="flex flex-col gap-1.5">
         {allTags.map(t => (
@@ -731,7 +559,7 @@ function TopTagsWidget({ onTagClick }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-0.5">
                 <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                <span style={{ fontSize: 13, color: '#BA7517', fontWeight: 700, marginLeft: 6, flexShrink: 0 }}>{(t.use_count ?? 0).toLocaleString()}</span>
+                <span style={{ fontSize: 13, color: 'var(--c-amber)', fontWeight: 700, marginLeft: 6, flexShrink: 0 }}>{(t.use_count ?? 0).toLocaleString()}</span>
               </div>
               <div style={{ height: 3, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${((t.use_count ?? 0) / maxUse) * 100}%`, background: catColor(t.category), borderRadius: 99, transition: 'width 0.3s ease' }} />
@@ -758,14 +586,14 @@ function CoOccurringWidget({ onTagClick, onPairClick }) {
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
       <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
            style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Hash size={14} style={{ color: '#7F77DD' }} /> {t('Often Together')}
+        <Hash size={14} style={{ color: 'var(--c-accent)' }} /> {t('Often Together')}
       </div>
       <div className="flex flex-col gap-1.5">
         {pairs.map((p, i) => (
           <div key={i} className="flex items-center gap-1 px-2 py-1.5 rounded-[7px] group/pair cursor-pointer"
                style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.05)' }}
                onClick={() => onPairClick ? onPairClick(p.tag1.name, p.tag2.name) : onTagClick(p.tag1.name)}
-               onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.07)'}
+               onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'}
                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
             <button onClick={e => { e.stopPropagation(); onTagClick(p.tag1.name) }}
                     className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
@@ -784,7 +612,7 @@ function CoOccurringWidget({ onTagClick, onPairClick }) {
             </button>
             <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginLeft: 'auto', flexShrink: 0 }}>{p.co_count}</span>
             <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[10px] transition-opacity"
-                  style={{ color: 'rgba(127,119,221,0.7)' }}>{t('view →')}</span>
+                  style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{t('view →')}</span>
           </div>
         ))}
       </div>
@@ -807,13 +635,13 @@ function MoreLikeThis({ refGalleryId, refGalleryName, onNavigate }) {
     <div>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-          <Zap size={16} style={{ color: '#7F77DD' }} /> {t('More Like This')}
+          <Zap size={16} style={{ color: 'var(--c-accent)' }} /> {t('More Like This')}
           {refGalleryName && (
             <span className="text-[14px] font-normal text-[rgba(255,255,255,0.3)] ml-1">{t('based on')} {refGalleryName}</span>
           )}
         </div>
         <button onClick={() => onNavigate ? onNavigate() : null}
-                className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>{t('browse all')}</button>
+                className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('browse all')}</button>
       </div>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
         {similar.map(g => (
@@ -915,7 +743,7 @@ function ScanModal({ onClose }) {
         <div className="flex items-center justify-between px-5 py-4"
              style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
           <div className="flex items-center gap-2">
-            <FolderSearch size={16} style={{ color: '#7F77DD' }} />
+            <FolderSearch size={16} style={{ color: 'var(--c-accent)' }} />
             <span style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t('Scan Folders')}</span>
           </div>
           <button onMouseDown={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -929,9 +757,9 @@ function ScanModal({ onClose }) {
               only confirm the job was added; progress shows in the global queue. */}
           {queuedId !== undefined && (
             <div className="rounded-[10px] px-4 py-3 flex items-center gap-3"
-                 style={{ background: 'rgba(29,158,117,0.12)', border: '0.5px solid rgba(29,158,117,0.3)' }}>
-              <Check size={16} style={{ color: '#1D9E75', flexShrink: 0 }} />
-              <div style={{ fontSize: 15, color: '#9FE1CB', fontWeight: 500 }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-green) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
+              <Check size={16} style={{ color: 'var(--c-green)', flexShrink: 0 }} />
+              <div style={{ fontSize: 15, color: 'var(--c-green-text)', fontWeight: 500 }}>
                 {t('Added to queue')} — {queuedId === null ? t('scanning entire library') : t('scanning folder')}
               </div>
             </div>
@@ -941,9 +769,9 @@ function ScanModal({ onClose }) {
           <button
             onMouseDown={() => triggerScan(null)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-[10px] cursor-pointer transition-all"
-            style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)', color: '#CECBF6' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)' }}>
             {queuedId === null
-              ? <Check size={16} style={{ color: '#9FE1CB', flexShrink: 0 }} />
+              ? <Check size={16} style={{ color: 'var(--c-green-text)', flexShrink: 0 }} />
               : <Plus size={16} style={{ flexShrink: 0 }} />}
             <div className="text-left">
               <div style={{ fontSize: 15, fontWeight: 600 }}>{t('Scan Entire Library')}</div>
@@ -982,11 +810,11 @@ function ScanModal({ onClose }) {
                     key={root.id}
                     onMouseDown={() => triggerScan(root.id)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer text-left transition-all"
-                    style={{ background: queuedId === root.id ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}
+                    style={{ background: queuedId === root.id ? 'color-mix(in srgb, var(--c-green) 12%, transparent)' : 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}
                     onMouseEnter={e => { if (queuedId !== root.id) e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = queuedId === root.id ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.03)' }}>
+                    onMouseLeave={e => { e.currentTarget.style.background = queuedId === root.id ? 'color-mix(in srgb, var(--c-green) 12%, transparent)' : 'rgba(255,255,255,0.03)' }}>
                     {queuedId === root.id
-                      ? <Check size={13} style={{ color: '#1D9E75', flexShrink: 0 }} />
+                      ? <Check size={13} style={{ color: 'var(--c-green)', flexShrink: 0 }} />
                       : <FolderSearch size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />}
                     <div className="min-w-0 flex-1">
                       <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1190,10 +1018,10 @@ function GalleryHoverTile({ gallery, onClick, onContextMenu }) {
 
 // ── Tabbed random discovery section ──────────────────────────────────────────
 const RAND_TABS = [
-  { key: 'galleries', label: 'Galleries', color: '#7F77DD' },
-  { key: 'photos',    label: 'Photos',    color: '#D4537E' },
-  { key: 'videos',    label: 'Videos',    color: '#7F77DD' },
-  { key: 'creators',  label: 'Creators',  color: '#BA7517' },
+  { key: 'galleries', label: 'Galleries', color: 'var(--c-accent)' },
+  { key: 'photos',    label: 'Photos',    color: 'var(--c-pink)' },
+  { key: 'videos',    label: 'Videos',    color: 'var(--c-accent)' },
+  { key: 'creators',  label: 'Creators',  color: 'var(--c-amber)' },
 ]
 
 function RandomDiscovery({ galleries, images, videos, creators, onContextMenu }) {
@@ -1227,7 +1055,7 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu })
             </button>
           ))}
         </div>
-        <button onClick={() => navigate(browseLinks[tab])} className="ml-auto text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>
+        <button onClick={() => navigate(browseLinks[tab])} className="ml-auto text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>
           {t('browse all')}
         </button>
       </div>
@@ -1295,7 +1123,7 @@ export default function Dashboard() {
 
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
 
-  const [showMission, setShowMission] = useState(false)
+  const [showCuration, setShowCuration] = useState(false)
   const [showMoreStats, setShowMoreStats] = useState(false)
   const [showScanModal, setShowScanModal] = useState(false)
   const [showIntake, setShowIntake] = useState(false)
@@ -1308,17 +1136,6 @@ export default function Dashboard() {
     e.preventDefault()
     setCtxMenu({ item, itemType, position: { x: e.clientX, y: e.clientY } })
   }, [])
-
-  const handleRandomGallery = async () => {
-    try {
-      const res = await galleriesApi.randomPicks(1)
-      const picks = res.data
-      if (picks?.length > 0) navigate(`/galleries/${picks[0].id}`)
-      else toast(t('No galleries in your library yet'), { icon: '📁' })
-    } catch {
-      toast.error(t('Could not fetch a random gallery'))
-    }
-  }
 
   // Drag-to-scroll for favorites strip
   const favsRef = useRef(null)
@@ -1364,6 +1181,7 @@ export default function Dashboard() {
   const { data: topCollections }  = useQuery({ queryKey: ['top-collections'],  queryFn: () => creatorsApi.topByValue(5).then(r => r.data), enabled: collectionsOpen })
   const { data: recentSessions } = useQuery({ queryKey: ['recent-sessions'], queryFn: () => sessionsApi.list({ limit: 8 }).then(r => r.data) })
   const { data: balance }        = useQuery({ queryKey: ['economy-balance'], queryFn: () => economyApi.balance().then(r => r.data) })
+  const { data: curationDebt }   = useQuery({ queryKey: ['curation-debt'],    queryFn: () => curationApi.debt().then(r => r.data) })
   const { data: epicCards }      = useQuery({ queryKey: ['epic-cards-strip'], queryFn: () => cardsApi.inventory({ sort: 'rarity_desc', limit: 20 }).then(r => (r.data?.items ?? []).filter(c => ['epic','legendary','relic','celestial'].includes(c.rarity))) })
 
   const sessionMutation = useMutation({
@@ -1393,9 +1211,9 @@ export default function Dashboard() {
           <div className="text-[22px] font-medium text-white">{t('Dashboard')}</div>
           {(profile?.streak_days ?? 0) > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full"
-                 style={{ background: 'rgba(186,117,23,0.15)', border: '0.5px solid rgba(186,117,23,0.35)' }}>
-              <Flame size={13} style={{ color: '#BA7517' }} />
-              <span className="text-[14px] font-semibold" style={{ color: '#FAC775' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
+              <Flame size={13} style={{ color: 'var(--c-amber)' }} />
+              <span className="text-[14px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>
                 {t('Day')} {profile.streak_days}
               </span>
             </div>
@@ -1412,14 +1230,9 @@ export default function Dashboard() {
           )}
         </div>
         <div className="flex gap-2">
-          <button onClick={handleRandomGallery}
-                  className="flex items-center gap-2 font-medium rounded-full cursor-pointer"
-                  style={{ fontSize: 14, padding: '8px 18px', background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-            <Dice6 size={15} /> {t('Random Gallery')}
-          </button>
           <button onClick={() => setShowMixModal(true)}
                   className="flex items-center gap-2 font-medium rounded-full cursor-pointer"
-                  style={{ fontSize: 14, padding: '8px 18px', background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                  style={{ fontSize: 14, padding: '8px 18px', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
             <Shuffle size={15} /> {t('Random Mix')}
           </button>
         </div>
@@ -1441,8 +1254,8 @@ export default function Dashboard() {
           { icon: Images,    label: t('Galleries'),        value: (stats?.total_galleries ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
           { icon: User,      label: t('Creators'),         value: (stats?.total_creators  ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
           { icon: HardDrive, label: t('Vault size'),       value: `${stats?.total_size_gb ?? 0} GB`,             color: 'rgba(255,255,255,0.9)' },
-          { icon: TagIcon,   label: t('Untagged'),         value: `${stats?.untagged_files ?? 0}`, subValue: `${stats?.untagged_pct ?? 0}%`, color: '#9FE1CB' },
-          { icon: Target,    label: t('Collection value'), value: `$${(stats?.collection_value ?? 0).toLocaleString()}`, color: '#1D9E75', onClick: () => setCollectionsOpen(v => !v) },
+          { icon: TagIcon,   label: t('Untagged'),         value: `${stats?.untagged_files ?? 0}`, subValue: `${stats?.untagged_pct ?? 0}%`, color: 'var(--c-green-text)' },
+          { icon: Target,    label: t('Collection value'), value: `$${(stats?.collection_value ?? 0).toLocaleString()}`, color: 'var(--c-green)', onClick: () => setCollectionsOpen(v => !v) },
         ].map(({ icon: Icon, label, value, subValue, color, onClick }) => {
           const valStr = String(value || '');
           const isLong = valStr.length > 7;
@@ -1452,7 +1265,7 @@ export default function Dashboard() {
                  className="rounded-[8px] p-2.5 flex flex-col justify-center relative overflow-hidden"
                  style={{
                    background: 'rgba(255,255,255,0.04)',
-                   border: `0.5px solid ${onClick && collectionsOpen ? 'rgba(29,158,117,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                   border: `0.5px solid ${onClick && collectionsOpen ? 'color-mix(in srgb, var(--c-green) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                    gridColumn: isLong ? 'span 2' : 'auto',
                    cursor: onClick ? 'pointer' : 'default',
                  }}>
@@ -1472,15 +1285,15 @@ export default function Dashboard() {
         <button
           onClick={() => setShowMoreStats(true)}
           className="rounded-[8px] p-2.5 flex flex-col justify-center cursor-pointer transition-all duration-150"
-          style={{ background: 'rgba(127,119,221,0.07)', border: '0.5px solid rgba(127,119,221,0.2)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.14)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.4)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.07)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.2)' }}
+          style={{ background: 'color-mix(in srgb, var(--c-accent) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 14%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 20%, transparent)' }}
         >
           <div className="flex items-center gap-1 mb-1">
-            <BarChart2 size={11} style={{ color: 'rgba(127,119,221,0.5)' }} />
-            <span className="text-[12px] truncate" style={{ color: 'rgba(127,119,221,0.6)' }}>{t('Stats')}</span>
+            <BarChart2 size={11} style={{ color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
+            <span className="text-[12px] truncate" style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }}>{t('Stats')}</span>
           </div>
-          <div className="text-[14px] font-medium" style={{ color: '#CECBF6' }}>{t('More →')}</div>
+          <div className="text-[14px] font-medium" style={{ color: 'var(--c-accent-text)' }}>{t('More →')}</div>
         </button>
       </div>
 
@@ -1497,8 +1310,8 @@ export default function Dashboard() {
           >
             <div className="rounded-[12px] p-4" style={{
               maxWidth: 440,
-              background: 'rgba(29,158,117,0.07)',
-              border: '0.5px solid rgba(29,158,117,0.25)',
+              background: 'color-mix(in srgb, var(--c-green) 7%, transparent)',
+              border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)',
             }}>
               <div className="text-[15px] font-semibold text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-3">
                 {t('Top creators by collection value')}
@@ -1514,11 +1327,11 @@ export default function Dashboard() {
                          onClick={() => navigate(`/creators/${c.id}`)}
                          className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] cursor-pointer"
                          style={{ background: 'rgba(255,255,255,0.03)' }}
-                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(29,158,117,0.1)'}
+                         onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-green) 10%, transparent)'}
                          onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-                      <span className="text-[16px] font-bold w-6 flex-shrink-0" style={{ color: 'rgba(29,158,117,0.5)' }}>#{i + 1}</span>
+                      <span className="text-[16px] font-bold w-6 flex-shrink-0" style={{ color: 'color-mix(in srgb, var(--c-green) 50%, transparent)' }}>#{i + 1}</span>
                       <span className="flex-1 text-[18px] font-medium text-[rgba(255,255,255,0.85)] truncate">{c.name}</span>
-                      <span className="text-[19px] font-semibold flex-shrink-0" style={{ color: '#1D9E75' }}>${c.collection_value.toLocaleString()}</span>
+                      <span className="text-[19px] font-semibold flex-shrink-0" style={{ color: 'var(--c-green)' }}>${c.collection_value.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -1537,36 +1350,65 @@ export default function Dashboard() {
           {/* Empty state */}
           {!stats?.total_galleries && (
             <div className="rounded-[12px] p-5 flex items-center justify-between"
-                 style={{ background: 'rgba(127,119,221,0.08)', border: '0.5px solid rgba(127,119,221,0.2)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
               <div>
                 <div className="text-[18px] font-medium text-[rgba(255,255,255,0.85)] mb-1">{t('Your vault is empty')}</div>
                 <div className="text-[16px] text-[rgba(255,255,255,0.4)]">{t('Settings → add library folder → Scan library now')}</div>
               </div>
               <button onClick={() => navigate('/settings')}
                       className="flex-shrink-0 ml-4 text-[16px] font-medium px-4 py-2 rounded-full cursor-pointer"
-                      style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                 {t('Go to Settings →')}
               </button>
             </div>
           )}
 
           {/* ── Hero action tiles ─────────────────────────────────────────────── */}
-          {(stats?.total_galleries ?? 0) > 0 && (randomGalleries ?? []).length > 0 && (
+          {(stats?.total_galleries ?? 0) > 0 && (
             <div className="grid gap-3" style={{ gridTemplateColumns: '1.2fr 1fr 1fr' }}>
-              {/* Random gallery with hover photo preview */}
-              <GalleryHoverTile
-                gallery={randomGalleries[0]}
-                onClick={() => navigate(`/galleries/${randomGalleries[0].id}`)}
-                onContextMenu={(e) => openCtx(e, randomGalleries[0], 'gallery')}
-              />
+              {/* Collection Curating — occupies the old Random Gallery tile's exact cell,
+                  so the row's proportions are unchanged. */}
+              <button onClick={() => setShowCuration(true)}
+                      className="rounded-[12px] cursor-pointer text-left flex flex-col justify-between p-4 relative overflow-hidden group"
+                      style={{ minHeight: 120, background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)', transition: 'background 0.15s, border-color 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 13%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 45%, transparent)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 7%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} style={{ color: 'var(--c-amber)' }} />
+                  <span className="text-[11px] uppercase tracking-wider font-medium"
+                        style={{ color: 'color-mix(in srgb, var(--c-amber) 70%, transparent)' }}>{t('Collection Curating')}</span>
+                </div>
+
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <div style={{ fontSize: 30, fontWeight: 600, color: 'var(--c-amber-text)', lineHeight: 1.1 }}>
+                      {(curationDebt?.pending ?? 0).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
+                      {t('galleries waiting to be curated')}
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0"
+                        style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)', color: 'var(--c-amber-text)' }}>
+                    {t('Start')} <ArrowRight size={14} />
+                  </span>
+                </div>
+
+                {(curationDebt?.total ?? 0) > 0 && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[3px]"
+                       style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="h-full" style={{ width: `${curationDebt.pct}%`, background: 'var(--c-amber)' }} />
+                  </div>
+                )}
+              </button>
 
               {/* TCG shortcut — strip of epic+ cards */}
               <button onClick={() => navigate('/collection')}
                       className="rounded-[12px] cursor-pointer text-left flex flex-col p-3 group"
-                      style={{ minHeight: 120, background: 'rgba(127,119,221,0.07)', border: '0.5px solid rgba(127,119,221,0.2)', transition: 'background 0.15s, border-color 0.15s', gap: 8 }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.13)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.45)' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.07)'; e.currentTarget.style.borderColor = 'rgba(127,119,221,0.2)' }}>
-                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(127,119,221,0.6)' }}>{t('Card Collection')}</div>
+                      style={{ minHeight: 120, background: 'color-mix(in srgb, var(--c-accent) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)', transition: 'background 0.15s, border-color 0.15s', gap: 8 }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 13%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 45%, transparent)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
+                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }}>{t('Card Collection')}</div>
                 {(epicCards ?? []).length > 0 ? (
                   // Card stack is absolutely positioned so its (deliberately oversized)
                   // cards overflow the tile WITHOUT adding to its height — otherwise the
@@ -1574,7 +1416,7 @@ export default function Dashboard() {
                   <div className="relative flex-1" style={{ minHeight: 0 }}>
                     <div className="absolute flex items-center" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', gap: 0, whiteSpace: 'nowrap' }}>
                     {epicCards.slice(0, 5).map((c, i, arr) => {
-                      const rc = { epic: '#7F77DD', legendary: '#BA7517', relic: '#E24B4A', celestial: '#FAC775' }[c.rarity] ?? '#7F77DD'
+                      const rc = { epic: '#7F77DD', legendary: '#BA7517', relic: '#E24B4A', celestial: '#FAC775' }[c.rarity] ?? 'var(--c-accent)'
                       const isCenter = i === Math.floor(arr.slice(0, 5).length / 2)
                       return (
                         <div key={c.inventory_id} style={{
@@ -1603,10 +1445,10 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
-                    <span style={{ fontSize: 13, color: 'rgba(127,119,221,0.35)' }}>{t('No epic+ cards yet')}</span>
+                    <span style={{ fontSize: 13, color: 'color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>{t('No epic+ cards yet')}</span>
                   </div>
                 )}
-                <div style={{ fontSize: 12, color: 'rgba(127,119,221,0.5)' }}>
+                <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
                   {(epicCards ?? []).length > 0 ? `${epicCards.length} epic+ owned →` : t('Open packs →')}
                 </div>
               </button>
@@ -1618,31 +1460,31 @@ export default function Dashboard() {
                         minHeight: 120,
                         transition: 'background 0.15s, border-color 0.15s',
                         ...(sessionActive
-                          ? { background: 'rgba(212,83,126,0.18)', border: '0.5px solid rgba(212,83,126,0.45)' }
-                          : { background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.2)' })
+                          ? { background: 'color-mix(in srgb, var(--c-pink) 18%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 45%, transparent)' }
+                          : { background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' })
                       }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.background = sessionActive ? 'rgba(212,83,126,0.28)' : 'rgba(212,83,126,0.14)'
-                        e.currentTarget.style.borderColor = 'rgba(212,83,126,0.5)'
+                        e.currentTarget.style.background = sessionActive ? 'color-mix(in srgb, var(--c-pink) 28%, transparent)' : 'color-mix(in srgb, var(--c-pink) 14%, transparent)'
+                        e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-pink) 50%, transparent)'
                       }}
                       onMouseLeave={e => {
-                        e.currentTarget.style.background = sessionActive ? 'rgba(212,83,126,0.18)' : 'rgba(212,83,126,0.08)'
-                        e.currentTarget.style.borderColor = sessionActive ? 'rgba(212,83,126,0.45)' : 'rgba(212,83,126,0.2)'
+                        e.currentTarget.style.background = sessionActive ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'color-mix(in srgb, var(--c-pink) 8%, transparent)'
+                        e.currentTarget.style.borderColor = sessionActive ? 'color-mix(in srgb, var(--c-pink) 45%, transparent)' : 'color-mix(in srgb, var(--c-pink) 20%, transparent)'
                       }}>
                 {/* Big circular play / stop control */}
                 <div className="flex items-center justify-center rounded-full transition-transform group-hover:scale-105"
                      style={{ width: 60, height: 60,
-                              background: sessionActive ? '#D4537E' : 'rgba(212,83,126,0.85)',
-                              boxShadow: '0 4px 18px rgba(212,83,126,0.45)' }}>
+                              background: sessionActive ? 'var(--c-pink)' : 'color-mix(in srgb, var(--c-pink) 85%, transparent)',
+                              boxShadow: '0 4px 18px color-mix(in srgb, var(--c-pink) 45%, transparent)' }}>
                   {sessionActive
                     ? <div style={{ width: 20, height: 20, borderRadius: 3, background: '#fff' }} />
                     : <Play size={28} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />}
                 </div>
                 <div className="text-center">
-                  <div className="text-[16px] font-semibold" style={{ color: '#ED93B1' }}>
+                  <div className="text-[16px] font-semibold" style={{ color: 'var(--c-pink-text)' }}>
                     {sessionActive ? `End — ${fmtMs(sessionElapsedMs)}` : t('Start session')}
                   </div>
-                  <div className="text-[12px] mt-0.5" style={{ color: 'rgba(212,83,126,0.55)' }}>
+                  <div className="text-[12px] mt-0.5" style={{ color: 'color-mix(in srgb, var(--c-pink) 55%, transparent)' }}>
                     {sessionActive ? t('Log when you finish') : t('+25 XP when you finish')}
                   </div>
                 </div>
@@ -1654,9 +1496,9 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-                <Star size={16} style={{ color: '#BA7517' }} /> {t('Your favorites')}
+                <Star size={16} style={{ color: 'var(--c-amber)' }} /> {t('Your favorites')}
               </div>
-              <button onClick={() => navigate('/creators')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>{t('manage')}</button>
+              <button onClick={() => navigate('/creators')} className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('manage')}</button>
             </div>
             <div ref={favsRef} onMouseDown={onFavsMouseDown}
                  className="flex gap-3 overflow-x-auto pb-1 select-none"
@@ -1666,7 +1508,7 @@ export default function Dashboard() {
                   <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('No favorites yet —')}</span>
                   <button onClick={() => navigate('/creators')}
                           className="flex items-center gap-1.5 text-[15px] px-3 py-1.5 rounded-full cursor-pointer"
-                          style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                          style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                     <Plus size={13} /> {t('Add a creator')}
                   </button>
                 </div>
@@ -1706,7 +1548,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
                     <Clock size={16} style={{ color: 'rgba(255,255,255,0.4)' }} /> {t('Recently added')}
                   </div>
-                  <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: '#7F77DD' }}>{t('view all')}</button>
+                  <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('view all')}</button>
                 </div>
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
                   {recent.map(g => (
@@ -1726,7 +1568,7 @@ export default function Dashboard() {
               <HofSection
                 title={t('Creator Hall of Fame')}
                 icon={Trophy}
-                iconColor="#BA7517"
+                iconColor="var(--c-amber)"
                 items={creatorHof}
                 cardMinWidth={260}
                 emptyMsg={t('Log sessions to build your creator hall of fame')}
@@ -1749,23 +1591,23 @@ export default function Dashboard() {
                style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-              <Zap size={14} style={{ color: '#7F77DD' }} /> {t('Tools')}
+              <Zap size={14} style={{ color: 'var(--c-accent)' }} /> {t('Tools')}
             </div>
             <div className="flex flex-col gap-2">
               <button onClick={() => setShowScanModal(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
-                      style={{ background: 'rgba(29,158,117,0.12)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.25)', fontSize: 15, fontWeight: 500 }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-green) 12%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
                 <Plus size={15} /> {t('Scan Folders')}
               </button>
               <button onClick={() => setShowIntake(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
-                      style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)', fontSize: 15, fontWeight: 500 }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
                 <Inbox size={15} /> {t('Loading Bay')}
               </button>
-              <button onClick={() => setShowMission(true)}
+              <button onClick={() => setShowCuration(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
-                      style={{ background: 'rgba(186,117,23,0.12)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.25)', fontSize: 15, fontWeight: 500 }}>
-                <Dice6 size={15} /> {t('Daily Tagging')}
+                      style={{ background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
+                <Sparkles size={15} /> {t('Curate')}
               </button>
             </div>
           </div>
@@ -1777,9 +1619,9 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
                      style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                  <Calendar size={14} style={{ color: '#BA7517' }} /> {t('Daily Quests')}
+                  <Calendar size={14} style={{ color: 'var(--c-amber)' }} /> {t('Daily Quests')}
                 </div>
-                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: '#7F77DD', cursor: 'pointer' }}>{t('all →')}</button>
+                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>
               </div>
               <div className="flex flex-col gap-3">
                 {quests.filter(q => q.quest_type === 'daily' && q.status !== 'completed').map(q => {
@@ -1790,11 +1632,11 @@ export default function Dashboard() {
                         <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                           {q.title || q.key}
                         </span>
-                        <span style={{ fontSize: 14, color: '#BA7517', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                        <span style={{ fontSize: 14, color: 'var(--c-amber)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#1D9E75' : '#BA7517', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--c-green)' : 'var(--c-amber)', borderRadius: 99, transition: 'width 0.4s ease' }} />
                         </div>
                         <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
                       </div>
@@ -1812,9 +1654,9 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
                      style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                  <Target size={14} style={{ color: '#7F77DD' }} /> {t('Weekly Quests')}
+                  <Target size={14} style={{ color: 'var(--c-accent)' }} /> {t('Weekly Quests')}
                 </div>
-                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: '#7F77DD', cursor: 'pointer' }}>{t('all →')}</button>
+                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>
               </div>
               <div className="flex flex-col gap-3">
                 {quests.filter(q => q.quest_type === 'weekly' && q.status !== 'completed').map(q => {
@@ -1825,11 +1667,11 @@ export default function Dashboard() {
                         <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                           {q.title || q.key}
                         </span>
-                        <span style={{ fontSize: 14, color: '#7F77DD', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                        <span style={{ fontSize: 14, color: 'var(--c-accent)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#1D9E75' : '#7F77DD', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--c-green)' : 'var(--c-accent)', borderRadius: 99, transition: 'width 0.4s ease' }} />
                         </div>
                         <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
                       </div>
@@ -1858,9 +1700,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
                    style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                <Heart size={14} style={{ color: '#D4537E' }} /> {t('Recent Sessions')}
+                <Heart size={14} style={{ color: 'var(--c-pink)' }} /> {t('Recent Sessions')}
               </div>
-              <button onClick={() => navigate('/sessions')} style={{ fontSize: 15, color: '#7F77DD', cursor: 'pointer' }}>{t('view all')}</button>
+              <button onClick={() => navigate('/sessions')} style={{ fontSize: 15, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('view all')}</button>
             </div>
             {(!recentSessions || recentSessions.length === 0) ? (
               <div style={{ fontSize: 15, padding: '8px 0', color: 'rgba(255,255,255,0.2)' }}>{t('No sessions yet')}</div>
@@ -1875,7 +1717,7 @@ export default function Dashboard() {
                         <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.28)' }}>{fmtMs(s.duration_sec * 1000)}</div>
                       )}
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#7F77DD', flexShrink: 0 }}>+{s.xp_earned} XP</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-accent)', flexShrink: 0 }}>+{s.xp_earned} XP</div>
                   </div>
                 ))}
               </div>
@@ -1886,8 +1728,8 @@ export default function Dashboard() {
               style={{
                 fontSize: 17,
                 ...(sessionActive
-                  ? { background: 'rgba(212,83,126,0.3)', color: '#FFD4E2', border: '1px solid rgba(212,83,126,0.6)' }
-                  : { background: 'rgba(212,83,126,0.1)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.25)' })
+                  ? { background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#FFD4E2', border: '1px solid color-mix(in srgb, var(--c-pink) 60%, transparent)' }
+                  : { background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' })
               }}>
               {sessionActive ? t('⏹ End session') : t('▶ Start session')}
             </button>
@@ -1898,20 +1740,20 @@ export default function Dashboard() {
                style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-4"
                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-              <Zap size={14} style={{ color: '#BA7517' }} /> {t('Vault Health')}
+              <Zap size={14} style={{ color: 'var(--c-amber)' }} /> {t('Vault Health')}
             </div>
 
             <div className="mb-4">
               <div className="flex justify-between mb-1.5" style={{ fontSize: 15 }}>
                 <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Tagged files')}</span>
-                <span style={{ color: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? '#BA7517' : '#1D9E75' }}>
+                <span style={{ color: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? 'var(--c-amber)' : 'var(--c-green)' }}>
                   {100 - (stats?.untagged_pct ?? 0)}%
                 </span>
               </div>
               <div className="h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
                 <div className="h-full rounded-full transition-all duration-700" style={{
                   width: `${100 - (stats?.untagged_pct ?? 0)}%`,
-                  background: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? '#BA7517' : '#1D9E75',
+                  background: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? 'var(--c-amber)' : 'var(--c-green)',
                 }} />
               </div>
               <div style={{ fontSize: 15, marginTop: 4, color: 'rgba(255,255,255,0.25)' }}>
@@ -1923,13 +1765,13 @@ export default function Dashboard() {
               {(stats?.avg_rating ?? 0) > 0 && (
                 <div className="flex justify-between items-center">
                   <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t('Avg rating')}</span>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: '#BA7517' }}>★ {stats.avg_rating}</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-amber)' }}>★ {stats.avg_rating}</span>
                 </div>
               )}
               {stats?.most_common_tag && (
                 <div className="flex justify-between items-center">
                   <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t('Top tag')}</span>
-                  <span style={{ fontSize: 15, padding: '3px 8px', borderRadius: 20, background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                  <span style={{ fontSize: 15, padding: '3px 8px', borderRadius: 20, background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
                     #{stats.most_common_tag}
                   </span>
                 </div>
@@ -1942,11 +1784,11 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {(stats?.untagged_files ?? 0) > 0 && (
-              <button onClick={() => setShowMission(true)}
+            {(curationDebt?.pending ?? 0) > 0 && (
+              <button onClick={() => setShowCuration(true)}
                       className="w-full py-2.5 rounded-[8px] font-medium cursor-pointer"
-                      style={{ fontSize: 16, background: 'rgba(186,117,23,0.12)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.25)' }}>
-                {t('🎯 Tagging mission')}
+                      style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+                ✨ {t('Curate')} — {curationDebt.pending.toLocaleString()} {t('waiting')}
               </button>
             )}
           </div>
@@ -1957,19 +1799,19 @@ export default function Dashboard() {
                  style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
               <div className="flex items-center justify-between mb-4">
                 <div style={{ fontSize: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.35)' }}>{t('💰 Wallet')}</div>
-                <button onClick={() => navigate('/collection')} style={{ fontSize: 15, color: '#7F77DD', cursor: 'pointer' }}>{t('open packs →')}</button>
+                <button onClick={() => navigate('/collection')} style={{ fontSize: 15, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('open packs →')}</button>
               </div>
               <div className="flex flex-col gap-3 mb-4">
                 <div className="flex justify-between items-center">
                   <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t('Vault Credits')}</span>
-                  <span style={{ fontSize: 23, fontWeight: 700, color: '#FAC775' }}>
+                  <span style={{ fontSize: 23, fontWeight: 700, color: 'var(--c-amber-text)' }}>
                     {(balance.vault_credits ?? 0).toLocaleString()}
                   </span>
                 </div>
                 {(balance.shards ?? 0) > 0 && (
                   <div className="flex justify-between items-center">
                     <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t('Shards')}</span>
-                    <span style={{ fontSize: 19, fontWeight: 600, color: '#CECBF6' }}>
+                    <span style={{ fontSize: 19, fontWeight: 600, color: 'var(--c-accent-text)' }}>
                       {(balance.shards ?? 0).toLocaleString()}
                     </span>
                   </div>
@@ -1977,7 +1819,7 @@ export default function Dashboard() {
               </div>
               <button onClick={() => setShowSpinModal(true)}
                       className="w-full py-2.5 rounded-[8px] font-medium cursor-pointer"
-                      style={{ fontSize: 16, background: 'rgba(186,117,23,0.12)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.25)' }}>
+                      style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
                 {t('🎰 Daily spin')}
               </button>
             </div>
@@ -1986,12 +1828,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Daily tagging mission overlay */}
-      {showMission && (
-        <TaggingMission
-          onClose={() => setShowMission(false)}
-          onComplete={() => { qc.invalidateQueries({ queryKey: ['profile'] }); qc.invalidateQueries({ queryKey: ['quests'] }) }}
-        />
+      {showCuration && (
+        <CurationRun onClose={() => {
+          setShowCuration(false)
+          qc.invalidateQueries({ queryKey: ['curation-debt'] })
+          qc.invalidateQueries({ queryKey: ['vault-stats'] })
+        }} />
       )}
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
       {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}

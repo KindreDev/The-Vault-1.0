@@ -60,7 +60,7 @@ function ThinkingDots({ startedAt }) {
       <span className="flex gap-1.5 items-center">
         {[0, 1, 2].map(i => (
           <span key={i} className="w-2 h-2 rounded-full" style={{
-            background: 'var(--accent, #7F77DD)', opacity: 0.6,
+            background: 'var(--accent, var(--c-accent))', opacity: 0.6,
             animation: 'thinkBounce 1.2s ease-in-out infinite',
             animationDelay: `${i * 0.2}s`,
           }} />
@@ -144,9 +144,9 @@ function renderContent(text, navigate, creators, galleries) {
               title={`Open ${part}`}
               className="cursor-pointer inline-flex items-center rounded-md px-1.5 py-0.5 mx-0.5 transition-all hover:brightness-125 active:scale-95"
               style={{
-                background: 'rgba(127,119,221,0.18)',
-                border: '1px solid rgba(127,119,221,0.35)',
-                color: '#CECBF6',
+                background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--c-accent) 35%, transparent)',
+                color: 'var(--c-accent-text)',
                 fontSize: '0.9em',
               }}>
           {label}
@@ -170,11 +170,11 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
       `}</style>
       {!isUser && (
         <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center"
-             style={{ background: 'rgba(127,119,221,0.2)', border: '1px solid rgba(127,119,221,0.3)' }}>
+             style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           {activeCreator?.avatar_path
             ? <img src={creatorsApi.avatarThumbUrl(activeCreator.id, 64)} alt={activeCreator.name}
                    className="w-full h-full object-cover" />
-            : <Sparkles size={14} style={{ color: 'var(--accent, #7F77DD)' }} />}
+            : <Sparkles size={14} style={{ color: 'var(--accent, var(--c-accent))' }} />}
         </div>
       )}
       <div className="flex flex-col gap-1 max-w-[80%]">
@@ -185,7 +185,7 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
         )}
         <div className="rounded-2xl px-4 py-2.5 text-[17px] leading-relaxed whitespace-pre-wrap"
              style={isUser ? {
-               background: 'rgba(127,119,221,0.18)', border: '1px solid rgba(127,119,221,0.25)',
+               background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 25%, transparent)',
                color: 'rgba(255,255,255,0.9)', borderBottomRightRadius: 6,
              } : {
                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
@@ -230,11 +230,11 @@ function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, 
           <button onClick={() => onSelect(null)}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/5 transition-all"
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            <Sparkles size={13} style={{ color: 'var(--accent, #7F77DD)', flexShrink: 0 }} />
-            <span className="flex-1 text-[13px]" style={{ color: !personaId ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
+            <Sparkles size={13} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />
+            <span className="flex-1 text-[13px]" style={{ color: !personaId ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
               {compName} (default)
             </span>
-            {!personaId && <Check size={12} style={{ color: 'var(--accent, #7F77DD)' }} />}
+            {!personaId && <Check size={12} style={{ color: 'var(--accent, var(--c-accent))' }} />}
           </button>
           {/* Creator list */}
           {filtered.slice(0, 40).map(c => (
@@ -248,10 +248,10 @@ function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, 
                 <User size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
               )}
               <span className="flex-1 truncate text-[13px]"
-                    style={{ color: personaId === c.id ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
+                    style={{ color: personaId === c.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
                 {c.name}
               </span>
-              {personaId === c.id && <Check size={12} style={{ color: 'var(--accent, #7F77DD)' }} />}
+              {personaId === c.id && <Check size={12} style={{ color: 'var(--accent, var(--c-accent))' }} />}
             </button>
           ))}
         </div>
@@ -508,8 +508,8 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
     }
     return (
       <div className="w-full h-full flex items-center justify-center"
-           style={{ background: 'rgba(127,119,221,0.15)' }}>
-        <Sparkles size={Math.round(size * 0.35)} style={{ color: 'var(--accent, #7F77DD)' }} />
+           style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)' }}>
+        <Sparkles size={Math.round(size * 0.35)} style={{ color: 'var(--accent, var(--c-accent))' }} />
       </div>
     )
   }
@@ -523,13 +523,13 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
         <div className="flex items-center gap-2.5 px-3 py-2.5 border-b flex-shrink-0"
              style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
           <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0"
-               style={{ border: '1.5px solid rgba(127,119,221,0.3)' }}>
+               style={{ border: '1.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
             {pfpContent(36)}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[15px] font-medium leading-tight truncate"
                style={{ color: 'rgba(255,255,255,0.9)' }}>{compName}</p>
-            <p className="text-[12px] leading-tight" style={{ color: '#D4537E' }}>
+            <p className="text-[12px] leading-tight" style={{ color: 'var(--c-pink)' }}>
               {bondName} {hearts}
             </p>
           </div>
@@ -561,8 +561,8 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
 
           {/* PFP */}
           <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0"
-               style={{ border: '2px solid rgba(127,119,221,0.35)',
-                        boxShadow: '0 0 20px rgba(127,119,221,0.16)' }}>
+               style={{ border: '2px solid color-mix(in srgb, var(--c-accent) 35%, transparent)',
+                        boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 16%, transparent)' }}>
             {pfpContent(80)}
           </div>
 
@@ -574,7 +574,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               <p className="text-[20px] font-semibold leading-tight" style={{ color: 'rgba(255,255,255,0.92)' }}>
                 {compName}
               </p>
-              <p className="text-[13px]" style={{ color: '#D4537E' }}>
+              <p className="text-[13px]" style={{ color: 'var(--c-pink)' }}>
                 {bondName} {hearts}
               </p>
             </div>
@@ -611,7 +611,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Personality</span>
                   <span className="text-[12px] font-medium capitalize px-2 py-0.5 rounded-lg"
-                        style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
                     {activeCreator.personality_type || 'bold'}
                   </span>
                   <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.12)' }}>·</span>
@@ -649,7 +649,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
            style={{ scrollbarWidth: 'thin' }}>
         {messages.length === 0 && !streaming && !thinking && (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
-            <Sparkles size={32} style={{ color: 'rgba(127,119,221,0.3)' }} />
+            <Sparkles size={32} style={{ color: 'color-mix(in srgb, var(--c-accent) 30%, transparent)' }} />
             <p className="text-[17px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
               Say hello to {compName}…
             </p>
@@ -672,8 +672,8 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
         {thinking && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
-                 style={{ background: 'rgba(127,119,221,0.2)', border: '1px solid rgba(127,119,221,0.3)' }}>
-              <Sparkles size={14} style={{ color: 'var(--accent, #7F77DD)' }} />
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+              <Sparkles size={14} style={{ color: 'var(--accent, var(--c-accent))' }} />
             </div>
             <div className="rounded-2xl px-4 py-2.5"
                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
@@ -698,8 +698,8 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
             <button onClick={() => deviceService.stop()}
                     className="px-2.5 py-1 rounded-lg text-[12px] transition-all"
                     style={{
-                      background: deviceMode === 'off' ? 'rgba(212,83,126,0.18)' : 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(212,83,126,0.3)', color: '#D4537E',
+                      background: deviceMode === 'off' ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.04)',
+                      border: '1px solid color-mix(in srgb, var(--c-pink) 30%, transparent)', color: 'var(--c-pink)',
                     }}>
               Stop
             </button>
@@ -720,7 +720,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                   label: 'Intensity',
                   value: Math.round(intensity * 100),
                   display: `${Math.round(intensity * 100)}%`,
-                  color: intensity > 2 ? '#D4537E' : intensity > 1 ? '#BA7517' : '#1D9E75',
+                  color: intensity > 2 ? 'var(--c-pink)' : intensity > 1 ? 'var(--c-amber)' : 'var(--c-green)',
                   min: 10, max: 500, step: 5,
                   onChange: v => deviceStore.setIntensity?.(v / 100),
                 },
@@ -728,7 +728,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                   label: 'Glans Focus',
                   value: Math.round(glansShift * 100),
                   display: `${Math.round(glansShift * 100)}%`,
-                  color: 'var(--accent, #7F77DD)',
+                  color: 'var(--accent, var(--c-accent))',
                   min: 0, max: 100, step: 5,
                   onChange: v => deviceStore.setGlansShift?.(v / 100),
                 },
@@ -789,7 +789,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                   title="Attach image (vision models only)"
                   className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/10"
                   style={{ border: '1px solid rgba(255,255,255,0.1)',
-                           color: pendingImage ? 'var(--accent, #7F77DD)' : 'rgba(255,255,255,0.3)' }}>
+                           color: pendingImage ? 'var(--accent, var(--c-accent))' : 'rgba(255,255,255,0.3)' }}>
             <ImagePlus size={17} />
           </button>
           <div className="relative flex-shrink-0"
@@ -829,7 +829,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                   disabled={(!input.trim() && !pendingImage) || streaming}
                   className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all"
                   style={{
-                    background: (input.trim() || pendingImage) && !streaming ? 'var(--accent, #7F77DD)' : 'rgba(255,255,255,0.07)',
+                    background: (input.trim() || pendingImage) && !streaming ? 'var(--accent, var(--c-accent))' : 'rgba(255,255,255,0.07)',
                     color: (input.trim() || pendingImage) && !streaming ? '#fff' : 'rgba(255,255,255,0.25)',
                   }}>
             {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
@@ -846,7 +846,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
              style={{ background: 'rgba(0,0,0,0.75)' }}
              onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}>
           <div className="rounded-[16px] p-7 max-w-sm w-full"
-               style={{ background: '#1a1a1a', border: '1px solid rgba(127,119,221,0.4)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+               style={{ background: '#1a1a1a', border: '1px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
                onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}>Password</div>
             <input
@@ -856,14 +856,14 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               onChange={e => { setUnlockPassword(e.target.value); setUnlockError(false) }}
               onKeyDown={e => { if (e.key === 'Enter' && unlockPassword) unlockMutation.mutate(unlockPassword) }}
               className="w-full px-4 py-3 rounded-[8px] text-[16px] outline-none mb-3"
-              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${unlockError ? 'rgba(212,83,126,0.5)' : 'rgba(255,255,255,0.1)'}`, color: 'rgba(255,255,255,0.9)' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${unlockError ? 'color-mix(in srgb, var(--c-pink) 50%, transparent)' : 'rgba(255,255,255,0.1)'}`, color: 'rgba(255,255,255,0.9)' }}
             />
             {unlockError && <div style={{ fontSize: 15, color: '#F4C0D1', marginBottom: 10 }}>Incorrect.</div>}
             <div className="flex gap-3">
               <button onClick={() => unlockMutation.mutate(unlockPassword)}
                       disabled={!unlockPassword || unlockMutation.isPending}
                       className="flex-1 px-4 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-40"
-                      style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                 Unlock
               </button>
               <button onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}

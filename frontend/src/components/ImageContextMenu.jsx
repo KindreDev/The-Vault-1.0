@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { Eye, ImagePlus, LayoutTemplate, FolderInput, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy } from 'lucide-react'
+import { Eye, ImagePlus, LayoutTemplate, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy, HardDrive } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
 
@@ -16,8 +16,8 @@ import { useAllCreators } from '../hooks/useAllCreators'
  *   onView         – open in viewer
  *   onSetCover     – set as gallery cover (omit to hide this item)
  *   onSendToViewer
- *   onTransfer     – move to another gallery (omit to hide this item)
  *   onCopyTo       – copy a reference into a mix gallery (omit to hide this item)
+ *   onRelocate     – move the files into another gallery's folder on disk
  *   onDelete       – (mode: 'vault' | 'disk')
  *   creators       – array of creators assigned to this gallery (for avatar/banner)
  *   onSetAsAvatar  – (creatorId) set image as creator avatar
@@ -25,7 +25,7 @@ import { useAllCreators } from '../hooks/useAllCreators'
  */
 export default function ImageContextMenu({
   image, position, onClose, bulkCount,
-  onView, onSetCover, onSendToViewer, onTransfer, onCopyTo, onDelete,
+  onView, onSetCover, onSendToViewer, onCopyTo, onRelocate, onDelete,
   creators, onSetAsAvatar, onSetAsBanner,
   onSelectMode, onAssignCreator,
 }) {
@@ -126,10 +126,10 @@ export default function ImageContextMenu({
         {/* Send to Multi-panel */}
         <MenuItem icon={LayoutTemplate} label="Send to Multi-panel" accent onMouseDown={(e) => { e.stopPropagation(); onSendToViewer?.(); onClose() }} />
 
-        {/* Move / Copy to gallery — gated on their handlers so a caller that
+        {/* Relocate / Copy to gallery — gated on their handlers so a caller that
             forgets to pass one doesn't render a menu item that does nothing. */}
-        {onTransfer && (
-          <MenuItem icon={FolderInput} label="Move to gallery" onMouseDown={(e) => { e.stopPropagation(); onTransfer(); onClose() }} />
+        {onRelocate && (
+          <MenuItem icon={HardDrive} label="Relocate…" onMouseDown={(e) => { e.stopPropagation(); onRelocate(); onClose() }} />
         )}
         {onCopyTo && (
           <MenuItem icon={Copy} label="Copy to gallery" onMouseDown={(e) => { e.stopPropagation(); onCopyTo(); onClose() }} />
@@ -275,7 +275,7 @@ export default function ImageContextMenu({
 
 function MenuItem({ icon: Icon, label, danger, accent, onMouseDown }) {
   const color  = danger ? '#F4C0D1' : accent ? '#A79FF0' : 'rgba(255,255,255,0.82)'
-  const hoverBg = danger ? 'rgba(212,83,126,0.18)' : 'rgba(255,255,255,0.07)'
+  const hoverBg = danger ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.07)'
   return (
     <button
       type="button"

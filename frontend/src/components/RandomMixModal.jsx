@@ -50,10 +50,10 @@ function CustomSelect({ value, onChange, options, placeholder }) {
         return (
           <button key={o.value} type="button"
                   onMouseDown={() => { onChange(o.value); setOpen(false) }}
-                  className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center justify-between transition-colors hover:bg-[rgba(127,119,221,0.12)]"
-                  style={{ color: isActive ? '#CECBF6' : 'rgba(255,255,255,0.75)', background: isActive ? 'rgba(127,119,221,0.08)' : 'transparent' }}>
+                  className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center justify-between transition-colors hover:bg-[color-mix(in_srgb,_var(--c-accent)_12%,_transparent)]"
+                  style={{ color: isActive ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)', background: isActive ? 'color-mix(in srgb, var(--c-accent) 8%, transparent)' : 'transparent' }}>
             <span className="truncate">{o.label}</span>
-            {isActive && <Check size={12} style={{ color: '#7F77DD', flexShrink: 0 }} />}
+            {isActive && <Check size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />}
           </button>
         )
       })}
@@ -65,7 +65,7 @@ function CustomSelect({ value, onChange, options, placeholder }) {
     <div>
       <button ref={triggerRef} type="button" onMouseDown={openDropdown}
               className="w-full flex items-center justify-between px-3 py-2 rounded-[8px] text-[13px] cursor-pointer outline-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: `0.5px solid ${open ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.12)'}`, color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)', transition: 'border-color 150ms' }}>
+              style={{ background: 'rgba(255,255,255,0.06)', border: `0.5px solid ${open ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.12)'}`, color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)', transition: 'border-color 150ms' }}>
         <span className="truncate">{selected ? selected.label : placeholder}</span>
         <ChevronDown size={13} className="flex-shrink-0 ml-2 transition-transform duration-150"
                      style={{ color: 'rgba(255,255,255,0.35)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
@@ -191,13 +191,13 @@ export default function RandomMixModal({ onClose }) {
          style={{ background: 'rgba(0,0,0,0.80)' }}
          onMouseDown={onClose}>
       <div className="rounded-[16px] shadow-2xl animate-modal-pop flex flex-col"
-           style={{ width: 440, maxHeight: '90vh', background: '#1a1a1a', border: '0.5px solid rgba(127,119,221,0.4)' }}
+           style={{ width: 440, maxHeight: '90vh', background: '#1a1a1a', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
            onMouseDown={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center gap-2.5 px-5 py-4 flex-shrink-0"
              style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <Shuffle size={15} style={{ color: '#7F77DD' }} />
+          <Shuffle size={15} style={{ color: 'var(--c-accent)' }} />
           <div className="flex-1 text-[15px] font-medium text-[rgba(255,255,255,0.9)]">Generate Random Mix</div>
           <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
             <X size={14} />
@@ -222,7 +222,7 @@ export default function RandomMixModal({ onClose }) {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-[12px] text-[rgba(255,255,255,0.5)]">Items</label>
-              <span className="text-[14px] font-medium" style={{ color: '#7F77DD' }}>{count}</span>
+              <span className="text-[14px] font-medium" style={{ color: 'var(--c-accent)' }}>{count}</span>
             </div>
             <input type="range" min={5} max={300} step={5} value={count}
                    onChange={e => setCount(Number(e.target.value))}
@@ -244,7 +244,7 @@ export default function RandomMixModal({ onClose }) {
                 {selectedCreators.map(c => (
                   <span key={c.id}
                         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]"
-                        style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                     {c.name}
                     <button onMouseDown={() => removeCreator(c.id)}
                             className="cursor-pointer opacity-60 hover:opacity-100 ml-0.5">
@@ -276,7 +276,7 @@ export default function RandomMixModal({ onClose }) {
                 {filteredCreators.slice(0, 40).map(c => (
                   <button key={c.id}
                           onMouseDown={() => addCreator(c)}
-                          className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[rgba(127,119,221,0.12)] transition-colors"
+                          className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[color-mix(in_srgb,_var(--c-accent)_12%,_transparent)] transition-colors"
                           style={{ color: 'rgba(255,255,255,0.75)' }}>
                     {c.name}
                   </button>
@@ -307,9 +307,9 @@ export default function RandomMixModal({ onClose }) {
                           )}
                           className="px-3 py-1 rounded-full text-[11px] cursor-pointer transition-all"
                           style={{
-                            background: active ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                            color:      active ? '#CECBF6'                : 'rgba(255,255,255,0.45)',
-                            border:     `0.5px solid ${active ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                            background: active ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)',
+                            color:      active ? 'var(--c-accent-text)'                : 'rgba(255,255,255,0.45)',
+                            border:     `0.5px solid ${active ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                           }}>
                     {label}
                   </button>
@@ -338,7 +338,7 @@ export default function RandomMixModal({ onClose }) {
                 {selectedTags.map(t => (
                   <span key={t.id}
                         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]"
-                        style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                     {t.name}
                     <button onMouseDown={() => removeTag(t.id)}
                             className="cursor-pointer opacity-60 hover:opacity-100 ml-0.5">
@@ -371,7 +371,7 @@ export default function RandomMixModal({ onClose }) {
                 {filteredTags.slice(0, 40).map(t => (
                   <button key={t.id}
                           onMouseDown={() => addTag(t)}
-                          className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[rgba(127,119,221,0.12)] transition-colors flex items-center justify-between"
+                          className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[color-mix(in_srgb,_var(--c-accent)_12%,_transparent)] transition-colors flex items-center justify-between"
                           style={{ color: 'rgba(255,255,255,0.75)' }}>
                     <span>{t.name}</span>
                     {(t.use_count ?? 0) > 0 && (
@@ -398,9 +398,9 @@ export default function RandomMixModal({ onClose }) {
                 <button key={val} onMouseDown={() => setContentType(val)}
                         className="flex-1 py-1.5 rounded-[7px] text-[12px] cursor-pointer transition-all"
                         style={{
-                          background: contentType === val ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                          color: contentType === val ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                          border: `0.5px solid ${contentType === val ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                          background: contentType === val ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)',
+                          color: contentType === val ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                          border: `0.5px solid ${contentType === val ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                         }}>
                   {label}
                 </button>
@@ -420,7 +420,7 @@ export default function RandomMixModal({ onClose }) {
           </button>
           <button onMouseDown={handleGenerate} disabled={busy}
                   className="flex-1 py-2.5 rounded-[10px] text-[13px] font-medium cursor-pointer disabled:opacity-50"
-                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             {busy ? 'Generating…' : `Generate ${count} items`}
           </button>
         </div>

@@ -127,65 +127,6 @@ def serve_profile_avatar(db: Session = Depends(get_db)):
     return FileResponse(profile.avatar_path, headers={"Cache-Control": "no-cache"})
 
 
-@router.get("/tagging-mission")
-def get_tagging_mission(db: Session = Depends(get_db)):
-    """Return 10 untagged items of one random type: images, videos, or galleries."""
-    mission_type = random.choice(["images", "videos", "galleries"])
-
-    if mission_type == "galleries":
-        assigned_ids = db.query(gallery_creators.c.gallery_id).distinct()
-        items = (
-            db.query(Gallery)
-              .filter(~Gallery.id.in_(assigned_ids))
-              .order_by(Gallery.id.desc())
-              .limit(10)
-              .all()
-        )
-        data = [
-            {
-                "id": g.id, "type": "gallery", "name": g.name,
-                "thumb": g.cover_thumb, "gallery_id": g.id,
-            }
-            for g in items
-        ]
-    elif mission_type == "videos":
-        items = (
-            db.query(Image)
-              .filter(Image.is_video == True, Image.ai_tagged == False)
-              .order_by(Image.id.desc())
-              .limit(10)
-              .all()
-        )
-        if len(items) < 3:
-            items = db.query(Image).filter(Image.is_video == True).order_by(Image.id.desc()).limit(10).all()
-        data = [
-            {
-                "id": i.id, "type": "video", "name": i.filename,
-                "thumb": f"/api/images/{i.id}/thumb", "gallery_id": i.gallery_id,
-            }
-            for i in items
-        ]
-    else:
-        items = (
-            db.query(Image)
-              .filter(Image.is_video == False, Image.ai_tagged == False)
-              .order_by(Image.id.desc())
-              .limit(10)
-              .all()
-        )
-        if len(items) < 3:
-            items = db.query(Image).filter(Image.is_video == False).order_by(Image.id.desc()).limit(10).all()
-        data = [
-            {
-                "id": i.id, "type": "image", "name": i.filename,
-                "thumb": f"/api/images/{i.id}/thumb", "gallery_id": i.gallery_id,
-            }
-            for i in items
-        ]
-
-    return {"mission_type": mission_type, "items": data}
-
-
 @router.post("/claim-completion-bonus")
 def claim_completion_bonus(body: dict, db: Session = Depends(get_db)):
     """
@@ -199,10 +140,3 @@ def claim_completion_bonus(body: dict, db: Session = Depends(get_db)):
     if "error" in result:
         raise HTTPException(400, result["error"])
     return result
-
-
-@router.post("/tagging-mission/complete")
-def complete_tagging_mission(db: Session = Depends(get_db)):
-    """Award 200 XP for completing a tagging mission."""
-    xp_event = gami.award_xp(db, "tagging_mission")
-    return {"xp_event": xp_event, "message": "Mission complete! +200 XP awarded."}

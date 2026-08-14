@@ -133,7 +133,7 @@ function CompactPatternSelect({ value, onChange, options }) {
               onClick={() => { onChange(opt.value); setOpen(false) }}
               className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
                 opt.value === value
-                  ? 'bg-[rgba(127,119,221,0.2)] text-[var(--c-accent)]'
+                  ? 'bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] text-[var(--c-accent)]'
                   : 'text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.06)]'
               }`}>
               {opt.label}
@@ -211,9 +211,9 @@ function EdgeModeRow() {
         title={enabled ? 'Disarm Edge Mode' : 'Arm Edge Mode'}
         className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
         style={{
-          background: active ? 'rgba(212,83,126,0.35)' : enabled ? 'rgba(127,119,221,0.22)' : 'rgba(255,255,255,0.06)',
-          color:      active ? '#F4A8C0' : enabled ? '#CECBF6' : 'rgba(255,255,255,0.5)',
-          border:     `0.5px solid ${active ? 'rgba(212,83,126,0.45)' : enabled ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.12)'}`,
+          background: active ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : enabled ? 'color-mix(in srgb, var(--c-accent) 22%, transparent)' : 'rgba(255,255,255,0.06)',
+          color:      active ? 'var(--c-pink-text)' : enabled ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+          border:     `0.5px solid ${active ? 'color-mix(in srgb, var(--c-pink) 45%, transparent)' : enabled ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.12)'}`,
         }}>
         <Waves size={11} />
         Edge
@@ -281,7 +281,7 @@ export default function DeviceControls({ className = '' }) {
             onClick={() => deviceService.triggerCumPattern(30)}
             title="Cum pattern for 30s"
             className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
-            style={{ background: 'rgba(212,83,126,0.2)', color: '#F4A8C0', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+            style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             <Droplets size={11} />
             Cum
           </button>
@@ -292,8 +292,8 @@ export default function DeviceControls({ className = '' }) {
             onClick={() => deviceService.toggleFinisher(finisherPattern)}
             title={`Finisher: ${finisherPattern}`}
             className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
-            style={{ background: finisherActive ? 'rgba(212,83,126,0.35)' : 'rgba(212,83,126,0.15)',
-                     color: '#F4A8C0', border: '0.5px solid rgba(212,83,126,0.35)' }}>
+            style={{ background: finisherActive ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
+                     color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             🏁 {finisherActive ? 'Stop' : 'Finish'}
           </button>
         )}
@@ -302,7 +302,7 @@ export default function DeviceControls({ className = '' }) {
           onClick={() => deviceService.stop()}
           title="Emergency stop"
           className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
-          style={{ background: 'rgba(212,83,126,0.1)', color: 'rgba(212,83,126,0.7)', border: '0.5px solid rgba(212,83,126,0.2)' }}>
+          style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
           <Square size={10} />
           Stop
         </button>

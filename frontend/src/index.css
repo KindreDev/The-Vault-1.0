@@ -15,6 +15,29 @@ html { zoom: 1.0; }
   --c-surface: #141414;
   --c-card:    #1e1e1e;
 
+  /* ── Derived palette tokens ───────────────────────────────────────────────
+     Every accent-coloured surface in the app is one of a handful of shades:
+     a translucent fill, a border, and a light text tint. Hardcoding those as
+     rgba(127,119,221,0.15) / #CECBF6 is what makes new UI stay violet while the
+     rest of the app follows the user's theme. Use these instead — they track
+     whatever palette is active. Same four families as the palette itself. */
+  --c-accent-fill:   color-mix(in srgb, var(--c-accent) 15%, transparent);
+  --c-accent-fill-2: color-mix(in srgb, var(--c-accent) 24%, transparent);
+  --c-accent-line:   color-mix(in srgb, var(--c-accent) 38%, transparent);
+  --c-accent-text:   color-mix(in srgb, var(--c-accent) 45%, white);
+
+  --c-pink-fill:     color-mix(in srgb, var(--c-pink) 15%, transparent);
+  --c-pink-line:     color-mix(in srgb, var(--c-pink) 38%, transparent);
+  --c-pink-text:     color-mix(in srgb, var(--c-pink) 45%, white);
+
+  --c-amber-fill:    color-mix(in srgb, var(--c-amber) 15%, transparent);
+  --c-amber-line:    color-mix(in srgb, var(--c-amber) 38%, transparent);
+  --c-amber-text:    color-mix(in srgb, var(--c-amber) 45%, white);
+
+  --c-green-fill:    color-mix(in srgb, var(--c-green) 15%, transparent);
+  --c-green-line:    color-mix(in srgb, var(--c-green) 38%, transparent);
+  --c-green-text:    color-mix(in srgb, var(--c-green) 45%, white);
+
   /* Font — set by JS via applyFont(); default is Inter */
   --vault-font: 'Inter', system-ui, sans-serif;
 

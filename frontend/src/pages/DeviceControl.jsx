@@ -162,7 +162,7 @@ function PatternSelect({ value, onChange, options }) {
               onClick={() => { onChange(opt.value); setOpen(false) }}
               className={`w-full text-left px-3 py-2 text-[12px] transition-colors ${
                 opt.value === value
-                  ? 'bg-[rgba(127,119,221,0.2)] text-[var(--c-accent)]'
+                  ? 'bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] text-[var(--c-accent)]'
                   : 'text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)]'
               }`}>
               {opt.label}
@@ -178,7 +178,7 @@ function PatternSelect({ value, onChange, options }) {
                   onClick={() => { onChange(opt.value); setOpen(false) }}
                   className={`w-full text-left px-3 py-2 text-[12px] transition-colors ${
                     opt.value === value
-                      ? 'bg-[rgba(127,119,221,0.2)] text-[var(--c-accent)]'
+                      ? 'bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] text-[var(--c-accent)]'
                       : 'text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)]'
                   }`}>
                   {opt.label}
@@ -274,7 +274,7 @@ function PresetCard({ id, name, desc, strokeMin, strokeMax, spm, active, onClick
     <div
       className={`relative p-3 rounded-lg border text-left transition-all cursor-pointer ${
         active
-          ? 'border-[var(--c-accent)] bg-[rgba(127,119,221,0.12)]'
+          ? 'border-[var(--c-accent)] bg-[color-mix(in_srgb,_var(--c-accent)_12%,_transparent)]'
           : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]'
       }`}
       onClick={onClick}>
@@ -291,7 +291,7 @@ function PresetCard({ id, name, desc, strokeMin, strokeMax, spm, active, onClick
       {onDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDelete() }}
-          className="absolute top-2 right-2 p-1 text-[rgba(212,83,126,0.5)] hover:text-[#D4537E] transition-colors">
+          className="absolute top-2 right-2 p-1 text-[color-mix(in_srgb,_var(--c-pink)_50%,_transparent)] hover:text-[var(--c-pink)] transition-colors">
           <Trash2 size={11} />
         </button>
       )}
@@ -308,9 +308,9 @@ function DeviceList({ devices, scanning }) {
       {devices.map(d => (
         <div key={d.index} className="text-[12px] text-[rgba(255,255,255,0.7)] bg-[rgba(255,255,255,0.04)] rounded-lg px-3 py-2">
           <div className="flex items-center gap-2">
-            <Activity size={12} className="text-[#1D9E75] flex-shrink-0" />
+            <Activity size={12} className="text-[var(--c-green)] flex-shrink-0" />
             <span className="flex-1">{d.name}</span>
-            <span className={`text-[10px] font-medium ${d.canLinear ? 'text-[#1D9E75]' : (d.canVibrate || d.canRotate || d.canOscillate) ? 'text-[var(--c-accent)]' : 'text-[#D4537E]'}`}>
+            <span className={`text-[10px] font-medium ${d.canLinear ? 'text-[var(--c-green)]' : (d.canVibrate || d.canRotate || d.canOscillate) ? 'text-[var(--c-accent)]' : 'text-[var(--c-pink)]'}`}>
               {d.canLinear ? 'Linear ✓' : d.canVibrate ? 'Vibrate' : d.canRotate ? 'Rotate ✓' : d.canOscillate ? 'Oscillate ✓' : 'Unknown type'}
             </span>
           </div>
@@ -351,7 +351,7 @@ function ConnectedActions({ onDisconnect }) {
     <div className="flex items-center gap-3 flex-wrap">
       <button
         onClick={onDisconnect}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium transition-all bg-[rgba(212,83,126,0.15)] border border-[rgba(212,83,126,0.3)] text-[#D4537E] hover:bg-[rgba(212,83,126,0.25)]">
+        className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium transition-all bg-[color-mix(in_srgb,_var(--c-pink)_15%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_30%,_transparent)] text-[var(--c-pink)] hover:bg-[color-mix(in_srgb,_var(--c-pink)_25%,_transparent)]">
         <WifiOff size={14} />
         Disconnect
       </button>
@@ -414,9 +414,9 @@ function IntifaceSection() {
       {isConnected && <ConnectedActions onDisconnect={() => deviceService.disconnect()} />}
 
       {isActive && errorMsg && (
-        <div className="text-[12px] text-[#D4537E] bg-[rgba(212,83,126,0.08)] border border-[rgba(212,83,126,0.2)] rounded-lg px-3 py-2 space-y-1">
+        <div className="text-[12px] text-[var(--c-pink)] bg-[color-mix(in_srgb,_var(--c-pink)_8%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_20%,_transparent)] rounded-lg px-3 py-2 space-y-1">
           <div>{errorMsg}</div>
-          <div className="text-[10px] text-[rgba(212,83,126,0.6)]">
+          <div className="text-[10px] text-[color-mix(in_srgb,_var(--c-pink)_60%,_transparent)]">
             Check that Intiface Central is running and WebSocket Server is enabled.
           </div>
         </div>
@@ -484,7 +484,7 @@ function HandySection() {
       {isConnected && <ConnectedActions onDisconnect={() => deviceService.disconnectHandy()} />}
 
       {isActive && errorMsg && (
-        <div className="text-[12px] text-[#D4537E] bg-[rgba(212,83,126,0.08)] border border-[rgba(212,83,126,0.2)] rounded-lg px-3 py-2">
+        <div className="text-[12px] text-[var(--c-pink)] bg-[color-mix(in_srgb,_var(--c-pink)_8%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_20%,_transparent)] rounded-lg px-3 py-2">
           {errorMsg}
         </div>
       )}
@@ -517,14 +517,14 @@ function SerialSection() {
   return (
     <div className="space-y-4">
       {!hasWebSerial && (
-        <div className="text-[12px] text-[#BA7517] bg-[rgba(186,117,23,0.08)] border border-[rgba(186,117,23,0.25)] rounded-lg px-3 py-2">
+        <div className="text-[12px] text-[var(--c-amber)] bg-[color-mix(in_srgb,_var(--c-amber)_8%,_transparent)] border border-[color-mix(in_srgb,_var(--c-amber)_25%,_transparent)] rounded-lg px-3 py-2">
           Web Serial API not available. Use Chrome or Edge (not Firefox).
         </div>
       )}
 
       <div className="text-[12px] text-[rgba(255,255,255,0.6)]">
         {isConnected
-          ? <span>Connected to: <span className="font-mono text-[#1D9E75]">{serialPortInfo}</span></span>
+          ? <span>Connected to: <span className="font-mono text-[var(--c-green)]">{serialPortInfo}</span></span>
           : 'Connect your device via USB, then click Connect to select the port.'}
       </div>
 
@@ -544,7 +544,7 @@ function SerialSection() {
       {isConnected && <ConnectedActions onDisconnect={() => deviceService.disconnectSerial()} />}
 
       {isActive && errorMsg && (
-        <div className="text-[12px] text-[#D4537E] bg-[rgba(212,83,126,0.08)] border border-[rgba(212,83,126,0.2)] rounded-lg px-3 py-2">
+        <div className="text-[12px] text-[var(--c-pink)] bg-[color-mix(in_srgb,_var(--c-pink)_8%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_20%,_transparent)] rounded-lg px-3 py-2">
           {errorMsg}
         </div>
       )}
@@ -597,7 +597,7 @@ function ConnectionSection() {
               <Icon size={12} />
               {label}
               {isActiveProvider && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1D9E75] flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--c-green)] flex-shrink-0" />
               )}
             </button>
           )
@@ -628,15 +628,15 @@ function AutoSyncSection() {
           className="relative flex-shrink-0 rounded-full transition-colors"
           style={{
             width: 34, height: 19,
-            background: autoSync ? 'rgba(127,119,221,0.55)' : 'rgba(255,255,255,0.12)',
-            border: `0.5px solid ${autoSync ? 'rgba(127,119,221,0.8)' : 'rgba(255,255,255,0.18)'}`,
+            background: autoSync ? 'color-mix(in srgb, var(--c-accent) 55%, transparent)' : 'rgba(255,255,255,0.12)',
+            border: `0.5px solid ${autoSync ? 'color-mix(in srgb, var(--c-accent) 80%, transparent)' : 'rgba(255,255,255,0.18)'}`,
           }}
         >
           <span
             className="absolute rounded-full transition-all"
             style={{
               width: 15, height: 15, top: 1.5, left: autoSync ? 17 : 1.5,
-              background: autoSync ? '#CECBF6' : 'rgba(255,255,255,0.55)',
+              background: autoSync ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.55)',
             }}
           />
         </span>
@@ -731,7 +731,7 @@ function FreestyleSection() {
             {isFreestyle && (
               <button
                 onClick={() => deviceService.stop()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[rgba(212,83,126,0.15)] border border-[rgba(212,83,126,0.3)] text-[#D4537E] text-[12px] hover:bg-[rgba(212,83,126,0.25)] transition-all flex-shrink-0">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[color-mix(in_srgb,_var(--c-pink)_15%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_30%,_transparent)] text-[var(--c-pink)] text-[12px] hover:bg-[color-mix(in_srgb,_var(--c-pink)_25%,_transparent)] transition-all flex-shrink-0">
                 <Square size={11} />
                 Stop
               </button>
@@ -775,7 +775,7 @@ function FreestyleSection() {
             <button
               onClick={() => deviceService.triggerCumPattern(30)}
               className="w-full py-2.5 rounded-lg font-semibold text-[13px] transition-all"
-              style={{ background: 'rgba(212,83,126,0.2)', border: '1px solid rgba(212,83,126,0.35)', color: '#D4537E' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--c-pink) 35%, transparent)', color: 'var(--c-pink)' }}>
               💦 Cum
             </button>
           )}
@@ -830,7 +830,7 @@ function FreestyleSection() {
             <div
               className={`p-3 rounded-lg border cursor-pointer mb-3 ${
                 activeId === 'custom'
-                  ? 'border-[var(--c-accent)] bg-[rgba(127,119,221,0.08)]'
+                  ? 'border-[var(--c-accent)] bg-[color-mix(in_srgb,_var(--c-accent)_8%,_transparent)]'
                   : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.15)]'
               }`}
               onClick={() => setPreset('custom')}>
@@ -916,8 +916,8 @@ function FreestyleSection() {
                 onClick={() => deviceService.toggleFinisher(finisherPattern)}
                 className="w-full py-2.5 rounded-lg font-semibold text-[13px] transition-all disabled:opacity-40"
                 style={{
-                  background: finisherActive ? 'rgba(212,83,126,0.3)' : 'rgba(212,83,126,0.15)',
-                  border: '1px solid rgba(212,83,126,0.35)', color: '#D4537E',
+                  background: finisherActive ? 'color-mix(in srgb, var(--c-pink) 30%, transparent)' : 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--c-pink) 35%, transparent)', color: 'var(--c-pink)',
                 }}>
                 {finisherActive
                   ? <span className="inline-flex items-center gap-1.5"><Square size={11} /> Stop finisher</span>
@@ -1040,7 +1040,7 @@ function SchedulerSection() {
               key={i}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] border transition-all ${
                 running && i === currentStep
-                  ? 'bg-[rgba(127,119,221,0.1)] border-[rgba(127,119,221,0.3)]'
+                  ? 'bg-[color-mix(in_srgb,_var(--c-accent)_10%,_transparent)] border-[color-mix(in_srgb,_var(--c-accent)_30%,_transparent)]'
                   : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)]'
               }`}>
               {running && i === currentStep && (
@@ -1064,7 +1064,7 @@ function SchedulerSection() {
                   </button>
                 )}
                 <button onClick={() => removeStep(i)}
-                  className="p-1 text-[rgba(212,83,126,0.6)] hover:text-[#D4537E]">
+                  className="p-1 text-[color-mix(in_srgb,_var(--c-pink)_60%,_transparent)] hover:text-[var(--c-pink)]">
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -1086,7 +1086,7 @@ function SchedulerSection() {
             ) : (
               <button
                 onClick={() => deviceService.stopSchedulerOnce()}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium bg-[rgba(212,83,126,0.15)] border border-[rgba(212,83,126,0.3)] text-[#D4537E] hover:bg-[rgba(212,83,126,0.25)] transition-all">
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium bg-[color-mix(in_srgb,_var(--c-pink)_15%,_transparent)] border border-[color-mix(in_srgb,_var(--c-pink)_30%,_transparent)] text-[var(--c-pink)] hover:bg-[color-mix(in_srgb,_var(--c-pink)_25%,_transparent)] transition-all">
                 <Square size={13} />
                 Stop
               </button>
@@ -1141,8 +1141,8 @@ function Segmented({ value, onChange, options }) {
           onClick={() => onChange(opt.value)}
           className="px-3 py-1.5 text-[12px] cursor-pointer transition-colors"
           style={{
-            background: value === opt.value ? 'rgba(127,119,221,0.25)' : 'transparent',
-            color: value === opt.value ? '#CECBF6' : 'rgba(255,255,255,0.45)',
+            background: value === opt.value ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'transparent',
+            color: value === opt.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
           }}>
           {opt.label}
         </button>
@@ -1172,9 +1172,9 @@ function EdgeSection() {
           <div className="space-y-4">
             {/* Live state */}
             <div className="flex items-center justify-between px-3 py-2 rounded-lg"
-                 style={{ background: s.edgeActive ? 'rgba(212,83,126,0.15)' : 'rgba(255,255,255,0.03)',
-                          border: `0.5px solid ${s.edgeActive ? 'rgba(212,83,126,0.35)' : 'rgba(255,255,255,0.08)'}` }}>
-              <span className="text-[12px]" style={{ color: s.edgeActive ? '#F4A8C0' : 'rgba(255,255,255,0.45)' }}>
+                 style={{ background: s.edgeActive ? 'color-mix(in srgb, var(--c-pink) 15%, transparent)' : 'rgba(255,255,255,0.03)',
+                          border: `0.5px solid ${s.edgeActive ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : 'rgba(255,255,255,0.08)'}` }}>
+              <span className="text-[12px]" style={{ color: s.edgeActive ? 'var(--c-pink-text)' : 'rgba(255,255,255,0.45)' }}>
                 {s.edgeActive ? '🌊 Edging right now…' : 'Armed — waiting'}
               </span>
               <span className="text-[12px] font-mono text-[rgba(255,255,255,0.4)]">

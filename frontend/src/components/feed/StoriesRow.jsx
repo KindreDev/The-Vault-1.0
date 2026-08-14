@@ -23,7 +23,7 @@ export default function StoriesRow({ groups, onOpen }) {
                  padding: 3,
                  background: g.all_viewed
                    ? 'rgba(255,255,255,0.16)'
-                   : 'conic-gradient(from 210deg, #7F77DD, #D4537E, #EF9F27, #7F77DD)',
+                   : 'conic-gradient(from 210deg, var(--c-accent), var(--c-pink), #EF9F27, var(--c-accent))',
                }}>
             <div className="rounded-full" style={{ padding: 2.5, background: '#0e0e0e' }}>
               <img

@@ -415,9 +415,9 @@ const feedDuplicateMutation = useMutation({
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#141420', border: '1px solid rgba(212,83,126,0.35)',
+              background: '#141420', border: '1px solid color-mix(in srgb, var(--c-pink) 35%, transparent)',
               borderRadius: 16, padding: '32px 36px', maxWidth: 400, width: '90%',
-              boxShadow: '0 0 40px rgba(212,83,126,0.15)',
+              boxShadow: '0 0 40px color-mix(in srgb, var(--c-pink) 15%, transparent)',
             }}
           >
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
@@ -445,9 +445,9 @@ const feedDuplicateMutation = useMutation({
                 style={{
                   flex: 1, padding: '10px', borderRadius: 10, fontSize: 12,
                   cursor: 'pointer', fontWeight: 700,
-                  background: 'rgba(212,83,126,0.3)', color: '#F4C0D1',
-                  border: '1px solid rgba(212,83,126,0.5)',
-                  boxShadow: '0 0 16px rgba(212,83,126,0.2)',
+                  background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#F4C0D1',
+                  border: '1px solid color-mix(in srgb, var(--c-pink) 50%, transparent)',
+                  boxShadow: '0 0 16px color-mix(in srgb, var(--c-pink) 20%, transparent)',
                 }}
               >
                 Yes, Dismantle All
@@ -479,9 +479,9 @@ const feedDuplicateMutation = useMutation({
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 16px', borderRadius: 20,
-            background: 'rgba(186,117,23,0.15)',
-            border: '0.5px solid rgba(186,117,23,0.4)',
-            color: '#FAC775', fontSize: 13, fontWeight: 600,
+            background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)',
+            color: 'var(--c-amber-text)', fontSize: 13, fontWeight: 600,
           }}>
             💰 {credits.toLocaleString()} Credits
           </div>
@@ -498,9 +498,9 @@ const feedDuplicateMutation = useMutation({
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '8px 18px', borderRadius: 20, fontSize: 12,
               fontWeight: tab === t.id ? 600 : 400, cursor: 'pointer',
-              background: tab === t.id ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
-              color: tab === t.id ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-              border: tab === t.id ? '1px solid rgba(127,119,221,0.45)' : '0.5px solid rgba(255,255,255,0.08)',
+              background: tab === t.id ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.04)',
+              color: tab === t.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+              border: tab === t.id ? '1px solid color-mix(in srgb, var(--c-accent) 45%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
               transition: 'all 0.15s ease',
             }}
           >
@@ -541,9 +541,9 @@ const feedDuplicateMutation = useMutation({
             <button onClick={() => setShowEffects(v => { const n = !v; localStorage.setItem('vault-show-effects', n); return n })} style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
-              background: showEffects ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-              color: showEffects ? '#CECBF6' : 'rgba(255,255,255,0.35)',
-              border: showEffects ? '0.5px solid rgba(127,119,221,0.4)' : '0.5px solid rgba(255,255,255,0.08)',
+              background: showEffects ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+              color: showEffects ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.35)',
+              border: showEffects ? '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
             }}>
               <Sparkles size={11} /> Effects
             </button>
@@ -552,9 +552,9 @@ const feedDuplicateMutation = useMutation({
             <button onClick={() => setShowCxpBar(v => { const n = !v; localStorage.setItem('vault-show-cxp', n); return n })} style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '5px 12px', borderRadius: 8, fontSize: 11, cursor: 'pointer',
-              background: showCxpBar ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-              color: showCxpBar ? '#CECBF6' : 'rgba(255,255,255,0.35)',
-              border: showCxpBar ? '0.5px solid rgba(127,119,221,0.4)' : '0.5px solid rgba(255,255,255,0.08)',
+              background: showCxpBar ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+              color: showCxpBar ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.35)',
+              border: showCxpBar ? '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
             }}>
               <BarChart2 size={11} /> CXP
             </button>
@@ -608,7 +608,7 @@ const feedDuplicateMutation = useMutation({
                         <div style={{
                           position: 'absolute', top: 6, right: 6,
                           background: 'rgba(0,0,0,0.75)', borderRadius: 10,
-                          padding: '2px 6px', fontSize: 10, color: '#FAC775', fontWeight: 700,
+                          padding: '2px 6px', fontSize: 10, color: 'var(--c-amber-text)', fontWeight: 700,
                         }}>
                           ×{inv.quantity}
                         </div>
@@ -684,7 +684,7 @@ const feedDuplicateMutation = useMutation({
           <div style={{ flex: '1 1 400px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Hammer size={14} style={{ color: '#FAC775' }} /> Dismantle Cards
+                <Hammer size={14} style={{ color: 'var(--c-amber-text)' }} /> Dismantle Cards
               </div>
               <button
                 onClick={() => dismantleDuplicatesMutation.mutate()}
@@ -692,8 +692,8 @@ const feedDuplicateMutation = useMutation({
                 style={{
                   marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, fontSize: 11,
                   cursor: 'pointer', fontWeight: 600,
-                  background: 'rgba(186,117,23,0.12)', color: '#FAC775',
-                  border: '0.5px solid rgba(186,117,23,0.3)',
+                  background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)',
+                  border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)',
                   opacity: dismantleDuplicatesMutation.isPending ? 0.5 : 1,
                 }}
               >
@@ -752,7 +752,7 @@ const feedDuplicateMutation = useMutation({
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,
                 padding: '10px 16px', borderRadius: 10,
-                background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.25)',
+                background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)',
               }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
                   {selected.length} card{selected.length > 1 ? 's' : ''} selected
@@ -762,8 +762,8 @@ const feedDuplicateMutation = useMutation({
                   style={{
                     marginLeft: 'auto', padding: '6px 14px', borderRadius: 8,
                     fontSize: 11, cursor: 'pointer', fontWeight: 600,
-                    background: 'rgba(212,83,126,0.3)', color: '#F4C0D1',
-                    border: '0.5px solid rgba(212,83,126,0.5)',
+                    background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#F4C0D1',
+                    border: '0.5px solid color-mix(in srgb, var(--c-pink) 50%, transparent)',
                   }}
                 >
                   Dismantle Selected
@@ -802,8 +802,8 @@ const feedDuplicateMutation = useMutation({
                             style={{
                               position: 'absolute', bottom: 6, right: 6, zIndex: 10,
                               padding: '3px 7px', borderRadius: 8, fontSize: 9, cursor: 'pointer',
-                              background: 'rgba(29,158,117,0.3)', color: '#6EE7C3',
-                              border: '0.5px solid rgba(29,158,117,0.5)',
+                              background: 'color-mix(in srgb, var(--c-green) 30%, transparent)', color: '#6EE7C3',
+                              border: '0.5px solid color-mix(in srgb, var(--c-green) 50%, transparent)',
                             }}
                           >
                             +CXP
@@ -812,7 +812,7 @@ const feedDuplicateMutation = useMutation({
                         {isSel && (
                           <div style={{
                             position: 'absolute', inset: 0, borderRadius: 14,
-                            background: 'rgba(212,83,126,0.25)',
+                            background: 'color-mix(in srgb, var(--c-pink) 25%, transparent)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 22, zIndex: 10, pointerEvents: 'none',
                           }}>✓</div>
@@ -859,9 +859,9 @@ const feedDuplicateMutation = useMutation({
                           onClick={() => setForgePage(p)}
                           style={{
                             padding: '5px 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', minWidth: 32,
-                            background: p === forgePage ? 'rgba(127,119,221,0.3)' : 'rgba(255,255,255,0.04)',
-                            color: p === forgePage ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                            border: p === forgePage ? '0.5px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.08)',
+                            background: p === forgePage ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.04)',
+                            color: p === forgePage ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                            border: p === forgePage ? '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
                             fontWeight: p === forgePage ? 700 : 400,
                           }}
                         >{p}</button>
@@ -905,9 +905,9 @@ const feedDuplicateMutation = useMutation({
                 <span
                   ref={shardsRef}
                   style={{
-                    color: '#CECBF6', fontWeight: 700,
+                    color: 'var(--c-accent-text)', fontWeight: 700,
                     transition: 'text-shadow 0.15s',
-                    textShadow: shardsFlash ? '0 0 12px #CECBF6, 0 0 24px #7F77DD' : 'none',
+                    textShadow: shardsFlash ? '0 0 12px var(--c-accent-text), 0 0 24px var(--c-accent)' : 'none',
                     animation: shardsFlash ? 'shards-pop 0.6s ease-out' : 'none',
                   }}
                 >
@@ -916,7 +916,7 @@ const feedDuplicateMutation = useMutation({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                 <span style={{ color: 'rgba(255,255,255,0.45)' }}>⚗️ Catalyst Tokens</span>
-                <span style={{ color: '#FAC775', fontWeight: 700 }}>{materials?.catalyst_tokens ?? 0}</span>
+                <span style={{ color: 'var(--c-amber-text)', fontWeight: 700 }}>{materials?.catalyst_tokens ?? 0}</span>
               </div>
             </div>
             <button
@@ -926,10 +926,10 @@ const feedDuplicateMutation = useMutation({
                 width: '100%', padding: '11px', borderRadius: 10, fontSize: 12,
                 fontWeight: 600, cursor: (materials?.shards ?? 0) >= 150 ? 'pointer' : 'not-allowed',
                 background: (materials?.shards ?? 0) >= 150
-                  ? 'rgba(186,117,23,0.25)' : 'rgba(255,255,255,0.04)',
-                color: (materials?.shards ?? 0) >= 150 ? '#FAC775' : 'rgba(255,255,255,0.2)',
+                  ? 'color-mix(in srgb, var(--c-amber) 25%, transparent)' : 'rgba(255,255,255,0.04)',
+                color: (materials?.shards ?? 0) >= 150 ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.2)',
                 border: (materials?.shards ?? 0) >= 150
-                  ? '0.5px solid rgba(186,117,23,0.4)' : '0.5px solid rgba(255,255,255,0.06)',
+                  ? '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.06)',
               }}
             >
               {craftMutation.isPending ? 'Crafting…' : '⚗️ Craft Token (150 shards)'}
@@ -950,7 +950,7 @@ const feedDuplicateMutation = useMutation({
               }}>
                 <span>🔷 1 shard</span>
                 <span style={{ color: 'rgba(255,255,255,0.15)' }}>→</span>
-                <span style={{ color: '#9FE1CB' }}>💰 3 credits</span>
+                <span style={{ color: 'var(--c-green-text)' }}>💰 3 credits</span>
               </div>
 
               {/* Amount picker */}
@@ -961,9 +961,9 @@ const feedDuplicateMutation = useMutation({
                     onClick={() => setExchangeAmount(n)}
                     style={{
                       padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer',
-                      background: exchangeAmount === n ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.04)',
-                      color: exchangeAmount === n ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                      border: exchangeAmount === n ? '0.5px solid rgba(127,119,221,0.5)' : '0.5px solid rgba(255,255,255,0.08)',
+                      background: exchangeAmount === n ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.04)',
+                      color: exchangeAmount === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                      border: exchangeAmount === n ? '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
                       fontWeight: exchangeAmount === n ? 700 : 400,
                     }}
                   >
@@ -974,7 +974,7 @@ const feedDuplicateMutation = useMutation({
 
               {/* Preview */}
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-                {exchangeAmount} shards → <span style={{ color: '#9FE1CB', fontWeight: 700 }}>{exchangeAmount * 3} credits</span>
+                {exchangeAmount} shards → <span style={{ color: 'var(--c-green-text)', fontWeight: 700 }}>{exchangeAmount * 3} credits</span>
               </div>
 
               <button
@@ -985,10 +985,10 @@ const feedDuplicateMutation = useMutation({
                   fontWeight: 600,
                   cursor: (materials?.shards ?? 0) >= exchangeAmount ? 'pointer' : 'not-allowed',
                   background: (materials?.shards ?? 0) >= exchangeAmount
-                    ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.04)',
-                  color: (materials?.shards ?? 0) >= exchangeAmount ? '#9FE1CB' : 'rgba(255,255,255,0.2)',
+                    ? 'color-mix(in srgb, var(--c-green) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                  color: (materials?.shards ?? 0) >= exchangeAmount ? 'var(--c-green-text)' : 'rgba(255,255,255,0.2)',
                   border: (materials?.shards ?? 0) >= exchangeAmount
-                    ? '0.5px solid rgba(29,158,117,0.35)' : '0.5px solid rgba(255,255,255,0.06)',
+                    ? '0.5px solid color-mix(in srgb, var(--c-green) 35%, transparent)' : '0.5px solid rgba(255,255,255,0.06)',
                   opacity: exchangeMutation.isPending ? 0.6 : 1,
                 }}
               >

@@ -147,7 +147,7 @@ export default function TagAutocompleteInput({
         )}
         <button type="button" onMouseDown={() => commit(q)} disabled={!q}
                 className="cursor-pointer flex-shrink-0 disabled:opacity-25"
-                style={{ color: '#CECBF6' }} title="Add tag">
+                style={{ color: 'var(--c-accent-text)' }} title="Add tag">
           <Plus size={sm ? 11 : 13} />
         </button>
       </div>
@@ -167,7 +167,7 @@ export default function TagAutocompleteInput({
                     }}>
               {tag.__create ? (
                 <>
-                  <Plus size={12} style={{ color: '#1D9E75', flexShrink: 0 }} />
+                  <Plus size={12} style={{ color: 'var(--c-green)', flexShrink: 0 }} />
                   <span style={{ fontSize: 16 }} className="flex-1 truncate">
                     Create <strong>{tag.name}</strong>
                   </span>

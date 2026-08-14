@@ -123,7 +123,7 @@ export default function Feed() {
         {!creatorId && (
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-                 style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <Newspaper size={18} style={{ color: '#A79FF0' }} />
             </div>
             <div>

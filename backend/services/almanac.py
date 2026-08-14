@@ -329,7 +329,7 @@ def the_read(db: Session) -> dict:
     # is still climbing, which the accumulation line below says properly.
     still_climbing = bool(substantial) and lv["peak_year"] == substantial[-1]["year"]
     if len(substantial) >= 4 and lv["peak_year_share"] >= 18 and not still_climbing:
-        add("Your collection has a peak year",
+        add("One year dominates your collection",
             f"{lv['peak_year']} accounts for {lv['peak_year_share']}% of every dated gallery "
             f"you own — the single year that defined the collection.")
 
@@ -341,18 +341,18 @@ def the_read(db: Session) -> dict:
         growing = last["galleries"] >= peak["galleries"] * 0.95 and last["year"] == peak["year"]
 
         if shrank and deeper:
-            add("You traded breadth for depth",
+            add("Fewer sets, but bigger ones",
                 f"Sets per year fell from {peak['galleries']:,} at peak to {last['galleries']:,}, "
                 f"but files per set climbed from {peak['files_per_gallery']:.0f} to "
-                f"{last['files_per_gallery']:.0f}. Fewer sources, deeper hauls.")
+                f"{last['files_per_gallery']:.0f}. You buy from fewer places, but get more each time.")
         elif growing:
-            add("You are still in the accumulation phase",
+            add("Your collection is still growing",
                 f"{last['year']} is your biggest year yet at {last['galleries']:,} galleries. "
                 f"The collection hasn't peaked — it is still being built.")
         elif shrank:
-            add("The pace has eased off",
+            add("You are adding less than you used to",
                 f"From {peak['galleries']:,} galleries in {peak['year']} down to "
-                f"{last['galleries']:,}, without the sets getting bigger. The hunt has quietened.")
+                f"{last['galleries']:,}, without the sets getting bigger. ")
 
     # ── The roster ────────────────────────────────────────────────────────────
     # Concentration is only interesting when there is something to concentrate
@@ -364,47 +364,46 @@ def the_read(db: Session) -> dict:
                 f"{hb['top5_share']}% of your watch time and the top ten {hb['top10_share']}%.")
         if never >= 10:
             body += f" {_pl(never, 'has', 'have')} never been watched at all."
-        add("You collect widely and goon narrowly", body)
+        add("Most of your time goes to a few creators", body)
     elif total_c >= 25 and hb["gini"] < 0.55:
-        add("Your attention is unusually evenly spread",
+        add("Your time is spread evenly",
             f"Across {total_c:,} creators the top five take only {hb['top5_share']}% of your "
             f"watch time. You graze rather than fixate.")
     elif 0 < total_c < 15:
-        add("You keep a tight roster",
-            f"Only {_pl(total_c, 'creator')} in the whole vault. Whatever else this is, "
-            f"it isn't indiscriminate.")
+        add("You keep a small roster",
+            f"Only {_pl(total_c, 'creator')} in the whole vault. You are picky about who gets in.")
 
     # ── Owning vs watching ────────────────────────────────────────────────────
     owned_h = hb["video_runtime_owned"] // 3600
     vid_h, pho_h = hb["video_seconds"] // 3600, hb["photo_seconds"] // 3600
     if owned_h >= 50 and hb["video_watched_pct"] < 15 and hb["photo_seconds"] > hb["video_seconds"]:
-        add("You hoard video and watch photos",
+        add("You collect video but watch photos",
             f"{owned_h:,} hours of video owned, {vid_h:,} watched "
             f"({hb['video_watched_pct']}%) — while photos take {pho_h:,} hours. "
-            f"Video is acquisition; photos are use.")
+            f"You collect video, but photos are what you actually open.")
     elif hb["video_seconds"] > hb["photo_seconds"] * 1.5 and vid_h >= 5:
-        add("You are here for the video",
+        add("You mostly watch video",
             f"{vid_h:,} hours on video against {pho_h:,} on photos. Most collections skew the "
             f"other way — stills are cheaper to browse than films are to sit through.")
 
     if hb["files_touched_pct"] >= 40 and hb["library_files"] >= 500:
-        add("You actually watch what you own",
+        add("You open most of what you own",
             f"{hb['files_touched_pct']}% of the library has been opened. Most collections are "
             f"mostly unvisited; yours is not.")
 
     # ── Curation ──────────────────────────────────────────────────────────────
     if hb["tagged_pct"] > 50 and hb["rated_pct"] < 5:
-        add("You automate the curation you won't do by hand",
+        add("Your tags are automatic, your ratings are not",
             f"{hb['tagged_pct']}% of the library is AI-tagged, but only {hb['rated_pct']}% is "
-            f"rated. You don't want to curate — you want curation to have happened.")
+            f"rated. The AI does the tagging; the rating never gets done.")
     elif hb["rated_pct"] >= 20:
-        add("You curate by hand",
-            f"{hb['rated_pct']}% of the library carries a rating you gave it. That is a "
-            f"vanishingly rare habit at any collection size.")
+        add("You rate things yourself",
+            f"{hb['rated_pct']}% of the library carries a rating you gave it. Very few "
+            f"collections of this size are rated by hand.")
     elif hb["library_files"] >= 5000 and hb["tagged_pct"] < 10 and hb["rated_pct"] < 2:
-        add("The archive is untended",
+        add("Most of the library is unsorted",
             f"{hb['library_files']:,} files, {hb['tagged_pct']}% tagged, {hb['rated_pct']}% "
-            f"rated. Nothing is sorted — you rely on memory to find things.")
+            f"rated. Nothing is sorted, so finding things relies on memory.")
 
     # ── The ritual ────────────────────────────────────────────────────────────
     n = hb["session_count"]
@@ -412,12 +411,12 @@ def the_read(db: Session) -> dict:
         med = hb["session_median_sec"] // 60
         shape = ("long, deliberate sittings" if med >= 45
                  else "quick visits" if med <= 12 else "a steady half-hour habit")
-        add("The ritual",
+        add("Your sessions",
             f"{_pl(n, 'session')}, {hb['session_avg_sec'] // 60} minutes on average, longest "
             f"{hb['session_longest_sec'] // 60}. Typically {shape}. Current streak "
             f"{_pl(hb.get('streak_days', 0), 'day')}, best {hb.get('streak_best', 0):,}.")
     elif n > 0:
-        add("Barely any ritual yet",
+        add("Not many sessions logged yet",
             f"Only {_pl(n, 'session')} on record. The collection is far older than the habit "
             f"of tracking it.")
 

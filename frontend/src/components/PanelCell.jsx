@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer, Zap } from 'lucide-react'
 import InlineVideoPlayer from './InlineVideoPlayer'
 import { imagesApi } from '../lib/api'
@@ -8,13 +8,15 @@ import { useVaultStore } from '../store/vault'
 const SPEEDS = [3, 5, 8, 12, 20]
 
 // items: array of { id, filename, is_video, galleryId }
-export default function PanelCell({
+const PanelCell = forwardRef(function PanelCell({
   items, onRemoveItem, panelIndex, isFullscreen = false,
   deviceConnected = false, deviceSynced = false, onToggleDeviceSync,
-}) {
+}, ref) {
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
   const setFocusedSurface = useVaultStore(s => s.setFocusedSurface)
+  const pinSurface        = useVaultStore(s => s.pinSurface)
+  const pinnedSurface     = useVaultStore(s => s.pinnedSurface)
 
   const [idx, setIdx]             = useState(0)
   const [playing, setPlaying]     = useState(true)
@@ -31,6 +33,7 @@ export default function PanelCell({
   const containerRef     = useRef(null)
   const controlsTimer    = useRef(null)
   const isFullscreenRef  = useRef(false)
+  const videoRef         = useRef(null)
 
   const item = items[idx] ?? null
   const viewStartRef = useRef(null)
@@ -82,6 +85,31 @@ export default function PanelCell({
   const prev = () => { setIdx(i => (i - 1 + items.length) % items.length) }
   const next = () => { setIdx(i => (i + 1) % items.length) }
   const resetZoom = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
+
+  // What the panel wall's keyboard drives. MultiPanel holds one of these per
+  // panel and routes keys to the pinned one — or to every one at once, which
+  // is what makes refreshing the whole wall a single keystroke.
+  useImperativeHandle(ref, () => ({
+    next, prev,
+    shuffle: () => {
+      if (items.length < 2) return
+      setIdx(i => { let n = i; while (n === i) n = Math.floor(Math.random() * items.length); return n })
+    },
+    setPlaying: (v) => setPlaying(v),
+    togglePlay: () => {
+      // On a video the play key belongs to the video; on photos it belongs to
+      // this panel's slideshow.
+      if (item?.is_video) videoRef.current?.togglePlay()
+      else setPlaying(p => !p)
+    },
+    zoomBy: (f) => setZoom(z => { const n = Math.min(Math.max(z * f, 1), 8); if (n === 1) setPan({ x: 0, y: 0 }); return n }),
+    resetZoom,
+    isPlaying: () => playing,
+    isVideo:   () => !!item?.is_video,
+    hasScript: () => hasScript,
+    getPlayer: () => videoRef.current,
+    getItem:   () => item,
+  }))
 
   // Wheel zoom — capture:true fires BEFORE any ancestor scroll handler,
   // passive:false allows preventDefault() to actually suppress scroll.
@@ -147,10 +175,25 @@ export default function PanelCell({
     )
   }
 
+  const isPinned = pinnedSurface === surfaceKey
+
   return (
     <div ref={containerRef}
          className="relative overflow-hidden h-full"
-         style={{ background: '#060606' }}
+         style={{
+           background: '#060606',
+           // The focus ring is drawn inset so it can't shift the grid layout by
+           // a pixel when it appears — the whole wall twitching every time you
+           // pin a different panel would be maddening.
+           boxShadow: isPinned
+             ? 'inset 0 0 0 2px var(--c-accent, var(--c-accent)), 0 0 18px -4px var(--c-accent, var(--c-accent))'
+             : 'none',
+           transition: 'box-shadow 0.15s ease',
+         }}
+         // Click pins this panel: the ring stays and every hotkey targets it
+         // until another is pinned. Capture phase so it still registers when a
+         // child button swallows the event.
+         onMouseDownCapture={() => pinSurface(surfaceKey)}
          onMouseEnter={() => { setHovered(true); setFocusedSurface(surfaceKey) }}
          onMouseLeave={() => { setHovered(false); setDragging(false) }}>
 
@@ -167,6 +210,7 @@ export default function PanelCell({
         {item?.is_video ? (
           <InlineVideoPlayer
             key={item.id}
+            ref={videoRef}
             src={`/api/images/${item.id}/file`}
             imageId={item.id}
             funscriptPath={item.funscript_path ?? null}
@@ -212,7 +256,7 @@ export default function PanelCell({
                           : (hasScript ? 'Sync device to this panel' : 'Sync device to this panel (current file has no script)')}
                         className="flex items-center gap-1 px-1.5 py-0.5 rounded-full cursor-pointer flex-shrink-0"
                         style={deviceSynced
-                          ? { background: 'rgba(212,83,126,0.28)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.55)' }
+                          ? { background: 'color-mix(in srgb, var(--c-pink) 28%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 55%, transparent)' }
                           : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
                   <Zap size={10} />
                   <span className="text-[13px] leading-none">{deviceSynced ? 'Synced' : 'Sync'}</span>
@@ -226,7 +270,7 @@ export default function PanelCell({
               {/* Zoom slider */}
               <button onMouseDown={(e) => { e.stopPropagation(); resetZoom() }}
                       className="cursor-pointer p-0.5 flex-shrink-0"
-                      style={{ color: zoom > 1 ? '#CECBF6' : 'rgba(255,255,255,0.3)' }}>
+                      style={{ color: zoom > 1 ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)' }}>
                 <ZoomOut size={11} />
               </button>
               <input
@@ -239,7 +283,7 @@ export default function PanelCell({
                   if (v === 1) setPan({ x: 0, y: 0 })
                 }}
                 className="cursor-pointer"
-                style={{ width: 60, height: 3, accentColor: '#7F77DD' }}
+                style={{ width: 60, height: 3, accentColor: 'var(--c-accent)' }}
               />
               <button onMouseDown={(e) => { e.stopPropagation(); setZoom(z => Math.min(z * 1.4, 4)) }}
                       className="cursor-pointer p-0.5 flex-shrink-0"
@@ -247,7 +291,7 @@ export default function PanelCell({
                 <ZoomIn size={11} />
               </button>
               <span className="text-[9px] tabular-nums w-7 text-right flex-shrink-0"
-                    style={{ color: zoom > 1 ? '#CECBF6' : 'rgba(255,255,255,0.3)' }}>
+                    style={{ color: zoom > 1 ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)' }}>
                 {zoom.toFixed(1)}×
               </span>
               {/* Remove current item */}
@@ -288,7 +332,7 @@ export default function PanelCell({
               <button onMouseDown={(e) => { e.stopPropagation(); setPlaying(p => !p) }}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer"
                       style={playing
-                        ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
+                        ? { background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
                         : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
                 {playing ? <Pause size={14} /> : <Play size={14} />}
                 <span>{playing ? 'Pause' : 'Play'}</span>
@@ -310,7 +354,7 @@ export default function PanelCell({
                       <button key={s}
                               onMouseDown={(e) => { e.stopPropagation(); setSpeed(s); setShowSpeed(false) }}
                               className="w-full text-left px-2.5 py-1 text-[14px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
-                              style={{ color: s === speed ? '#CECBF6' : 'rgba(255,255,255,0.6)' }}>
+                              style={{ color: s === speed ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)' }}>
                         {s}s
                       </button>
                     ))}
@@ -325,7 +369,7 @@ export default function PanelCell({
                 {items.map((_, i) => (
                   <button key={i} onMouseDown={(e) => { e.stopPropagation(); setIdx(i) }}
                           className="rounded-full cursor-pointer transition-all"
-                          style={{ width: 5, height: 5, background: i === idx ? '#7F77DD' : 'rgba(255,255,255,0.2)' }} />
+                          style={{ width: 5, height: 5, background: i === idx ? 'var(--c-accent)' : 'rgba(255,255,255,0.2)' }} />
                 ))}
               </div>
             )}
@@ -337,7 +381,7 @@ export default function PanelCell({
           which panel is driving the toy mid-session. */}
       {!hovered && deviceSynced && (
         <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full z-10 pointer-events-none"
-             style={{ background: 'rgba(212,83,126,0.85)', color: '#fff' }}>
+             style={{ background: 'color-mix(in srgb, var(--c-pink) 85%, transparent)', color: '#fff' }}>
           <Zap size={9} />
           <span className="text-[13px] leading-none">{hasScript ? 'Synced' : 'No script'}</span>
         </div>
@@ -357,7 +401,9 @@ export default function PanelCell({
       )}
     </div>
   )
-}
+})
+
+export default PanelCell
 
 function SlideshowProgress({ duration }) {
   return (

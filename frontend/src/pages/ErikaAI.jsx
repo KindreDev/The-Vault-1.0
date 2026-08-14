@@ -67,9 +67,9 @@ function BondProgress({ bond }) {
   const pct    = next ? Math.min(100, ((bond.bond_xp - fromXp) / (next - fromXp)) * 100) : 100
 
   return (
-    <div className="p-3 rounded-xl" style={{ background: 'rgba(212,83,126,0.08)', border: '1px solid rgba(212,83,126,0.15)' }}>
+    <div className="p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--c-pink) 15%, transparent)' }}>
       <div className="flex justify-between items-center mb-2">
-        <span className="text-[16px] font-medium" style={{ color: '#D4537E' }}>
+        <span className="text-[16px] font-medium" style={{ color: 'var(--c-pink)' }}>
           {cur.name} {cur.hearts}
         </span>
         <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -78,7 +78,7 @@ function BondProgress({ bond }) {
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
         <div className="h-full rounded-full transition-all duration-700"
-             style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #D4537E, #E87FAA)' }} />
+             style={{ width: `${pct}%`, background: 'linear-gradient(90deg, var(--c-pink), #E87FAA)' }} />
       </div>
       {next && (
         <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
@@ -178,7 +178,7 @@ function PersonalityDropdown({ value, onChange, className }) {
                     onMouseDown={(e) => { e.stopPropagation(); onChange(p.id); setOpen(false) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left transition-all hover:bg-white/5"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              {value === p.id && <Check size={13} style={{ color: 'var(--accent, #7F77DD)', flexShrink: 0 }} />}
+              {value === p.id && <Check size={13} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />}
               {value !== p.id && <span className="w-[13px]" />}
               <div>
                 <p className="text-[14px] font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>{p.label}</p>
@@ -298,7 +298,7 @@ export default function ErikaAI() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Sparkles size={32} style={{ color: 'rgba(127,119,221,0.4)' }} className="animate-pulse" />
+        <Sparkles size={32} style={{ color: 'color-mix(in srgb, var(--c-accent) 40%, transparent)' }} className="animate-pulse" />
       </div>
     )
   }
@@ -309,7 +309,7 @@ export default function ErikaAI() {
       {/* Page header */}
       <div className="flex items-center gap-4 px-6 py-4 border-b flex-shrink-0"
            style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-        <Sparkles size={22} style={{ color: 'var(--accent, #7F77DD)' }} />
+        <Sparkles size={22} style={{ color: 'var(--accent, var(--c-accent))' }} />
         <div className="flex-1">
           <h1 className="text-[22px] font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
             {compName}
@@ -325,7 +325,7 @@ export default function ErikaAI() {
           <button
             onClick={() => updateField('enabled', !enabled)}
             className="relative w-12 h-6 rounded-full transition-all"
-            style={{ background: enabled ? 'var(--accent, #7F77DD)' : 'rgba(255,255,255,0.12)' }}>
+            style={{ background: enabled ? 'var(--accent, var(--c-accent))' : 'rgba(255,255,255,0.12)' }}>
             <div className="absolute top-0.5 transition-all w-5 h-5 rounded-full bg-white shadow"
                  style={{ left: enabled ? '26px' : '2px', transition: 'left 0.2s ease' }} />
           </button>
@@ -338,9 +338,9 @@ export default function ErikaAI() {
           <button key={tab} onClick={() => setActiveTab(tab)}
                   className="px-5 py-2 rounded-t-lg text-[16px] transition-all capitalize"
                   style={activeTab === tab ? {
-                    background: 'rgba(127,119,221,0.12)',
-                    color: '#CECBF6',
-                    borderBottom: '2px solid var(--accent, #7F77DD)',
+                    background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)',
+                    color: 'var(--c-accent-text)',
+                    borderBottom: '2px solid var(--accent, var(--c-accent))',
                   } : { color: 'rgba(255,255,255,0.4)' }}>
             {tab}
           </button>
@@ -360,13 +360,13 @@ export default function ErikaAI() {
                  style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
               {!enabled ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
-                  <Sparkles size={48} style={{ color: 'rgba(127,119,221,0.2)' }} />
+                  <Sparkles size={48} style={{ color: 'color-mix(in srgb, var(--c-accent) 20%, transparent)' }} />
                   <p className="text-[20px] font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
                     {compName} is disabled
                   </p>
                   <button onClick={() => updateField('enabled', true)}
                           className="px-6 py-3 rounded-xl text-[17px] font-medium hover:opacity-90 transition-all"
-                          style={{ background: 'var(--accent, #7F77DD)', color: '#fff' }}>
+                          style={{ background: 'var(--accent, var(--c-accent))', color: '#fff' }}>
                     Enable {compName}
                   </button>
                 </div>
@@ -401,8 +401,8 @@ export default function ErikaAI() {
                          className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-3"
-                         style={{ background: 'linear-gradient(135deg, rgba(127,119,221,0.18), rgba(212,83,126,0.12))' }}>
-                      <Sparkles size={48} style={{ color: 'rgba(127,119,221,0.45)' }} />
+                         style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 18%, transparent), color-mix(in srgb, var(--c-pink) 12%, transparent))' }}>
+                      <Sparkles size={48} style={{ color: 'color-mix(in srgb, var(--c-accent) 45%, transparent)' }} />
                     </div>
                   )}
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 55%)' }} />
@@ -476,11 +476,11 @@ export default function ErikaAI() {
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/5 transition-all"
                         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <Sparkles size={14} style={{ color: 'var(--accent, #7F77DD)', flexShrink: 0 }} />
-                        <span className="flex-1 text-[13px]" style={{ color: !personaId ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
+                        <Sparkles size={14} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />
+                        <span className="flex-1 text-[13px]" style={{ color: !personaId ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
                           {compName} (default)
                         </span>
-                        {!personaId && <Check size={12} style={{ color: 'var(--accent, #7F77DD)' }} />}
+                        {!personaId && <Check size={12} style={{ color: 'var(--accent, var(--c-accent))' }} />}
                       </button>
                       {panelCreators.slice(0, 40).map(c => (
                         <button key={c.id}
@@ -499,10 +499,10 @@ export default function ErikaAI() {
                             <User size={13} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
                           )}
                           <span className="flex-1 truncate text-[13px]"
-                                style={{ color: personaId === c.id ? '#CECBF6' : 'rgba(255,255,255,0.7)' }}>
+                                style={{ color: personaId === c.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
                             {c.name}
                           </span>
-                          {personaId === c.id && <Check size={12} style={{ color: 'var(--accent, #7F77DD)' }} />}
+                          {personaId === c.id && <Check size={12} style={{ color: 'var(--accent, var(--c-accent))' }} />}
                         </button>
                       ))}
                     </div>
@@ -516,10 +516,10 @@ export default function ErikaAI() {
                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-2 mb-1">
                   {ollamaStatus?.online
-                    ? <Wifi size={13} style={{ color: '#1D9E75' }} />
-                    : <WifiOff size={13} style={{ color: '#D4537E' }} />}
+                    ? <Wifi size={13} style={{ color: 'var(--c-green)' }} />
+                    : <WifiOff size={13} style={{ color: 'var(--c-pink)' }} />}
                   <span className="text-[14px] font-medium"
-                        style={{ color: ollamaStatus?.online ? '#1D9E75' : '#D4537E' }}>
+                        style={{ color: ollamaStatus?.online ? 'var(--c-green)' : 'var(--c-pink)' }}>
                     {ollamaStatus?.online ? 'Ollama online' : 'Ollama offline'}
                   </span>
                 </div>
@@ -544,8 +544,8 @@ export default function ErikaAI() {
                           <button key={m} onClick={() => updateField('ollama_model', m)}
                                   className="text-left px-2 py-1.5 rounded-lg text-[11px] font-mono transition-all truncate"
                                   style={{
-                                    background: currentModel === m ? 'rgba(127,119,221,0.18)' : 'transparent',
-                                    color: currentModel === m ? '#CECBF6' : 'rgba(255,255,255,0.5)',
+                                    background: currentModel === m ? 'color-mix(in srgb, var(--c-accent) 18%, transparent)' : 'transparent',
+                                    color: currentModel === m ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
                                   }}>
                             {m}
                           </button>
@@ -568,16 +568,16 @@ export default function ErikaAI() {
               {/* 6. Device controls — only when connected */}
               {deviceConnected && (
                 <div className="p-3 rounded-xl flex-shrink-0"
-                     style={{ background: 'rgba(127,119,221,0.06)', border: '1px solid rgba(127,119,221,0.2)' }}>
-                  <p className="text-[12px] font-medium mb-2" style={{ color: 'rgba(127,119,221,0.7)' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
+                  <p className="text-[12px] font-medium mb-2" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>
                     Device{deviceMode !== 'off' ? ' · active' : ''}
                   </p>
                   <button onClick={() => deviceStore.setMode?.('off')}
                           className="w-full py-1.5 rounded-lg text-[13px] font-medium transition-all"
                           style={{
-                            background: deviceMode === 'off' ? 'rgba(212,83,126,0.2)' : 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(212,83,126,0.3)',
-                            color: '#D4537E',
+                            background: deviceMode === 'off' ? 'color-mix(in srgb, var(--c-pink) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                            border: '1px solid color-mix(in srgb, var(--c-pink) 30%, transparent)',
+                            color: 'var(--c-pink)',
                           }}>
                     ■ Stop
                   </button>
@@ -601,7 +601,7 @@ export default function ErikaAI() {
                            onDeleted={() => setOpenGroupId(null)} />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
-                  <Sparkles size={40} style={{ color: 'rgba(127,119,221,0.2)' }} />
+                  <Sparkles size={40} style={{ color: 'color-mix(in srgb, var(--c-accent) 20%, transparent)' }} />
                   <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
                     Pick a group — or start one and watch them collide.
                   </p>
@@ -644,19 +644,19 @@ export default function ErikaAI() {
                     {savedList.map(m => (
                       <div key={m} className="flex items-center gap-2 p-3 rounded-xl"
                            style={{
-                             background: config?.ollama_model === m ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.04)',
-                             border: config?.ollama_model === m ? '1px solid rgba(127,119,221,0.4)' : '1px solid rgba(255,255,255,0.07)',
+                             background: config?.ollama_model === m ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'rgba(255,255,255,0.04)',
+                             border: config?.ollama_model === m ? '1px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' : '1px solid rgba(255,255,255,0.07)',
                            }}>
                         <button onClick={() => updateField('ollama_model', m)} className="flex-1 text-left">
                           <span className="text-[15px] font-mono" style={{ color: 'rgba(255,255,255,0.9)' }}>{m}</span>
                           {ollamaStatus?.models && !ollamaStatus.models.some(om => om.startsWith(m.split(':')[0])) && (
                             <span className="ml-2 text-[12px] px-1.5 py-0.5 rounded"
-                                  style={{ background: 'rgba(186,117,23,0.15)', color: '#BA7517' }}>
+                                  style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber)' }}>
                               not pulled
                             </span>
                           )}
                         </button>
-                        {config?.ollama_model === m && <Check size={14} style={{ color: 'var(--accent, #7F77DD)' }} />}
+                        {config?.ollama_model === m && <Check size={14} style={{ color: 'var(--accent, var(--c-accent))' }} />}
                         <button onClick={() => removeModel(m)} className="p-1 rounded hover:bg-white/10 transition-all"
                                 style={{ color: 'rgba(255,255,255,0.3)' }}>
                           <X size={13} />
@@ -675,7 +675,7 @@ export default function ErikaAI() {
                       <button disabled={!customModel.trim()} onClick={addModel}
                               className="px-4 py-2.5 rounded-xl text-[16px] transition-all flex-shrink-0"
                               style={{
-                                background: customModel.trim() ? 'var(--accent, #7F77DD)' : 'rgba(255,255,255,0.06)',
+                                background: customModel.trim() ? 'var(--accent, var(--c-accent))' : 'rgba(255,255,255,0.06)',
                                 color: customModel.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
                               }}>
                         Add
@@ -704,9 +704,9 @@ export default function ErikaAI() {
                   disabled={unloading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] transition-all"
                   style={{
-                    background: unloading ? 'rgba(212,83,126,0.1)' : 'rgba(212,83,126,0.08)',
-                    border: '1px solid rgba(212,83,126,0.3)',
-                    color: unloading ? '#E87FAA' : '#D4537E',
+                    background: unloading ? 'color-mix(in srgb, var(--c-pink) 10%, transparent)' : 'color-mix(in srgb, var(--c-pink) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--c-pink) 30%, transparent)',
+                    color: unloading ? '#E87FAA' : 'var(--c-pink)',
                     opacity: unloading ? 0.6 : 1,
                   }}>
                   {unloading ? '✓ Cleared' : '⏏ Clear VRAM now'}
@@ -728,9 +728,9 @@ export default function ErikaAI() {
                     <button key={opt.value} onClick={() => updateField('keep_alive', opt.value)}
                             className="px-4 py-2 rounded-xl text-[15px] transition-all"
                             style={{
-                              background: active ? 'rgba(127,119,221,0.18)' : 'rgba(255,255,255,0.05)',
-                              border: active ? '1px solid rgba(127,119,221,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                              color: active ? '#CECBF6' : 'rgba(255,255,255,0.5)',
+                              background: active ? 'color-mix(in srgb, var(--c-accent) 18%, transparent)' : 'rgba(255,255,255,0.05)',
+                              border: active ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '1px solid rgba(255,255,255,0.08)',
+                              color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
                             }}>
                       {opt.label}
                     </button>
@@ -756,7 +756,7 @@ export default function ErikaAI() {
                     <button
                       onClick={() => { updateField('keep_alive', `${customMinutes}m`); setCustomMinutes('') }}
                       className="px-3 py-2 rounded-xl text-[15px] transition-all"
-                      style={{ background: 'var(--accent, #7F77DD)', color: '#fff' }}>
+                      style={{ background: 'var(--accent, var(--c-accent))', color: '#fff' }}>
                       {customMinutes}m ✓
                     </button>
                   )}
@@ -769,7 +769,7 @@ export default function ErikaAI() {
                 if (!presets.includes(cur)) {
                   return (
                     <p className="text-[13px] mt-2" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                      Current: <span style={{ color: '#CECBF6' }}>{cur}</span>
+                      Current: <span style={{ color: 'var(--c-accent-text)' }}>{cur}</span>
                     </p>
                   )
                 }
@@ -784,7 +784,7 @@ export default function ErikaAI() {
                   Context window
                 </label>
                 <span className="text-[13px] px-2 py-1 rounded-lg"
-                      style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)' }}>
                   {((config?.num_ctx || 16384) / 1024).toFixed(0)}K tokens
                 </span>
               </div>
@@ -805,12 +805,12 @@ export default function ErikaAI() {
                     <button key={opt.value} onClick={() => updateField('num_ctx', opt.value)}
                             className="flex flex-col items-center px-4 py-2 rounded-xl text-[15px] transition-all"
                             style={{
-                              background: active ? 'rgba(127,119,221,0.18)' : 'rgba(255,255,255,0.05)',
-                              border: active ? '1px solid rgba(127,119,221,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                              color: active ? '#CECBF6' : 'rgba(255,255,255,0.5)',
+                              background: active ? 'color-mix(in srgb, var(--c-accent) 18%, transparent)' : 'rgba(255,255,255,0.05)',
+                              border: active ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '1px solid rgba(255,255,255,0.08)',
+                              color: active ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
                             }}>
                       <span className="font-semibold">{opt.label}</span>
-                      <span className="text-[11px]" style={{ color: active ? 'rgba(206,203,246,0.6)' : 'rgba(255,255,255,0.25)' }}>
+                      <span className="text-[11px]" style={{ color: active ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.25)' }}>
                         {opt.note}
                       </span>
                     </button>
@@ -838,7 +838,7 @@ export default function ErikaAI() {
                      style={{
                        background: 'rgba(255,255,255,0.04)',
                        border: '1px solid rgba(255,255,255,0.07)',
-                       color: ollamaStatus?.online ? '#1D9E75' : '#D4537E',
+                       color: ollamaStatus?.online ? 'var(--c-green)' : 'var(--c-pink)',
                      }}>
                   {ollamaStatus?.online ? <Wifi size={15} /> : <WifiOff size={15} />}
                 </div>
@@ -868,12 +868,12 @@ export default function ErikaAI() {
 
             {/* Erika config card */}
             <div className="rounded-xl overflow-hidden"
-                 style={{ background: 'rgba(127,119,221,0.06)', border: '1px solid rgba(127,119,221,0.2)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b"
-                   style={{ borderColor: 'rgba(127,119,221,0.12)' }}>
+                   style={{ borderColor: 'color-mix(in srgb, var(--c-accent) 12%, transparent)' }}>
                 <div className="flex items-center gap-3">
-                  <Sparkles size={17} style={{ color: 'var(--accent, #7F77DD)' }} />
+                  <Sparkles size={17} style={{ color: 'var(--accent, var(--c-accent))' }} />
                   <div>
                     <p className="text-[17px] font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>{compName}</p>
                     <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Default AI companion</p>
@@ -881,11 +881,11 @@ export default function ErikaAI() {
                 </div>
                 {!personaId ? (
                   <span className="text-[13px] px-2.5 py-1 rounded-lg"
-                        style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6' }}>Active</span>
+                        style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)' }}>Active</span>
                 ) : (
                   <button onClick={() => updateField('active_persona_id', null)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] hover:bg-white/10 transition-all"
-                          style={{ border: '1px solid rgba(127,119,221,0.3)', color: '#CECBF6' }}>
+                          style={{ border: '1px solid color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)' }}>
                     <RotateCcw size={12} /> Switch to {compName}
                   </button>
                 )}
@@ -897,17 +897,17 @@ export default function ErikaAI() {
                   {config?.avatar_path ? (
                     <img src={`${companionApi.avatarUrl()}?v=${Date.now()}`} alt={compName}
                          className="w-20 h-20 rounded-full object-cover"
-                         style={{ border: '2px solid rgba(127,119,221,0.3)' }} />
+                         style={{ border: '2px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }} />
                   ) : (
                     <div className="w-20 h-20 rounded-full flex items-center justify-center"
-                         style={{ background: 'rgba(127,119,221,0.12)', border: '2px solid rgba(127,119,221,0.25)' }}>
-                      <Sparkles size={28} style={{ color: 'rgba(127,119,221,0.5)' }} />
+                         style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '2px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
+                      <Sparkles size={28} style={{ color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
                     </div>
                   )}
                   <button
                     onClick={() => avatarInputRef.current?.click()}
                     className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center transition-all hover:opacity-90"
-                    style={{ background: 'var(--accent, #7F77DD)', border: '2px solid #0e0e0e' }}>
+                    style={{ background: 'var(--accent, var(--c-accent))', border: '2px solid #0e0e0e' }}>
                     <Upload size={11} style={{ color: '#fff' }} />
                   </button>
                 </div>
@@ -963,7 +963,7 @@ export default function ErikaAI() {
                   )}
                   <button onClick={() => updateField('companion_prompt', erikaPrompt || null)}
                           className="px-4 py-1.5 rounded-lg text-[14px] hover:opacity-90 transition-all"
-                          style={{ background: 'var(--accent, #7F77DD)', color: '#fff' }}>
+                          style={{ background: 'var(--accent, var(--c-accent))', color: '#fff' }}>
                     Save prompt
                   </button>
                 </div>
@@ -1003,8 +1003,8 @@ export default function ErikaAI() {
                 return (
                   <div key={c.id} className="rounded-xl overflow-hidden transition-all"
                        style={{
-                         background: active ? 'rgba(127,119,221,0.08)' : 'rgba(255,255,255,0.03)',
-                         border: active ? '1px solid rgba(127,119,221,0.35)' : '1px solid rgba(255,255,255,0.07)',
+                         background: active ? 'color-mix(in srgb, var(--c-accent) 8%, transparent)' : 'rgba(255,255,255,0.03)',
+                         border: active ? '1px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' : '1px solid rgba(255,255,255,0.07)',
                        }}>
                     <div className="flex items-center gap-3 p-3">
                       <button onClick={() => updateField('active_persona_id', active ? null : c.id)}
@@ -1023,11 +1023,11 @@ export default function ErikaAI() {
                           <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
                             {c.creator_type}
                             {c.companion_bond_xp > 0 && (
-                              <span className="ml-2" style={{ color: '#D4537E' }}>{c.companion_bond_xp} bond XP</span>
+                              <span className="ml-2" style={{ color: 'var(--c-pink)' }}>{c.companion_bond_xp} bond XP</span>
                             )}
                           </p>
                         </div>
-                        {active && <Check size={15} style={{ color: 'var(--accent, #7F77DD)' }} />}
+                        {active && <Check size={15} style={{ color: 'var(--accent, var(--c-accent))' }} />}
                       </button>
                       <button onClick={() => setExpandedPersona(expanded ? null : c.id)}
                               className="p-1.5 rounded-lg hover:bg-white/10 transition-all flex-shrink-0"
@@ -1080,7 +1080,7 @@ export default function ErikaAI() {
                           </button>
                           <button onClick={savePersonaEdits}
                                   className="px-4 py-2 rounded-lg text-[14px] hover:opacity-90 transition-all"
-                                  style={{ background: 'var(--accent, #7F77DD)', color: '#fff' }}>
+                                  style={{ background: 'var(--accent, var(--c-accent))', color: '#fff' }}>
                             Save
                           </button>
                         </div>

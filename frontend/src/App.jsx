@@ -32,6 +32,7 @@ const TaskQueue     = lazy(() => import('./pages/TaskQueue'))
 // Named exports need a .then() shim
 const Quests     = lazy(() => import('./pages/pages').then(m => ({ default: m.Quests })))
 const Stats      = lazy(() => import('./pages/pages').then(m => ({ default: m.Stats })))
+const Recap      = lazy(() => import('./pages/Recap'))
 const Settings   = lazy(() => import('./pages/pages').then(m => ({ default: m.Settings })))
 const XPHistory  = lazy(() => import('./pages/pages').then(m => ({ default: m.XPHistory })))
 const ScanLog    = lazy(() => import('./pages/pages').then(m => ({ default: m.ScanLog })))
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="device-control"  element={<DeviceControl />} />
           <Route path="quests"       element={<Quests />} />
           <Route path="stats"        element={<Stats />} />
+          <Route path="recap"        element={<Recap />} />
           <Route path="xp-history"   element={<XPHistory />} />
           <Route path="settings"     element={<Settings />} />
           <Route path="scan-log"     element={<ScanLog />} />

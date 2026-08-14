@@ -6,25 +6,30 @@ import {
   ArrowLeft, Star, Droplets, Shuffle, Heart, ChevronLeft, ChevronRight,
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
-  FolderOpen, Zap, CheckSquare, Square, FolderOutput, FolderInput, Tag, Copy,
+  FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy,
   Waves,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
+import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
+import SubgalleriesPanel from '../components/SubgalleriesPanel'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
 import ImageContextMenu from '../components/ImageContextMenu'
+import RelocateModal from '../components/RelocateModal'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import TagAutocompleteInput from '../components/TagAutocompleteInput'
 import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
+import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
+import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
-import { TagPanel, CreatorPanel, TransferPanel } from '../components/ViewerPanel'
+import { TagPanel, CreatorPanel } from '../components/ViewerPanel'
 import { useAllCreators } from '../hooks/useAllCreators'
 import DeviceControls from '../components/DeviceControls'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
@@ -99,7 +104,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
         <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider">{t('Creators')}</div>
         <button type="button" onMouseDown={() => setOpen(o => !o)}
                 className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           <UserPlus size={10} /> {t('Add')}
         </button>
       </div>
@@ -118,7 +123,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
                       title={t('Remove creator')}
                       className="cursor-pointer rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 transition-colors"
                       style={{ color: 'rgba(255,255,255,0.3)', background: 'transparent' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#F4C0D1'; e.currentTarget.style.background = 'rgba(212,83,126,0.2)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#F4C0D1'; e.currentTarget.style.background = 'color-mix(in srgb, var(--c-pink) 20%, transparent)' }}
                       onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent' }}>
                 <X size={10} />
               </button>
@@ -248,7 +253,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
          onMouseLeave={handleMouseLeave}
          onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
          className="relative rounded-[8px] overflow-hidden group animate-fade-in"
-         style={{ background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${selected ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.07)'}`, aspectRatio: '1' }}>
+         style={{ background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${selected ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.07)'}`, aspectRatio: '1' }}>
 
       {/* Bulk select overlay. onMouseDown: shift+click natively drags a text
           selection across the grid — suppress it so range-selecting doesn't
@@ -258,14 +263,14 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
              onMouseDown={(e) => { if (e.shiftKey) e.preventDefault() }}
              onClick={(e) => { e.stopPropagation(); onSelect?.(image.id, idx, e.shiftKey) }}>
           {selected
-            ? <CheckSquare size={15} style={{ color: '#7F77DD', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
+            ? <CheckSquare size={15} style={{ color: 'var(--c-accent)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
             : <Square size={15} style={{ color: 'rgba(255,255,255,0.6)', fill: 'rgba(0,0,0,0.5)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }} />
           }
         </div>
       )}
       {selected && (
         <div className="absolute inset-0 z-[5] pointer-events-none rounded-[8px]"
-             style={{ background: 'rgba(127,119,221,0.18)' }} />
+             style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)' }} />
       )}
 
       <div onMouseDown={(e) => { if (e.shiftKey) e.preventDefault() }}
@@ -300,13 +305,13 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
           <div className="absolute bottom-1 right-1 flex items-center gap-1 z-[3]">
             {image.cum_count > 0 && (
               <div className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full"
-                   style={{ background: 'rgba(0,0,0,0.75)', color: '#ED93B1' }}>
+                   style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--c-pink-text)' }}>
                 <Droplets size={8} /> {image.cum_count}
               </div>
             )}
             {image.edge_count > 0 && (
               <div className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full"
-                   style={{ background: 'rgba(0,0,0,0.75)', color: '#CECBF6' }}>
+                   style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--c-accent-text)' }}>
                 <Waves size={8} /> {image.edge_count}
               </div>
             )}
@@ -334,7 +339,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
           onClick={(e) => { e.stopPropagation(); coverMutation.mutate() }}
           title={t('Set as gallery cover')}
           className="absolute top-1 right-1 z-[4] opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
-          style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(127,119,221,0.9)' }}>
+          style={{ background: 'rgba(0,0,0,0.75)', color: 'color-mix(in srgb, var(--c-accent) 90%, transparent)' }}>
           <ImagePlus size={11} />
         </button>
       )}
@@ -371,7 +376,6 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
   prev.selected  === next.selected
 )
 
-const SLIDESHOW_SPEEDS = [3, 5, 8, 12]
 
 function fmtVideoTime(s) {
   if (!s || !isFinite(s)) return '0:00'
@@ -406,8 +410,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [slideshowActive, setSlideshowActive] = useState(false)
   const [slideshowSpeed, setSlideshowSpeed] = useState(5)
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [showFilmstrip, setShowFilmstrip] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(true)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
   const [hasImageCreators, setHasImageCreators] = useState(false)
@@ -416,7 +420,6 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const dragStart          = useRef({ x: 0, y: 0 })
   const stageRef           = useRef(null)
   const viewerRef          = useRef(null)
-  const speedMenuRef       = useRef(null)
   const viewStartRef       = useRef(null)
   const viewTimerRef       = useRef(null)
   const filmstripTimer     = useRef(null)
@@ -428,6 +431,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
   const lastCountPing     = useVaultStore(s => s.lastCountPing)
+  const lastRatingPing    = useVaultStore(s => s.lastRatingPing)
+  const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
   const qc              = useQueryClient()
   const t               = useT()
   const image = images[idx]
@@ -446,6 +451,14 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       setCumCount(lastCountPing.cumCount)
     }
   }, [lastCountPing, image?.id])
+
+  // Same again for the number-key ratings, which write through lib/rating.js
+  // rather than this viewer's own mutation.
+  useEffect(() => {
+    if (lastRatingPing && lastRatingPing.imageId === image?.id && lastRatingPing.rating != null) {
+      setRating(lastRatingPing.rating)
+    }
+  }, [lastRatingPing, image?.id])
 
   // Sync local state when image changes; track view count and time spent
   useEffect(() => {
@@ -526,8 +539,18 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   //   · video → no timer; it advances from onEnded once it has played out
   //   · animated GIF → held for at least one full loop
   //   · still image → the configured speed
+  // Shuffle draws only from `images` — the gallery (or loaded queue) you are
+  // actually in, so it can never wander outside the current selection.
+  const [shuffle, setShuffle] = useState(false)
+
   const advanceSlide = useCallback(() => {
     setIdx(i => {
+      if (shuffle && images.length > 1) {
+        let n = i
+        while (n === i) n = Math.floor(Math.random() * images.length)
+        return n
+      }
+      // In order: running off the end is what raises the "keep going?" screen.
       if (i >= images.length - 1) {
         setSlideshowActive(false)
         setShowEndScreen(true)
@@ -535,7 +558,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       }
       return i + 1
     })
-  }, [images.length])
+  }, [images.length, shuffle])
 
   useEffect(() => {
     if (!slideshowActive || showEndScreen || !images?.length) return
@@ -566,50 +589,69 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
     setSlideshowActive(true)
   }, [])
 
-  // Keyboard: arrows + space (slideshow toggle) + escape
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.target.tagName === 'INPUT') return
-      // The end screen owns the keyboard while it is up.
-      if (showEndScreen) return
-      if (e.key === 'Escape') {
-        if (isFullscreenRef.current) {
-          if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
-          else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
-          isFullscreenRef.current = false
-          setIsFullscreen(false)
-          setShowFilmstrip(true)
-          return
-        }
-        if (zoom > 1) resetZoom(); else onClose()
-        return
-      }
-      if (e.key === 'ArrowLeft') {
-        if (image.is_video) videoPlayerRef.current?.seek(-3)
-        else { setSlideshowActive(false); setIdx(i => Math.max(0, i - 1)) }
-      }
-      if (e.key === 'ArrowRight') {
-        if (image.is_video) videoPlayerRef.current?.seek(3)
-        else { setSlideshowActive(false); setIdx(i => Math.min(images.length - 1, i + 1)) }
-      }
-      if (e.key === ' ') {
-        e.preventDefault()
-        if (image.is_video) videoPlayerRef.current?.togglePlay()
-        else setSlideshowActive(a => !a)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [images.length, onClose, zoom, resetZoom, showEndScreen])
-
-  // Outside-click for speed menu
-  useEffect(() => {
-    const handler = (e) => {
-      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target)) setShowSpeedMenu(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+  // Every binding here is user-rebindable in Settings → Hotkeys. The seek pair
+  // falls back to next/previous on a photo, which is why the stock arrows still
+  // scrub a video and still walk a set of photos exactly as they always did.
+  const goNext = useCallback(() => {
+    setSlideshowActive(false)
+    setIdx(i => Math.min(images.length - 1, i + 1))
+  }, [images.length])
+  const goPrev = useCallback(() => {
+    setSlideshowActive(false)
+    setIdx(i => Math.max(0, i - 1))
   }, [])
+
+  const seekOrNav = useCallback((secs) => {
+    if (image?.is_video) videoPlayerRef.current?.seek(secs)
+    else if (secs > 0) goNext()
+    else goPrev()
+  }, [image?.is_video, goNext, goPrev])
+
+  const handleEscape = useCallback(() => {
+    if (isFullscreenRef.current) {
+      if (window.pywebview?.api) { window.pywebview.api.toggle_fullscreen() }
+      else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
+      isFullscreenRef.current = false
+      setIsFullscreen(false)
+      setShowFilmstrip(true)
+      return
+    }
+    if (zoom > 1) resetZoom(); else onClose()
+  }, [zoom, resetZoom, onClose])
+
+  useViewerHotkeys({
+    viewer_seek_fwd:       () => seekOrNav(seekStep),
+    viewer_seek_back:      () => seekOrNav(-seekStep),
+    viewer_seek_fwd_big:   () => seekOrNav(seekStepBig),
+    viewer_seek_back_big:  () => seekOrNav(-seekStepBig),
+    viewer_next:           goNext,
+    viewer_prev:           goPrev,
+    viewer_play_pause:     () => {
+      if (image?.is_video) videoPlayerRef.current?.togglePlay()
+      else setSlideshowActive(a => !a)
+    },
+    viewer_shuffle: () => {
+      if (images.length < 2) return
+      setIdx(i => { let n = i; while (n === i) n = Math.floor(Math.random() * images.length); return n })
+    },
+    viewer_slideshow_faster: () => setSlideshowSpeed(s => {
+      const n = Math.max(1, s - 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+    }),
+    viewer_slideshow_slower: () => setSlideshowSpeed(s => {
+      const n = Math.min(60, s + 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+    }),
+    viewer_fullscreen: toggleFullscreen,
+    viewer_favorite:   () => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) },
+    viewer_zoom_in:    () => setZoom(z => Math.min(8, z * 1.25)),
+    viewer_zoom_out:   () => setZoom(z => { const n = Math.max(1, z / 1.25); if (n === 1) setPan({ x: 0, y: 0 }); return n }),
+    viewer_zoom_reset: resetZoom,
+    viewer_sidebar:    () => setShowSidebar(v => !v),
+    viewer_close:      handleEscape,
+    ...videoHandlers(() => videoPlayerRef.current, () => !!image?.is_video),
+    ...ratingHandlers(),
+  }, !showEndScreen)   // the end screen owns the keyboard while it is up
+
 
   // Mouse move — drag pan + show chrome briefly in fullscreen
   const handleMouseMove = useCallback((e) => {
@@ -715,43 +757,17 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               title={isFavorite ? t('Remove favorite') : t('Add to favorites')}>
               <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
             </button>
-            {/* Slideshow controls */}
-            <div ref={speedMenuRef} className="relative flex items-center gap-1.5">
-              <button
-                onMouseDown={() => setSlideshowActive(a => !a)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer"
-                style={slideshowActive
-                  ? { background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }
-                  : { background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }
-                }
-                title={t('Play/Pause slideshow (Space)')}>
-                {slideshowActive ? <Pause size={13} /> : <Play size={13} />}
-                <span>{slideshowActive ? t('Pause') : t('Slideshow')}</span>
-              </button>
-              <button
-                onMouseDown={() => setShowSpeedMenu(s => !s)}
-                className="px-2.5 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.55)', border: '0.5px solid rgba(255,255,255,0.15)' }}
-                title={t('Slideshow speed')}>
-                {slideshowSpeed}s
-              </button>
-              {showSpeedMenu && (
-                <div className="absolute top-full right-0 mt-1 rounded-[8px] overflow-hidden shadow-xl z-50"
-                     style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                  {SLIDESHOW_SPEEDS.map(s => (
-                    <button key={s}
-                            onMouseDown={() => { setSlideshowSpeed(s); setShowSpeedMenu(false) }}
-                            className="w-full text-left px-4 py-1.5 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
-                            style={{ color: s === slideshowSpeed ? '#CECBF6' : 'rgba(255,255,255,0.6)' }}>
-                      {s}s
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Slideshow controls — shared component, see SlideshowControls.jsx */}
+            <SlideshowControls
+              active={slideshowActive}
+              onToggle={() => setSlideshowActive(a => !a)}
+              speed={slideshowSpeed}
+              onSpeedChange={setSlideshowSpeed}
+              timedMediaPlaying={isTimedMedia(image)}
+            />
             {isZoomed && (
               <span className="text-[12px] px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(127,119,221,0.2)', color: '#AFA9EC', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                 {Math.round(zoom * 100)}%
               </span>
             )}
@@ -801,7 +817,10 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               showControls={showFilmstrip}
               // During a slideshow the video decides when to move on — the
               // slide timer deliberately doesn't run for videos.
-              onEnded={slideshowActive && !showEndScreen ? advanceSlide : undefined}
+              shuffle={shuffle}
+              onToggleShuffle={() => setShuffle(v => !v)}
+              // Shuffle advances on its own, without needing the slideshow on.
+              onEnded={(slideshowActive || shuffle) && !showEndScreen ? advanceSlide : undefined}
             />
           ) : (
             <>
@@ -900,7 +919,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           )}
           {slideshowActive && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
-                 style={{ background: 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
               <Play size={9} /> {t('Slideshow')} · {slideshowSpeed}s · {t('Space to pause')}
             </div>
           )}
@@ -921,7 +940,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             <div key={img.id}
                  onMouseDown={() => { setSlideshowActive(false); setIdx(i) }}
                  className="w-12 h-12 rounded-[5px] overflow-hidden flex-shrink-0 cursor-pointer"
-                 style={{ border: `1.5px solid ${i === idx ? '#7F77DD' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
+                 style={{ border: `1.5px solid ${i === idx ? 'var(--c-accent)' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
               <img src={`/api/images/${img.id}/thumb`} alt=""
                    loading="lazy" decoding="async"
                    className="w-full h-full object-cover"
@@ -932,7 +951,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       </div>
 
       {/* Right panel — hidden in fullscreen */}
-      {!isFullscreen && <div className="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
+      {!isFullscreen && showSidebar && <div className="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
            style={{ background: '#141414', borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
 
         {/* Creators */}
@@ -960,7 +979,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               <button
                 onClick={() => galleriesApi.setCover(galleryId, image.id).then(() => toast.success(t('Set as gallery cover!'))).catch(() => toast.error(t('Failed')))}
                 className="flex items-center gap-1.5 w-full px-2.5 py-1.5 rounded-[6px] text-[11px] cursor-pointer"
-                style={{ background: 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.25)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
                 <ImagePlus size={11} /> {t('Set as cover')}
               </button>
             )}
@@ -980,7 +999,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               }} />
             <div className="flex flex-col gap-1.5">
               {image.funscript_path
-                ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'rgba(127,119,221,0.7)' }}><Zap size={10} /> {t('Script attached')}</div>
+                ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}><Zap size={10} /> {t('Script attached')}</div>
                 : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
               }
               <button onClick={() => funscriptInputRef.current?.click()}
@@ -1000,7 +1019,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                       }
                     }}
                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
-                    style={{ background: 'rgba(212,83,126,0.14)', color: 'var(--c-pink)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 14%, transparent)', color: 'var(--c-pink)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                     <X size={10} /> {t('Unlink script')}
                   </button>
                   <button onClick={async () => {
@@ -1030,11 +1049,11 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           <div className="flex items-center gap-2">
             <button onMouseDown={() => cumMutation.mutate()}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[12px] font-medium cursor-pointer active:scale-95 transition-transform"
-                    style={{ background: 'rgba(212,83,126,0.2)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.4)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 40%, transparent)' }}>
               <Droplets size={13} /> {t('Count it')}
             </button>
             <div className="text-center min-w-[36px]">
-              <div className="text-[22px] font-medium leading-none" style={{ color: '#ED93B1' }}>{cumCount ?? 0}</div>
+              <div className="text-[22px] font-medium leading-none" style={{ color: 'var(--c-pink-text)' }}>{cumCount ?? 0}</div>
               <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
             <div className="text-center min-w-[36px]">
@@ -1092,13 +1111,6 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           </div>
         </div>
 
-        {/* Transfer */}
-        <TransferPanel
-          imageId={image.id}
-          currentGalleryId={galleryId}
-          onTransferred={() => { toast.success(t('Image transferred!')); onClose() }}
-        />
-
         {/* Actions */}
         <div className="p-3 flex flex-col gap-2">
           <button onMouseDown={() => {
@@ -1106,7 +1118,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             else               startSession()
           }}
                   className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[11px] font-medium cursor-pointer"
-                  style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <Heart size={12} /> {sessionActive ? t('Stop Session') : t('Start Session')}
           </button>
         </div>
@@ -1244,7 +1256,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
           <div className="flex items-center gap-2">
-            <GitMerge size={16} style={{ color: '#CECBF6' }} />
+            <GitMerge size={16} style={{ color: 'var(--c-accent-text)' }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t('Merge gallery')}</span>
           </div>
           <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1275,8 +1287,8 @@ function MergeModal({ gallery, onClose, onMerged }) {
                 />
                 {targetId && targetGallery ? (
                   <div className="mt-2 flex items-center justify-between px-3 py-2 rounded-[8px]"
-                       style={{ background: 'rgba(127,119,221,0.15)', border: '0.5px solid rgba(127,119,221,0.4)' }}>
-                    <span style={{ fontSize: 13, color: '#CECBF6', fontWeight: 600 }}>{targetGallery.name}</span>
+                       style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
+                    <span style={{ fontSize: 13, color: 'var(--c-accent-text)', fontWeight: 600 }}>{targetGallery.name}</span>
                     <button onClick={() => { setTargetId(null); setTargetGallery(null); setSearch('') }}
                             className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}>
                       <X size={12} />
@@ -1290,7 +1302,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                         <button key={g.id} onClick={() => selectTarget(g)}
                                 className="w-full text-left px-3 py-2 flex items-center justify-between cursor-pointer transition-colors"
                                 style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(127,119,221,0.1)'}
+                                onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 10%, transparent)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <span>{g.name}</span>
                           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} {t('imgs')}</span>
@@ -1312,7 +1324,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                   </div>
                 </div>
                 <button onClick={() => setMoveFiles(v => !v)} className="flex-shrink-0 mt-0.5"
-                        style={{ width: 38, height: 20, borderRadius: 10, background: moveFiles ? 'rgba(127,119,221,0.6)' : 'rgba(255,255,255,0.1)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
+                        style={{ width: 38, height: 20, borderRadius: 10, background: moveFiles ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}>
                   <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: moveFiles ? 'calc(100% - 17px)' : '3px', transition: 'left 0.2s' }} />
                 </button>
               </div>
@@ -1330,17 +1342,17 @@ function MergeModal({ gallery, onClose, onMerged }) {
                       <button key={key} onClick={() => setCollision(key)}
                               className="flex-1 px-2 py-2 rounded-[8px] text-center cursor-pointer"
                               style={{
-                                background: collision === key ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                                border: `0.5px solid ${collision === key ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                background: collision === key ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                                border: `0.5px solid ${collision === key ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
-                        <div style={{ fontSize: 12, color: collision === key ? '#CECBF6' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
+                        <div style={{ fontSize: 12, color: collision === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
                   {collision === 'replace' && (
                     <div className="mt-2 px-3 py-2 rounded-[8px]"
-                         style={{ background: 'rgba(212,83,126,0.1)', border: '0.5px solid rgba(212,83,126,0.3)', fontSize: 11, color: '#F4C0D1' }}>
+                         style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)', fontSize: 11, color: '#F4C0D1' }}>
                       {t('⚠ Replace will permanently delete existing files in the target folder that share a filename with source files.')}
                     </div>
                   )}
@@ -1351,8 +1363,8 @@ function MergeModal({ gallery, onClose, onMerged }) {
             /* Confirmation step */
             <>
               <div className="rounded-[8px] px-3 py-3 flex flex-col gap-1"
-                   style={{ background: 'rgba(186,117,23,0.1)', border: '1px solid rgba(186,117,23,0.35)' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#FAC775' }}>{t('⚠ Confirm merge')}</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-amber) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-amber-text)' }}>{t('⚠ Confirm merge')}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginTop: 2 }}>
                   <b style={{ color: 'rgba(255,255,255,0.85)' }}>{gallery.name}</b> {t('will be merged into')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{targetGallery?.name}</b>.
                   {gallery.image_count > 0 && <> Its {gallery.image_count} images will be reassigned.</>}
@@ -1361,7 +1373,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
 
               {moveFiles ? (
                 <div className="rounded-[8px] px-3 py-2.5 flex flex-col gap-1"
-                     style={{ background: 'rgba(212,83,126,0.08)', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#F4C0D1' }}>{t('Files will be moved on disk')}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
                     {t('All images from')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{gallery.folder_path}</span> {t('will be physically moved to')} <span style={{ color: 'rgba(255,255,255,0.7)' }}>{targetGallery?.folder_path}</span>.
@@ -1377,14 +1389,14 @@ function MergeModal({ gallery, onClose, onMerged }) {
 
               {newCreators.length > 0 && (
                 <div className="rounded-[8px] px-3 py-2.5"
-                     style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.3)', fontSize: 12, color: '#9FE1CB' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)', fontSize: 12, color: 'var(--c-green-text)' }}>
                   {t('Creator')}{newCreators.length > 1 ? 's' : ''} <b>{newCreators.map(c => c.name).join(', ')}</b> {t('will be added to the target gallery.')}
                 </div>
               )}
 
               {collision === 'skip' && moveFiles && (
                 <div className="rounded-[8px] px-3 py-2.5"
-                     style={{ background: 'rgba(186,117,23,0.08)', border: '0.5px solid rgba(186,117,23,0.3)', fontSize: 12, color: '#FAC775' }}>
+                     style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', fontSize: 12, color: 'var(--c-amber-text)' }}>
                   {t('Skipped images will remain in the source gallery. If any are skipped, the source gallery will not be deleted.')}
                 </div>
               )}
@@ -1402,7 +1414,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
               </button>
               <button onClick={proceed} disabled={!targetId}
                       className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40"
-                      style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                 {t('Review →')}
               </button>
             </>
@@ -1415,7 +1427,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
               </button>
               <button onClick={doMerge} disabled={merging}
                       className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
-                      style={{ background: merging ? 'rgba(127,119,221,0.15)' : 'rgba(127,119,221,0.25)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                      style={{ background: merging ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
                 {merging ? <><span className="animate-spin inline-block">⟳</span> {t('Merging…')}</> : <><GitMerge size={13} /> {t('Confirm merge')}</>}
               </button>
             </>
@@ -1484,7 +1496,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.07)]">
           <div className="flex items-center gap-2">
-            <FolderOutput size={16} style={{ color: '#9FE1CB' }} />
+            <FolderOutput size={16} style={{ color: 'var(--c-green-text)' }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t('Extract to new gallery')}</span>
           </div>
           <button onClick={onClose} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1497,9 +1509,9 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           {/* Summary */}
           <div className="rounded-[8px] px-3 py-2.5 flex items-center gap-3"
                style={{ background: 'rgba(159,225,203,0.08)', border: '0.5px solid rgba(159,225,203,0.2)' }}>
-            <FolderOutput size={18} style={{ color: '#9FE1CB', flexShrink: 0 }} />
+            <FolderOutput size={18} style={{ color: 'var(--c-green-text)', flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#9FE1CB' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-green-text)' }}>
                 {selectedImages.length} {t('image')}{selectedImages.length !== 1 ? 's' : ''} {t('selected')}
               </div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
@@ -1528,7 +1540,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
               </div>
             )}
             {noFolder && (
-              <div className="mt-1.5" style={{ fontSize: 11, color: '#FAC775' }}>
+              <div className="mt-1.5" style={{ fontSize: 11, color: 'var(--c-amber-text)' }}>
                 {t('⚠ This gallery has no folder path. The new gallery will be database-only (no files moved).')}
               </div>
             )}
@@ -1537,7 +1549,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           {/* Creator info */}
           {creators.length > 0 && (
             <div className="rounded-[8px] px-3 py-2.5"
-                 style={{ background: 'rgba(29,158,117,0.08)', border: '0.5px solid rgba(29,158,117,0.3)', fontSize: 12, color: '#9FE1CB', lineHeight: 1.5 }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)', fontSize: 12, color: 'var(--c-green-text)', lineHeight: 1.5 }}>
               {t('Creator association')}{creators.length > 1 ? 's' : ''} (<b>{creators.map(c => c.name).join(', ')}</b>) {t('will be copied to the new gallery.')}
             </div>
           )}
@@ -1558,7 +1570,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           </button>
           <button onClick={() => extractMutation.mutate()} disabled={!canSubmit}
                   className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer disabled:opacity-40 flex items-center gap-2"
-                  style={{ background: 'rgba(159,225,203,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(159,225,203,0.3)' }}>
+                  style={{ background: 'rgba(159,225,203,0.15)', color: 'var(--c-green-text)', border: '0.5px solid rgba(159,225,203,0.3)' }}>
             {extractMutation.isPending
               ? <><span className="animate-spin inline-block">⟳</span> {t('Extracting…')}</>
               : <><FolderOutput size={13} /> {t('Extract')} {selectedImages.length} {t('image')}{selectedImages.length !== 1 ? 's' : ''}</>
@@ -1613,6 +1625,7 @@ export default function GalleryView() {
   const [avatarFramePicker, setAvatarFramePicker] = useState(null) // { creatorId, image, mode }
   // Transfer modal — single image (from ctx menu) or bulk
   const [transferCtx, setTransferCtx] = useState(null) // { images: [...] }
+  const [relocatingImages, setRelocatingImages] = useState(null)
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const multiViewerQueue = useVaultStore(s => s.multiViewerQueue)
   const MULTIVIEWER_MAX  = useVaultStore(s => s.MULTIVIEWER_MAX)
@@ -1789,7 +1802,7 @@ export default function GalleryView() {
               onBlur={submitRename}
               disabled={renameMutation.isPending}
               className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] bg-transparent border-none outline-none w-full"
-              style={{ borderBottom: '1px solid rgba(127,119,221,0.5)', paddingBottom: '1px' }}
+              style={{ borderBottom: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)', paddingBottom: '1px' }}
             />
           ) : (
             <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={() => { setEditName(gallery?.name || ''); setIsRenaming(true) }}>
@@ -1826,7 +1839,7 @@ export default function GalleryView() {
               <button
                 onClick={() => setShowPeriodPicker(p => !p)}
                 className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer"
-                style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
                 {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
               </button>
             ) : (
@@ -1866,7 +1879,7 @@ export default function GalleryView() {
                 onClick={() => periodMutation.mutate({ month: periodMonth, year: periodYear })}
                 disabled={periodMutation.isPending}
                 className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer"
-                style={{ background: 'rgba(29,158,117,0.2)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
                 {t('Save')}
               </button>
               <button
@@ -1881,21 +1894,21 @@ export default function GalleryView() {
           <button onClick={() => favMutation.mutate()}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{
-                    background: gallery?.is_favorite ? 'rgba(186,117,23,0.2)' : 'rgba(255,255,255,0.05)',
-                    color: gallery?.is_favorite ? '#FAC775' : 'rgba(255,255,255,0.4)',
+                    background: gallery?.is_favorite ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                    color: gallery?.is_favorite ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.4)',
                     border: '0.5px solid rgba(255,255,255,0.1)',
                   }}>
             <Star size={12} />
           </button>
           <button onClick={() => cumMutation.mutate()}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'rgba(212,83,126,0.15)', color: '#F4C0D1', border: '0.5px solid rgba(212,83,126,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <Droplets size={12} /> {gallery?.cum_count ?? 0}
           </button>
           {gallery?.edge_count > 0 && (
             <div className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full"
                  title={t('Edges — logged automatically by Edge Mode')}
-                 style={{ background: 'rgba(127,119,221,0.15)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <Waves size={12} /> {gallery.edge_count}
             </div>
           )}
@@ -1916,14 +1929,14 @@ export default function GalleryView() {
                         className="cursor-pointer transition-transform hover:scale-125"
                         title={`Rate ${n}/10`}>
                   <Star size={9}
-                        fill={filled ? (ratingHover ? 'rgba(186,117,23,0.7)' : '#BA7517') : 'none'}
-                        stroke={filled ? '#BA7517' : 'rgba(255,255,255,0.2)'}
+                        fill={filled ? (ratingHover ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'var(--c-amber)') : 'none'}
+                        stroke={filled ? 'var(--c-amber)' : 'rgba(255,255,255,0.2)'}
                         strokeWidth={1.5} />
                 </button>
               )
             })}
             {galleryRating > 0 && !ratingHover && (
-              <span className="text-[10px] ml-1" style={{ color: '#BA7517' }}>{galleryRating}</span>
+              <span className="text-[10px] ml-1" style={{ color: 'var(--c-amber)' }}>{galleryRating}</span>
             )}
           </div>
           <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
@@ -1936,16 +1949,16 @@ export default function GalleryView() {
               value={thumbSizeIdx}
               onChange={e => setThumbSizeIdx(Number(e.target.value))}
               className="cursor-pointer"
-              style={{ width: 64, accentColor: '#7F77DD' }}
+              style={{ width: 64, accentColor: 'var(--c-accent)' }}
             />
           </div>
           <button onClick={handleRetag} disabled={retagging}
                   title={t('AI-tag all images in this gallery')}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50 transition-all"
                   style={{
-                    background: retagging ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.1)',
-                    color: retagging ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                    border: `0.5px solid ${retagging ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    background: retagging ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 10%, transparent)',
+                    color: retagging ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                    border: `0.5px solid ${retagging ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
             <Sparkles size={12} className={retagging ? 'animate-pulse' : ''} />
             {retagging ? t('Tagging…') : t('AI Tag')}
@@ -1961,9 +1974,9 @@ export default function GalleryView() {
                   title={t('Select images to extract or delete')}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{
-                    background: bulkMode ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-                    color: bulkMode ? '#CECBF6' : 'rgba(255,255,255,0.4)',
-                    border: `0.5px solid ${bulkMode ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                    color: bulkMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                    border: `0.5px solid ${bulkMode ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
             <CheckSquare size={12} />
             {bulkMode ? `${selectedIds.size} selected` : t('Select')}
@@ -1981,11 +1994,19 @@ export default function GalleryView() {
         </div>
       )}
 
+      {/* Galleries nested inside this one on disk — hides itself when empty */}
+      <div className="mb-3">
+        <SubgalleriesPanel
+          galleryId={parseInt(id)}
+          onOpen={(g) => navigate(`/galleries/${g.id}`)}
+        />
+      </div>
+
       {/* Bulk action bar */}
       {bulkMode && selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] mb-3 animate-slide-up relative z-10"
-             style={{ background: 'rgba(127,119,221,0.12)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
-          <span className="text-[13px] font-medium" style={{ color: '#CECBF6' }}>{selectedIds.size} {t('selected')}</span>
+             style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+          <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>{selectedIds.size} {t('selected')}</span>
           <button type="button"
                   onMouseDown={() => setSelectedIds(s => s.size === images?.filter(i => !deletedIds.has(i.id)).length ? new Set() : new Set(images?.filter(i => !deletedIds.has(i.id)).map(i => i.id) ?? []))}
                   className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
@@ -1994,31 +2015,31 @@ export default function GalleryView() {
           </button>
           <button type="button" onMouseDown={() => setShowExtract(true)}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
             <FolderOutput size={12} /> {t('Extract to gallery')}
           </button>
           <button type="button"
-                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)), mode: 'move' })}
+                  onMouseDown={() => setRelocatingImages(images.filter(i => selectedIds.has(i.id)))}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'rgba(186,117,23,0.15)', color: '#FAC775', border: '0.5px solid rgba(186,117,23,0.3)' }}>
-            <FolderInput size={12} /> {t('Move to gallery')}
+                  style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
+            <HardDrive size={12} /> {t('Relocate')}
           </button>
           <button type="button"
-                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)), mode: 'copy' })}
+                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)) })}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'rgba(29,158,117,0.15)', color: '#9FE1CB', border: '0.5px solid rgba(29,158,117,0.3)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
             <Copy size={12} /> {t('Copy to gallery')}
           </button>
           <button type="button"
                   onMouseDown={() => { setBulkAssignOpen(v => !v); setBulkTagOpen(false) }}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: bulkAssignOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                  style={{ background: bulkAssignOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
             <UserPlus size={12} /> {t('Assign creator')}
           </button>
           <button type="button"
                   onMouseDown={() => { setBulkTagOpen(v => !v); setBulkAssignOpen(false) }}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: bulkTagOpen ? 'rgba(127,119,221,0.25)' : 'rgba(127,119,221,0.12)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                  style={{ background: bulkTagOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
             <Tag size={12} /> {t('Add tags')}
           </button>
           <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); setBulkAssignOpen(false); setBulkTagOpen(false); setBulkPendingTags([]); lastSelectIdxRef.current = null }}
@@ -2031,11 +2052,11 @@ export default function GalleryView() {
       {/* Bulk tag picker — build a pending list, then apply to every selected file */}
       {bulkMode && bulkTagOpen && (
         <div className="mb-3 rounded-[10px] overflow-hidden relative z-20"
-             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid rgba(127,119,221,0.3)', padding: '10px 12px' }}>
+             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)', padding: '10px 12px' }}>
           <div className="flex items-center gap-2 flex-wrap">
             {bulkPendingTags.map(tg => (
               <span key={tg} className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[13px]"
-                    style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                 {tg}
                 <button type="button" onMouseDown={() => setBulkPendingTags(p => p.filter(x => x !== tg))}
                         className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white ml-0.5">
@@ -2071,7 +2092,7 @@ export default function GalleryView() {
                 setBulkTagOpen(false)
               }}
               className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
               {bulkTagging ? t('Tagging…') : `${t('Apply to')} ${selectedIds.size}`}
             </button>
           </div>
@@ -2081,7 +2102,7 @@ export default function GalleryView() {
       {/* Bulk assign creator picker */}
       {bulkMode && bulkAssignOpen && (
         <div className="mb-3 rounded-[10px] overflow-hidden relative z-10"
-             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid rgba(127,119,221,0.3)' }}>
+             style={{ background: 'rgba(22,22,26,0.97)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           <div style={{ padding: '8px 12px 6px' }}>
             <input
               autoFocus
@@ -2127,12 +2148,12 @@ export default function GalleryView() {
                     padding: '6px 14px', fontSize: 13, color: 'rgba(255,255,255,0.8)',
                     background: 'transparent', transition: 'background 0.08s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(127,119,221,0.15)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 15%, transparent)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                 >
                   {c.avatar_path
                     ? <img src={`/api/creators/${c.id}/avatar`} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={e => { e.target.style.display = 'none' }} />
-                    : <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: 'rgba(127,119,221,0.3)' }} />
+                    : <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)' }} />
                   }
                   {c.name}
                 </button>
@@ -2244,19 +2265,20 @@ export default function GalleryView() {
         />
       )}
 
-      {/* Transfer images to another existing gallery */}
+      {/* Copy a reference into a mix gallery */}
       {transferCtx && (
         <GalleryTransferModal
           images={transferCtx.images}
           currentGalleryId={parseInt(id)}
-          mode={transferCtx.mode ?? 'move'}
           onClose={() => setTransferCtx(null)}
-          onTransferred={(targetId, transferredIds) => {
-            setTransferCtx(null)
-            setDeletedIds(s => new Set([...s, ...transferredIds]))
-            setSelectedIds(s => { const n = new Set(s); transferredIds.forEach(i => n.delete(i)); return n })
-            qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
-          }}
+        />
+      )}
+
+      {relocatingImages && (
+        <RelocateModal
+          mode="images"
+          images={relocatingImages}
+          onClose={() => setRelocatingImages(null)}
         />
       )}
 
@@ -2297,8 +2319,8 @@ export default function GalleryView() {
             if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
             if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
           }}
-          onTransfer={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image], mode: 'move' })}
-          onCopyTo={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image], mode: 'copy' })}
+          onCopyTo={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}
+          onRelocate={() => setRelocatingImages(imgCtx.bulkImages ?? [imgCtx.image])}
           creators={gallery?.creators ?? []}
           onSetAsAvatar={(creatorId) => {
             if (imgCtx.image.is_video) {

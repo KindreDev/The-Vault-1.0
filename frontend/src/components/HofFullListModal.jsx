@@ -56,7 +56,7 @@ function Thumb({ item }) {
 function Movement({ change }) {
   if (!change) return null
   const up = change > 0
-  const color = up ? '#1D9E75' : '#D4537E'
+  const color = up ? 'var(--c-green)' : 'var(--c-pink)'
   const Icon = up ? ArrowUp : ArrowDown
   return (
     <span className="flex items-center gap-0.5 flex-shrink-0"
@@ -205,7 +205,7 @@ export default function HofFullListModal({
                       </span>
                     )}
                     {(item.total_cum ?? item.cum_count) > 0 && (
-                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#D4537E' }}>
+                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: 'var(--c-pink)' }}>
                         <Droplets size={13} /> {(item.total_cum ?? item.cum_count).toLocaleString()}
                       </span>
                     )}
@@ -222,12 +222,12 @@ export default function HofFullListModal({
                       </span>
                     )}
                     {fmtTime(item.total_view_seconds ?? item.view_seconds) && (
-                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#9F99E8' }}>
+                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: 'var(--c-accent-text)' }}>
                         <Clock size={13} /> {fmtTime(item.total_view_seconds ?? item.view_seconds)}
                       </span>
                     )}
                     {item.avg_dwell_seconds > 0 && (
-                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#9FE1CB' }}
+                      <span className="flex items-center gap-1" style={{ fontSize: 16, color: 'var(--c-green-text)' }}
                             title="Average time you linger on one of her photos">
                         <TrendingUp size={13} /> {item.avg_dwell_seconds}s
                       </span>

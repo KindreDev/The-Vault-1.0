@@ -71,11 +71,11 @@ function calculateAge(dobString) {
 }
 
 const TYPE_COLORS = {
-  cosplayer: { bg: 'rgba(29,158,117,0.15)',  text: '#9FE1CB' },
-  ethot:     { bg: 'rgba(212,83,126,0.15)',  text: '#ED93B1' },
-  artist:    { bg: 'rgba(127,119,221,0.15)', text: '#CECBF6' },
-  character: { bg: 'rgba(186,117,23,0.15)',  text: '#FAC775' },
-  actress:   { bg: 'rgba(212,83,126,0.15)',  text: '#ED93B1' },
+  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',  text: '#9FE1CB' },
+  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1' },
+  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', text: '#CECBF6' },
+  character: { bg: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',  text: '#FAC775' },
+  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1' },
   custom:    { bg: 'rgba(136,135,128,0.15)', text: '#D3D1C7' },
 }
 
@@ -154,14 +154,14 @@ function PortraitGalleryCard({ gallery, onClick }) {
         <div className="text-[15px] font-medium text-white truncate leading-tight">{gallery.name}</div>
         <div className="text-[13px] text-[rgba(255,255,255,0.45)] mt-0.5">{gallery.image_count} photos</div>
         {gallery.period_month && gallery.period_year && (
-          <div className="text-[12px] mt-0.5 font-medium" style={{ color: '#9FE1CB' }}>
+          <div className="text-[12px] mt-0.5 font-medium" style={{ color: 'var(--c-green-text)' }}>
             {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
           </div>
         )}
       </div>
       {gallery.cum_count > 0 && (
         <div className="absolute top-2 right-2 flex items-center gap-0.5 text-[12px] px-2 py-0.5 rounded-full"
-             style={{ background: 'rgba(0,0,0,0.75)', color: '#ED93B1' }}>
+             style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--c-pink-text)' }}>
           <Droplets size={10} /> {gallery.cum_count}
         </div>
       )}
@@ -296,7 +296,7 @@ function GalleryScroll({ title, icon: Icon, galleries, onGalleryClick, onViewAll
           <Icon size={11} /> {title}
         </div>
         {onViewAll && (
-          <button onClick={onViewAll} className="text-[11px] cursor-pointer" style={{ color: '#7F77DD' }}>
+          <button onClick={onViewAll} className="text-[11px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>
             {t('view all')}
           </button>
         )}
@@ -354,12 +354,12 @@ function GalleryCard({ gallery, onClick, onContextMenu }) {
         </div>
         {gallery.cum_count > 0 && (
           <div className="absolute top-2 right-2 flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-full"
-               style={{ background: 'rgba(0,0,0,0.72)', color: '#ED93B1', backdropFilter: 'blur(4px)' }}>
+               style={{ background: 'rgba(0,0,0,0.72)', color: 'var(--c-pink-text)', backdropFilter: 'blur(4px)' }}>
             <Droplets size={9} /> {gallery.cum_count}
           </div>
         )}
         {gallery.is_favorite && (
-          <div className="absolute top-2 left-2"><Star size={13} fill="#FAC775" stroke="none" /></div>
+          <div className="absolute top-2 left-2"><Star size={13} fill="var(--c-amber-text)" stroke="none" /></div>
         )}
       </div>
     </motion.div>
@@ -420,11 +420,11 @@ function PhotoCell({ image, onClick, onContextMenu }) {
           style={{ background: 'rgba(0,0,0,0.52)' }}
         >
           {image.cum_count > 0 && (
-            <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#ED93B1' }}>
+            <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: 'var(--c-pink-text)' }}>
               <Droplets size={12} /> {image.cum_count}
             </div>
           )}
-          {image.is_favorite && <Star size={11} fill="#FAC775" stroke="none" />}
+          {image.is_favorite && <Star size={11} fill="var(--c-amber-text)" stroke="none" />}
         </motion.div>
       )}
     </motion.div>
@@ -474,9 +474,9 @@ function SortPills({ sort, onChange }) {
         <button key={s.value} onClick={() => onChange(s.value)}
                 className="text-[11px] px-2.5 py-1 rounded-full cursor-pointer transition-all"
                 style={{
-                  background: sort === s.value ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.04)',
-                  color: sort === s.value ? '#CECBF6' : 'rgba(255,255,255,0.3)',
-                  border: `0.5px solid ${sort === s.value ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                  background: sort === s.value ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                  color: sort === s.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)',
+                  border: `0.5px solid ${sort === s.value ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}`,
                 }}>
           {t(s.label)}
         </button>
@@ -564,8 +564,8 @@ function GalleriesTab({ galleries, onGalleryClick, onViewAll, onGalleryContextMe
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }} className="mb-8">
           <div className="flex items-center gap-2 mb-3">
-            <Star size={13} fill="#FAC775" stroke="none" />
-            <span className="text-[13px] font-semibold" style={{ color: '#FAC775' }}>{t('Favorites')}</span>
+            <Star size={13} fill="var(--c-amber-text)" stroke="none" />
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>{t('Favorites')}</span>
             <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>· {favorites.length}</span>
           </div>
           <div className="flex gap-3 pb-2"
@@ -703,8 +703,8 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage, onItemContext
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }} className="mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <Star size={13} fill="#FAC775" stroke="none" />
-            <span className="text-[13px] font-semibold" style={{ color: '#FAC775' }}>{t('Favorites')}</span>
+            <Star size={13} fill="var(--c-amber-text)" stroke="none" />
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>{t('Favorites')}</span>
             <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>· {favorites.length}</span>
           </div>
           <div className="flex gap-3 pb-2"
@@ -806,7 +806,7 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
           </div>
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full text-[12px] font-medium cursor-pointer"
-                  style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
             <Upload size={14} /> {uploading ? t('Uploading...') : t('Pick from PC')}
           </button>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
@@ -890,7 +890,7 @@ function EditCreatorModal({ creator, onClose }) {
       <div className="rounded-[14px] p-6 w-[880px] max-h-[85vh] overflow-y-auto animate-modal-pop shadow-2xl" style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="flex items-center justify-between mb-5">
           <div className="text-[22px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2">
-            <Pencil size={20} style={{ color: '#7F77DD' }} /> {t('Edit creator')}
+            <Pencil size={20} style={{ color: 'var(--c-accent)' }} /> {t('Edit creator')}
           </div>
           <button onClick={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white"><X size={20} /></button>
         </div>
@@ -902,9 +902,9 @@ function EditCreatorModal({ creator, onClose }) {
               <button key={tg} onClick={() => set('creator_type', tg)}
                       className="text-[16px] px-3.5 py-2 rounded-full cursor-pointer capitalize transition-all"
                       style={{
-                        background: form.creator_type === tg ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.05)',
-                        color: form.creator_type === tg ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${form.creator_type === tg ? 'rgba(127,119,221,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                        background: form.creator_type === tg ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)',
+                        color: form.creator_type === tg ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                        border: `0.5px solid ${form.creator_type === tg ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                       }}>{t(TYPE_LABELS[tg] || tg)}</button>
             ))}
           </div>
@@ -1065,7 +1065,7 @@ function EditCreatorModal({ creator, onClose }) {
           <button onClick={() => mutation.mutate()}
                   disabled={!form.name.trim() || mutation.isPending}
                   className="flex-1 py-3 rounded-[8px] text-[16px] font-medium cursor-pointer transition-all"
-                  style={{ background: 'rgba(127,119,221,0.3)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.5)' }}>
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
             {mutation.isPending ? t('Saving...') : t('Save changes')}
           </button>
         </div>
@@ -1520,13 +1520,13 @@ export default function CreatorProfile() {
                         <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">{t('Vertical position')}</div>
                         <input type="range" min={0} max={100} value={bannerY}
                                onChange={e => { const v = Number(e.target.value); setBannerY(v); saveBanner(bannerImageId, v, bannerZoom) }}
-                               className="w-full h-1 cursor-pointer accent-[#7F77DD]" />
+                               className="w-full h-1 cursor-pointer accent-[var(--c-accent)]" />
                       </div>
                       <div className="px-3 pb-3">
                         <div className="text-[9px] text-[rgba(255,255,255,0.35)] uppercase tracking-widest mb-1.5">{t('Zoom')}</div>
                         <input type="range" min={1} max={2} step={0.05} value={bannerZoom}
                                onChange={e => { const v = Number(e.target.value); setBannerZoom(v); saveBanner(bannerImageId, bannerY, v) }}
-                               className="w-full h-1 cursor-pointer accent-[#7F77DD]" />
+                               className="w-full h-1 cursor-pointer accent-[var(--c-accent)]" />
                       </div>
                     </>
                   )}
@@ -1721,12 +1721,12 @@ export default function CreatorProfile() {
             </button>
             <button onClick={() => navigate(`/feed?creator_id=${id}`)}
                     className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
-                    style={{ background: 'rgba(212,83,126,0.18)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.35)', backdropFilter: 'blur(6px)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 18%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)', backdropFilter: 'blur(6px)' }}>
               <Newspaper size={15} /> {t('Feed')}
             </button>
             <button onClick={talkToCreator}
                     className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
-                    style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)', backdropFilter: 'blur(6px)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)', backdropFilter: 'blur(6px)' }}>
               <Sparkles size={15} /> {t('Talk to')} {creator.name}
             </button>
             <button
@@ -1743,15 +1743,15 @@ export default function CreatorProfile() {
                 }
               }}
               className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer disabled:opacity-40"
-              style={{ background: 'rgba(127,119,221,0.18)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.35)', backdropFilter: 'blur(6px)' }}>
+              style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)', backdropFilter: 'blur(6px)' }}>
               <Sparkles size={15} /> {aiTagging ? t('Starting…') : t('AI Tag')}
             </button>
             <button onClick={() => favMutation.mutate()}
                     className="flex items-center gap-1.5 text-[16px] px-4 py-2 rounded-full cursor-pointer"
-                    style={{ background: creator.is_favorite ? 'rgba(186,117,23,0.22)' : 'rgba(255,255,255,0.06)',
-                             color: creator.is_favorite ? '#FAC775' : 'rgba(255,255,255,0.55)',
+                    style={{ background: creator.is_favorite ? 'color-mix(in srgb, var(--c-amber) 22%, transparent)' : 'rgba(255,255,255,0.06)',
+                             color: creator.is_favorite ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.55)',
                              border: '0.5px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(6px)' }}>
-              <Star size={15} fill={creator.is_favorite ? '#FAC775' : 'none'} />
+              <Star size={15} fill={creator.is_favorite ? 'var(--c-amber-text)' : 'none'} />
               {creator.is_favorite ? t('Favorited') : t('Favorite')}
             </button>
           </div>
@@ -1775,14 +1775,14 @@ export default function CreatorProfile() {
                 { label: 'Videos',    value: creator.video_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
                 { label: 'Galleries', value: creator.gallery_count ?? 0,   color: 'rgba(255,255,255,0.9)' },
                 { label: 'Views',     value: (creator.total_views ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
-                { label: '💦',        value: creator.cum_count ?? 0,       color: '#D4537E' },
+                { label: '💦',        value: creator.cum_count ?? 0,       color: 'var(--c-pink)' },
                 { label: 'Gooning Time', value: (() => {
                   const secs = creator.total_view_seconds || 0
                   if (secs === 0) return '—'
                   const h = Math.floor(secs / 3600)
                   const m = Math.floor((secs % 3600) / 60)
                   return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`
-                })(), color: '#D4537E' },
+                })(), color: 'var(--c-pink)' },
                 { label: 'Size',      value: creator.total_size_gb > 0 ? `${creator.total_size_gb} GB` : '—', color: 'rgba(255,255,255,0.7)' },
               ].map(s => (
                 <div key={s.label} className="flex flex-col items-center">
@@ -1813,7 +1813,7 @@ export default function CreatorProfile() {
                 onClick={() => folderMutation.mutate(folderInput.trim())}
                 disabled={folderMutation.isPending || !folderInput.trim()}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[8px] cursor-pointer disabled:opacity-40 text-[13px] font-medium whitespace-nowrap"
-                style={{ background: 'rgba(127,119,221,0.2)', color: '#CECBF6', border: '0.5px solid rgba(127,119,221,0.4)' }}>
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                 <FolderOpen size={13} /> {folderMutation.isPending ? t('Assigning…') : t('Assign')}
               </button>
               {creator.source_folder && (
@@ -1821,7 +1821,7 @@ export default function CreatorProfile() {
                         disabled={folderMutation.isPending}
                         title={t('Clear saved folder')}
                         className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-40"
-                        style={{ background: 'rgba(212,83,126,0.1)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.25)' }}>
+                        style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' }}>
                   <X size={13} />
                 </button>
               )}
@@ -1836,7 +1836,7 @@ export default function CreatorProfile() {
           {/* Box 3: Collection Value — only when data present */}
           {((creator.collection_value ?? 0) > 0 || (creator.completion_pct ?? 0) > 0) && (
             <div className="rounded-[12px] p-5 flex-1 flex flex-col justify-between gap-2"
-                 style={{ background: 'rgba(29,158,117,0.07)', border: '0.5px solid rgba(29,158,117,0.2)' }}>
+                 style={{ background: 'color-mix(in srgb, var(--c-green) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 20%, transparent)' }}>
               <div className="flex items-start justify-between gap-6">
                 {/* Value */}
                 <div>
@@ -1850,19 +1850,19 @@ export default function CreatorProfile() {
                       transition: 'filter 0.3s ease',
                       userSelect: valueRevealed ? 'auto' : 'none',
                     }}>
-                    <div className="text-[20px] font-semibold" style={{ color: '#1D9E75' }}>
+                    <div className="text-[20px] font-semibold" style={{ color: 'var(--c-green)' }}>
                       ${(creator.collection_value ?? 0).toFixed(2)}
                     </div>
                   </div>
                   {!valueRevealed && (
-                    <div className="text-[9px] mt-0.5" style={{ color: 'rgba(29,158,117,0.5)' }}>{t('🔒 click to reveal')}</div>
+                    <div className="text-[9px] mt-0.5" style={{ color: 'color-mix(in srgb, var(--c-green) 50%, transparent)' }}>{t('🔒 click to reveal')}</div>
                   )}
                 </div>
                 {/* Completion % */}
                 <div className="text-right">
                   <div className="text-[16px] uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('All-Time')}</div>
                   <div className="text-[20px] font-semibold"
-                       style={{ color: (creator.completion_pct ?? 0) >= 100 ? '#BA7517' : '#1D9E75' }}>
+                       style={{ color: (creator.completion_pct ?? 0) >= 100 ? 'var(--c-amber)' : 'var(--c-green)' }}>
                     {(creator.completion_pct ?? 0).toFixed(0)}%
                   </div>
                   <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1876,8 +1876,8 @@ export default function CreatorProfile() {
                      style={{
                        width: `${Math.min(100, creator.completion_pct ?? 0)}%`,
                        background: (creator.completion_pct ?? 0) >= 100
-                         ? 'linear-gradient(90deg,#BA7517,#EF9F27)'
-                         : 'linear-gradient(90deg,#1D9E75,#9FE1CB)',
+                         ? 'linear-gradient(90deg,var(--c-amber),#EF9F27)'
+                         : 'linear-gradient(90deg,var(--c-green),var(--c-green-text))',
                      }} />
               </div>
             </div>
@@ -2060,8 +2060,8 @@ export default function CreatorProfile() {
           <div className="rounded-[16px] p-7 w-[420px] text-center shadow-2xl"
                style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.12)' }}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
-                 style={{ background: 'rgba(212,83,126,0.15)', border: '1px solid rgba(212,83,126,0.35)' }}>
-              <Trash2 size={22} style={{ color: '#ED93B1' }} />
+                 style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
+              <Trash2 size={22} style={{ color: 'var(--c-pink-text)' }} />
             </div>
             <div className="text-[17px] font-semibold text-white mb-2">{t('Delete')} {creator.name}?</div>
             <div className="text-[13px] mb-6" style={{ color: 'rgba(255,255,255,0.45)', lineHeight: 1.55 }}>
@@ -2075,7 +2075,7 @@ export default function CreatorProfile() {
               </button>
               <button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}
                       className="flex-1 py-2.5 rounded-[10px] text-[13px] font-medium cursor-pointer"
-                      style={{ background: 'rgba(212,83,126,0.25)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.45)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--c-pink) 25%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 45%, transparent)' }}>
                 {deleteMutation.isPending ? t('Deleting...') : t('Yes, delete')}
               </button>
             </div>

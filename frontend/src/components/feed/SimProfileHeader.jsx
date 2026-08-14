@@ -86,7 +86,7 @@ export default function SimProfileHeader({ profile, onBack }) {
       style={{ background: '#161618', border: '0.5px solid rgba(255,255,255,0.09)' }}>
 
       {/* Banner — shorter on phones */}
-      <div className="relative" style={{ height: 'clamp(150px, 26vw, 240px)', background: 'rgba(127,119,221,0.08)' }}>
+      <div className="relative" style={{ height: 'clamp(150px, 26vw, 240px)', background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)' }}>
         {bannerSrc && (
           <img src={bannerSrc} alt="" className="absolute inset-0 w-full h-full object-cover"
                onError={e => { e.target.style.display = 'none' }} />
@@ -135,7 +135,7 @@ export default function SimProfileHeader({ profile, onBack }) {
                     className="px-6 py-2.5 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all"
                     style={following
                       ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.16)' }
-                      : { background: '#7F77DD', color: '#fff', border: '0.5px solid transparent' }}>
+                      : { background: 'var(--c-accent)', color: '#fff', border: '0.5px solid transparent' }}>
               {following ? t('Following ✓') : t('Follow')}
             </button>
             <button onClick={openDM} disabled={dmOpening} title={t('Message')}
@@ -164,7 +164,7 @@ export default function SimProfileHeader({ profile, onBack }) {
           {[
             [fmtCount(profile.image_count), t('photos'), ImagesIcon, 'rgba(255,255,255,0.8)'],
             [fmtCount(profile.video_count), t('videos'), Video, 'rgba(255,255,255,0.8)'],
-            ...(profile.cum_count > 0 ? [[fmtCount(profile.cum_count), '💦', Droplets, '#ED93B1']] : []),
+            ...(profile.cum_count > 0 ? [[fmtCount(profile.cum_count), '💦', Droplets, 'var(--c-pink-text)']] : []),
           ].map(([v, label, Icon, color]) => (
             <div key={label} className="flex flex-col">
               <span className="text-[24px] font-semibold leading-tight flex items-center gap-1.5" style={{ color }}>
@@ -195,7 +195,7 @@ export default function SimProfileHeader({ profile, onBack }) {
                   {h.cover_thumb
                     ? <img src={thumbSrc(h.cover_thumb)} alt="" className="w-full h-full object-cover rounded-full"
                            onError={e => { e.target.style.visibility = 'hidden' }} />
-                    : <div className="w-full h-full rounded-full" style={{ background: 'rgba(127,119,221,0.2)' }} />
+                    : <div className="w-full h-full rounded-full" style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)' }} />
                   }
                 </div>
                 <span className="text-[13px] truncate w-full text-center" style={{ color: 'rgba(255,255,255,0.5)' }}>

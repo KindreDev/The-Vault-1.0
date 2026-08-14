@@ -191,9 +191,9 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
               <div className="absolute inset-y-0 rounded-[3px]"
                    style={{
                      left: `${pct}%`, width: `${clipPct}%`,
-                     background: 'rgba(212,83,126,0.45)',
+                     background: 'color-mix(in srgb, var(--c-pink) 45%, transparent)',
                      border: '1px solid rgba(237,147,177,0.75)',
-                     boxShadow: '0 0 10px rgba(212,83,126,0.45)',
+                     boxShadow: '0 0 10px color-mix(in srgb, var(--c-pink) 45%, transparent)',
                    }} />
               {/* playhead — the exact frame that gets captured */}
               <div className="absolute" style={{ left: `${pct}%`, top: -5, bottom: -5, width: 3, marginLeft: -1.5, borderRadius: 2, background: '#fff', boxShadow: `0 0 8px ${accent}, 0 0 3px rgba(0,0,0,0.8)` }} />
@@ -227,7 +227,7 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
               {t('captured frame')}
             </span>
             <span className="flex items-center gap-1.5">
-              <span style={{ width: 18, height: 8, borderRadius: 3, background: 'rgba(212,83,126,0.45)', border: '1px solid rgba(237,147,177,0.75)', display: 'inline-block' }} />
+              <span style={{ width: 18, height: 8, borderRadius: 3, background: 'color-mix(in srgb, var(--c-pink) 45%, transparent)', border: '1px solid rgba(237,147,177,0.75)', display: 'inline-block' }} />
               {t('3s clip range')}
             </span>
           </div>
@@ -241,7 +241,7 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
             </button>
             <button onClick={() => capture(true)} disabled={!!busy}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-full text-[13px] font-semibold cursor-pointer disabled:opacity-40 transition-transform active:scale-[0.97]"
-                    style={{ background: 'rgba(212,83,126,0.2)', color: '#ED93B1', border: '0.5px solid rgba(212,83,126,0.45)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 45%, transparent)' }}>
               <Film size={14} /> {busy === 'clip' ? t('Rendering clip…') : t('Use 3s animated clip')}
             </button>
           </div>

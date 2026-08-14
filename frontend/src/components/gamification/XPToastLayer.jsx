@@ -3,14 +3,14 @@ import { useVaultStore } from '../../store/vault'
 
 const TOAST_STYLES = {
   xp: {
-    background: 'rgba(127,119,221,0.93)',
-    border:     'rgba(127,119,221,0.5)',
+    background: 'color-mix(in srgb, var(--c-accent) 93%, transparent)',
+    border:     'color-mix(in srgb, var(--c-accent) 50%, transparent)',
     color:      '#fff',
     icon:       '⚡',
   },
   credits: {
-    background: 'rgba(186,117,23,0.93)',
-    border:     'rgba(186,117,23,0.5)',
+    background: 'color-mix(in srgb, var(--c-amber) 93%, transparent)',
+    border:     'color-mix(in srgb, var(--c-amber) 50%, transparent)',
     color:      '#fff',
     icon:       '🪙',
   },
@@ -45,11 +45,11 @@ function PackToast({ t }) {
       className="xp-toast flex items-center gap-4 px-8 py-5 rounded-2xl font-bold shadow-2xl"
       style={{
         background:    isPremium
-          ? 'linear-gradient(135deg, rgba(186,117,23,0.97) 0%, rgba(212,83,126,0.97) 100%)'
-          : 'linear-gradient(135deg, rgba(127,119,221,0.97) 0%, rgba(29,158,117,0.97) 100%)',
+          ? 'linear-gradient(135deg, color-mix(in srgb, var(--c-amber) 97%, transparent) 0%, color-mix(in srgb, var(--c-pink) 97%, transparent) 100%)'
+          : 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 97%, transparent) 0%, color-mix(in srgb, var(--c-green) 97%, transparent) 100%)',
         color:         '#fff',
-        border:        `1px solid ${isPremium ? 'rgba(250,199,117,0.5)' : 'rgba(206,203,246,0.4)'}`,
-        boxShadow:     `0 12px 40px rgba(0,0,0,0.6), 0 0 0 1px ${isPremium ? 'rgba(250,199,117,0.15)' : 'rgba(127,119,221,0.2)'}`,
+        border:        `1px solid ${isPremium ? 'color-mix(in srgb, var(--c-amber) 50%, transparent)' : 'color-mix(in srgb, var(--c-accent) 40%, transparent)'}`,
+        boxShadow:     `0 12px 40px rgba(0,0,0,0.6), 0 0 0 1px ${isPremium ? 'color-mix(in srgb, var(--c-amber) 15%, transparent)' : 'color-mix(in srgb, var(--c-accent) 20%, transparent)'}`,
         backdropFilter:'blur(16px)',
         minWidth:      220,
       }}

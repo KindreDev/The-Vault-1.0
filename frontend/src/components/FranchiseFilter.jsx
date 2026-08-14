@@ -42,9 +42,9 @@ export default function FranchiseFilter({ value, onChange }) {
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
         style={{
-          background: value ? 'rgba(127,119,221,0.2)' : 'rgba(255,255,255,0.05)',
-          color: value ? '#CECBF6' : 'rgba(255,255,255,0.45)',
-          border: `0.5px solid ${value ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          background: value ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+          color: value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+          border: `0.5px solid ${value ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
         }}>
         {value || t('Franchise')}
         {value
@@ -80,10 +80,10 @@ export default function FranchiseFilter({ value, onChange }) {
                 onMouseDown={() => { onChange(f); setOpen(false); setSearch('') }}
                 className="w-full text-left px-3 py-2 text-[13px] cursor-pointer flex items-center gap-2 hover:bg-[rgba(255,255,255,0.05)]"
                 style={{
-                  background: value === f ? 'rgba(127,119,221,0.15)' : 'transparent',
-                  color: value === f ? '#CECBF6' : 'rgba(255,255,255,0.7)',
+                  background: value === f ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                  color: value === f ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)',
                 }}>
-                {value === f && <Check size={12} style={{ color: '#7F77DD', flexShrink: 0 }} />}
+                {value === f && <Check size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />}
                 {f}
               </button>
             ))}
