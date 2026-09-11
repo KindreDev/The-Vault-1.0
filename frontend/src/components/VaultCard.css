@@ -409,9 +409,8 @@
 
 /* ── CodePen "Pokémon holo" technique (test on celestial) ─────────
    The key vs our old wash: mix-blend-mode COLOR-DODGE (keeps blacks
-   black — no milky haze) driven through a real foil texture (holo.png)
-   + sparkles.webp, so the shine lives in the texture grain, not as a
-   flat film over the photo. Adapted from codetheworldio/BaGyYPN. */
+   black — no milky haze) driven through sparkles.webp and a moving
+   gradient, so the shine has texture instead of becoming a flat film. */
 /* ── VERBATIM copy of codetheworldio/BaGyYPN "Pokémon Card Holo Effect"
    (their :before + :after). --background-x/y are driven by our pointer
    JS exactly like their demo drives background-position. Idle shimmer
@@ -451,7 +450,6 @@
   border-radius: 14px;
   background-image:
     url("/sparkles.webp"),
-    url(/holo.png),
     linear-gradient(
       125deg,
       #ff008450 15%,
@@ -575,7 +573,7 @@
   z-index: 2;
 }
 
-/* ── Rarity-class badge (R / SR / SSR / UR) ─────────────────────────────── */
+/* ── Rarity-class badge (C / R / SR / SPR / UR) ─────────────────────────── */
 .rc-badge {
   position: absolute; top: 8px; left: 8px; z-index: 11;
   min-width: 26px; text-align: center; padding: 3px 7px; border-radius: 7px;
@@ -590,10 +588,11 @@
 .rc-legendary { --t1:#B8860B; --t2:#E0B84C; --t3:#FFD700; --t4:#FFF3B0; --ux1:#FFAA00; --ux2:#FFFFFF; }
 .rc-celestial { --t1:#9aa0d0; --t2:#c8ccf0; --t3:#E8E8FF; --t4:#ffffff; --ux1:#ff5db1; --ux2:#5db8ff; }
 /* intensity per class */
+.rc-C   { background: color-mix(in srgb, var(--t2) 8%, #0b0b12); border: 1px solid color-mix(in srgb, var(--t2) 26%, transparent); color: color-mix(in srgb, var(--t3) 70%, #9b9aa4); }
 .rc-R   { background: color-mix(in srgb, var(--t2) 16%, #0b0b12); border: 1px solid color-mix(in srgb, var(--t2) 46%, transparent); color: var(--t3); }
 .rc-SR  { background: linear-gradient(135deg, var(--t2), var(--t1)); border: 1px solid var(--t3); color: var(--t4); box-shadow: 0 0 11px color-mix(in srgb, var(--t2) 60%, transparent); }
-.rc-SSR { background: linear-gradient(135deg, var(--t1), var(--t3) 55%, var(--t2)); border: 1px solid var(--t4); color: #fff; text-shadow: 0 0 6px color-mix(in srgb, var(--t4) 85%, transparent); box-shadow: 0 0 17px color-mix(in srgb, var(--t3) 72%, transparent); }
-.rc-SSR::before { content:''; position:absolute; inset:0; background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.6) 50%, transparent 68%); transform: translateX(-130%); animation: rc-shimmer 2.6s ease-in-out infinite; }
+.rc-SPR { background: linear-gradient(135deg, var(--t1), var(--t3) 55%, var(--t2)); border: 1px solid var(--t4); color: #fff; text-shadow: 0 0 6px color-mix(in srgb, var(--t4) 85%, transparent); box-shadow: 0 0 17px color-mix(in srgb, var(--t3) 72%, transparent); }
+.rc-SPR::before { content:''; position:absolute; inset:0; background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.6) 50%, transparent 68%); transform: translateX(-130%); animation: rc-shimmer 2.6s ease-in-out infinite; }
 .rc-UR  { color:#fff; border:1px solid rgba(255,255,255,0.92); background: linear-gradient(120deg, var(--t2), var(--ux1), var(--t4), var(--ux2), var(--t2)); background-size:320% 320%; animation: rc-shift 4s linear infinite, rc-pulse 2.2s ease-in-out infinite; text-shadow: 0 0 9px rgba(255,255,255,0.75); }
 /* celestial UR opens to full rainbow */
 .rc-celestial.rc-UR { background: linear-gradient(120deg,#ff0000,#ff7700,#ffff00,#00ff88,#0088ff,#aa00ff,#ff0088,#ff0000); background-size:320% 320%; }
@@ -614,6 +613,6 @@
   animation:vc-prestige-shift 4s linear infinite; box-shadow:0 0 9px rgba(255,255,255,0.45); }
 @keyframes vc-prestige-shift { to { background-position:300% 50%; } }
 
-/* ── SR / SSR metallic border — slow reflection glide across the tier-metal trim ── */
+/* ── SR / SPR metallic border — slow reflection glide across the tier-metal trim ── */
 .vc-metal-glide { animation: vc-metal-glide 6s linear infinite; }
 @keyframes vc-metal-glide { 0% { background-position: 0% 0%; } 100% { background-position: 230% 230%; } }

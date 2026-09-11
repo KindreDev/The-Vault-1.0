@@ -212,6 +212,11 @@ export const sessionsApi = {
   log:   (d)  => api.post('/sessions/', d),
   list:  (p)  => api.get('/sessions/', { params: p }),
   stats: ()   => api.get('/sessions/stats'),
+  // Analytics keeps every longitudinal query behind one adapter so chart
+  // components never need to know endpoint details.
+  analytics: (params) => api.get('/sessions/analytics', { params }),
+  wrapped:   (year)   => api.get('/sessions/analytics/wrapped', { params: { year } }),
+  compare:   (ids)    => api.get('/sessions/analytics/compare', { params: { session_ids: ids } }),
   // Manual correction of the session record — duration, when it happened, who
   // it was. Sessions are logged automatically, so a crash or a forgotten stop
   // leaves rows only the user can put right.
@@ -278,6 +283,10 @@ export const scannerApi = {
   // a rescan won't fix it because the scanner skips known files.
   backfillDurations:   () => api.post('/scanner/backfill-video-durations'),
   durationStatus:      () => api.get('/scanner/video-duration-status'),
+  missingGalleries:    () => api.get('/scanner/missing-galleries'),
+  reconcileGalleries:  () => api.post('/scanner/reconcile-galleries'),
+  relinkGallery:       (id, folderPath) => api.post(`/scanner/missing-galleries/${id}/relink`, { folder_path: folderPath }),
+  removeMissingGallery:(id) => api.delete(`/scanner/missing-galleries/${id}`),
 }
 
 // ── Intake / Triage ───────────────────────────────────────────────────────────
@@ -286,9 +295,16 @@ export const intakeApi = {
   addRoot:    (path, label)      => api.post('/intake/roots', { path, label }),
   delRoot:    (id)               => api.delete(`/intake/roots/${id}`),
   scan:       (rootId)           => api.post('/intake/scan', rootId ? { root_id: rootId } : {}),
-  items:      (status = 'pending') => api.get('/intake/items', { params: { status } }),
+  items:      (params = {})       => api.get('/intake/items', { params: { status: 'pending', ...params } }),
+  folders:    (params = {})       => api.get('/intake/folders', { params: { status: 'pending', ...params } }),
+  folderContents: (id, params = {}) => api.get(`/intake/folders/${id}`, { params }),
   commit:     (itemIds, target)  => api.post('/intake/commit', { item_ids: itemIds, target }),
-  discard:    (itemIds, deleteFile = false) => api.post('/intake/discard', { item_ids: itemIds, delete_file: deleteFile }),
+  commitFolders: (folderIds, target) => api.post('/intake/commit-folders', { folder_ids: folderIds, target }),
+  discard:    (itemIds, action = 'hide') => api.post('/intake/discard', { item_ids: itemIds, action }),
+  discardFolders: (folderIds, action = 'hide') => api.post('/intake/discard-folders', { folder_ids: folderIds, action }),
+  bulkDuplicates: (action, includeVisual = false, filters = {}) =>
+    api.post('/intake/duplicates/bulk', { action, include_visual: includeVisual, ...filters }),
+  fileUrl:    (id)               => `/api/intake/items/${id}/file`,
   status:     ()                 => api.get('/intake/status'),
   archiveContents:  (id)         => api.get(`/intake/items/${id}/archive`),
   archivePreviewUrl: (id, name)  => `/api/intake/items/${id}/archive/preview?name=${encodeURIComponent(name)}`,
@@ -353,13 +369,18 @@ export const taggerApi = {
   start:          (body)  => api.post('/scanner/ai-tag', body),
   status:         ()      => api.get('/scanner/ai-tag-status'),
   cancel:         ()      => api.post('/scanner/ai-tag-cancel'),
+  pause:          ()      => api.post('/scanner/ai-tag-pause'),
+  resume:         (jobId) => api.post('/scanner/ai-tag-resume', jobId ? { job_id: jobId } : {}),
 }
 
 // ── TCG: Cards ────────────────────────────────────────────────────────────────
 export const cardsApi = {
   inventory:           (params)   => api.get('/cards/inventory', { params }),
+  setupStatus:         ()         => api.get('/cards/setup'),
+  startV2:             ()         => api.post('/cards/setup'),
+  publishFoundation:   ()         => api.post('/cards/setup/foundation'),
   // Only creators you actually own cards of — populates the collection filter.
-  collectionCreators:  ()         => api.get('/cards/creators'),
+  collectionCreators:  (params)   => api.get('/cards/creators', { params }),
   get:                 (id)       => api.get(`/cards/${id}`),
   openPack:            (data)     => api.post('/cards/packs/open', data),
   openPackFromInventory: (data)   => api.post('/cards/packs/open-from-inventory', data),
@@ -380,6 +401,98 @@ export const cardsApi = {
   recomputeRarity:     ()         => api.post('/cards/recompute-rarity'),
   variantPairs:        ()         => api.get('/cards/forge/variant-pairs'),
   forgeVariant:        (creator_id, character_id) => api.post('/cards/forge/craft-variant', { creator_id, character_id }),
+}
+
+// -- TCG V2 release-aware collection -----------------------------------------
+export const tcgV2Api = {
+  bootstrap:            ()              => api.post('/tcg-v2/bootstrap'),
+  summary:              ()              => api.get('/tcg-v2/summary'),
+  settings:             ()              => api.get('/tcg-v2/settings'),
+  updateSettings:       (data)          => api.patch('/tcg-v2/settings', data),
+  cardDetail:           (id)            => api.get(`/tcg-v2/cards/${id}`),
+  catalog:              (params)        => api.get('/tcg-v2/catalog', { params }),
+  catalogFilterOptions: ()              => api.get('/tcg-v2/catalog/filter-options'),
+  classifyCard:         (id, data)      => api.put(`/tcg-v2/cards/${id}/classification`, data),
+  updatePresentation:   (id, data)      => api.put(`/tcg-v2/cards/${id}/presentation`, data),
+  dismantleDuplicate:   (id)            => api.post(`/tcg-v2/cards/${id}/dismantle-duplicate`),
+  releases:             ()              => api.get('/tcg-v2/releases'),
+  sets:                 ()              => api.get('/tcg-v2/sets'),
+  generateRelease:      (data)          => api.post('/tcg-v2/releases/generate', data),
+  processDueReleases:   ()              => api.post('/tcg-v2/releases/process-due'),
+  release:              (id)            => api.get(`/tcg-v2/releases/${id}`),
+  publishRelease:       (id)            => api.post(`/tcg-v2/releases/${id}/publish`),
+  checklist:            (params)        => api.get('/tcg-v2/checklist', { params }),
+  packs:                ()              => api.get('/tcg-v2/packs'),
+  simulatePack:         (data)          => api.post('/tcg-v2/packs/simulate', data),
+  openPack:             (id, data = {}) => api.post(`/tcg-v2/packs/${id}/open`, data),
+  binders:              ()              => api.get('/tcg-v2/binders'),
+  createBinder:         (data)          => api.post('/tcg-v2/binders', data),
+  binder:               (id)            => api.get(`/tcg-v2/binders/${id}`),
+  updateBinder:          (id, data)      => api.put(`/tcg-v2/binders/${id}`, data),
+  setBinderSlot:        (id, data)      => api.put(`/tcg-v2/binders/${id}/slot`, data),
+  addBinderCards:       (id, cardIds)   => api.put(`/tcg-v2/binders/${id}/cards`, { card_ids: cardIds }),
+  workshop:             ()              => api.get('/tcg-v2/workshop'),
+  unlockWorkshopItem:   (id)            => api.post(`/tcg-v2/workshop/${id}/unlock`),
+}
+
+export const tcgRoomModuleApi = {
+  status:    ()        => api.get('/tcg-room/module/status'),
+  download:  ()        => api.post('/tcg-room/module/download'),
+  cancel:    ()        => api.post('/tcg-room/module/cancel'),
+  verify:    (version) => api.post('/tcg-room/module/verify', { version }),
+  repair:    (version) => api.post('/tcg-room/module/repair', { version }),
+  update:    ()        => api.post('/tcg-room/module/update'),
+  uninstall: (version) => api.post('/tcg-room/module/uninstall', { version }),
+}
+
+export const tcgRoomApi = {
+  bootstrap:       ()                  => api.get('/tcg-room/bootstrap'),
+  layout:          ()                  => api.get('/tcg-room/layout'),
+  saveLayout:      (data)              => api.put('/tcg-room/layout', data),
+  undoLayout:      (expected_revision) => api.post('/tcg-room/layout/undo', { expected_revision }),
+  redoLayout:      (expected_revision) => api.post('/tcg-room/layout/redo', { expected_revision }),
+  copies:          (params = {})       => api.get('/tcg-room/copies', { params }),
+  visibleCards:    ()                  => api.get('/tcg-room/copies/visible'),
+  moveCopies:      (moves)             => api.post('/tcg-room/copies/move', { moves }),
+  moveToBinder:    (binder_id, copy_ids) => api.post('/tcg-room/copies/move-to-binder', { binder_id, copy_ids }),
+  purchaseDisplay: (data)              => api.post('/tcg-room/display-items/purchase', data),
+  furniture:       ()                  => api.get('/tcg-room/furniture'),
+  inventory:       ()                  => api.get('/tcg-room/inventory'),
+  purchaseFurniture: (data)            => api.post('/tcg-room/furniture/purchase', data),
+  placeFurniture:  (id, data)          => api.post(`/tcg-room/furniture/${id}/place`, data),
+  moveFurniture:   (id, data)          => api.post(`/tcg-room/furniture/${id}/move`, data),
+  rotateFurniture: (id, data)          => api.post(`/tcg-room/furniture/${id}/rotate`, data),
+  returnFurniture: (id, expected_revision) => api.post(`/tcg-room/furniture/${id}/return`, { expected_revision }),
+  assignDisplay:   (data)              => api.put('/tcg-room/display-items/assignment', data),
+  order:           (lines, delivery_delay_seconds = 5) => api.post('/tcg-room/orders', { lines, delivery_delay_seconds }),
+  parcel:          (id)                => api.get(`/tcg-room/parcels/${id}`),
+  collectParcel:   (id)                => api.post(`/tcg-room/parcels/${id}/collect`),
+  placeParcel:     (id, data)          => api.post(`/tcg-room/parcels/${id}/place`, data),
+  openParcel:      (id)                => api.post(`/tcg-room/parcels/${id}/open`),
+  openInventoryParcel: (id)            => api.post(`/tcg-room/inventory/parcels/${id}/open`),
+}
+
+export const tcgTradersApi = {
+  current:         ()                         => api.get('/tcg-traders/current'),
+  dialogue:        (visitId)                  => api.get(`/tcg-traders/${visitId}/dialogue`),
+  respond:         (visitId, action)          => api.post(`/tcg-traders/${visitId}/dialogue`, { action }),
+  inventory:       (visitId)                  => api.get(`/tcg-traders/${visitId}/inventory`),
+  tradeCandidates: (visitId, limit = 120)     => api.get(`/tcg-traders/${visitId}/trade-candidates`, { params: { limit } }),
+  sellQuote:       (visitId, copyIds, currency) => api.post('/tcg-traders/sell/quote', { visit_id: visitId, copy_ids: copyIds, currency }),
+  buyOffer:        (visitId, inventoryId, currency) => api.post('/tcg-traders/buy/offer', { visit_id: visitId, inventory_id: inventoryId, currency }),
+  barterOffer:     (visitId, inventoryId, copyIds, credits = 0, shards = 0) => api.post('/tcg-traders/barter/offer', { visit_id: visitId, inventory_id: inventoryId, copy_ids: copyIds, credits, shards }),
+  requests:        (visitId)                  => api.get(`/tcg-traders/${visitId}/requests`),
+  requestCard:     (visitId, cardId)          => api.post('/tcg-traders/requests', { visit_id: visitId, card_id: cardId }),
+  offers:          (visitId)                  => api.get(`/tcg-traders/${visitId}/offers`),
+  accept:          (offerId)                  => api.post(`/tcg-traders/offers/${offerId}/accept`),
+  refuse:          (offerId)                  => api.post(`/tcg-traders/offers/${offerId}/refuse`),
+  history:         (limit = 100)              => api.get('/tcg-traders/history/transactions', { params: { limit } }),
+}
+
+export const cardMasksApi = {
+  status:              ()        => api.get('/masks/status'),
+  regenerate:          (imageId) => api.post(`/masks/image/${imageId}`),
+  channelUrl:          (imageId, channel) => `/api/masks/channels/${imageId}/${channel}`,
 }
 
 // ── TCG: Economy ──────────────────────────────────────────────────────────────

@@ -465,14 +465,17 @@ function VocabEditRow({ entry, onCancel, onSave }) {
 }
 
 // ── Tag chip with inline count bar ────────────────────────────────────────────
-function TagChip({ tag, maxCount, onView, onEdit }) {
+function TagChip({ tag, maxCount, onView, onEdit, onToggleFavorite }) {
   const color = catColor(tag.category)
   const pct   = maxCount > 0 ? Math.round((tag.use_count / maxCount) * 100) : 0
   return (
-    <motion.button
+    <motion.div
       layout
       whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
       onClick={() => onView(tag)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') onView(tag) }}
       className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border overflow-hidden hover:border-[rgba(255,255,255,0.25)] transition-colors"
       style={{ borderColor: 'rgba(255,255,255,0.08)',
                background: `linear-gradient(90deg, ${color}18 ${pct}%, rgba(255,255,255,0.03) ${pct}%)` }}
@@ -481,12 +484,17 @@ function TagChip({ tag, maxCount, onView, onEdit }) {
       <span className="text-[17px] text-[rgba(255,255,255,0.85)]">{tag.name}</span>
       <span className="text-[14px] font-medium tabular-nums" style={{ color: `${color}cc` }}>{tag.use_count}</span>
       {tag.source === 'ai' && <Sparkles size={11} className="opacity-0 group-hover:opacity-60 transition-opacity" style={{ color }} />}
+      <button onClick={event => { event.stopPropagation(); onToggleFavorite(tag) }}
+        className="transition-opacity"
+        title={tag.is_favorite ? 'Remove from favorite tags' : 'Favorite this tag for future mint rarity'}>
+        <Star size={14} fill={tag.is_favorite ? 'currentColor' : 'none'} style={{ color: tag.is_favorite ? '#f5c451' : 'rgba(255,255,255,0.3)' }} />
+      </button>
       <button onClick={e => { e.stopPropagation(); onEdit(tag) }}
         className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
         title="Edit tag">
         <Pencil size={11} className="text-[rgba(255,255,255,0.4)] hover:text-white" />
       </button>
-    </motion.button>
+    </motion.div>
   )
 }
 
@@ -731,20 +739,26 @@ export default function TagManager() {
   const [activeTag, setActiveTag]     = useState(null)    // tag whose images are shown
   const [editTag, setEditTag]         = useState(null)    // tag being edited
   const [showAiSettings, setShowAiSettings] = useState(false)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
 
   const qc = useQueryClient()
   const { data: tags = [] }   = useQuery({ queryKey: ['tags'],           queryFn: () => tagsApi.list().then(r => r.data) })
   const { data: stats }       = useQuery({ queryKey: ['tag-stats'],      queryFn: () => tagsApi.stats().then(r => r.data) })
   const { data: samples }     = useQuery({ queryKey: ['cat-samples'],    queryFn: () => tagsApi.categorySamples().then(r => r.data) })
+  const favoriteMut = useMutation({
+    mutationFn: tag => tagsApi.update(tag.id, { is_favorite: !tag.is_favorite }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
 
   const activeCats = CATS  // always show all categories for organization
 
   const filtered = useMemo(() => {
     let list = tags
     if (selectedCat !== 'all') list = list.filter(t => t.category === selectedCat)
+    if (favoritesOnly) list = list.filter(t => t.is_favorite)
     if (search.trim()) list = list.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
     return list
-  }, [tags, selectedCat, search])
+  }, [tags, selectedCat, search, favoritesOnly])
 
   const maxCount = useMemo(() => Math.max(...filtered.map(t => t.use_count), 1), [filtered])
 
@@ -757,10 +771,11 @@ export default function TagManager() {
   }, [filtered, selectedCat])
 
   // Show overview cards: All tab, no search, list mode
-  const showOverview = selectedCat === 'all' && !search.trim() && viewMode !== 'cloud'
+  const showOverview = selectedCat === 'all' && !search.trim() && !favoritesOnly && viewMode !== 'cloud'
 
   const handleTagView = (tag) => { setActiveTag(tag) }
   const handleTagEdit = (tag) => { setEditTag(tag) }
+  const handleFavorite = tag => favoriteMut.mutate(tag)
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--c-bg)' }}>
@@ -777,6 +792,12 @@ export default function TagManager() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+              onClick={() => setFavoritesOnly(value => !value)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-[16px] transition-colors"
+              style={{ background: favoritesOnly ? 'rgba(245,196,81,0.16)' : 'rgba(255,255,255,0.05)', color: favoritesOnly ? '#f5c451' : 'rgba(255,255,255,0.55)', border: `1px solid ${favoritesOnly ? 'rgba(245,196,81,0.42)' : 'rgba(255,255,255,0.08)'}` }}>
+              <Star size={16} fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorite tags
+            </motion.button>
             {/* AI Tagging Settings */}
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
               onClick={() => setShowAiSettings(true)}
@@ -890,7 +911,7 @@ export default function TagManager() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {catTags.map(tag => (
-                            <TagChip key={tag.id} tag={tag} maxCount={max} onView={handleTagView} onEdit={handleTagEdit} />
+                            <TagChip key={tag.id} tag={tag} maxCount={max} onView={handleTagView} onEdit={handleTagEdit} onToggleFavorite={handleFavorite} />
                           ))}
                         </div>
                       </div>
@@ -903,7 +924,7 @@ export default function TagManager() {
               <motion.div key="flat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-wrap gap-2 pt-2">
                 {filtered.map(tag => (
-                  <TagChip key={tag.id} tag={tag} maxCount={maxCount} onView={handleTagView} onEdit={handleTagEdit} />
+                  <TagChip key={tag.id} tag={tag} maxCount={maxCount} onView={handleTagView} onEdit={handleTagEdit} onToggleFavorite={handleFavorite} />
                 ))}
               </motion.div>
             )}

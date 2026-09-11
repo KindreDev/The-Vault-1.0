@@ -286,20 +286,8 @@ def award_xp(db: Session, reason: str, override_amount: Optional[int] = None) ->
     db.add(event)
     db.commit()
 
-    # Level-up rewards
+    # Level-up achievements remain, but TCG V2 has no Catalyst Token economy.
     if new_level > old_level:
-        try:
-            from models import CraftingMaterials
-            mats = db.query(CraftingMaterials).first()
-            if not mats:
-                mats = CraftingMaterials()
-                db.add(mats)
-            # Catalyst tokens are meant to be rare — grant 1 only every 5 levels
-            # crossed, not one per level.
-            mats.catalyst_tokens += (new_level // 5 - old_level // 5)
-            db.commit()
-        except Exception:
-            pass
         # Level achievement checks
         level_achievements = {
             5: "reach_level_5", 10: "reach_level_10",
@@ -617,6 +605,8 @@ def credit_orgasm(db: Session, image_ids: list) -> dict:
     gallery_ids = set()
     for img in images:
         img.cum_count = (img.cum_count or 0) + 1
+        from services.bond_cards import sync_bond_card_for_image
+        sync_bond_card_for_image(db, img, live_event=True)
         if img.gallery_id:
             gallery_ids.add(img.gallery_id)
 
@@ -652,20 +642,31 @@ def claim_completion_bonus(db: Session, quest_type: str) -> dict:
     if quest_type == "daily":
         if not profile.daily_bonus_claimable:
             return {"error": "Daily bonus not available to claim"}
-        profile.standard_packs = (profile.standard_packs or 0) + 5
+        from services.tcg_v2 import award_pack_token
+        cycle_key = now.strftime("%Y-%m-%d")
+        reward = award_pack_token(
+            db, "VAULT-PERMANENT", quantity=5, source_type="daily_completion",
+            source_id=cycle_key, cycle_key=cycle_key,
+        )
         profile.daily_bonus_claimable = False
         profile.daily_bonus_date = now
         db.commit()
-        return {"type": "standard", "quantity": 5, "claimed": True}
+        return {"type": "permanent", "quantity": 5, "claimed": True, "token": reward}
 
     elif quest_type == "weekly":
         if not profile.weekly_bonus_claimable:
             return {"error": "Weekly bonus not available to claim"}
-        profile.premium_packs = (profile.premium_packs or 0) + 5
+        from services.tcg_v2 import award_pack_token
+        iso = now.isocalendar()
+        cycle_key = f"{iso.year}-W{iso.week:02d}"
+        reward = award_pack_token(
+            db, "WEEKLY-PROTECTION", quantity=1, source_type="weekly_completion",
+            source_id=cycle_key, cycle_key=cycle_key,
+        )
         profile.weekly_bonus_claimable = False
         profile.weekly_bonus_week = now.isocalendar()[1]
         db.commit()
-        return {"type": "premium", "quantity": 5, "claimed": True}
+        return {"type": "weekly_protection", "quantity": 1, "claimed": True, "token": reward}
 
     return {"error": "Invalid quest type"}
 
@@ -1011,28 +1012,14 @@ def check_creator_completion(db: Session, creator_id: int) -> bool:
     award_xp(db, "creator_completion", override_amount=500)
 
     try:
-        from services.cards import _award_credits, _get_or_create_materials, _add_to_inventory
-        from services.cards import _pick_image_card, _pick_gallery_card, _pick_creator_card
-        from config import DROP_WEIGHTS, PACK_SIZE
-        import random as _r
+        from services.cards import _award_credits
+        from services.tcg_v2 import award_pack_token
 
         _award_credits(db, "creator_completion_100pct", 500)
-        mats = _get_or_create_materials(db)
-        mats.catalyst_tokens += 1
-
-        types   = list(DROP_WEIGHTS.keys())
-        weights = list(DROP_WEIGHTS.values())
-        selectors = {
-            "image":   _pick_image_card,
-            "gallery": _pick_gallery_card,
-            "creator": _pick_creator_card,
-        }
-        for _ in range(PACK_SIZE * 5):
-            chosen = _r.choices(types, weights=weights, k=1)[0]
-            fn = selectors.get(chosen, _pick_image_card)
-            card = fn(db)
-            if card:
-                _add_to_inventory(db, card)
+        award_pack_token(
+            db, "VAULT-PERMANENT", quantity=1, source_type="creator_completion",
+            source_id=str(creator_id), cycle_key=str(creator_id),
+        )
     except Exception:
         pass
 

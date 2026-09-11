@@ -642,6 +642,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       const n = Math.min(60, s + 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
     }),
     viewer_fullscreen: toggleFullscreen,
+    viewer_keep_going: () => { setSlideshowActive(false); setShowEndScreen(true) },
     viewer_favorite:   () => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) },
     viewer_zoom_in:    () => setZoom(z => Math.min(8, z * 1.25)),
     viewer_zoom_out:   () => setZoom(z => { const n = Math.max(1, z / 1.25); if (n === 1) setPan({ x: 0, y: 0 }); return n }),
@@ -765,6 +766,14 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               onSpeedChange={setSlideshowSpeed}
               timedMediaPlaying={isTimedMedia(image)}
             />
+            <button
+              type="button"
+              onMouseDown={() => { setSlideshowActive(false); setShowEndScreen(true) }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer"
+              style={{ fontSize: 16, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}
+              title={t('Open continuation choices (K)')}>
+              <Sparkles size={15} /> {t('Keep going')}
+            </button>
             {isZoomed && (
               <span className="text-[12px] px-2 py-0.5 rounded-full"
                     style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
@@ -918,9 +927,16 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             />
           )}
           {slideshowActive && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
-                 style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-              <Play size={9} /> {t('Slideshow')} · {slideshowSpeed}s · {t('Space to pause')}
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
+                 style={{
+                   fontSize: 16,
+                   background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)',
+                   color: 'var(--c-accent-text)',
+                   border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
+                   opacity: isFullscreen && !showFilmstrip ? 0 : 1,
+                   transition: 'opacity 0.25s ease',
+                 }}>
+              <Play size={15} /> {t('Slideshow')} · {slideshowSpeed}s · {t('Space to pause')}
             </div>
           )}
         </div>

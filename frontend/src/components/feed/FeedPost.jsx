@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { feedApi, systemApi } from '../../lib/api'
 import VerifiedBadge from './VerifiedBadge'
 import { useT } from '../../i18n'
+import { restoreVideoVolume } from '../../lib/videoVolume'
 
 const TYPE_META = {
   on_this_day: { icon: CalendarHeart, label: 'On this day',  color: 'var(--c-pink-text)' },
@@ -102,6 +103,7 @@ export function VideoSlide({ image, onClick }) {
         preload="none"
         poster={`/api/images/${image.id}/thumb`}
         className="relative w-full h-full object-contain"
+        onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />

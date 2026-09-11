@@ -2,6 +2,8 @@ import os
 import csv
 import threading
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import numpy as np
@@ -552,7 +554,13 @@ _state: dict = {
     "cancelled":      False,
     "active_model":   None,   # "wd14-swinv2-v3" | "joytag" | None
     "device":         None,   # "gpu" | "cpu" | None (set when first model loads)
+    "status":         "idle",
+    "paused":         False,
+    "job_id":         None,
+    "eta_seconds":    None,
+    "items_per_second": None,
 }
+_control = "run"  # run | pause | cancel
 
 def get_tagger_state() -> dict:
     with _lock:
@@ -563,11 +571,47 @@ def _set(**kwargs):
         _state.update(kwargs)
 
 def cancel_tagger():
-    _set(cancelled=True)
+    global _control
+    with _lock:
+        _control = "cancel"
+        _state["cancelled"] = True
+
+def pause_tagger():
+    global _control
+    with _lock:
+        _control = "pause"
+        _state["message"] = "Pausing after the current batch…"
 
 def _is_cancelled() -> bool:
     with _lock:
         return _state["cancelled"]
+
+def _control_action() -> str:
+    with _lock:
+        return _control
+
+
+def restore_interrupted_jobs():
+    """Turn process-interrupted jobs into safe resumable checkpoints."""
+    from database import SessionLocal
+    from models import AITagJob
+    db = SessionLocal()
+    try:
+        interrupted = db.query(AITagJob).filter(AITagJob.status.in_(["running", "queued"])).all()
+        for job in interrupted:
+            job.status = "paused"
+            job.message = "Paused after The Vault restarted — ready to resume."
+        if interrupted:
+            db.commit()
+        job = (db.query(AITagJob).filter(AITagJob.status == "paused")
+               .order_by(AITagJob.updated_at.desc(), AITagJob.id.desc()).first())
+        if job:
+            _set(running=False, status="paused", paused=True, cancelled=False,
+                 job_id=job.id, progress=job.progress, total=job.total,
+                 tagged=job.tagged, skipped=job.skipped, errors=job.errors,
+                 message=job.message, current_path=None, active_model=None)
+    finally:
+        db.close()
 
 
 # ── Model paths ───────────────────────────────────────────────────────────────
@@ -788,6 +832,9 @@ def _make_session(model_path: str):
 
 # ── Image preprocessing ───────────────────────────────────────────────────────
 TARGET_SIZE = 448
+AI_BATCH_SIZE = 8
+PREPROCESS_WORKERS = 4
+_preprocess_pool = ThreadPoolExecutor(max_workers=PREPROCESS_WORKERS, thread_name_prefix="vault-tag-decode")
 
 def _to_rgb_square(img: PILImage.Image) -> PILImage.Image:
     """Convert any image to a white-backgrounded RGB 448×448 square."""
@@ -822,6 +869,23 @@ def _preprocess_joytag(img: PILImage.Image) -> np.ndarray:
     return arr[np.newaxis, :]                  # (1, 3, 448, 448)
 
 
+def _preprocess_path(image_path: str, preprocess_fn) -> Optional[np.ndarray]:
+    """Decode one source efficiently while preserving the model's 448px input.
+
+    JPEG draft mode asks libjpeg to downsample during decode instead of first
+    expanding a huge source into RAM.  It never substitutes the Vault's 320px
+    thumbnail, so tagging quality keeps using the original file.
+    """
+    try:
+        with PILImage.open(image_path) as img:
+            if (img.format or "").upper() in {"JPEG", "MPO"}:
+                img.draft("RGB", (TARGET_SIZE, TARGET_SIZE))
+            return preprocess_fn(img)
+    except Exception as exc:
+        logger.debug("AI preprocess failed for %s: %s", image_path, exc)
+        return None
+
+
 # ── WD14 runner ───────────────────────────────────────────────────────────────
 class WD14Tagger:
     MODEL_NAME = "wd14-swinv2-v3"
@@ -840,17 +904,7 @@ class WD14Tagger:
             for row in csv.DictReader(f):
                 self._tags.append((row["name"], int(row["category"])))
 
-    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
-        """Returns list of (normalized_name, category, confidence) and person_count."""
-        try:
-            img = PILImage.open(image_path)
-            inp = _preprocess_wd14(img)
-        except Exception as e:
-            logger.debug("WD14 preprocess failed for %s: %s", image_path, e)
-            return [], None
-
-        probs = self._session.run([self._output_name], {self._input_name: inp})[0][0]
-
+    def _parse_probs(self, probs, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
         vocab = _get_tag_vocab("wd14")   # user-editable allowlist, DB-backed & cached
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
@@ -886,6 +940,24 @@ class WD14Tagger:
 
         return results, person_count
 
+    def tag_batch(self, image_paths: list[str], threshold: float):
+        decoded = list(_preprocess_pool.map(
+            lambda path: _preprocess_path(path, _preprocess_wd14), image_paths
+        ))
+        valid = [(idx, arr) for idx, arr in enumerate(decoded) if arr is not None]
+        answers = [([], None) for _ in image_paths]
+        if not valid:
+            return answers
+        inp = np.concatenate([arr for _, arr in valid], axis=0)
+        probs_batch = self._session.run([self._output_name], {self._input_name: inp})[0]
+        for (idx, _), probs in zip(valid, probs_batch):
+            answers[idx] = self._parse_probs(probs, threshold)
+        return answers
+
+    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
+        """Returns list of (normalized_name, category, confidence) and person_count."""
+        return self.tag_batch([image_path], threshold)[0]
+
 
 # ── JoyTag runner ─────────────────────────────────────────────────────────────
 class JoyTagTagger:
@@ -901,17 +973,7 @@ class JoyTagTagger:
         with open(tag_file, encoding="utf-8") as f:
             self._tags: list[str] = [line.strip() for line in f if line.strip()]
 
-    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
-        """Returns list of (normalized_name, category, confidence) and person_count."""
-        try:
-            img = PILImage.open(image_path)
-            inp = _preprocess_joytag(img)
-        except Exception as e:
-            logger.debug("JoyTag preprocess failed for %s: %s", image_path, e)
-            return [], None
-
-        probs = self._session.run([self._output_name], {self._input_name: inp})[0][0]
-
+    def _parse_probs(self, probs, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
         jt_vocab = _get_tag_vocab("joytag")   # keyed by space form, matches raw_lower below
         wd_vocab = _get_tag_vocab("wd14")     # keyed by underscore form, matches raw_under below
         results: list[tuple[str, str, float]] = []
@@ -963,6 +1025,24 @@ class JoyTagTagger:
 
         return results, person_count
 
+    def tag_batch(self, image_paths: list[str], threshold: float):
+        decoded = list(_preprocess_pool.map(
+            lambda path: _preprocess_path(path, _preprocess_joytag), image_paths
+        ))
+        valid = [(idx, arr) for idx, arr in enumerate(decoded) if arr is not None]
+        answers = [([], None) for _ in image_paths]
+        if not valid:
+            return answers
+        inp = np.concatenate([arr for _, arr in valid], axis=0)
+        probs_batch = self._session.run([self._output_name], {self._input_name: inp})[0]
+        for (idx, _), probs in zip(valid, probs_batch):
+            answers[idx] = self._parse_probs(probs, threshold)
+        return answers
+
+    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
+        """Returns list of (normalized_name, category, confidence) and person_count."""
+        return self.tag_batch([image_path], threshold)[0]
+
 
 # ── Lazy-loaded singletons ────────────────────────────────────────────────────
 _wd14:   Optional["WD14Tagger"]    = None
@@ -988,13 +1068,17 @@ def _reset_singletons():
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
-def _get_or_create_tag(db, name: str, category: str) -> "Tag":
+def _get_or_create_tag(db, name: str, category: str, cache: Optional[dict] = None) -> "Tag":
     from models import Tag, TagSource
+    if cache is not None and name in cache:
+        return cache[name]
     tag = db.query(Tag).filter(Tag.name == name).first()
     if not tag:
         tag = Tag(name=name, category=category, source=TagSource.ai)
         db.add(tag)
         db.flush()
+    if cache is not None:
+        cache[name] = tag
     return tag
 
 def _upsert_image_tag(db, image_id: int, tag_id: int, confidence: float, model_name: str):
@@ -1093,19 +1177,28 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
         # Fixed fallback offsets — degrade gracefully for very short clips
         timestamps = [5.0, 15.0, 30.0, 90.0][:count]
 
-    for i, t in enumerate(timestamps):
-        out = os.path.join(tmpdir, f"frame_{i:02d}.png")
-        try:
-            r = subprocess.run(
-                [ffmpeg, "-y", "-ss", str(t), "-i", video_path,
-                 "-vframes", "1", "-vf", "scale=448:448:force_original_aspect_ratio=decrease",
-                 "-q:v", "2", out],
-                stdin=subprocess.DEVNULL, capture_output=True, timeout=30, creationflags=no_win,
-            )
-            if r.returncode == 0 and os.path.exists(out):
-                frames.append(out)
-        except Exception:
-            pass
+    # One FFmpeg process with independently seeked inputs avoids four process
+    # launches while retaining fast keyframe seeks for long videos.
+    outputs = [os.path.join(tmpdir, f"frame_{i:02d}.png") for i in range(len(timestamps))]
+    try:
+        cmd = [ffmpeg, "-y"]
+        for timestamp in timestamps:
+            cmd += ["-ss", str(timestamp), "-i", video_path]
+        filters = ";".join(
+            f"[{i}:v]scale=448:448:force_original_aspect_ratio=decrease[v{i}]"
+            for i in range(len(timestamps))
+        )
+        cmd += ["-filter_complex", filters]
+        for i, out in enumerate(outputs):
+            cmd += ["-map", f"[v{i}]", "-frames:v", "1", "-q:v", "2", out]
+        r = subprocess.run(
+            cmd, stdin=subprocess.DEVNULL, capture_output=True,
+            timeout=60, creationflags=no_win,
+        )
+        if r.returncode == 0:
+            frames = [out for out in outputs if os.path.exists(out)]
+    except Exception:
+        pass
 
     # Last-resort: extract frame 0 if all seeks failed (very short or damaged video)
     if not frames:
@@ -1164,6 +1257,32 @@ def _clear_ai_tags(db, image_id: int):
         tag = db.get(Tag, tid)
         if tag and tag.use_count and tag.use_count > 0:
             tag.use_count -= 1
+
+
+def _apply_tag_results(img, db, raw_results, person_count, model_name: str,
+                       clear_existing: bool = False, tag_cache: Optional[dict] = None) -> bool:
+    """Apply already-inferred results to one image without another model call."""
+    if clear_existing:
+        _clear_ai_tags(db, img.id)
+    if not raw_results:
+        img.ai_tagged = True
+        img.ai_tag_model = model_name
+        return False
+
+    best: dict[str, tuple[str, float]] = {}
+    for name, cat, conf in raw_results:
+        if name not in best or conf > best[name][1]:
+            best[name] = (cat, conf)
+    best = _apply_nudity_heuristic(best)
+    for name, (cat, conf) in best.items():
+        tag = _get_or_create_tag(db, name, cat, tag_cache)
+        _upsert_image_tag(db, img.id, tag.id, conf, model_name)
+        tag.use_count = (tag.use_count or 0) + 1
+    img.ai_tagged = True
+    img.ai_tag_model = model_name
+    if person_count is not None:
+        img.person_count = person_count
+    return True
 
 
 def tag_single_image(
@@ -1243,8 +1362,9 @@ def tag_single_video(
         best: dict[str, tuple[str, float]] = {}
         person_count: Optional[int] = None
 
-        for frame_path in frames:
-            raw_results, pc = tagger.tag(frame_path, threshold)
+        # The four sampled frames share one inference call. Frame extraction is
+        # still the expensive video-specific stage, but this keeps the GPU fed.
+        for raw_results, pc in tagger.tag_batch(frames, threshold):
             if pc is not None and (person_count is None or pc > person_count):
                 person_count = pc
             for name, cat, conf in raw_results:
@@ -1385,8 +1505,225 @@ def bulk_tag_images(
 
 
 # ── Model download worker (runs in background thread) ─────────────────────────
+def create_tag_job(db, scope: str, folder_path: Optional[str], threshold: float,
+                   retag: bool, model_override: Optional[str], creator_id: Optional[int]):
+    from models import AITagJob
+    job = AITagJob(
+        status="queued", scope=scope, folder_path=folder_path,
+        creator_id=creator_id, threshold=threshold, retag=retag,
+        model_override=model_override, message="Waiting in queue…",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    _set(running=False, status="queued", paused=False, cancelled=False,
+         job_id=job.id, progress=0, total=0, tagged=0, skipped=0, errors=0,
+         message=job.message, current_path=None, eta_seconds=None,
+         items_per_second=None)
+    return job
+
+
+def get_tag_job(db, job_id: Optional[int] = None, paused_only: bool = False):
+    from models import AITagJob
+    q = db.query(AITagJob)
+    if job_id is not None:
+        q = q.filter(AITagJob.id == job_id)
+    if paused_only:
+        q = q.filter(AITagJob.status == "paused")
+    return q.order_by(AITagJob.updated_at.desc(), AITagJob.id.desc()).first()
+
+
+def queue_resumed_job(db, job_id: Optional[int] = None):
+    job = get_tag_job(db, job_id, paused_only=True)
+    if not job:
+        return None
+    job.status = "queued"
+    job.message = "Waiting to resume…"
+    db.commit()
+    _set(running=False, status="queued", paused=False, cancelled=False,
+         job_id=job.id, progress=job.progress, total=job.total,
+         tagged=job.tagged, skipped=job.skipped, errors=job.errors,
+         message=job.message, current_path=None)
+    return job
+
+
+def cancel_persisted_job(db, job_id: Optional[int] = None) -> bool:
+    job = get_tag_job(db, job_id)
+    if not job or job.status not in {"paused", "queued"}:
+        return False
+    job.status = "cancelled"
+    job.message = f"Cancelled — {job.tagged} tagged, {job.skipped} skipped, {job.errors} errors."
+    db.commit()
+    _set(running=False, status="cancelled", paused=False, cancelled=True,
+         job_id=job.id, message=job.message)
+    return True
+
+
+def _job_query(db, job, after_id: Optional[int] = None):
+    from models import Image, Gallery
+    from sqlalchemy.orm import selectinload
+    q = db.query(Image).options(
+        selectinload(Image.gallery).selectinload(Gallery.creators)
+    )
+    if job.scope == "folder" and job.folder_path:
+        q = q.join(Gallery).filter(Gallery.folder_path.like(f"{job.folder_path}%"))
+    elif job.scope == "creator" and job.creator_id:
+        from models import gallery_creators
+        q = (q.join(Gallery, Image.gallery_id == Gallery.id)
+               .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
+               .filter(gallery_creators.c.creator_id == job.creator_id))
+    if not job.retag:
+        q = q.filter(Image.ai_tagged == False)  # noqa: E712
+    if after_id is not None:
+        q = q.filter(Image.id > after_id)
+    return q
+
+
+def run_tag_job(db, job_id: int):
+    """Run or resume a durable job using bounded chunks and batched inference."""
+    global _control
+    from models import AITagJob, Tag, Image
+
+    job = db.get(AITagJob, job_id)
+    if not job:
+        db.close()
+        return
+    model_label = "WD14" if job.model_override == "wd14" else "JoyTag" if job.model_override == "joytag" else "Auto"
+    with _lock:
+        _control = "run"
+    started_at = time.perf_counter()
+    started_progress = job.progress or 0
+    tag_cache = {tag.name: tag for tag in db.query(Tag).all()}
+    handler = _ScanLogHandler(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    logger.addHandler(handler)
+
+    try:
+        job.status = "running"
+        job.message = "Preparing media…"
+        if not job.total:
+            job.total = _job_query(db, job).order_by(None).count()
+        db.commit()
+        _set(running=True, status="running", paused=False, cancelled=False,
+             job_id=job.id, progress=job.progress, total=job.total,
+             tagged=job.tagged, skipped=job.skipped, errors=job.errors,
+             message=job.message, active_model=model_label, current_path=None,
+             eta_seconds=None, items_per_second=None)
+
+        while True:
+            action = _control_action()
+            if action in {"pause", "cancel"}:
+                job.status = action + "d" if action == "pause" else "cancelled"
+                job.message = ("Paused — progress safely saved." if action == "pause" else
+                               f"Cancelled — {job.tagged} tagged, {job.skipped} skipped, {job.errors} errors.")
+                db.commit()
+                _set(running=False, status=job.status, paused=action == "pause",
+                     cancelled=action == "cancel", message=job.message,
+                     active_model=None, current_path=None)
+                return
+
+            chunk = (_job_query(db, job, job.last_image_id or 0)
+                     .order_by(Image.id).limit(64).all())
+            if not chunk:
+                job.status = "done"
+                job.progress = job.total
+                job.message = f"Done — {job.tagged} tagged, {job.skipped} no-result, {job.errors} errors."
+                db.commit()
+                _set(running=False, status="done", paused=False, cancelled=False,
+                     progress=job.progress, tagged=job.tagged, skipped=job.skipped,
+                     errors=job.errors, message=job.message, active_model=None,
+                     current_path=None, eta_seconds=0)
+                return
+
+            # Keep checkpoints ordered while still batching contiguous images.
+            # Videos are isolated so Pause never waits through a 64-video chunk.
+            if chunk[0].is_video:
+                chunk = chunk[:1]
+            else:
+                first_video = next((i for i, item in enumerate(chunk) if item.is_video), None)
+                if first_video is not None:
+                    chunk = chunk[:first_video]
+
+            ready = [img for img in chunk if img.file_path and os.path.exists(img.file_path)]
+            job.skipped += len(chunk) - len(ready)
+            videos = [img for img in ready if img.is_video]
+            groups: dict[object, list] = {}
+            for img in ready:
+                if img.is_video:
+                    continue
+                tagger = _tagger_for_image(img, job.model_override)
+                if tagger is None:
+                    job.errors += 1
+                    continue
+                groups.setdefault(tagger, []).append(img)
+
+            for tagger, images in groups.items():
+                for offset in range(0, len(images), AI_BATCH_SIZE):
+                    batch = images[offset:offset + AI_BATCH_SIZE]
+                    try:
+                        answers = tagger.tag_batch([img.file_path for img in batch], job.threshold)
+                        for img, (raw, person_count) in zip(batch, answers):
+                            ok = _apply_tag_results(
+                                img, db, raw, person_count, tagger.MODEL_NAME,
+                                clear_existing=job.retag, tag_cache=tag_cache,
+                            )
+                            if ok:
+                                job.tagged += 1
+                            else:
+                                job.skipped += 1
+                    except Exception as exc:
+                        logger.warning("Batch tagging failed (%s); retrying files individually", exc)
+                        for img in batch:
+                            try:
+                                if tag_single_image(img, db, job.threshold, job.model_override, job.retag):
+                                    job.tagged += 1
+                                else:
+                                    job.skipped += 1
+                            except Exception as item_exc:
+                                logger.warning("Error tagging %s: %s", img.file_path, item_exc)
+                                job.errors += 1
+
+            for img in videos:
+                try:
+                    if tag_single_video(img, db, job.threshold, job.model_override, job.retag):
+                        job.tagged += 1
+                    else:
+                        img.ai_tagged = True
+                        job.skipped += 1
+                except Exception as exc:
+                    logger.warning("Error tagging video %s: %s", img.file_path, exc)
+                    job.errors += 1
+
+            job.last_image_id = max(img.id for img in chunk)
+            job.progress = min(job.total, job.progress + len(chunk))
+            job.message = f"Tagging {job.progress:,} / {job.total:,}…"
+            db.commit()  # every checkpoint is resume-safe
+
+            elapsed = max(0.001, time.perf_counter() - started_at)
+            rate = max(0.0, (job.progress - started_progress) / elapsed)
+            eta = int((job.total - job.progress) / rate) if rate > 0 else None
+            _set(progress=job.progress, total=job.total, tagged=job.tagged,
+                 skipped=job.skipped, errors=job.errors, message=job.message,
+                 current_path=chunk[-1].file_path, items_per_second=round(rate, 2),
+                 eta_seconds=eta)
+    except Exception as exc:
+        logger.exception("Durable AI tagging job failed: %s", exc)
+        db.rollback()
+        job = db.get(AITagJob, job_id)
+        if job:
+            job.status = "failed"
+            job.message = f"Fatal error: {exc}"
+            db.commit()
+        _set(running=False, status="failed", paused=False,
+             message=f"Fatal error: {exc}", active_model=None, current_path=None)
+    finally:
+        logger.removeHandler(handler)
+        db.close()
+
+
 def download_models_task(download_wd14_flag: bool, download_joytag_flag: bool):
-    _set(running=True, message="Starting model download…", cancelled=False)
+    _set(running=True, status="running", paused=False, job_id=None,
+         message="Starting model download…", cancelled=False)
     try:
         if download_wd14_flag and not wd14_is_ready():
             download_wd14()
@@ -1404,7 +1741,7 @@ def download_models_task(download_wd14_flag: bool, download_joytag_flag: bool):
         finally:
             db.close()
 
-        _set(message="Download complete.", running=False)
+        _set(message="Download complete.", running=False, status="done")
     except Exception as e:
         logger.exception("Model download failed: %s", e)
-        _set(message=f"Download error: {e}", running=False)
+        _set(message=f"Download error: {e}", running=False, status="failed")

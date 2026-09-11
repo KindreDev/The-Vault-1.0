@@ -1,0 +1,109 @@
+{
+  "id": "character-full-bleed-v1",
+  "version": 2,
+  "cardType": "character",
+  "layoutRole": "subject-extraction-fallback",
+  "canvas": {
+    "width": 1024,
+    "height": 1536,
+    "aspectRatio": "2:3",
+    "cornerRadius": 46
+  },
+  "reference": "../../../references/accepted/Character.png",
+  "layers": [
+    {
+      "id": "art_background",
+      "zIndex": 200,
+      "kind": "source-media",
+      "mask": "art-mask.png",
+      "required": true
+    },
+    {
+      "id": "art_grade",
+      "zIndex": 250,
+      "kind": "runtime-color-grade",
+      "required": false
+    },
+    {
+      "id": "frame_over",
+      "zIndex": 600,
+      "kind": "raster-overlay",
+      "asset": "frame-over.png",
+      "required": true
+    },
+    {
+      "id": "orb_housing",
+      "zIndex": 700,
+      "kind": "shared-orb-housing",
+      "asset": "../../../shared/orb/orb-housing-gold.png",
+      "required": true
+    },
+    {
+      "id": "orb_icon",
+      "zIndex": 710,
+      "kind": "shared-orb-icon",
+      "assetManifest": "../../../shared/orb/manifest.json",
+      "required": true
+    },
+    {
+      "id": "printed_data",
+      "zIndex": 800,
+      "kind": "runtime-text",
+      "required": true
+    },
+    {
+      "id": "rarity_badge",
+      "zIndex": 850,
+      "kind": "shared-rarity-asset",
+      "required": true
+    },
+    {
+      "id": "spr_signature",
+      "zIndex": 900,
+      "kind": "runtime-signature",
+      "required": false,
+      "visibility": "rarity == 'SPR'"
+    },
+    {
+      "id": "finish_frame",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "finish-frame.png",
+      "required": false
+    },
+    {
+      "id": "finish_orb_ring",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "../../../shared/orb/finish-orb-ring.png",
+      "required": false
+    },
+    {
+      "id": "finish_orb_glass",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "../../../shared/orb/finish-orb-glass.png",
+      "required": false
+    }
+  ],
+  "nameplate": {
+    "fillOpacity": 0.3,
+    "transparency": 0.7,
+    "ornamentOpacity": 1.0,
+    "textOpacity": 1.0
+  },
+  "orb": {
+    "housingAnchor": "orbHousing",
+    "iconAnchor": "orbIcon",
+    "iconFit": "visible-alpha-bounds",
+    "iconFillRatio": 0.62,
+    "iconSelectionPersisted": true,
+    "ringFinishMask": "../../../shared/orb/finish-orb-ring.png",
+    "glassFinishMask": "../../../shared/orb/finish-orb-glass.png",
+    "rarityVfxImplementedLater": true
+  },
+  "anchorsFile": "safe-zones.json",
+  "clipMask": "card-clip-mask.png",
+  "renderSeedRequired": true,
+  "flattenedPreviewIsAuthoritative": false
+}

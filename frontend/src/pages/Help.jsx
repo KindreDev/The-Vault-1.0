@@ -138,7 +138,7 @@ const LEVEL_TIERS = [
 const RARITY_DATA = [
   { label: 'Core',      color: '#9F8FEF', shard: 10,   bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', note: 'Photo & gallery cards — the foundation the collection is built on' },
   { label: 'Epic',      color: '#ff8800', shard: 75,   bg: 'rgba(255,136,0,0.12)',   note: 'Creator & collab cards' },
-  { label: 'Legendary', color: '#FFD700', shard: 300,  bg: 'rgba(255,215,0,0.12)',   note: 'Goon, variant & Hall of Fame cards' },
+  { label: 'Legendary', color: '#FFD700', shard: 300,  bg: 'rgba(255,215,0,0.12)',   note: 'Bond, variant & Hall of Fame cards' },
   { label: 'Celestial', color: '#E8E8FF', shard: 2500, bg: 'rgba(200,200,255,0.1)',  note: 'The pinnacle — top goon image, My Queen creators, top-3 HOF' },
 ]
 
@@ -665,16 +665,17 @@ function CardsContent() {
         </SectionBody>
       </Section>
 
-      <Section title="True Rarity — R / SR / SSR / UR" icon={Diamond} defaultOpen accentColor="#55C2FF">
+      <Section title="True Rarity — C / R / SR / SPR / UR" icon={Diamond} defaultOpen accentColor="#55C2FF">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-4">
             On top of the tier, every card gets a <strong className="text-white/75">Class</strong> shown as a corner badge — how rare that card is <em>within its own tier</em>. Classes are ranked <strong>per tier</strong>, so every tier has its own chase: a <strong className="text-white/75">Core-UR</strong> is a real, special thing.
           </p>
-          <div className="grid grid-cols-4 gap-2 mb-4">
+          <div className="grid grid-cols-5 gap-2 mb-4">
             {[
-              { c: 'R',   color: '#888780', pct: 'common' },
+              { c: 'C',   color: '#7c7b74', pct: 'common' },
+              { c: 'R',   color: '#888780', pct: 'uncommon' },
               { c: 'SR',  color: '#4682DC', pct: 'scarcer' },
-              { c: 'SSR', color: '#9F8FEF', pct: 'rare' },
+              { c: 'SPR', color: '#9F8FEF', pct: 'rare' },
               { c: 'UR',  color: '#FFD700', pct: 'the chase' },
             ].map(({ c, color, pct }) => (
               <div key={c} className="px-3 py-3 rounded-lg text-center" style={{ background: `${color}12`, border: `0.5px solid ${color}40` }}>
@@ -698,7 +699,7 @@ function CardsContent() {
               { label: 'Photo card',   rarity: 'Core',      desc: 'From an image in your vault. 58% of drops — biased toward what you actually watch.' },
               { label: 'Gallery card', rarity: 'Core',      desc: 'A whole gallery as a card. 17% of drops. 9★+ galleries are born Epic.' },
               { label: 'Creator card', rarity: 'Epic',      desc: 'A creator from your roster. 7% of drops. Up to 5 permanent art versions each.' },
-              { label: 'Goon card',    rarity: 'Legendary', desc: 'An image with 10+ Os logged. 5% of drops. The single most-gooned image is Celestial.' },
+              { label: 'Bond card',    rarity: 'Legendary', desc: 'Earned when an image reaches 5 Os, then evolves at 15 and 25. Bond cards never appear in ordinary booster pools.' },
               { label: 'Variant card', rarity: 'Legendary', desc: 'A creator × character (e.g. a cosplayer as a character). 1% of drops, or craft one in the Forge. Cap 3 per pair.' },
               { label: 'Collab card',  rarity: 'Epic',      desc: 'Multi-creator crossovers. 5% of drops.' },
               { label: 'HOF card',     rarity: 'Legendary', desc: 'A Hall of Fame memento — minted forever when a creator enters the HOF. 7% of drops; top-3 are Celestial.' },
@@ -760,7 +761,7 @@ function CardsContent() {
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
               <div className="font-semibold text-[var(--c-green)] mb-1">Feeding duplicates</div>
-              <p className="text-white/45 leading-snug">Feed a spare copy (or goon/variant cards) into a card to pour in CXP. Overflow past max level converts to Vault Credits.</p>
+              <p className="text-white/45 leading-snug">Feed a spare copy (or Bond/variant cards) into a card to pour in CXP. Overflow past max level converts to Vault Credits.</p>
             </div>
           </div>
         </SectionBody>
@@ -781,7 +782,7 @@ function CardsContent() {
                 <span className="text-[18px] font-bold text-[#ffb347]">Premium</span>
                 <Pill color="#ff8800">800 cr</Pill>
               </div>
-              <p className="text-white/50 leading-snug">The high table — guaranteed Epic+, with heavy goon / collab / Hall-of-Fame rates. The tier hunter's pack.</p>
+              <p className="text-white/50 leading-snug">The high table — guaranteed Epic+, with heavy collab and Hall-of-Fame rates. The tier hunter's pack.</p>
             </div>
           </div>
         </SectionBody>

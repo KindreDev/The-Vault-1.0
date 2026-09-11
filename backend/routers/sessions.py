@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -36,32 +36,6 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
         session.xp_earned = xp.amount
     else:
         session.xp_earned = 0
-
-    # Award CXP to cards related to this session's creator or gallery.
-    # Always fires — every creator in a multi-panel session deserves card XP.
-    # Amount scales with session duration — longer sessions = more CXP, capped at 200.
-    from models import Card, CardInventory
-    duration = data.duration_sec or 0
-    session_cxp = max(10, min(200, 10 + (duration // 60) * 7))
-
-    cxp_candidates = []
-    if data.creator_id:
-        cxp_candidates += (
-            db.query(CardInventory).join(Card)
-            .filter(Card.source_creator_id == data.creator_id)
-            .all()
-        )
-    if data.gallery_id:
-        cxp_candidates += (
-            db.query(CardInventory).join(Card)
-            .filter(Card.source_gallery_id == data.gallery_id)
-            .all()
-        )
-    seen = set()
-    for inv in cxp_candidates:
-        if inv.id not in seen:
-            seen.add(inv.id)
-            inv.card.cxp = (inv.card.cxp or 0) + session_cxp
 
     db.commit()
     db.refresh(session)
@@ -197,6 +171,57 @@ def almanac(db: Session = Depends(get_db)):
     """
     from services import almanac as alm
     return alm.the_read(db)
+
+
+@router.get("/analytics")
+def analytics_dashboard(
+    range: str = Query("30d"),
+    aggregation: str = Query("daily"),
+    metric: str = Query("sessions"),
+    creator_ids: str | None = Query(None),
+    tag_ids: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Longitudinal analytics data, derived without changing telemetry."""
+    from services import analytics
+    try:
+        return analytics.dashboard(
+            db,
+            range_name=range,
+            aggregation=aggregation,
+            metric=metric,
+            creator_ids_raw=creator_ids,
+            tag_ids_raw=tag_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.get("/analytics/compare")
+def analytics_compare(
+    session_ids: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Compare persisted fields for selected logical sessions."""
+    from services import analytics
+    try:
+        return analytics.compare_sessions(db, session_ids)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.get("/analytics/wrapped")
+def analytics_wrapped(
+    year: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Annual Vault Wrapped recap from persisted history."""
+    from services import analytics
+    try:
+        from datetime import datetime
+        return analytics.annual_wrapped(db, year or datetime.now().year)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/stats")

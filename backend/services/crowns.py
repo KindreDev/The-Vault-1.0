@@ -15,14 +15,18 @@ Tiers ladder by how long the window was held, not by rank:
 """
 from datetime import datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from models import ActivityEvent, Card, Creator, Gallery, HofCrown, Image, SessionLog
+from models import (
+    ActivityEvent, Card, Creator, Gallery, HofCrown, Image, SessionLog,
+    gallery_creators, image_creators,
+)
 from services import ranking
 from services.cards import generate_card
 
 TIER = {"day": "epic", "week": "legendary", "month": "celestial"}
+ALLTIME_RARITY = "SR"
 
 # Nothing is crowned before this — the feature did not exist, and a new install
 # has no history here anyway, so the retroactive sweep is naturally a no-op for
@@ -95,6 +99,25 @@ def _winning_image(db: Session, creator_id: int, since, until):
     return img.id if img else None
 
 
+def _alltime_winning_image(db: Session, creator_id: int):
+    """The strongest current image attached to the all-time champion."""
+    assigned_gallery_ids = select(gallery_creators.c.gallery_id).where(
+        gallery_creators.c.creator_id == creator_id,
+    )
+    assigned_image_ids = select(image_creators.c.image_id).where(
+        image_creators.c.creator_id == creator_id,
+    )
+    img = (db.query(Image).join(Gallery, Image.gallery_id == Gallery.id)
+             .filter(or_(
+                 Gallery.creator_id == creator_id,
+                 Gallery.id.in_(assigned_gallery_ids),
+                 Image.id.in_(assigned_image_ids),
+             ))
+             .order_by(Image.cum_count.desc(), Image.view_count.desc(), Image.id.asc())
+             .first())
+    return img.id if img else None
+
+
 def award_period(db: Session, period_type: str, key: str, since, until) -> HofCrown | None:
     """Crown one finished period. Idempotent — the unique (type, key) means a
     second call for the same period is a no-op, so this is safe to sweep."""
@@ -138,6 +161,54 @@ def award_period(db: Session, period_type: str, key: str, since, until) -> HofCr
     return crown
 
 
+def award_alltime_crown(db: Session, now: datetime | None = None) -> HofCrown | None:
+    """Record a new all-time champion only when the current leader changes.
+
+    All-time crowns begin with the first observed leader. The transition time is
+    stored as both ``won_at`` and the reign key, so later sweeps can distinguish
+    a genuine new reign from an unchanged ranking without reconstructing history.
+    """
+    transition_at = now or datetime.now()
+    scores = ranking.score_all_creators(db)
+    order = ranking.ranked_creator_ids(scores)
+    if not order:
+        return None
+
+    winner_id = order[0]
+    creator = db.query(Creator).filter(Creator.id == winner_id).first()
+    if not creator:
+        return None
+    latest = (db.query(HofCrown)
+                .filter(HofCrown.period_type == "alltime")
+                .order_by(HofCrown.won_at.desc(), HofCrown.id.desc())
+                .first())
+    if latest and latest.creator_id == winner_id:
+        return None
+
+    stats = scores[winner_id]
+    crown = HofCrown(
+        period_type="alltime", period_key=transition_at.isoformat(timespec="microseconds"),
+        creator_id=winner_id, won_at=transition_at,
+        score=int(stats.get("score") or 0), field_size=len(order),
+        sessions=int(stats.get("session_count") or 0),
+        cum=int(stats.get("total_cum") or 0),
+        view_seconds=int(stats.get("total_view_seconds") or 0),
+        image_id=_alltime_winning_image(db, winner_id),
+    )
+    db.add(crown)
+    db.flush()
+
+    card = generate_card(
+        db, "hof", source_creator_id=winner_id,
+        source_image_id=crown.image_id, baseline_override="epic",
+    )
+    card.rarity_class = ALLTIME_RARITY
+    card.print_rarity = ALLTIME_RARITY
+    crown.card_id = card.id
+    db.flush()
+    return crown
+
+
 def award_due_crowns(db: Session, now: datetime | None = None) -> int:
     """Crown every finished period that hasn't been crowned yet.
 
@@ -147,15 +218,17 @@ def award_due_crowns(db: Session, now: datetime | None = None) -> int:
     it mints nothing — which is exactly the intended behaviour for a new user.
     """
     now = now or datetime.now()
+    minted = 1 if award_alltime_crown(db, now=now) else 0
 
     first_session = db.query(func.min(SessionLog.logged_at)).scalar()
     first_event   = db.query(func.min(ActivityEvent.logged_at)).scalar()
     starts = [d for d in (first_session, first_event) if d]
     if not starts:
-        return 0
+        if minted:
+            db.commit()
+        return minted
     history_start = max(min(starts), EPOCH)
 
-    minted = 0
     for period_type in ("day", "week", "month"):
         # Resume from the last crown of this type rather than replaying history
         # every call. Without this a routine sweep re-checks ~90 already-decided

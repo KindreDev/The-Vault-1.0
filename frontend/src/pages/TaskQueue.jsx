@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { tasksApi } from '../lib/api'
+import { tasksApi, taggerApi } from '../lib/api'
 import {
   ScanLine, Brain, GitCompare, Image, Download,
   X, Trash2, CheckCircle, XCircle, AlertCircle, Clock, Play,
@@ -22,6 +22,7 @@ function StatusBadge({ status }) {
   const cfg = {
     queued:    { icon: Clock,        color: 'rgba(255,255,255,0.4)',  bg: 'rgba(255,255,255,0.07)',  label: 'Queued' },
     running:   { icon: Play,         color: 'var(--c-green)',                bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',   label: 'Running' },
+    paused:    { icon: Clock,        color: 'var(--c-amber)',                bg: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',   label: 'Paused' },
     done:      { icon: CheckCircle,  color: 'var(--c-green)',                bg: 'color-mix(in srgb, var(--c-green) 12%, transparent)',   label: 'Done' },
     cancelled: { icon: XCircle,      color: 'rgba(255,255,255,0.4)',  bg: 'rgba(255,255,255,0.07)',  label: 'Cancelled' },
     failed:    { icon: AlertCircle,  color: 'var(--c-pink)',                bg: 'color-mix(in srgb, var(--c-pink) 12%, transparent)',   label: 'Failed' },
@@ -53,7 +54,7 @@ function ProgressBar({ progress, total, color, animate }) {
   )
 }
 
-function RunningTask({ task, onCancel }) {
+function RunningTask({ task, onCancel, onPause }) {
   if (!task) return null
   const meta = taskMeta(task.type)
   const Icon = meta.icon
@@ -82,6 +83,13 @@ function RunningTask({ task, onCancel }) {
             </p>
           )}
         </div>
+        {task.type === 'ai_tag' && <button
+          onClick={onPause}
+          className="mt-1 p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition flex-shrink-0"
+          title="Pause task"
+        >
+          <Clock size={16} />
+        </button>}
         <button
           onClick={onCancel}
           className="mt-1 p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition flex-shrink-0"
@@ -121,7 +129,7 @@ function QueuedTask({ task, onRemove, position }) {
   )
 }
 
-function HistoryTask({ task }) {
+function HistoryTask({ task, onResume }) {
   const meta = taskMeta(task.type)
   const Icon = meta.icon
 
@@ -142,6 +150,13 @@ function HistoryTask({ task }) {
         <p className="text-white/30 text-sm truncate">{task.message}</p>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
+        {task.status === 'paused' && task.detail?.job_id && (
+          <button onClick={() => onResume(task.detail.job_id)}
+                  className="px-3 py-1 rounded-lg text-base"
+                  style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 15%, transparent)' }}>
+            Resume
+          </button>
+        )}
         {elapsedStr && <span className="text-white/25 text-sm">{elapsedStr}</span>}
         <StatusBadge status={task.status} />
       </div>
@@ -171,6 +186,16 @@ export default function TaskQueue() {
     onSuccess: () => qc.invalidateQueries(['task-queue']),
   })
 
+  const pauseMutation = useMutation({
+    mutationFn: () => taggerApi.pause(),
+    onSuccess: () => qc.invalidateQueries(['task-queue']),
+  })
+
+  const resumeMutation = useMutation({
+    mutationFn: (jobId) => taggerApi.resume(jobId),
+    onSuccess: () => qc.invalidateQueries(['task-queue']),
+  })
+
   const current = data?.current ?? null
   const queued  = data?.queued  ?? []
   const history = data?.history ?? []
@@ -193,7 +218,7 @@ export default function TaskQueue() {
       <section className="mb-6">
         <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3">Now Running</h2>
         {current ? (
-          <RunningTask task={current} onCancel={() => cancelMutation.mutate()} />
+          <RunningTask task={current} onCancel={() => cancelMutation.mutate()} onPause={() => pauseMutation.mutate()} />
         ) : (
           <div className="rounded-xl border border-white/8 bg-vault-card px-5 py-5 text-white/30 text-base italic">
             Nothing running
@@ -224,7 +249,7 @@ export default function TaskQueue() {
           <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3">History</h2>
           <div className="rounded-xl border border-white/8 bg-vault-card overflow-hidden">
             {history.map((t, i) => (
-              <HistoryTask key={t.id ?? i} task={t} />
+              <HistoryTask key={t.id ?? i} task={t} onResume={jobId => resumeMutation.mutate(jobId)} />
             ))}
           </div>
         </section>

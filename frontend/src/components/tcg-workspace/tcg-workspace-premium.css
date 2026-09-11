@@ -1,0 +1,440 @@
+/* TCG shell polish, intentionally scoped so the shared Vault styles remain untouched. */
+.tcgws-root {
+  --tcg-radius: 14px;
+  --tcg-radius-small: 10px;
+  --tcg-glass: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  --tcg-glass-strong: color-mix(in srgb, var(--c-card) 92%, transparent);
+  isolation: isolate;
+}
+
+.tcgws-topbar {
+  position: relative;
+  top: auto;
+  min-height: 116px;
+  padding: 22px 28px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c-surface) 96%, transparent), color-mix(in srgb, var(--c-bg) 94%, transparent));
+}
+
+.tcgws-topbar h1 {
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.tcgws-summary {
+  overflow: hidden;
+  border: 1px solid var(--tcg-line);
+  border-radius: var(--tcg-radius);
+  background: color-mix(in srgb, var(--c-card) 72%, transparent);
+}
+
+.tcgws-summary > div {
+  min-height: 62px;
+  padding: 10px 14px;
+}
+
+.tcgws-nav {
+  position: sticky;
+  top: 10px;
+  width: auto;
+  min-height: 64px;
+  margin: 12px 24px 0;
+  padding: 0 10px;
+  border: 1px solid var(--tcg-line);
+  border-radius: var(--tcg-radius);
+  background: var(--tcg-glass);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .18);
+  z-index: 30;
+}
+
+.tcgws-nav nav {
+  gap: 6px;
+  padding: 7px 0;
+}
+
+.tcgws-nav button {
+  min-height: 48px;
+  border-radius: var(--tcg-radius-small);
+  transition: background-color .18s ease, color .18s ease, transform .18s ease;
+}
+
+.tcgws-nav button:hover {
+  transform: translateY(-1px);
+}
+
+.tcgws-nav button.active {
+  box-shadow: inset 0 -2px var(--c-accent), 0 5px 16px color-mix(in srgb, var(--c-accent) 16%, transparent);
+}
+
+.tcgws-nav .tcgws-advanced {
+  min-height: 48px;
+  margin: 7px 0 7px 8px;
+  border-left: 1px solid var(--tcg-line);
+  border-radius: var(--tcg-radius-small);
+}
+
+.tcgws-content {
+  padding: 28px 28px 72px;
+}
+
+.tcgws-root button,
+.tcgws-root input,
+.tcgws-root select {
+  border-radius: var(--tcg-radius-small);
+}
+
+.tcgws-toolbar {
+  gap: 12px;
+  padding: 4px 0 20px;
+}
+
+.tcgws-toolbar select,
+.tcgws-toolbar input,
+.tcgws-icon-btn,
+.tcgws-binders .tcgws-binder-create select {
+  min-height: 42px;
+}
+
+.tcgws-search {
+  min-width: min(320px, 100%);
+}
+
+.tcgws-collection-scopes {
+  gap: 7px;
+  padding: 4px 0 14px;
+}
+
+.tcgws-collection-scopes button {
+  border-radius: 999px;
+  border-color: transparent;
+}
+
+.tcgws-collection-scopes button.active {
+  border-color: var(--c-accent-line);
+}
+
+.tcgws-collection-scopes .tcgws-select-mode {
+  border: 1px solid var(--tcg-line);
+  background: var(--tcg-glass-strong);
+}
+
+.tcgws-card-grid {
+  gap: 24px;
+}
+
+.tcgws-card-tile {
+  position: relative;
+  border-radius: var(--tcg-radius);
+  transition: transform .2s ease, filter .2s ease;
+}
+
+.tcgws-card-tile:hover {
+  transform: translateY(-3px);
+}
+
+.tcgws-card-render {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--tcg-radius);
+  background: linear-gradient(145deg, #171922, #0e0f13);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .24);
+}
+
+.tcgws-card-render > .tcg-v2-card-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.tcgws-card-loading-underlay {
+  position: absolute;
+  inset: 8%;
+  z-index: 0;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, .18), transparent 32%),
+    linear-gradient(145deg, rgba(127, 119, 221, .26), rgba(212, 83, 126, .18));
+  filter: blur(24px);
+}
+
+.tcgws-card-loading-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, .04) 28%, rgba(255, 255, 255, .17) 44%, rgba(255, 255, 255, .04) 60%),
+    rgba(12, 13, 18, .24);
+  background-size: 220% 100%;
+  backdrop-filter: blur(14px);
+  animation: tcgws-card-loading 1.25s ease-in-out infinite;
+}
+
+@keyframes tcgws-card-loading {
+  from { background-position: 120% 0, 0 0; }
+  to { background-position: -40% 0, 0 0; }
+}
+
+.tcgws-card-meta {
+  min-height: 72px;
+  margin-top: 6px;
+  padding: 10px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--tcg-radius-small);
+}
+
+.tcgws-card-tile:hover .tcgws-card-meta,
+.tcgws-card-tile.selected .tcgws-card-meta {
+  border-color: var(--tcg-line);
+  background: color-mix(in srgb, var(--c-card) 68%, transparent);
+}
+
+.tcgws-card-flags b,
+.tcgws-card-flags i,
+.tcgws-card-flags span {
+  border-radius: 999px;
+}
+
+.tcgws-missing-card {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--tcg-line);
+  background: var(--tcg-glass-strong);
+  text-align: left;
+  transition: border-color .18s ease, transform .18s ease;
+}
+
+.tcgws-missing-card:hover {
+  border-color: var(--c-accent-line);
+  transform: translateY(-3px);
+}
+
+.tcgws-card-silhouette {
+  border: 0;
+  border-radius: var(--tcg-radius);
+  background:
+    linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .06) 45%, transparent 60%),
+    linear-gradient(145deg, #191b22, #0d0e12);
+  background-size: 220% 100%, auto;
+  animation: tcgws-card-loading 2.8s ease-in-out infinite;
+}
+
+.tcgws-card-silhouette span {
+  top: 42%;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.tcgws-card-silhouette small {
+  position: absolute;
+  bottom: 20px;
+  color: var(--tcg-muted);
+  font-size: 16px;
+  text-transform: capitalize;
+}
+
+.tcgws-missing-card > strong {
+  min-height: 46px;
+  padding: 12px 14px 4px;
+  color: var(--c-text, rgba(255, 255, 255, .88));
+}
+
+.tcgws-missing-card > small {
+  display: block;
+  min-height: 38px;
+  padding: 0 14px 12px;
+  color: var(--tcg-muted);
+  font-size: 16px;
+}
+
+.tcgws-selection-mark {
+  border: 2px solid var(--c-bg);
+}
+
+.tcgws-selection-bar {
+  border-radius: var(--tcg-radius);
+}
+
+.tcgws-release-list > div > button {
+  overflow: hidden;
+  border-radius: var(--tcg-radius);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .14);
+  transition: transform .2s ease, border-color .2s ease;
+}
+
+.tcgws-release-list > div > button:hover {
+  border-color: var(--c-accent-line);
+  transform: translateY(-3px);
+}
+
+.tcgws-release-list > div > button > section {
+  background: transparent;
+}
+
+.tcgws-release-cover {
+  min-height: 310px;
+}
+
+.tcgws-set-strip {
+  overflow: hidden;
+  border: 1px solid var(--tcg-line);
+  border-radius: var(--tcg-radius);
+  background: transparent;
+}
+
+.tcgws-set-strip > button {
+  transition: background-color .18s ease;
+}
+
+.tcgws-set-strip > button:first-child {
+  border-radius: var(--tcg-radius) 0 0 var(--tcg-radius);
+}
+
+.tcgws-set-strip > button:last-child {
+  border-radius: 0 var(--tcg-radius) var(--tcg-radius) 0;
+}
+
+.tcgws-release-packs {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.tcgws-release-packs > h3 {
+  min-height: 58px;
+  padding: 0 6px;
+}
+
+.tcgws-release-packs > span {
+  min-width: 220px;
+  flex: 1 1 220px;
+  border-radius: var(--tcg-radius-small);
+  background: var(--tcg-glass-strong);
+}
+
+.tcgws-inspector-backdrop {
+  padding: 28px;
+}
+
+.tcgws-inspector {
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 26px 90px rgba(0, 0, 0, .58);
+}
+
+.tcgws-inspector-card {
+  position: relative;
+  border-radius: 18px 0 0 18px;
+  will-change: transform, opacity;
+}
+
+.tcgws-inspector-info > nav button {
+  min-height: 48px;
+  border-radius: var(--tcg-radius-small) var(--tcg-radius-small) 0 0;
+}
+
+.tcgws-inspector-info > nav button.active {
+  background: color-mix(in srgb, var(--c-accent) 10%, transparent);
+}
+
+.tcgws-axis,
+.tcgws-relationships article,
+.tcgws-workshop article,
+.tcgws-context-dismiss + .tcgws-binder-context,
+.tcgws-pack-integrity,
+.tcgws-binder-context,
+.tcgws-settings-panel {
+  border-radius: var(--tcg-radius);
+}
+
+.tcgws-primary,
+.tcgws-secondary,
+.tcgws-back,
+.tcgws-close,
+.tcgws-pack-grid button,
+.tcgws-workshop button,
+.tcgws-pagination button,
+.tcgws-release-review button {
+  border-radius: var(--tcg-radius-small);
+}
+
+.tcgws-workshop > header {
+  align-items: flex-start;
+  padding: 8px 0 24px;
+}
+
+.tcgws-workshop article {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .14);
+}
+
+.tcgws-pagination {
+  gap: 12px;
+}
+
+.tcgws-pagination button {
+  min-height: 44px;
+}
+
+@media (max-width: 900px) {
+  .tcgws-topbar {
+    min-height: 0;
+    padding: 18px 16px;
+  }
+
+  .tcgws-nav {
+    top: 8px;
+    margin: 10px 16px 0;
+    padding: 0 6px;
+  }
+
+  .tcgws-content {
+    padding: 22px 16px 80px;
+  }
+
+  .tcgws-inspector-backdrop {
+    padding: 12px;
+  }
+
+  .tcgws-inspector {
+    height: min(900px, 96vh);
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .tcgws-inspector-card {
+    min-height: 54vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .tcgws-inspector-info {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 620px) {
+  .tcgws-topbar {
+    display: block;
+  }
+
+  .tcgws-summary {
+    margin-top: 16px;
+  }
+
+  .tcgws-summary > div {
+    display: none;
+  }
+
+  .tcgws-summary > div.tcgws-completion {
+    display: grid;
+  }
+
+  .tcgws-nav {
+    overflow-x: auto;
+  }
+
+  .tcgws-nav nav {
+    min-width: max-content;
+  }
+
+  .tcgws-release-packs > h3 {
+    flex-basis: 100%;
+  }
+}

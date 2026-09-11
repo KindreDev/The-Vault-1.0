@@ -1,0 +1,34 @@
+{
+  "canvas": [0, 0, 1024, 1536],
+  "hardContentInset": 32,
+  "readableTextInset": 48,
+  "anchors": {
+    "rarity": [36, 36, 142, 126],
+    "characterIdentity": [200, 34, 640, 132],
+    "subjectTargetBounds": [100, 150, 824, 1260],
+    "diagonalNameRibbon": [130, 1030, 850, 370],
+    "bottomMetadata": [340, 1470, 640, 38],
+    "sprSignatureCandidateRegion": [170, 760, 700, 250]
+  },
+  "reservedClearRegions": {
+    "topIdentity": [185, 20, 670, 160],
+    "diagonalNameRibbon": [110, 1010, 890, 410],
+    "bottomMetadata": [320, 1450, 680, 66]
+  },
+  "dynamicExclusions": [
+    "detectedFaceBounds",
+    "subjectCriticalBounds"
+  ],
+  "signaturePlacement": {
+    "avoidFace": true,
+    "avoidPrimaryName": true,
+    "fitInsideCandidateRegion": true,
+    "allowScaleDown": true
+  },
+  "text": {
+    "minimumReadablePx": 16,
+    "characterIdentityMaxLines": 2,
+    "ribbonNameMaxLines": 1,
+    "metadataMaxLines": 1
+  }
+}

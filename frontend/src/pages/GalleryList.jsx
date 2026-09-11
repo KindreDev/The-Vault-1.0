@@ -21,6 +21,7 @@ import GalleryContextMenu from '../components/GalleryContextMenu'
 import RelocateModal from '../components/RelocateModal'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
+import { tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -1305,10 +1306,10 @@ export default function GalleryList() {
   const creatorType    = searchParams.get('ctype') || ''
   const franchise      = searchParams.get('franchise') || ''
   const period         = searchParams.get('period') || ''
-  const activeTags     = useMemo(() => {
-    const raw = searchParams.get('tags') || searchParams.get('tag') || ''
-    return raw ? raw.split(',').filter(Boolean) : []
-  }, [searchParams])
+  const activeTags     = useMemo(() => tagTokensFromParams(searchParams, 'tags', 'tag_ids', 'tag'), [searchParams])
+  const excludedTags   = useMemo(() => tagTokensFromParams(searchParams, 'exclude_tags', 'exclude_tag_ids'), [searchParams])
+  const tagMode        = searchParams.get('tag_mode') === 'any' ? 'any' : 'all'
+  const excludeMode    = searchParams.get('exclude_mode') === 'all' ? 'all' : 'any'
   const page           = parseInt(searchParams.get('page') || '1', 10) || 1
 
   // Page size: stored in localStorage (not URL) so it can't get stuck via sessionStorage restore
@@ -1392,8 +1393,14 @@ export default function GalleryList() {
   const setFavOnly = useCallback((v) => setParams({ fav: v ? '1' : null, page: null }), [setParams])
   const setActiveTags = useCallback((updater) => {
     const newTags = typeof updater === 'function' ? updater(activeTags) : updater
-    setParams({ tags: newTags.length > 0 ? newTags.join(',') : null, tag: null, page: null })
+    const encoded = tagTokensToParams(newTags)
+    setParams({ tags: encoded.names, tag_ids: encoded.ids, tag: null, page: null })
   }, [setParams, activeTags])
+  const setExcludedTags = useCallback((updater) => {
+    const newTags = typeof updater === 'function' ? updater(excludedTags) : updater
+    const encoded = tagTokensToParams(newTags)
+    setParams({ exclude_tags: encoded.names, exclude_tag_ids: encoded.ids, page: null })
+  }, [setParams, excludedTags])
   const setCreatorFilter = useCallback((updater) => {
     const prev = creatorFilter
     const newVal = typeof updater === 'function' ? updater(prev) : updater
@@ -1405,13 +1412,15 @@ export default function GalleryList() {
   const setPeriod      = useCallback((v) => setParams({ period: v || null, page: null }), [setParams])
 
   // ── Detect active filters & reset ───────────────────────────────────────────
-  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || creatorType || franchise || period
+  const hasActiveFilters = search || sortBy !== 'date_added' || creatorFilter.length > 0 || unassignedOnly || favOnly || activeTags.length > 0 || excludedTags.length > 0 || creatorType || franchise || period
   const resetFilters = useCallback(() => {
     setSearchParams({}, { replace: true })
   }, [setSearchParams])
 
   // Reset pagination when filters change
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}|${randomSeed}|${creatorType}|${franchise}|${period}`
+  const includeTagParams = tagTokensToParams(activeTags)
+  const excludeTagParams = tagTokensToParams(excludedTags)
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${randomSeed}|${creatorType}|${franchise}|${period}`
 
   const params = {
     search: search || undefined,
@@ -1423,7 +1432,12 @@ export default function GalleryList() {
     period: period || undefined,
     unassigned: unassignedOnly || undefined,
     favorite: favOnly || undefined,
-    tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+    tags: includeTagParams.names || undefined,
+    tag_ids: includeTagParams.ids || undefined,
+    tag_mode: tagMode,
+    exclude_tags: excludeTagParams.names || undefined,
+    exclude_tag_ids: excludeTagParams.ids || undefined,
+    exclude_mode: excludeMode,
     limit: pageSize,
     skip: (page - 1) * pageSize,
   }
@@ -1468,9 +1482,14 @@ export default function GalleryList() {
     series: franchise || undefined,
     unassigned: unassignedOnly || undefined,
     favorite: favOnly || undefined,
-    tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+    tags: includeTagParams.names || undefined,
+    tag_ids: includeTagParams.ids || undefined,
+    tag_mode: tagMode,
+    exclude_tags: excludeTagParams.names || undefined,
+    exclude_tag_ids: excludeTagParams.ids || undefined,
+    exclude_mode: excludeMode,
   }
-  const periodKey = `${search}|${creatorFilter.join(',')}|${creatorType}|${franchise}|${unassignedOnly}|${favOnly}|${activeTags.join(',')}`
+  const periodKey = `${search}|${creatorFilter.join(',')}|${creatorType}|${franchise}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
   const { data: periods = [] } = useQuery({
     queryKey: ['gallery-periods', periodKey],
     queryFn: () => galleriesApi.periods(periodParams).then(r => r.data),
@@ -1633,10 +1652,18 @@ export default function GalleryList() {
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
-          activeTags={activeTags}
-          onAdd={name => setActiveTags(prev => prev.includes(name) ? prev : [...prev, name])}
-          onRemove={name => setActiveTags(prev => prev.filter(tg => tg !== name))}
-          placeholder={t('Filter by tag…')}
+          includeTags={activeTags}
+          includeMode={tagMode}
+          onIncludeModeChange={mode => setParams({ tag_mode: mode === 'any' ? 'any' : null, page: null })}
+          onAddInclude={token => setActiveTags(prev => prev.includes(token) ? prev : [...prev, token])}
+          onRemoveInclude={token => setActiveTags(prev => prev.filter(tg => tg !== token))}
+          onClearInclude={() => setActiveTags([])}
+          excludeTags={excludedTags}
+          excludeMode={excludeMode}
+          onExcludeModeChange={mode => setParams({ exclude_mode: mode === 'all' ? 'all' : null, page: null })}
+          onAddExclude={token => setExcludedTags(prev => prev.includes(token) ? prev : [...prev, token])}
+          onRemoveExclude={token => setExcludedTags(prev => prev.filter(tg => tg !== token))}
+          onClearExclude={() => setExcludedTags([])}
           rounded="full"
         />
 

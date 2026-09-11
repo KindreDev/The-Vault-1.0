@@ -1,0 +1,30 @@
+{
+  "canvas": [0, 0, 1024, 1536],
+  "hardContentInset": 32,
+  "readableTextInset": 48,
+  "anchors": {
+    "rarity": [44, 42, 128, 92],
+    "characterIdentity": [190, 36, 650, 128],
+    "sprSignature": [70, 780, 820, 330],
+    "lowerNameplate": [145, 1320, 730, 180],
+    "bottomMetadata": [260, 1450, 500, 40],
+    "orbHousing": [802, 1267, 180, 180],
+    "orbIcon": [836, 1301, 112, 112]
+  },
+  "dynamicExclusions": [
+    "detectedFaceBounds",
+    "subjectCriticalBounds"
+  ],
+  "signaturePlacement": {
+    "avoidFace": true,
+    "avoidPrimaryName": true,
+    "preferredAnchor": "sprSignature",
+    "allowScaleDown": true
+  },
+  "text": {
+    "minimumReadablePx": 16,
+    "characterIdentityMaxLines": 2,
+    "lowerNameMaxLines": 1,
+    "metadataMaxLines": 1
+  }
+}

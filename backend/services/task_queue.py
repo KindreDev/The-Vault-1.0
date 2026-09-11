@@ -43,6 +43,13 @@ def _worker_loop():
             time.sleep(0.3)
             continue
 
+        # Capture state before launch so a very small job that finishes between
+        # polls is still recognized by its changed terminal message.
+        try:
+            pre_msg = task['_poll_fn']().get('message', '')
+        except Exception:
+            pre_msg = ''
+
         # Launch the service
         try:
             task['_start_fn']()
@@ -62,11 +69,6 @@ def _worker_loop():
         #   a) Slow tasks  → service sets running=True, we observe it
         #   b) Fast tasks  → service completes before first poll (e.g. "0 images to hash")
         #      In this case running stays False, but the message changes from its pre-start value.
-        try:
-            pre_msg = task['_poll_fn']().get('message', '')
-        except Exception:
-            pre_msg = ''
-
         startup_deadline = time.time() + 5.0
         service_responded = False
         while time.time() < startup_deadline:
@@ -112,6 +114,12 @@ def _worker_loop():
         with _lock:
             if task.get('_cancelled'):
                 task['status'] = 'cancelled'
+            elif state.get('status') == 'paused' or state.get('paused'):
+                task['status'] = 'paused'
+            elif state.get('status') == 'cancelled':
+                task['status'] = 'cancelled'
+            elif state.get('status') == 'failed':
+                task['status'] = 'failed'
             else:
                 task['status'] = 'done'
             task['finished_at'] = _now()

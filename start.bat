@@ -63,7 +63,27 @@ for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":5173 "') do taskkill
 timeout /t 1 /nobreak >nul
 
 start "The Vault — Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && python main.py"
-timeout /t 2 /nobreak >nul
+echo  Waiting for the backend to finish startup...
+set /a backend_wait_seconds=0
+:wait_for_backend
+powershell -NoProfile -Command "try { $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/health' -TimeoutSec 2; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+if not errorlevel 1 goto backend_ready
+set /a backend_wait_seconds+=1
+if %backend_wait_seconds% geq 120 goto backend_failed
+timeout /t 1 /nobreak >nul
+goto wait_for_backend
+
+:backend_failed
+echo.
+echo [ERROR] The backend did not become ready within 120 seconds.
+echo         The frontend was not started, preventing repeated proxy errors.
+echo         Check the backend window for the first real error.
+echo.
+pause
+exit /b 1
+
+:backend_ready
+echo  Backend is ready.
 start "The Vault — Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
 timeout /t 4 /nobreak >nul
 start http://localhost:5173

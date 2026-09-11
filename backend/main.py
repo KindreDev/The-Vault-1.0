@@ -198,6 +198,11 @@ from routers.showcase import router as showcase_router
 from routers.recap import router as recap_router
 from routers.relocate import router as relocate_router
 from routers.curation import router as curation_router
+from routers.masks import router as masks_router
+from routers.tcg_v2 import router as tcg_v2_router
+from routers.tcg_room_module import router as tcg_room_module_router
+from routers.tcg_room import router as tcg_room_router
+from routers.tcg_traders import router as tcg_traders_router
 
 # Group Chat is personal-mode content and isn't part of the public source tree.
 # Absent, the app runs normally — the feature simply isn't mounted.
@@ -254,6 +259,42 @@ def _migrate_add_columns():
         "ALTER TABLE creators ADD COLUMN completion_rewarded_at DATETIME",
         # TCG: collab card metadata
         "ALTER TABLE cards ADD COLUMN collab_data TEXT",
+        # TCG V2: immutable per-card renderer snapshot
+        "ALTER TABLE cards ADD COLUMN visual_recipe TEXT",
+        # TCG publication: frozen personal-value rarity explanation
+        "ALTER TABLE cards ADD COLUMN mint_audit_json TEXT",
+        # User-curated tags influence future mint rarity, never pack odds.
+        "ALTER TABLE tags ADD COLUMN is_favorite BOOLEAN DEFAULT 0 NOT NULL",
+        # TCG V2 opt-in: cards owned before setup remain available as Legacy.
+        "ALTER TABLE cards ADD COLUMN is_legacy BOOLEAN DEFAULT 0 NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_cards_is_legacy ON cards(is_legacy)",
+        "ALTER TABLE cards ADD COLUMN catalog_code VARCHAR",
+        "ALTER TABLE cards ADD COLUMN collector_number INTEGER",
+        "ALTER TABLE cards ADD COLUMN print_rarity VARCHAR",
+        "ALTER TABLE cards ADD COLUMN parallel_of_id INTEGER",
+        "ALTER TABLE tcg_binders ADD COLUMN cover_image_id INTEGER REFERENCES images(id)",
+        "ALTER TABLE tcg_binders ADD COLUMN cover_x FLOAT DEFAULT 0.5 NOT NULL",
+        "ALTER TABLE tcg_binders ADD COLUMN cover_y FLOAT DEFAULT 0.5 NOT NULL",
+        "ALTER TABLE tcg_binders ADD COLUMN cover_scale FLOAT DEFAULT 1.0 NOT NULL",
+        "ALTER TABLE tcg_binders ADD COLUMN purchase_price INTEGER DEFAULT 0 NOT NULL",
+        "ALTER TABLE tcg_binder_slots ADD COLUMN section_id INTEGER REFERENCES tcg_binder_sections(id)",
+        "ALTER TABLE tcg_binder_slots ADD COLUMN physical_copy_id INTEGER REFERENCES tcg_physical_card_copies(id)",
+        "CREATE INDEX IF NOT EXISTS ix_tcg_binder_slots_section_id ON tcg_binder_slots(section_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_tcg_binder_slots_physical_copy_id ON tcg_binder_slots(physical_copy_id) WHERE physical_copy_id IS NOT NULL",
+        "ALTER TABLE tcg_online_orders ADD COLUMN order_seed VARCHAR",
+        "ALTER TABLE tcg_parcel_packs ADD COLUMN contents_seed VARCHAR",
+        "ALTER TABLE tcg_display_item_definitions ADD COLUMN placement_kind VARCHAR DEFAULT 'floor' NOT NULL",
+        "ALTER TABLE tcg_display_item_definitions ADD COLUMN footprint_json TEXT DEFAULT '{}' NOT NULL",
+        "ALTER TABLE tcg_display_item_definitions ADD COLUMN permanent_fixture BOOLEAN DEFAULT 0 NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_tcg_display_item_definitions_permanent_fixture ON tcg_display_item_definitions(permanent_fixture)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_tcg_furniture_purchase_request ON tcg_display_item_instances(source_id) WHERE source_type = 'furniture_purchase'",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_tcg_online_orders_order_seed ON tcg_online_orders(order_seed) WHERE order_seed IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_tcg_parcel_packs_contents_seed ON tcg_parcel_packs(contents_seed) WHERE contents_seed IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_cards_catalog_code ON cards(catalog_code)",
+        "CREATE INDEX IF NOT EXISTS ix_cards_print_rarity ON cards(print_rarity)",
+        "ALTER TABLE tcg_setup_state ADD COLUMN foundation_status VARCHAR DEFAULT 'pending' NOT NULL",
+        "ALTER TABLE tcg_setup_state ADD COLUMN foundation_total INTEGER DEFAULT 0 NOT NULL",
+        "ALTER TABLE tcg_setup_state ADD COLUMN foundation_target INTEGER DEFAULT 0 NOT NULL",
         # Image focal point for card display
         "ALTER TABLE images ADD COLUMN focal_x FLOAT DEFAULT 0.5",
         "ALTER TABLE images ADD COLUMN focal_y FLOAT DEFAULT 0.0",
@@ -288,6 +329,9 @@ def _migrate_add_columns():
         "ALTER TABLE images ADD COLUMN last_viewed_at DATETIME",
         # Mix galleries — virtual gallery from random mix
         "ALTER TABLE galleries ADD COLUMN is_mix BOOLEAN DEFAULT 0",
+        "ALTER TABLE galleries ADD COLUMN is_missing BOOLEAN DEFAULT 0",
+        "ALTER TABLE galleries ADD COLUMN missing_since DATETIME",
+        "CREATE INDEX IF NOT EXISTS ix_galleries_is_missing ON galleries(is_missing)",
         # Completion rewards — claimable flags (packs are awarded on explicit claim, not auto)
         "ALTER TABLE user_profile ADD COLUMN daily_bonus_claimable INTEGER DEFAULT 0",
         "ALTER TABLE user_profile ADD COLUMN weekly_bonus_claimable INTEGER DEFAULT 0",
@@ -343,6 +387,16 @@ def _migrate_add_columns():
         # Intake — duplicate awareness (pHash vs vault + video size match)
         "ALTER TABLE intake_items ADD COLUMN phash VARCHAR",
         "ALTER TABLE intake_items ADD COLUMN duplicate_of INTEGER",
+        "ALTER TABLE intake_items ADD COLUMN folder_id INTEGER REFERENCES intake_folders(id)",
+        "ALTER TABLE intake_items ADD COLUMN source_mtime FLOAT",
+        "ALTER TABLE intake_items ADD COLUMN width INTEGER",
+        "ALTER TABLE intake_items ADD COLUMN height INTEGER",
+        "ALTER TABLE intake_items ADD COLUMN duration FLOAT",
+        "ALTER TABLE intake_items ADD COLUMN content_hash VARCHAR",
+        "ALTER TABLE intake_items ADD COLUMN duplicate_kind VARCHAR",
+        "ALTER TABLE intake_items ADD COLUMN duplicate_distance INTEGER",
+        "ALTER TABLE images ADD COLUMN content_hash VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_images_content_hash ON images(content_hash)",
         # Creator Showcase — enforce one card per (creator, slot); prevents the
         # duplicate/orphan rows that could shadow a real card in a slot.
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_creator_showcase_creator_slot ON creator_showcase(creator_id, slot)",
@@ -361,6 +415,13 @@ def _migrate_add_columns():
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_hof_ranks_entity ON hof_ranks(entity_type, entity_id)",
         # Almanac — real on-disk acquisition date, alongside the existing mtime
         "ALTER TABLE images ADD COLUMN file_created_at DATETIME",
+        # subject/background mask for card foil effects
+        "ALTER TABLE images ADD COLUMN mask_path VARCHAR",
+        "ALTER TABLE images ADD COLUMN mask_quality FLOAT",
+        "ALTER TABLE images ADD COLUMN mask_status VARCHAR",
+        "ALTER TABLE images ADD COLUMN mask_failure_reason VARCHAR",
+        "ALTER TABLE images ADD COLUMN mask_pipeline_version VARCHAR",
+        "ALTER TABLE images ADD COLUMN mask_visual_mode VARCHAR",
         "CREATE INDEX IF NOT EXISTS ix_images_file_created ON images(file_created_at)",
         "CREATE INDEX IF NOT EXISTS ix_images_file_modified ON images(file_modified_at)",
         # Daily activity rollup — the only way usage trends over time ever exist,
@@ -392,6 +453,48 @@ def _migrate_add_columns():
 _migrate_add_columns()
 
 
+def _migrate_physical_card_copies():
+    from services.physical_cards import migrate_physical_cards
+    db = SessionLocal()
+    try:
+        migrate_physical_cards(db)
+    except Exception as exc:
+        db.rollback()
+        print(f"[migration] physical-card reconciliation was not applied: {exc}")
+    finally:
+        db.close()
+
+
+_migrate_physical_card_copies()
+
+
+def _seed_tcg_traders():
+    from services.tcg_traders import seed_traders
+    db = SessionLocal()
+    try:
+        seed_traders(db)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"[startup] weekly trader roster was not seeded: {exc}")
+    finally:
+        db.close()
+
+
+_seed_tcg_traders()
+
+
+def _migrate_legacy_earned_cards_to_bond():
+    from services.bond_cards import migrate_legacy_bond_storage
+
+    result = migrate_legacy_bond_storage(engine)
+    if result["cards"] or result["milestones"]:
+        print(f"[migration] renamed {result['cards']} legacy earned cards to Bond cards")
+
+
+_migrate_legacy_earned_cards_to_bond()
+
+
 def _migrate_card_rarity_rework():
     """One-time 2026-07 rework migration: 7 rarity tiers → 4 (common/epic/legendary/
     celestial). Rarity is recomputed from what the card IS (its type), not remapped
@@ -417,7 +520,7 @@ def _migrate_card_rarity_rework():
         conn.execute(sqlalchemy.text("""
             UPDATE cards SET rarity = CASE
                 WHEN rarity = 'celestial'                 THEN 'celestial'
-                WHEN card_type IN ('goon','variant')      THEN 'legendary'
+                WHEN card_type IN ('bond','variant')      THEN 'legendary'
                 WHEN card_type IN ('creator','collab')    THEN 'epic'
                 ELSE 'common'
             END
@@ -462,6 +565,138 @@ def _backfill_creator_card_art():
 _backfill_creator_card_art()
 
 
+def _backfill_creator_card_visuals():
+    """Freeze the accepted editorial-rail recipe onto existing Creator cards."""
+    try:
+        from database import SessionLocal as _SL
+        from services.creator_cards import backfill_creator_visuals
+        _db = _SL()
+        try:
+            result = backfill_creator_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] creator visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] creator visual backfill failed: {e}")
+
+
+_backfill_creator_card_visuals()
+
+
+def _backfill_cosplay_card_visuals():
+    """Give existing creator×character cards their frozen TCG V2 recipe."""
+    try:
+        from database import SessionLocal as _SL
+        from services.cosplay_cards import backfill_cosplay_visuals
+        _db = _SL()
+        try:
+            result = backfill_cosplay_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] cosplay visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] cosplay visual backfill failed: {e}")
+
+
+_backfill_cosplay_card_visuals()
+
+
+def _backfill_collab_card_visuals():
+    """Give existing multi-creator cards their frozen TCG V2 recipe."""
+    try:
+        from database import SessionLocal as _SL
+        from services.collab_cards import backfill_collab_visuals
+        _db = _SL()
+        try:
+            result = backfill_collab_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] collab visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible data"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] collab visual backfill failed: {e}")
+
+
+_backfill_collab_card_visuals()
+
+
+def _backfill_gallery_card_visuals():
+    """Give existing Gallery cards their frozen scrapbook recipe."""
+    try:
+        from database import SessionLocal as _SL
+        from services.gallery_cards import backfill_gallery_visuals
+        _db = _SL()
+        try:
+            result = backfill_gallery_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] gallery visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] gallery visual backfill failed: {e}")
+
+
+_backfill_gallery_card_visuals()
+
+
+def _backfill_bond_card_visuals():
+    """Authenticate milestones and prepare existing earned Bond cards."""
+    try:
+        from database import SessionLocal as _SL
+        from services.bond_cards import backfill_existing_bond_visuals
+        _db = _SL()
+        try:
+            result = backfill_existing_bond_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] Bond visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] Bond visual backfill failed: {e}")
+
+
+_backfill_bond_card_visuals()
+
+
+def _backfill_hof_card_visuals():
+    """Give existing Hall of Fame mementos their frozen regal recipe."""
+    try:
+        from database import SessionLocal as _SL
+        from services.hof_cards import backfill_hof_visuals
+        _db = _SL()
+        try:
+            result = backfill_hof_visuals(_db)
+            if result["prepared"] or result["failed"]:
+                print(
+                    "[migration] Hall of Fame visual recipes: "
+                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                )
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] Hall of Fame visual backfill failed: {e}")
+
+
+_backfill_hof_card_visuals()
+
+
 def _compute_collection_rarity():
     """Score every card's Collection Rarity Score + R/SR/SSR/UR class at boot.
     Cheap (a few aggregate queries + a pass over the cards). Never blocks boot."""
@@ -478,7 +713,10 @@ def _compute_collection_rarity():
         print(f"[startup] collection rarity scoring failed: {e}")
 
 
-_compute_collection_rarity()
+# Rarity is frozen when a TCG V2 printing is published.  Keep the explicit
+# recompute endpoint for legacy maintenance, but do not scan engagement across
+# a 400k-file Vault while importing the app: doing so prevents the API from
+# opening its port for minutes on every launch.
 
 
 def _award_hof_crowns():
@@ -803,6 +1041,18 @@ async def stream_console_log(request: Request):
 async def _on_startup():
     """Write a startup banner directly to the log buffer."""
     import platform
+    try:
+        from services.ai_tagger import restore_interrupted_jobs
+        restore_interrupted_jobs()
+    except Exception as e:
+        _log_direct("WARN", f"AI tagging checkpoints were not restored: {e}")
+    try:
+        from services.scanner import reconcile_gallery_availability
+        audit = reconcile_gallery_availability()
+        if audit["missing"] or audit["restored"] or audit["roots_repaired"]:
+            _log_direct("INFO", f"Gallery availability audit: {audit}")
+    except Exception as e:
+        _log_direct("WARN", f"Gallery availability audit failed: {e}")
     _log_direct("INFO",
         f"The Vault started — Python {platform.python_version()} · {platform.system()}"
     )
@@ -814,6 +1064,34 @@ async def _on_startup():
         asyncio.create_task(sim_engine_loop())
     except Exception as e:
         _log_direct("WARN", f"simulation engine not started: {e}")
+    try:
+        import asyncio
+
+        async def _resume_tcg_releases():
+            await asyncio.sleep(5)
+
+            def _run():
+                from services.tcg_v2 import process_due_releases
+                db = SessionLocal()
+                try:
+                    result = process_due_releases(db)
+                    if result["processed"]:
+                        _log_direct(
+                            "INFO",
+                            f"TCG release catch-up processed {len(result['processed'])} month(s); "
+                            f"{result['remaining']} remain",
+                        )
+                finally:
+                    db.close()
+
+            try:
+                await asyncio.to_thread(_run)
+            except Exception as error:
+                _log_direct("WARN", f"TCG release catch-up paused: {error}")
+
+        asyncio.create_task(_resume_tcg_releases())
+    except Exception as e:
+        _log_direct("WARN", f"TCG release catch-up not started: {e}")
 
 app.include_router(galleries.router,     prefix="/api/galleries",     tags=["galleries"])
 app.include_router(creators.router,      prefix="/api/creators",      tags=["creators"])
@@ -839,10 +1117,25 @@ app.include_router(recap_router,             prefix="/api/recap",          tags=
 app.include_router(feed.router,              prefix="/api/feed",           tags=["feed"])
 app.include_router(relocate_router,          prefix="/api/relocate",       tags=["relocate"])
 app.include_router(curation_router,          prefix="/api/curation",       tags=["curation"])
+app.include_router(masks_router,             prefix="/api/masks",          tags=["masks"])
+app.include_router(tcg_v2_router)
+app.include_router(tcg_room_module_router)
+app.include_router(tcg_room_router)
+app.include_router(tcg_traders_router)
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 os.makedirs(THUMBS_DIR, exist_ok=True)
 app.mount("/thumbs", StaticFiles(directory=THUMBS_DIR), name="thumbs")
+
+# Card foil masks, served the same way thumbs are so any client — the web card
+# or the Unreal one — can fetch them as a plain static texture.
+MASKS_DIR = os.path.join(DATA_DIR, "masks")
+os.makedirs(MASKS_DIR, exist_ok=True)
+app.mount("/masks", StaticFiles(directory=MASKS_DIR), name="masks")
+
+from services.foil_maps import foil_maps_dir
+FOIL_MAPS_DIR = foil_maps_dir()
+app.mount("/foil-maps", StaticFiles(directory=FOIL_MAPS_DIR), name="foil-maps")
 
 @app.get("/api/health")
 def health():

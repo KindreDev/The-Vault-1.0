@@ -7,6 +7,7 @@ from models import LibraryRoot, Image
 from schemas import LibraryRootCreate, LibraryRootOut, ScanStatus, TaggerStatus, TaggerStartRequest, ModelStatus
 from services.scanner import scan_library, scan_folder_path, get_scan_state, cancel_scan, get_scan_log, set_scan_state, is_scan_cancelled, match_funscript_library
 from services.scanner import make_thumb_path, generate_thumbnail, generate_video_thumbnail
+from services.scanner import audit_gallery_availability, missing_gallery_rows, relink_missing_gallery, remove_missing_gallery
 import services.ai_tagger as ai_tagger
 import services.gpu_setup as gpu_setup
 from services import task_queue, video_meta
@@ -25,6 +26,32 @@ def _launch_in_thread(fn, *args):
 @router.get("/roots", response_model=List[LibraryRootOut])
 def list_roots(db: Session = Depends(get_db)):
     return db.query(LibraryRoot).all()
+
+
+@router.get("/missing-galleries")
+def list_missing_galleries(db: Session = Depends(get_db)):
+    return missing_gallery_rows(db)
+
+
+@router.post("/reconcile-galleries")
+def reconcile_galleries(db: Session = Depends(get_db)):
+    return audit_gallery_availability(db)
+
+
+@router.post("/missing-galleries/{gallery_id}/relink")
+def relink_gallery(gallery_id: int, body: dict, db: Session = Depends(get_db)):
+    try:
+        gallery = relink_missing_gallery(db, gallery_id, body.get("folder_path", ""))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"id": gallery.id, "folder_path": gallery.folder_path, "relinked": True}
+
+
+@router.delete("/missing-galleries/{gallery_id}")
+def delete_missing_gallery(gallery_id: int, db: Session = Depends(get_db)):
+    if not remove_missing_gallery(db, gallery_id):
+        raise HTTPException(404, "Missing gallery not found")
+    return {"removed": True}
 
 
 @router.post("/roots", response_model=LibraryRootOut, status_code=201)
@@ -306,13 +333,19 @@ def start_ai_tag(req: TaggerStartRequest):
     elif req.scope == "creator" and req.creator_id:
         scope_label = f"creator {req.creator_id}"
 
+    db = SessionLocal()
+    try:
+        job = ai_tagger.create_tag_job(
+            db, req.scope, req.folder_path, req.threshold,
+            req.retag, req.model_override, req.creator_id,
+        )
+        job_id = job.id
+    finally:
+        db.close()
+
     task_queue.submit(
         'ai_tag', f'AI tagging ({scope_label})',
-        start_fn=lambda: _launch_in_thread(
-            ai_tagger.bulk_tag_images,
-            SessionLocal(), req.scope, req.folder_path, req.threshold,
-            req.retag, req.model_override, req.creator_id,
-        ),
+        start_fn=lambda: _launch_in_thread(ai_tagger.run_tag_job, SessionLocal(), job_id),
         poll_fn=ai_tagger.get_tagger_state,
         cancel_fn=ai_tagger.cancel_tagger,
     )
@@ -334,10 +367,46 @@ def ai_tag_status():
 @router.post("/ai-tag-cancel")
 def ai_tag_cancel():
     state = ai_tagger.get_tagger_state()
+    if state["running"]:
+        ai_tagger.cancel_tagger()
+        return {"message": "Cancel requested"}
+    db = SessionLocal()
+    try:
+        if not ai_tagger.cancel_persisted_job(db, state.get("job_id")):
+            return {"message": "No tagging job running"}
+    finally:
+        db.close()
+    return {"message": "Cancel requested"}
+
+
+@router.post("/ai-tag-pause")
+def ai_tag_pause():
+    state = ai_tagger.get_tagger_state()
     if not state["running"]:
         return {"message": "No tagging job running"}
-    ai_tagger.cancel_tagger()
-    return {"message": "Cancel requested"}
+    ai_tagger.pause_tagger()
+    return {"message": "Pause requested"}
+
+
+@router.post("/ai-tag-resume")
+def ai_tag_resume(body: dict = None):
+    db = SessionLocal()
+    try:
+        requested_id = (body or {}).get("job_id")
+        job = ai_tagger.queue_resumed_job(db, requested_id)
+        if not job:
+            raise HTTPException(404, "No paused tagging job found")
+        job_id = job.id
+        scope_label = job.scope
+    finally:
+        db.close()
+    task_queue.submit(
+        'ai_tag', f'Resume AI tagging ({scope_label})',
+        start_fn=lambda: _launch_in_thread(ai_tagger.run_tag_job, SessionLocal(), job_id),
+        poll_fn=ai_tagger.get_tagger_state,
+        cancel_fn=ai_tagger.cancel_tagger,
+    )
+    return ai_tagger.get_tagger_state()
 
 
 # ── GPU DLL on-demand download ────────────────────────────────────────────────

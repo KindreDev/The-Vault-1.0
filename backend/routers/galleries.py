@@ -4,7 +4,7 @@ import random
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, or_
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from database import get_db
 from models import Gallery, Image, Creator, Tag, gallery_creators, UserProfile, SessionLog, image_tags, mix_images
@@ -14,6 +14,7 @@ from services import activity
 from services import recommend as recommend_svc
 from services import ranking
 from services import entity_stats
+from services.tag_filters import apply_gallery_tag_filters
 from sqlalchemy import text
 
 router = APIRouter()
@@ -50,6 +51,11 @@ def _apply_gallery_filters(
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     favorite: Optional[bool] = None,
     unassigned: Optional[bool] = None,
     period: Optional[str] = None,
@@ -82,22 +88,15 @@ def _apply_gallery_filters(
         assigned_ids = db.query(gallery_creators.c.gallery_id).distinct()
         q = q.filter(~Gallery.id.in_(assigned_ids))
 
-    # Multi-tag: comma-separated, each tag must be present (AND).
-    # Matches gallery-level tags OR any image in the gallery having that tag.
-    tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
-    for tag_name in tag_list:
-        # Explicit subquery: gallery IDs whose images have this tag
-        img_subq = (
-            db.query(Image.gallery_id)
-            .join(image_tags, image_tags.c.image_id == Image.id)
-            .join(Tag, Tag.id == image_tags.c.tag_id)
-            .filter(Tag.name == tag_name, Image.gallery_id.isnot(None))
-            .subquery()
-        )
-        q = q.filter(or_(
-            Gallery.tags.any(Tag.name == tag_name),
-            Gallery.id.in_(img_subq),
-        ))
+    q = apply_gallery_tag_filters(
+        q,
+        include_raw=tags or tag,
+        include_ids_raw=tag_ids,
+        include_mode=tag_mode,
+        exclude_raw=exclude_tags,
+        exclude_ids_raw=exclude_tag_ids,
+        exclude_mode=exclude_mode,
+    )
     if search:
         q = q.filter(Gallery.name.ilike(f"%{search}%"))
     if favorite is not None:
@@ -278,7 +277,12 @@ def list_galleries(
     series: Optional[str] = None,  # franchise / series filter (partial match)
     search: Optional[str] = None,
     tag: Optional[str] = None,
-    tags: Optional[str] = None,  # comma-separated, AND logic
+    tags: Optional[str] = None,  # legacy/name-based include tags; tag_mode controls all/any
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     favorite: Optional[bool] = None,
     unassigned: Optional[bool] = None,
     is_mix: Optional[bool] = None,  # True → only mix galleries, False → only real ones
@@ -289,17 +293,22 @@ def list_galleries(
                        # client seeds with Math.random(); scaled to an int below.
     skip: int = 0,
     limit: int = 200,
+    include_missing: bool = False,
 ):
     # Eager-load tags + creators so _enrich() doesn't fire N+1 queries on a page of 200
     q = db.query(Gallery).options(
         selectinload(Gallery.tags),
         selectinload(Gallery.creators),
     )
+    if not include_missing:
+        q = q.filter((Gallery.is_missing == False) | (Gallery.is_missing.is_(None)))  # noqa: E712
 
     q = _apply_gallery_filters(
         q, db,
         creator_id=creator_id, creator_type=creator_type, series=series,
-        search=search, tag=tag, tags=tags, favorite=favorite,
+        search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
+        exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
+        exclude_mode=exclude_mode, favorite=favorite,
         unassigned=unassigned, period=period,
     )
 
@@ -368,6 +377,11 @@ def list_periods(
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     favorite: Optional[bool] = None,
     unassigned: Optional[bool] = None,
 ):
@@ -380,10 +394,13 @@ def list_periods(
     here — we always show every period available under the *other* filters."""
     from datetime import datetime
     q = db.query(Gallery.period_year, Gallery.period_month, func.count(Gallery.id.distinct()))
+    q = q.filter((Gallery.is_missing == False) | (Gallery.is_missing.is_(None)))  # noqa: E712
     q = _apply_gallery_filters(
         q, db,
         creator_id=creator_id, creator_type=creator_type, series=series,
-        search=search, tag=tag, tags=tags, favorite=favorite,
+        search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
+        exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
+        exclude_mode=exclude_mode, favorite=favorite,
         unassigned=unassigned,
     )
     rows = (
@@ -635,7 +652,10 @@ def gallery_hof(db: Session = Depends(get_db), limit: int = 5, offset: int = 0,
     rows = (
         db.query(Gallery)
           .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
-          .filter(Gallery.id.in_(page))
+          .filter(
+              Gallery.id.in_(page),
+              (Gallery.is_missing == False) | (Gallery.is_missing.is_(None)),  # noqa: E712
+          )
           .all()
     )
     by_id = {g.id: g for g in rows}
@@ -660,6 +680,7 @@ def recent_galleries(db: Session = Depends(get_db), limit: int = 8):
     galleries = (
         db.query(Gallery)
           .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
+          .filter((Gallery.is_missing == False) | (Gallery.is_missing.is_(None)))  # noqa: E712
           .order_by(Gallery.created_at.desc())
           .limit(limit)
           .all()
@@ -672,6 +693,7 @@ def random_gallery(db: Session = Depends(get_db)):
     gallery = (
         db.query(Gallery)
           .options(selectinload(Gallery.tags), selectinload(Gallery.creators))
+          .filter((Gallery.is_missing == False) | (Gallery.is_missing.is_(None)))  # noqa: E712
           .order_by(func.random())
           .first()
     )
@@ -703,6 +725,7 @@ def similar_galleries(gallery_id: int, limit: int = 6, db: Session = Depends(get
             WHERE i.gallery_id = :gid
         )
           AND g.id != :gid
+          AND (g.is_missing = 0 OR g.is_missing IS NULL)
         GROUP BY g.id
         ORDER BY shared_tags DESC
         LIMIT :pool_size
@@ -744,7 +767,11 @@ def subgalleries(gallery_id: int, db: Session = Depends(get_db)):
     rows = (
         db.query(Gallery)
           .options(selectinload(Gallery.creators))
-          .filter(Gallery.id != gallery_id, Gallery.folder_path.like(f"{prefix}%"))
+          .filter(
+              Gallery.id != gallery_id,
+              Gallery.folder_path.like(f"{prefix}%"),
+              (Gallery.is_missing == False) | (Gallery.is_missing.is_(None)),  # noqa: E712
+          )
           .all()
     )
     out = []

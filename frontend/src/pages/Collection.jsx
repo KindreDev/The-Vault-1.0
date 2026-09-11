@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Check, Loader, Sparkles, BarChart2, Search, X } from 'lucide-react'
+import { Layers, ShoppingBag, Hammer, Filter, ChevronDown, Check, Loader, Sparkles, BarChart2, Search, X, Eye, EyeOff } from 'lucide-react'
 import { cardsApi, economyApi, gamiApi } from '../lib/api'
 import VaultCard, { RARITY_ORDER, RARITY_CONFIG } from '../components/VaultCard'
+import TCGV2CardFace from '../components/tcg-v2/TCGV2CardFace'
 import CardViewer from '../components/CardViewer'
 import PackOpening from '../components/PackOpening'
 import ShopTab from '../components/ShopTab'
 import DismantleEffect from '../components/DismantleEffect'
 import GalleryPagination from '../components/GalleryPagination'
 import CollectionFilters, { VaultDropdown } from '../components/collection/CollectionFilters'
+import TCGSetupGate from '../components/collection/TCGSetupGate'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50]
@@ -31,18 +33,19 @@ const RARITY_OPTIONS = [
   { value: 'All', label: 'All' },
   ...RARITY_ORDER.map(r => ({ value: r, label: RARITY_CONFIG[r]?.label ?? r })),
 ]
-// Scarcity class (the R / SR / SSR / UR badge on the card face). Separate axis
+// Scarcity class (the C / R / SR / SPR / UR badge on the card face). Separate axis
 // from the tier above: the class is a card's percentile *within* its own tier,
 // so a Core card can be UR. Filtering the two independently is the point.
 const CLASS_OPTIONS = [
   { value: 'All', label: 'All' },
   { value: 'UR',  label: 'UR' },
-  { value: 'SSR', label: 'SSR' },
+  { value: 'SPR', label: 'SPR' },
   { value: 'SR',  label: 'SR' },
   { value: 'R',   label: 'R' },
+  { value: 'C',   label: 'C' },
 ]
 const TYPE_OPTIONS = [
-  'All', 'Photo', 'Gallery', 'Creator', 'Goon', 'Variant', 'Collab', 'HOF',
+  'All', 'Photo', 'Gallery', 'Creator', 'Bond', 'Variant', 'Collab', 'HOF',
 ].map(t => ({ value: t, label: t }))
 const TYPE_API_MAP  = { 'Photo': 'image', 'HOF': 'hof' }
 const SORT_OPTIONS  = [
@@ -132,7 +135,8 @@ export default function Collection() {
   const [pageSize, setPageSize]         = useState(() => Number(localStorage.getItem('vault-collection-page-size')) || 50)
   const [forgePage, setForgePage]       = useState(1)
   const [showCxpBar, setShowCxpBar]     = useState(() => localStorage.getItem('vault-show-cxp') === 'true')
-  const [showEffects, setShowEffects]   = useState(() => localStorage.getItem('vault-show-effects') === 'true')
+  const [showEffects, setShowEffects]   = useState(() => localStorage.getItem('vault-show-effects') !== 'false')
+  const [showLegacy, setShowLegacy]     = useState(() => localStorage.getItem('vault-show-legacy-cards') === 'true')
   const [dismantleAnim, setDismantleAnim]     = useState(null)
   const [shardsFlash, setShardsFlash]         = useState(false)
   const [animShards, setAnimShards]           = useState(null)
@@ -145,9 +149,45 @@ export default function Collection() {
 
   const FORGE_PAGE_SIZE = 30
 
+  const { data: tcgSetup, isLoading: tcgSetupLoading } = useQuery({
+    queryKey: ['tcg-v2-setup'],
+    queryFn: () => cardsApi.setupStatus().then(r => r.data),
+    staleTime: 30_000,
+  })
+  const legacyMode = tcgSetup?.enabled && !showLegacy ? 'exclude' : 'include'
+
+  const startTcgMutation = useMutation({
+    mutationFn: () => cardsApi.startV2().then(r => r.data),
+    onSuccess: () => {
+      localStorage.setItem('vault-show-legacy-cards', 'false')
+      setShowLegacy(false)
+      setTab('shop')
+      qc.invalidateQueries({ queryKey: ['tcg-v2-setup'] })
+      qc.invalidateQueries({ queryKey: ['card-inventory'] })
+      qc.invalidateQueries({ queryKey: ['collection-creators'] })
+      toast.success('TCG V2 started. Publishing your Foundation catalogue now.')
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Could not start the TCG'),
+  })
+
+  const foundationMutation = useMutation({
+    mutationFn: () => cardsApi.publishFoundation().then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['tcg-v2-setup'] })
+      toast.success(`${data.base_printings.toLocaleString()} Foundation cards published`)
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Could not publish the Foundation catalogue'),
+  })
+
+  useEffect(() => {
+    if (tcgSetup?.enabled && !tcgSetup?.foundation?.ready && !foundationMutation.isPending && !foundationMutation.isError) {
+      foundationMutation.mutate()
+    }
+  }, [tcgSetup?.enabled, tcgSetup?.foundation?.ready]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: invData, isLoading: invLoading } = useQuery({
-    queryKey: ['card-inventory', rarityFilter, classFilter, typeFilter, creatorFilter, searchQuery, sort],
+    queryKey: ['card-inventory', rarityFilter, classFilter, typeFilter, creatorFilter, searchQuery, sort, legacyMode],
     queryFn: () => cardsApi.inventory({
       rarity:       rarityFilter !== 'All' ? rarityFilter : undefined,
       rarity_class: classFilter  !== 'All' ? classFilter  : undefined,
@@ -155,16 +195,17 @@ export default function Collection() {
       creator_id:   creatorFilter || undefined,
       search:       searchQuery || undefined,
       sort,
+      legacy_mode: legacyMode,
     }).then(r => r.data),
-    enabled: tab === 'collection' || tab === 'forge',
+    enabled: Boolean(tcgSetup?.enabled) && (tab === 'collection' || tab === 'forge'),
   })
 
   // Only creators you own cards of — a filter listing every creator in the vault
   // would be the same navigation problem in a different shape.
   const { data: collectionCreators = [] } = useQuery({
-    queryKey: ['collection-creators'],
-    queryFn: () => cardsApi.collectionCreators().then(r => r.data),
-    enabled: tab === 'collection',
+    queryKey: ['collection-creators', legacyMode],
+    queryFn: () => cardsApi.collectionCreators({ legacy_mode: legacyMode }).then(r => r.data),
+    enabled: Boolean(tcgSetup?.enabled) && tab === 'collection',
     staleTime: 60_000,
   })
 
@@ -187,8 +228,9 @@ export default function Collection() {
 
   const handlePackSuccess = (data) => {
     const allCards = data.cards ?? []
+    const packSize = data.pack_size || 10
     const batches = []
-    for (let i = 0; i < allCards.length; i += 5) batches.push(allCards.slice(i, i + 5))
+    for (let i = 0; i < allCards.length; i += packSize) batches.push(allCards.slice(i, i + packSize))
     setPackBatches(batches.length ? batches : null)
     qc.invalidateQueries({ queryKey: ['economy-balance'] })
     qc.invalidateQueries({ queryKey: ['profile'] })
@@ -377,6 +419,35 @@ const feedDuplicateMutation = useMutation({
     ? animShards.base + Math.round(animShards.progress * animShards.gained)
     : (materials?.shards ?? 0)
 
+  if (tcgSetupLoading || !tcgSetup?.enabled) {
+    return (
+      <TCGSetupGate
+        status={tcgSetup}
+        loading={tcgSetupLoading}
+        starting={startTcgMutation.isPending}
+        onStart={() => startTcgMutation.mutate()}
+      />
+    )
+  }
+
+  if (!tcgSetup?.foundation?.ready) {
+    return (
+      <div style={{ minHeight: '70vh', display: 'grid', placeItems: 'center', background: '#080810', padding: 32 }}>
+        <div style={{ maxWidth: 620, textAlign: 'center' }}>
+          <Loader size={42} style={{ color: 'var(--c-accent)', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }} />
+          <h1 style={{ fontSize: 28, color: '#fff', marginBottom: 12 }}>Publishing your Foundation catalogue</h1>
+          <p style={{ fontSize: 17, lineHeight: 1.6, color: 'rgba(255,255,255,.6)' }}>
+            The Vault is freezing a finite checklist of up to 60,000 real cards. Booster openings will use these stable V2 definitions—not the old random-card generator.
+          </p>
+          {foundationMutation.isError && <button onClick={() => foundationMutation.mutate()} style={{
+            marginTop: 18, padding: '12px 22px', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer',
+            color: '#fff', background: 'color-mix(in srgb, var(--c-accent) 35%, #171724)', border: '1px solid var(--c-accent)',
+          }}>Try publishing again</button>}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#080810', padding: '24px 28px' }}>
       {/* Pack opening overlay */}
@@ -548,6 +619,24 @@ const feedDuplicateMutation = useMutation({
               <Sparkles size={11} /> Effects
             </button>
 
+            {tcgSetup.has_legacy_cards && (
+              <button onClick={() => setShowLegacy(v => {
+                const next = !v
+                localStorage.setItem('vault-show-legacy-cards', String(next))
+                setPage(1)
+                return next
+              })} style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                minHeight: 34, padding: '5px 12px', borderRadius: 8, fontSize: 16, cursor: 'pointer',
+                background: showLegacy ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
+                color: showLegacy ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)',
+                border: showLegacy ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.08)',
+              }} title={`${tcgSetup.legacy_card_count.toLocaleString()} Legacy cards`}>
+                {showLegacy ? <Eye size={16} /> : <EyeOff size={16} />}
+                {showLegacy ? 'Legacy shown' : 'Legacy hidden'}
+              </button>
+            )}
+
             {/* CXP bar toggle */}
             <button onClick={() => setShowCxpBar(v => { const n = !v; localStorage.setItem('vault-show-cxp', n); return n })} style={{
               display: 'flex', alignItems: 'center', gap: 5,
@@ -595,14 +684,23 @@ const feedDuplicateMutation = useMutation({
                         zIndex: (inv.prestige || inv.foil) ? 3 : undefined,
                       }}
                     >
-                      <VaultCard
+                      <TCGV2CardFace
                         card={inv}
                         width={cardWidth}
-                        forceEffects={showEffects}
+                        showEffects={showEffects}
                         onClick={() => {
                           const el = cardEls.current.get(inv.inventory_id)
                           setViewCard({ card: inv, inventoryId: inv.inventory_id, sourceRect: el?.getBoundingClientRect() ?? null })
                         }}
+                        fallback={<VaultCard
+                          card={inv}
+                          width={cardWidth}
+                          forceEffects={showEffects}
+                          onClick={() => {
+                            const el = cardEls.current.get(inv.inventory_id)
+                            setViewCard({ card: inv, inventoryId: inv.inventory_id, sourceRect: el?.getBoundingClientRect() ?? null })
+                          }}
+                        />}
                       />
                       {inv.quantity > 1 && (
                         <div style={{
@@ -792,7 +890,8 @@ const feedDuplicateMutation = useMutation({
                           containIntrinsicSize: `140px ${Math.round(140 * 1.45) + 20}px`,
                         }}
                       >
-                        <VaultCard card={inv} width={140} forceEffects={false} />
+                        <TCGV2CardFace card={inv} width={140} showEffects={false}
+                          fallback={<VaultCard card={inv} width={140} forceEffects={false} />} />
                         {/* Feed-duplicate button — only on cards with extras */}
                         {inv.quantity > 1 && !isSel && (
                           <button

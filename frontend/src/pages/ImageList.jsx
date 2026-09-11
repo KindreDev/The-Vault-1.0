@@ -35,6 +35,7 @@ import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
+import { normalizeTagTokens, tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -670,9 +671,15 @@ function ImageViewer({ images, startIdx, onClose }) {
             </div>
           )}
           {slideshowActive && (
-            <div className="absolute bottom-3 right-3 text-[12px] px-2 py-1 rounded-full pointer-events-none flex items-center gap-1"
-              style={{ background: 'rgba(0,0,0,0.6)', color: 'var(--c-accent-text)' }}>
-              <Play size={9} fill="var(--c-accent-text)" /> {slideshowSpeed}s
+            <div className="absolute bottom-3 right-3 px-2 py-1 rounded-full pointer-events-none flex items-center gap-1"
+              style={{
+                fontSize: 16,
+                background: 'rgba(0,0,0,0.6)',
+                color: 'var(--c-accent-text)',
+                opacity: isFullscreen && !showFilmstrip ? 0 : 1,
+                transition: 'opacity 0.25s ease',
+              }}>
+              <Play size={15} fill="var(--c-accent-text)" /> {slideshowSpeed}s
             </div>
           )}
         </div>
@@ -1352,7 +1359,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
 const IMG_PAGE_SIZES = [25, 50, 100, 250, 500]
 
 export default function ImageList({ onlyVideos = false }) {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Persist filter state across navigation (separate keys for Photos vs Videos).
   // A tag link in the URL (?tag= / ?tags=) takes precedence and starts a fresh filter.
@@ -1360,20 +1367,30 @@ export default function ImageList({ onlyVideos = false }) {
   const _ilInitial = useRef(null)
   if (_ilInitial.current === null) {
     const DEFAULTS = { search: '', sortBy: 'date_added', sortDir: 'desc', randomSeed: 0,
-                       creatorId: null, creatorType: '', favOnly: false, scriptedOnly: false, franchise: '', period: '', activeTags: [] }
-    const urlMulti = searchParams.get('tags')
-    const urlSingle = searchParams.get('tag')
+                       creatorId: null, creatorType: '', favOnly: false, scriptedOnly: false, franchise: '', period: '',
+                       activeTags: [], excludedTags: [], tagMode: 'all', excludeMode: 'any' }
+    const hasUrlTags = ['tags', 'tag', 'tag_ids', 'exclude_tags', 'exclude_tag_ids', 'tag_mode', 'exclude_mode']
+      .some(key => searchParams.has(key))
     const urlCreator = parseInt(searchParams.get('creator_id'), 10)
-    if (urlMulti || urlSingle) {
-      const tags = urlMulti ? urlMulti.split(',').map(t => t.trim()).filter(Boolean) : [urlSingle]
-      _ilInitial.current = { ...DEFAULTS, activeTags: tags }
+    if (hasUrlTags) {
+      _ilInitial.current = {
+        ...DEFAULTS,
+        activeTags: tagTokensFromParams(searchParams, 'tags', 'tag_ids', 'tag'),
+        excludedTags: tagTokensFromParams(searchParams, 'exclude_tags', 'exclude_tag_ids'),
+        tagMode: searchParams.get('tag_mode') === 'any' ? 'any' : 'all',
+        excludeMode: searchParams.get('exclude_mode') === 'all' ? 'all' : 'any',
+      }
     } else if (!isNaN(urlCreator)) {
       // "View all" links from a creator profile start a fresh filter on that creator
       _ilInitial.current = { ...DEFAULTS, creatorId: urlCreator }
     } else {
       let saved = null
       try { saved = JSON.parse(sessionStorage.getItem(IL_STATE_KEY) || 'null') } catch {}
-      _ilInitial.current = saved ? { ...DEFAULTS, ...saved } : DEFAULTS
+      _ilInitial.current = saved ? {
+        ...DEFAULTS, ...saved,
+        activeTags: normalizeTagTokens(saved.activeTags || []),
+        excludedTags: normalizeTagTokens(saved.excludedTags || []),
+      } : DEFAULTS
     }
   }
   const _init = _ilInitial.current
@@ -1391,15 +1408,38 @@ export default function ImageList({ onlyVideos = false }) {
   const [period, setPeriod] = useState(_init.period)
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
   const [activeTags, setActiveTags] = useState(_init.activeTags)
+  const [excludedTags, setExcludedTags] = useState(_init.excludedTags)
+  const [tagMode, setTagMode] = useState(_init.tagMode)
+  const [excludeMode, setExcludeMode] = useState(_init.excludeMode)
 
   // Save filter state on every change so re-entry restores it (unless cleared)
   useEffect(() => {
     try {
       sessionStorage.setItem(IL_STATE_KEY, JSON.stringify({
-        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags,
+        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period,
+        activeTags, excludedTags, tagMode, excludeMode,
       }))
     } catch {}
-  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags])
+  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags, excludedTags, tagMode, excludeMode])
+
+  // Tag filters are canonical URL state, making complex combinations
+  // bookmarkable while the rest of the view continues using session restore.
+  useEffect(() => {
+    const include = tagTokensToParams(activeTags)
+    const exclude = tagTokensToParams(excludedTags)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      const put = (key, value) => value ? next.set(key, value) : next.delete(key)
+      put('tags', include.names)
+      put('tag_ids', include.ids)
+      next.delete('tag')
+      put('exclude_tags', exclude.names)
+      put('exclude_tag_ids', exclude.ids)
+      put('tag_mode', tagMode === 'any' ? 'any' : null)
+      put('exclude_mode', excludeMode === 'all' ? 'all' : null)
+      return next
+    }, { replace: true })
+  }, [activeTags, excludedTags, tagMode, excludeMode, setSearchParams])
   const [viewerIdx, setViewerIdx] = useState(null)
 
   const [bulkMode, setBulkMode] = useState(false)
@@ -1432,11 +1472,13 @@ export default function ImageList({ onlyVideos = false }) {
   const [page, setPage] = useState(1)
 
   // Reset to page 1 whenever any filter or page-size changes
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${scriptedOnly}|${franchise}|${period}|${onlyVideos}|${activeTags.join(',')}|${pageLimit}|${randomSeed}`
+  const includeTagParams = tagTokensToParams(activeTags)
+  const excludeTagParams = tagTokensToParams(excludedTags)
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${scriptedOnly}|${franchise}|${period}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${pageLimit}|${randomSeed}`
   const prevFilterKeyRef = useRef(filterKey)
 
   const { data: imagesPage, isLoading, isError } = useQuery({
-    queryKey: ['images-list', search, sortBy, sortDir, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, onlyVideos, activeTags.join(','), pageLimit, page, randomSeed],
+    queryKey: ['images-list', filterKey, page],
     queryFn: () => imagesApi.list({
       search: search || undefined,
       sort_by: sortBy,
@@ -1448,7 +1490,12 @@ export default function ImageList({ onlyVideos = false }) {
       favorite: favOnly || undefined,
       has_funscript: scriptedOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
-      tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+      tags: includeTagParams.names || undefined,
+      tag_ids: includeTagParams.ids || undefined,
+      tag_mode: tagMode,
+      exclude_tags: excludeTagParams.names || undefined,
+      exclude_tag_ids: excludeTagParams.ids || undefined,
+      exclude_mode: excludeMode,
       limit: pageLimit,
       skip: (page - 1) * pageLimit,
       _seed: randomSeed,
@@ -1484,7 +1531,7 @@ export default function ImageList({ onlyVideos = false }) {
 
   // Period options reflect the CURRENT filter context (creator, type, franchise,
   // tags, video-only, etc.) but never the selected period itself.
-  const periodKey = `${search}|${creatorId}|${creatorType}|${franchise}|${favOnly}|${onlyVideos}|${activeTags.join(',')}`
+  const periodKey = `${search}|${creatorId}|${creatorType}|${franchise}|${favOnly}|${scriptedOnly}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
   const { data: periods = [] } = useQuery({
     queryKey: ['image-periods', periodKey],
     queryFn: () => imagesApi.periods({
@@ -1495,7 +1542,12 @@ export default function ImageList({ onlyVideos = false }) {
       favorite: favOnly || undefined,
       has_funscript: scriptedOnly || undefined,
       is_video: onlyVideos ? true : false,
-      tags: activeTags.length > 0 ? activeTags.join(',') : undefined,
+      tags: includeTagParams.names || undefined,
+      tag_ids: includeTagParams.ids || undefined,
+      tag_mode: tagMode,
+      exclude_tags: excludeTagParams.names || undefined,
+      exclude_tag_ids: excludeTagParams.ids || undefined,
+      exclude_mode: excludeMode,
     }).then(r => r.data),
   })
 
@@ -1602,10 +1654,18 @@ export default function ImageList({ onlyVideos = false }) {
 
         {/* Multi-tag filter with autocomplete */}
         <TagFilterInput
-          activeTags={activeTags}
-          onAdd={name => setActiveTags(prev => prev.includes(name) ? prev : [...prev, name])}
-          onRemove={name => setActiveTags(prev => prev.filter(t => t !== name))}
-          placeholder={t('Filter by tag…')}
+          includeTags={activeTags}
+          includeMode={tagMode}
+          onIncludeModeChange={setTagMode}
+          onAddInclude={token => setActiveTags(prev => prev.includes(token) ? prev : [...prev, token])}
+          onRemoveInclude={token => setActiveTags(prev => prev.filter(t => t !== token))}
+          onClearInclude={() => setActiveTags([])}
+          excludeTags={excludedTags}
+          excludeMode={excludeMode}
+          onExcludeModeChange={setExcludeMode}
+          onAddExclude={token => setExcludedTags(prev => prev.includes(token) ? prev : [...prev, token])}
+          onRemoveExclude={token => setExcludedTags(prev => prev.filter(t => t !== token))}
+          onClearExclude={() => setExcludedTags([])}
           rounded="lg"
         />
 

@@ -8,7 +8,7 @@ All rates and values are here — change one number to rebalance everything.
 # imports), and the two packs now have distinct identities instead of a strict
 # better/worse tier:
 #   Booster  — "your history": engagement-biased pulls + DOUBLE foil odds.
-#   Premium  — "the high table": guaranteed Epic+, heavy goon/HOF/collab rates.
+#   Premium  — "the high table": guaranteed Epic+, heavy Bond/HOF/collab rates.
 PACK_COST         = 400   # Vault Credits per booster pack
 PREMIUM_PACK_COST = 800   # Vault Credits per premium pack
 PACK_SIZE         = 5     # Cards drawn per pack open
@@ -36,7 +36,7 @@ BASELINE_RARITY = {
     "image":   "common",
     "gallery": "common",
     "creator": "epic",
-    "goon":    "legendary",  # images with cum_count >= GOON_THRESHOLD — badges of honour
+    "bond":    "legendary",  # images with cum_count >= BOND_THRESHOLD — badges of devotion
     "variant": "legendary",
     "collab":  "epic",       # default; overridden per subtype in _pick_collab_card
     "hof":     "legendary",  # minted Hall of Fame mementos (top-3 minted celestial)
@@ -47,10 +47,9 @@ GALLERY_EPIC_RATING = 9.0
 
 # ── Drop pool weights (must sum to 1.0) ───────────────────────────────────────
 DROP_WEIGHTS = {
-    "image":   0.58,
+    "image":   0.63,
     "gallery": 0.17,
     "creator": 0.07,
-    "goon":    0.05,
     "variant": 0.01,
     "collab":  0.05,
     "hof":     0.07,   # minted HOF mementos — deliberately generous pull odds
@@ -63,8 +62,9 @@ FOIL_CHANCE          = 0.10   # booster pack, per card — the booster is the fo
 FOIL_CHANCE_PREMIUM  = 0.05   # premium pack, per card — premium chases rarity, not foils
 FOIL_SHARD_MULT      = 3      # dismantle multiplier for foils
 
-# ── Goon card threshold ───────────────────────────────────────────────────────
-GOON_THRESHOLD = 10  # cum_count required on an image to qualify as goon card
+# ── Bond card thresholds ─────────────────────────────────────────────────────
+BOND_MILESTONES = (5, 15, 25)
+BOND_THRESHOLD = BOND_MILESTONES[0]
 
 # ── Variant cap ───────────────────────────────────────────────────────────────
 VARIANT_CAP = 3  # hard maximum variants per creator×character pair
@@ -133,9 +133,9 @@ RARITY_SCORE_FOIL_MULT   = 1.5
 RARITY_SCORE_LEVEL_BONUS = 0.06   # ×(1 + bonus×(level-1)) → +54% at level 10
 
 # ── CXP: universal card feeding ───────────────────────────────────────────────
-# Type multipliers applied on top of rarity base when a goon or variant is sacrificed
+# Type multipliers applied on top of rarity base when a Bond or variant is sacrificed
 FEED_CARD_TYPE_MULTIPLIERS = {
-    "goon":    1.5,
+    "bond":    1.5,
     "variant": 2.0,
 }
 

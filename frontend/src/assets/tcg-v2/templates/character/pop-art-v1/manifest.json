@@ -1,0 +1,113 @@
+{
+  "id": "character-pop-art-v1",
+  "version": 1,
+  "cardType": "character",
+  "layoutRole": "primary",
+  "canvas": {
+    "width": 1024,
+    "height": 1536,
+    "aspectRatio": "2:3",
+    "cornerRadius": 46
+  },
+  "reference": "../../../references/accepted/exec-5f1531f8-e214-4710-bfd4-5c350fae6082.png",
+  "eligibility": {
+    "subjectMaskQuality": "pass",
+    "fallbackTemplate": "character-full-bleed-v1"
+  },
+  "layers": [
+    {
+      "id": "background_base",
+      "zIndex": 100,
+      "kind": "palette-recolorable-raster",
+      "asset": "background-base.png",
+      "required": true
+    },
+    {
+      "id": "decor_rear",
+      "zIndex": 300,
+      "kind": "modular-motif-layout",
+      "asset": "motif-layout-stars-hearts.png",
+      "required": true
+    },
+    {
+      "id": "subject_shadow",
+      "zIndex": 400,
+      "kind": "mask-derived-offset-print-shadow",
+      "required": true
+    },
+    {
+      "id": "subject_outline",
+      "zIndex": 425,
+      "kind": "mask-derived-separator",
+      "required": true
+    },
+    {
+      "id": "subject_cutout",
+      "zIndex": 500,
+      "kind": "source-media-with-alpha",
+      "required": true
+    },
+    {
+      "id": "frame_over",
+      "zIndex": 600,
+      "kind": "raster-overlay",
+      "asset": "frame-over.png",
+      "required": true
+    },
+    {
+      "id": "printed_data",
+      "zIndex": 800,
+      "kind": "runtime-text",
+      "required": true
+    },
+    {
+      "id": "rarity_badge",
+      "zIndex": 850,
+      "kind": "shared-rarity-asset",
+      "required": true
+    },
+    {
+      "id": "spr_signature",
+      "zIndex": 900,
+      "kind": "runtime-signature",
+      "required": false,
+      "visibility": "rarity == 'SPR'"
+    },
+    {
+      "id": "finish_frame",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "finish-frame.png",
+      "required": false
+    },
+    {
+      "id": "finish_motifs",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "finish-motifs.png",
+      "required": false
+    }
+  ],
+  "palette": {
+    "sourceRoles": {
+      "background": "palette-background-mask.png",
+      "primary": "palette-primary-mask.png",
+      "secondary": "palette-secondary-mask.png"
+    },
+    "preserveTexture": true,
+    "preserveOffWhiteSeparators": true,
+    "requireSubjectContrast": true,
+    "freezeAtPublication": true
+  },
+  "subjectTreatment": {
+    "outlinePx": 9,
+    "outlineRole": "art_light",
+    "shadowOffsetPx": [16, 18],
+    "shadowOpacity": 0.58,
+    "shadowRole": "art_dark"
+  },
+  "anchorsFile": "safe-zones.json",
+  "clipMask": "card-clip-mask.png",
+  "renderSeedRequired": true,
+  "flattenedPreviewIsAuthoritative": false
+}

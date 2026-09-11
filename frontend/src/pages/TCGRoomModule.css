@@ -1,0 +1,33 @@
+.tcg-room-module {
+  min-height: 100%;
+  padding: 40px;
+  color: rgba(255,255,255,.88);
+  background: radial-gradient(circle at 75% 10%, rgba(127,119,221,.16), transparent 34%), #0e0e0e;
+}
+
+.tcg-room-module header { max-width: 820px; margin: 0 auto 28px; }
+.tcg-room-module header > a { display: inline-flex; gap: 8px; align-items: center; color: #aaa5ef; font-size: 16px; margin-bottom: 28px; }
+.tcg-room-module header > span { display: block; color: #aaa5ef; font-size: 16px; letter-spacing: .14em; }
+.tcg-room-module h1 { margin: 8px 0 12px; font-size: 44px; }
+.tcg-room-module header p { margin: 0; color: rgba(255,255,255,.58); font-size: 18px; line-height: 1.6; }
+.tcg-room-module__panel { max-width: 820px; margin: auto; padding: 28px; border: 1px solid rgba(255,255,255,.1); border-radius: 20px; background: rgba(25,25,29,.88); box-shadow: 0 22px 70px rgba(0,0,0,.34); }
+.tcg-room-module__status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.tcg-room-module__status > div { padding: 18px; border-radius: 14px; background: rgba(255,255,255,.045); }
+.tcg-room-module__status span, .tcg-room-module__installed small { display: block; color: rgba(255,255,255,.48); font-size: 16px; }
+.tcg-room-module__status strong { display: block; margin-top: 7px; font-size: 22px; }
+.tcg-room-module__notice { display: flex; gap: 14px; margin-top: 22px; padding: 20px; border: 1px solid rgba(186,117,23,.35); border-radius: 14px; background: rgba(186,117,23,.08); }
+.tcg-room-module__notice p, .tcg-room-module__progress p { margin: 6px 0 0; color: rgba(255,255,255,.56); font-size: 16px; line-height: 1.5; }
+.tcg-room-module__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+.tcg-room-module button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: white; background: rgba(127,119,221,.75); font-size: 16px; }
+.tcg-room-module button:disabled { opacity: .42; cursor: not-allowed; }
+.tcg-room-module__progress { margin-top: 22px; }
+.tcg-room-module__progress > div:first-child { display: flex; justify-content: space-between; font-size: 16px; }
+.tcg-room-module__bar { height: 10px; margin-top: 10px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }
+.tcg-room-module__bar i { display: block; height: 100%; background: #7f77dd; transition: width .2s; }
+.tcg-room-module__error { color: #ff9ebd; font-size: 16px; }
+.tcg-room-module__installed { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; padding: 16px; border-top: 1px solid rgba(255,255,255,.08); }
+.tcg-room-module__installed > div { display: flex; align-items: center; gap: 12px; }
+.tcg-room-module__installed strong { font-size: 17px; }
+.tcg-room-module__installed button { background: rgba(212,83,126,.12); }
+.spin { animation: tcg-room-spin 1s linear infinite; }
+@keyframes tcg-room-spin { to { transform: rotate(360deg); } }

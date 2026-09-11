@@ -385,6 +385,9 @@ One-time unlocks for specific milestones. A selection:
 ---
 
 ### TCG Card System
+
+> **Future design:** The approved direction for releases, themed sets, the single rarity ladder, card types, booster products, binders, and the 3D collection room is maintained in [`TCG_V2_SPEC.md`](TCG_V2_SPEC.md). The remainder of this section documents the currently shipped system and may differ from that future specification.
+
 This is my favorite part of the vault and I hope people give it a chance to interact with it, give their feedback and help me improve it over time.
 The card system turns your entire collection (for now, videos are not supported) into a living Trading Card Game. Cards are generated from your actual images, galleries, and creators — not generic art.
 

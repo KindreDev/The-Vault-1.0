@@ -1,4 +1,4 @@
-"""Collection Rarity Score (CRS) + scarcity classes R / SR / SSR / UR.
+"""Collection Rarity Score (CRS) + scarcity classes C / R / SR / SPR / UR.
 
 The tier (common/epic/legendary/celestial) is a card's *family*; CRS layers
 per-collection SCARCITY on top so "sort by rarity" is meaningful and a scarce
@@ -25,8 +25,13 @@ LOVE_REF_PCT   = 0.85    # raw love at this percentile normalises to 1.0
 LOVE_FLOOR     = 0.2     # scarcity share kept even for an unloved creator
 SCARCITY_GAIN  = 1.2     # max add from creator-footprint scarcity
 QUALITY_GAIN   = 0.3     # max add from source content quality
-TYPE_SCARCITY  = {"goon": 0.6, "hof": 0.7, "variant": 0.5, "collab": 0.3, "creator": 0.2}
-CLASS_CUTOFFS  = [("UR", 0.97), ("SSR", 0.85), ("SR", 0.60)]   # else "R"
+TYPE_SCARCITY  = {"bond": 0.6, "hof": 0.7, "variant": 0.5, "collab": 0.3, "creator": 0.2}
+# Scarcity ladder, top down. Five bands now (was four): SSR was renamed SPR and
+# a C band was added below R, so the bottom of a tier reads as common instead of
+# every card being at least Rare. Percentile is WITHIN a tier, so each tier keeps
+# its own full spread.
+CLASS_CUTOFFS  = [("UR", 0.98), ("SPR", 0.93), ("SR", 0.80), ("R", 0.50)]  # else "C"
+CLASS_ORDER    = ["C", "R", "SR", "SPR", "UR"]
 
 
 def _creator_galleries(db: Session) -> dict:
@@ -123,16 +128,16 @@ def _content_quality(db: Session, card: Card) -> float:
 
 
 def _percentile_class(crs: float, ordered: list) -> str:
-    """Map a score to R/SR/SSR/UR by its percentile in the sorted list."""
+    """Map a score to C/R/SR/SPR/UR by its percentile in the sorted list."""
     if not ordered:
-        return "R"
+        return "C"
     # fraction of cards at or below this score
     import bisect
     rank = bisect.bisect_right(ordered, crs) / len(ordered)
     for cls, cut in CLASS_CUTOFFS:
         if rank >= cut:
             return cls
-    return "R"
+    return "C"
 
 
 def compute_rarity(db: Session) -> int:
@@ -149,7 +154,13 @@ def compute_rarity(db: Session) -> int:
     creator_imgc = {cid: sum(gal_imgc.get(g, 0) for g in gids) for cid, gids in cg.items()}
     max_log = math.log((max(creator_imgc.values(), default=1) or 1) + 1)
 
-    cards = db.query(Card).all()
+    # Foundation definitions have a frozen print rarity and never participate in
+    # the engagement-driven legacy scorer.  Excluding them in SQL is important:
+    # loading 60,000 immutable catalogue rows here made application startup look
+    # hung and consumed hundreds of MB before the API could open its port.
+    cards = db.query(Card).filter(
+        (Card.print_rarity.is_(None)) | (Card.print_rarity == "")
+    ).all()
     for card in cards:
         ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
         base = rarity_score(card)                       # tier × foil × level

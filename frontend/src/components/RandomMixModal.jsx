@@ -95,7 +95,7 @@ export default function RandomMixModal({ onClose }) {
     { value: 'artist',    label: 'Artist'    },
     { value: 'character', label: 'Character' },
     { value: 'actress',   label: 'Actress'   },
-    { value: 'custom',    label: 'Custom'    },
+    { value: 'custom',    label: 'Model/Other' },
   ]
 
   const [count,         setCount]         = useState(50)

@@ -1,0 +1,47 @@
+.tcgws-shop-page { color: var(--tcg-ink, rgba(255,255,255,.9)); }
+.tcgws-shop-binder-row,
+.tcgws-binder-purchase { border: 1px solid var(--tcg-line); border-radius: var(--tcg-radius, 14px); background: var(--tcg-glass, rgba(22,22,28,.82)); box-shadow: 0 16px 38px rgba(0,0,0,.2); }
+.tcgws-shop-binder-row { display: grid; grid-template-columns: 170px minmax(0,1fr) auto; align-items: center; gap: 24px; padding: 20px; margin: 8px 0 22px; }
+.tcgws-shop-binder-art { min-height: 132px; display: grid; place-items: center; align-content: center; gap: 10px; border-radius: 12px; background: radial-gradient(circle at 50% 25%, rgba(255,255,255,.17), transparent 60%), url('/binder-obsidian-leather.png') center / cover; color: rgba(255,255,255,.8); text-align: center; }
+.tcgws-shop-binder-art span { font-size: 16px; }
+.tcgws-shop-binder-copy > span { color: var(--c-accent-text, #87f8ad); font-size: 16px; text-transform: uppercase; letter-spacing: .08em; }
+.tcgws-shop-binder-copy h2 { margin: 5px 0; font-size: 24px; }
+.tcgws-shop-binder-copy p { margin: 0 0 8px; color: var(--tcg-muted); font-size: 16px; }
+.tcgws-shop-binder-copy > strong { font-size: 18px; }
+.tcgws-shop-binder-row > button,
+.tcgws-binder-purchase > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 16px; }
+.tcgws-binder-purchase { display: grid; grid-template-columns: minmax(200px,1fr) minmax(180px,260px) minmax(300px,1.4fr) auto; align-items: end; gap: 16px; padding: 18px 20px; margin: -10px 0 24px; }
+.tcgws-binder-purchase > div:first-child span { color: var(--tcg-muted); font-size: 16px; }
+.tcgws-binder-purchase h2 { margin: 4px 0; font-size: 21px; }
+.tcgws-binder-purchase p { margin: 0; color: var(--tcg-muted); font-size: 16px; }
+.tcgws-binder-purchase label { display: grid; gap: 7px; }
+.tcgws-binder-purchase label > span { color: var(--tcg-muted); font-size: 16px; }
+.tcgws-binder-purchase input { min-height: 44px; padding: 0 12px; border: 1px solid var(--tcg-line); background: var(--c-card); color: inherit; }
+.tcgws-shop-materials { display: grid; grid-template-columns: repeat(4, minmax(62px,1fr)); gap: 8px; }
+.tcgws-shop-materials button { min-height: 66px; padding: 6px; border: 2px solid transparent; background-position: center; background-size: cover; color: #fff; }
+.tcgws-shop-materials button.active { border-color: var(--c-accent-text, #87f8ad); box-shadow: 0 0 16px var(--c-accent-line, rgba(87,255,145,.35)); }
+.tcgws-shop-materials span { display: block; padding: 4px; background: rgba(0,0,0,.7); font-size: 16px; line-height: 1.05; }
+.tcgws-shop-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: 16px; }
+.tcgws-shop-items article { min-height: 220px; padding: 20px; border: 1px solid var(--tcg-line); border-radius: var(--tcg-radius, 14px); background: var(--tcg-glass-strong, rgba(30,30,36,.9)); box-shadow: 0 10px 24px rgba(0,0,0,.14); }
+.tcgws-shop-items article > svg { color: var(--c-accent-text, #87f8ad); }
+.tcgws-shop-items article > span { display: block; margin-top: 14px; color: var(--tcg-muted); font-size: 16px; text-transform: capitalize; }
+.tcgws-shop-items article h2 { margin: 6px 0; font-size: 20px; }
+.tcgws-shop-items article p { min-height: 48px; color: var(--tcg-muted); font-size: 16px; line-height: 1.4; }
+.tcgws-shop-items article button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--tcg-line); background: var(--c-card); color: #fff; }
+.tcgws-shop-items article button:not(:disabled):hover { border-color: var(--c-accent-line); background: var(--c-accent-fill); }
+.tcgws-shop-items article button:disabled { opacity: .7; }
+.tcgws-shop-loading { min-height: 240px; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--tcg-muted); grid-column: 1 / -1; }
+.tcgws-shop-loading i { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.12); border-top-color: var(--c-accent); border-radius: 50%; animation: tcgws-shop-spin .8s linear infinite; }
+@keyframes tcgws-shop-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1050px) {
+  .tcgws-shop-binder-row { grid-template-columns: 130px minmax(0,1fr); }
+  .tcgws-shop-binder-row > button { grid-column: 2; justify-self: start; }
+  .tcgws-binder-purchase { grid-template-columns: 1fr 1fr; }
+  .tcgws-binder-purchase > button { grid-column: 1 / -1; justify-self: start; }
+}
+@media (max-width: 620px) {
+  .tcgws-shop-binder-row, .tcgws-binder-purchase { grid-template-columns: 1fr; }
+  .tcgws-shop-binder-row > button, .tcgws-binder-purchase > button { grid-column: auto; }
+  .tcgws-shop-binder-art { width: 150px; }
+}

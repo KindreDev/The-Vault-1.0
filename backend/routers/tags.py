@@ -161,6 +161,8 @@ def update_tag(tag_id: int, data: TagUpdate, db: Session = Depends(get_db)):
         tag.name = new_name
     if data.category is not None:
         tag.category = data.category
+    if data.is_favorite is not None:
+        tag.is_favorite = data.is_favorite
     db.commit()
     db.refresh(tag)
     return tag

@@ -588,11 +588,13 @@ export const useVaultStore = create((set, get) => ({
   // ── Companion (Erika AI) ─────────────────────────────────────────────────────
   companion: {
     open:    false,
+    hidden:  false,
     enabled: false,
     config:  null,
     groupId: null,   // open group chat id; null = 1-on-1 DM mode
   },
   setCompanionOpen:    (v) => set(s => ({ companion: { ...s.companion, open: v } })),
+  setCompanionHidden:  (v) => set(s => ({ companion: { ...s.companion, hidden: v } })),
   setCompanionGroup:   (v) => set(s => ({ companion: { ...s.companion, groupId: v } })),
   setCompanionEnabled: (v) => set(s => ({ companion: { ...s.companion, enabled: v } })),
   setCompanionConfig:  (v) => set(s => ({ companion: { ...s.companion, config: v, enabled: v?.enabled ?? false } })),

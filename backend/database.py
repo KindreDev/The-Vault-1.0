@@ -65,6 +65,7 @@ engine = create_engine(
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragmas(dbapi_conn, _rec):
     cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA foreign_keys=ON")
     cur.execute("PRAGMA journal_mode=WAL")       # concurrent reads + writes
     cur.execute("PRAGMA synchronous=NORMAL")      # safe but faster than FULL
     cur.execute("PRAGMA cache_size=-32000")       # 32 MB page cache

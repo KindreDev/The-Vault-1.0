@@ -1,8 +1,8 @@
 /**
  * <Almanac /> — the long view of a collecting life.
  *
- * The existing Stats page answers "what is happening now" (last 7 days, last 13
- * weeks, all-time totals). This answers "what has happened over the years".
+ * Stats answers "what is true now" and Analytics owns usage trends. This
+ * component answers "how did the collection itself change over the years?".
  *
  * Critical framing, learned the hard way: collection history runs six years
  * deep, usage history only goes back to when the app was built. Mixing them
@@ -12,27 +12,19 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  CalendarRange, TrendingUp, Users, Sparkles, Clock, Layers, Info,
+  CalendarRange, Users, Sparkles, Clock, Layers, Info,
 } from 'lucide-react'
 import { sessionsApi } from '../../lib/api'
 import { useT } from '../../i18n'
 
 const num = (n) => (n ?? 0).toLocaleString()
-const hrs = (s) => Math.round((s ?? 0) / 3600).toLocaleString()
-
-function fmtDur(secs) {
-  if (!secs) return '—'
-  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60)
-  if (h > 0) return m ? `${h}h ${m}m` : `${h}h`
-  return `${m}m`
-}
 
 function EraBadge({ era }) {
   const label = era === 'collection' ? 'Collection history · 6 years' : 'Usage · since the app was built'
   const color = era === 'collection' ? 'var(--c-amber-text)' : 'var(--c-accent)'
   return (
     <span className="px-2 py-0.5 rounded-full flex-shrink-0"
-          style={{ fontSize: 15, color, background: `${color}18`, border: `0.5px solid ${color}44` }}>
+          style={{ fontSize: 16, color, background: `${color}18`, border: `0.5px solid ${color}44` }}>
       {label}
     </span>
   )
@@ -63,7 +55,7 @@ function Tile({ label, value, sub, accent = 'rgba(255,255,255,0.92)' }) {
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
       <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 800, color: accent, lineHeight: 1.15 }}>{value}</div>
-      {sub && <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{sub}</div>}
     </div>
   )
 }
@@ -81,7 +73,7 @@ function YearChart({ years }) {
           const dh = (y.files_per_gallery / maxD) * 150
           return (
             <div key={y.year} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-              <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
                 {y.galleries >= 1000 ? `${(y.galleries / 1000).toFixed(1)}k` : y.galleries}
               </div>
               <div className="w-full relative flex items-end justify-center" style={{ height: 150 }}>
@@ -94,14 +86,14 @@ function YearChart({ years }) {
                      title={`${y.files_per_gallery} files per gallery`}
                      style={{ bottom: Math.max(2, dh), height: 2, background: 'var(--c-green-text)' }} />
               </div>
-              <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
             </div>
           )
         })}
       </div>
       <div className="flex items-center gap-4 mt-3">
-        <span style={{ fontSize: 15, color: 'var(--c-accent-text)' }}>▮ galleries acquired</span>
-        <span style={{ fontSize: 15, color: 'var(--c-green-text)' }}>▬ files per gallery (depth)</span>
+        <span style={{ fontSize: 16, color: 'var(--c-accent-text)' }}>▮ galleries acquired</span>
+        <span style={{ fontSize: 16, color: 'var(--c-green-text)' }}>▬ files per gallery (depth)</span>
       </div>
     </div>
   )
@@ -117,13 +109,13 @@ function RosterChart({ years }) {
         const fresh = y.creators ? (y.new_creators / y.creators) * total : 0
         return (
           <div key={y.year} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-            <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }}>{y.creators}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{y.creators}</div>
             <div className="w-full flex flex-col justify-end rounded-t-[4px] overflow-hidden"
                  title={`${y.year}: ${y.creators} followed · ${y.new_creators} new`}
                  style={{ height: Math.max(3, total), background: 'color-mix(in srgb, var(--c-accent) 45%, transparent)' }}>
               <div style={{ height: fresh, background: 'var(--c-amber-text)' }} />
             </div>
-            <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
           </div>
         )
       })}
@@ -151,6 +143,8 @@ export default function Almanac() {
   const lv = data.long_view || {}
   const hb = data.habits || {}
   const years = lv.years || []
+  const peakRoster = years.reduce((best, year) => year.creators > (best?.creators ?? -1) ? year : best, null)
+  const latestRoster = years.at(-1)
 
   return (
     <div className="flex flex-col gap-5">
@@ -210,61 +204,17 @@ export default function Almanac() {
 
       {/* ── Roster ──────────────────────────────────────────────────────── */}
       <Card icon={Users} title={t('Your roster over time')}
-            subtitle={t('Creators followed each year — gold is new that year')}
+            subtitle={t('Creators represented each year — gold is new that year')}
             era="collection" accent="var(--c-green)">
         <RosterChart years={years} />
         <div className="grid gap-3 mt-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
           <Tile label={t('Creators in the vault')} value={num(hb.creators_total)} />
-          <Tile label={t('Ever watched')} value={num(hb.creators_watched)}
-                sub={`${num((hb.creators_total || 0) - (hb.creators_watched || 0))} never opened`} />
-          <Tile label={t('Top 5 hold')} value={`${hb.top5_share ?? 0}%`}
-                sub={t('of your watch time')} accent="var(--c-pink-text)" />
-          <Tile label={t('Top 10 hold')} value={`${hb.top10_share ?? 0}%`} accent="var(--c-pink-text)" />
+          <Tile label={t('Roster tracked since')} value={years[0]?.year ?? '—'} />
+          <Tile label={t('Largest roster year')} value={peakRoster?.creators ?? '—'}
+                sub={peakRoster ? String(peakRoster.year) : undefined} accent="var(--c-amber-text)" />
+          <Tile label={t('Newest additions')} value={latestRoster?.new_creators ?? '—'}
+                sub={latestRoster ? String(latestRoster.year) : undefined} accent="var(--c-green-text)" />
         </div>
-      </Card>
-
-      {/* ── Habits ──────────────────────────────────────────────────────── */}
-      <Card icon={TrendingUp} title={t('How you actually use it')}
-            subtitle={t('Only what the app has watched — everything before it left no trace')}
-            era="usage" accent="var(--c-pink-text)">
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
-          <Tile label={t('Time on photos')} value={`${hrs(hb.photo_seconds)}h`} accent="var(--c-accent-text)" />
-          <Tile label={t('Time on videos')} value={`${hrs(hb.video_seconds)}h`} accent="var(--c-accent-text)"
-                sub={`of ${hrs(hb.video_runtime_owned)}h owned`} />
-          <Tile label={t('Video watched')} value={`${hb.video_watched_pct ?? 0}%`}
-                sub={t('of its runtime')} accent="var(--c-accent-text)" />
-          <Tile label={t('Seconds per photo')} value={`${hb.avg_dwell_seconds ?? 0}s`} accent="var(--c-green-text)" />
-          <Tile label={t('Files opened')} value={num(hb.files_touched)}
-                sub={`${hb.files_touched_pct ?? 0}% of ${num(hb.library_files)}`} />
-          <Tile label={t('Galleries opened')} value={num(hb.galleries_touched)}
-                sub={`${hb.galleries_touched_pct ?? 0}% of ${num(hb.galleries_total)}`} />
-          <Tile label={t('Attention spread')} value={hb.gini ?? 0}
-                sub={t('0 = even, 1 = one creator')} accent="var(--c-pink-text)" />
-          <Tile label={t('Sessions')} value={num(hb.session_count)}
-                sub={`avg ${fmtDur(hb.session_avg_sec)} · max ${fmtDur(hb.session_longest_sec)}`} />
-        </div>
-
-        {hb.session_buckets?.length > 0 && (
-          <div className="mt-5">
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginBottom: 10 }}>
-              {t('Session length')}
-            </div>
-            <div className="flex items-end gap-3" style={{ height: 110 }}>
-              {hb.session_buckets.map(b => {
-                const max = Math.max(1, ...hb.session_buckets.map(x => x.count))
-                return (
-                  <div key={b.label} className="flex-1 flex flex-col items-center gap-1">
-                    <div style={{ fontSize: 16, fontWeight: 700, color: b.count ? 'var(--c-pink-text)' : 'transparent' }}>{b.count}</div>
-                    <div className="w-full rounded-t-[4px]"
-                         style={{ height: Math.max(3, (b.count / max) * 70),
-                                  background: b.count ? 'linear-gradient(to top, var(--c-pink), var(--c-pink-text))' : 'rgba(255,255,255,0.06)' }} />
-                    <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{b.label}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </Card>
 
       {/* ── Curation ────────────────────────────────────────────────────── */}
@@ -300,7 +250,7 @@ export default function Almanac() {
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-3 mt-3" style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)' }}>
+          <div className="flex items-center gap-3 mt-3" style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
             <span style={{ width: 52 }}>{t('year')}</span>
             <span style={{ width: 110 }}>{t('by period')}</span>
             <span style={{ width: 110 }}>{t('by file date')}</span>

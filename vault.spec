@@ -21,10 +21,16 @@ _datas = [(FRONTEND_DIST, 'frontend/dist')]
 # history (Settings → Changelog). Both live at the project root.
 CHANGELOG_MD = os.path.join(ROOT, 'CHANGELOG.md')
 VERSION_JSON = os.path.join(ROOT, 'version.json')
+TCG_ROOM_MANIFEST = os.path.join(BACKEND_DIR, 'data', 'tcg_room', 'module-manifest-v1.json')
+TCG_TRADER_MANIFEST = os.path.join(BACKEND_DIR, 'data', 'tcg_room', 'traders-v1.json')
 if os.path.isfile(CHANGELOG_MD):
     _datas.append((CHANGELOG_MD, '.'))
 if os.path.isfile(VERSION_JSON):
     _datas.append((VERSION_JSON, '.'))
+if os.path.isfile(TCG_ROOM_MANIFEST):
+    _datas.append((TCG_ROOM_MANIFEST, 'data/tcg_room'))
+if os.path.isfile(TCG_TRADER_MANIFEST):
+    _datas.append((TCG_TRADER_MANIFEST, 'data/tcg_room'))
 
 # Mobile PWA (served at /m for phones on the LAN). Built via build:pwa; skipped
 # gracefully if it hasn't been built yet.

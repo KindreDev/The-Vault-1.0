@@ -10,6 +10,7 @@ import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers } from '../lib/viewerActions'
 import toast from 'react-hot-toast'
 import { Heart } from 'lucide-react'
+import { rememberVideoElementVolume, restoreVideoVolume } from '../lib/videoVolume'
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ images, startIdx, onClose }) {
@@ -117,6 +118,8 @@ function Lightbox({ images, startIdx, onClose }) {
            onClick={e => e.stopPropagation()}>
         {img.is_video
           ? <video ref={videoRef} src={`/api/images/${img.id}/file`} controls autoPlay
+                   onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
+                   onVolumeChange={rememberVideoElementVolume}
                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           : <img src={`/api/images/${img.id}/file`} alt={img.filename}
                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />

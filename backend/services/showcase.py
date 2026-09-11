@@ -1,7 +1,7 @@
 """Creator Showcase — 5 card display slots on a creator's profile.
 
 Slots: creator (her creator/HOF card) · gallery (one of her top-10 rarest
-gallery cards) · goon (a goon card of her content) · photo (one of her top-10
+gallery cards) · bond (an earned Bond card of her content) · photo (one of her top-10
 rarest photo cards) · wildcard (any card scoring legendary-base or better).
 A card can sit in only one showcase at a time. Filling all 5 = MASTERY:
 one-time bond XP reward, a badge on her profile — and she notices.
@@ -16,7 +16,7 @@ from models import (Card, CardInventory, CardType, Creator, CreatorShowcase,
                     FeedDMPing, Gallery, Image, gallery_creators)
 from services.cards import _card_to_dict, rarity_score
 
-SLOTS = ["creator", "gallery", "goon", "photo", "wildcard"]
+SLOTS = ["creator", "gallery", "bond", "photo", "wildcard"]
 TOP_N = 10                  # gallery/photo slots accept her top-N rarest
 WILDCARD_MIN_SCORE = 120    # legendary base score
 MASTERY_BOND_XP = 1000
@@ -56,9 +56,9 @@ def eligible_cards(db: Session, creator_id: int, slot: str) -> list[dict]:
         q = base.filter(Card.card_type.in_([CardType.creator, CardType.hof]),
                         Card.source_creator_id == creator_id)
         invs = q.all()
-    elif slot == "goon":
+    elif slot == "bond":
         gal_ids = _her_gallery_ids(db, creator_id)
-        q = (base.filter(Card.card_type == CardType.goon)
+        q = (base.filter(Card.card_type == CardType.bond)
                  .join(Image, Image.id == Card.source_image_id)
                  .filter(Image.gallery_id.in_(gal_ids or [-1])))
         invs = q.all()

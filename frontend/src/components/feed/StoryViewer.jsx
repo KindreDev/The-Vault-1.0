@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Volume2, VolumeX } from 'lucide-react'
 import { feedApi } from '../../lib/api'
+import { restoreVideoVolume } from '../../lib/videoVolume'
 
 const IMAGE_SECONDS = 6
 const VIDEO_MAX_SECONDS = 15
@@ -154,6 +155,7 @@ export default function StoryViewer({ groups, startGroup = 0, onClose, onSeen, o
                 src={`/api/images/${story.image_id}/file`}
                 autoPlay muted={muted} playsInline
                 className="relative w-full h-full object-contain"
+                onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
                 onEnded={next}
               />
             ) : (

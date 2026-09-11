@@ -1,0 +1,36 @@
+{
+  "canvas": [0, 0, 1024, 1536],
+  "hardContentInset": 32,
+  "readableTextInset": 48,
+  "anchors": {
+    "rarity": [32, 64, 160, 112],
+    "creatorIdentity": [390, 32, 570, 140],
+    "primaryNameVertical": [48, 360, 150, 610],
+    "primaryNameHorizontalFallback": [190, 178, 650, 92],
+    "bottomMetadata": [330, 1460, 650, 44],
+    "sprSignature": [470, 1090, 470, 260]
+  },
+  "ornamentRegions": {
+    "topLeft": [0, 0, 320, 590],
+    "bottomRight": [500, 870, 524, 666],
+    "leftDotRail": [42, 880, 64, 220],
+    "rightDotRail": [918, 235, 64, 220]
+  },
+  "reservedClearRegions": {
+    "topIdentity": [360, 20, 620, 160],
+    "bottomMetadata": [300, 1430, 700, 90]
+  },
+  "dynamicExclusions": [
+    "detectedFaceBounds",
+    "subjectCriticalBounds"
+  ],
+  "text": {
+    "minimumReadablePx": 25,
+    "creatorNamePx": [32, 52],
+    "creatorTypePx": [25, 31],
+    "bottomMetadataPx": [25, 31],
+    "primaryNameMaxLines": 1,
+    "creatorIdentityMaxLines": 2,
+    "metadataMaxLines": 1
+  }
+}

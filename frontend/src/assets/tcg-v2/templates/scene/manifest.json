@@ -1,0 +1,140 @@
+{
+  "id": "scene-floral-outline-v1",
+  "version": 4,
+  "cardType": "scene",
+  "canvas": {
+    "width": 1024,
+    "height": 1536,
+    "aspectRatio": "2:3",
+    "cornerRadius": 46
+  },
+  "reference": "../../references/accepted/Scene.png",
+  "layers": [
+    {
+      "id": "art_background",
+      "zIndex": 200,
+      "kind": "source-media",
+      "mask": "art-mask.png",
+      "required": true
+    },
+    {
+      "id": "art_grade",
+      "zIndex": 250,
+      "kind": "runtime-color-grade",
+      "required": false
+    },
+    {
+      "id": "subject_shadow",
+      "zIndex": 400,
+      "kind": "mask-derived",
+      "required": false
+    },
+    {
+      "id": "subject_outline",
+      "zIndex": 425,
+      "kind": "mask-derived",
+      "required": true
+    },
+    {
+      "id": "subject_cutout",
+      "zIndex": 500,
+      "kind": "source-media-with-alpha",
+      "required": true
+    },
+    {
+      "id": "frame_over",
+      "zIndex": 600,
+      "kind": "raster-overlay",
+      "asset": "frame-over.png",
+      "required": true
+    },
+    {
+      "id": "printed_data",
+      "zIndex": 800,
+      "kind": "runtime-text",
+      "required": true
+    },
+    {
+      "id": "rarity_badge",
+      "zIndex": 850,
+      "kind": "shared-rarity-asset",
+      "assetPattern": "../../shared/rarity/types/scene/{rarityLowercase}.png",
+      "required": true
+    },
+    {
+      "id": "spr_signature",
+      "zIndex": 900,
+      "kind": "runtime-signature",
+      "required": false,
+      "visibility": "rarity == 'SPR'"
+    },
+    {
+      "id": "finish_frame",
+      "zIndex": 1000,
+      "kind": "effect-mask",
+      "asset": "finish-frame.png",
+      "required": false
+    }
+  ],
+  "subjectTreatment": {
+    "mode": "duplicate-over-full-bleed",
+    "maskProfile": "local-portrait-matte",
+    "requiresMaskQuality": "pass",
+    "onMaskFailure": "reject-scene-candidate",
+    "semanticGate": {
+      "minimumCoverage": 0.07,
+      "maximumCoverage": 0.72,
+      "maximumTouchedCardEdges": 1,
+      "allowedTouchedCardEdges": ["bottom"],
+      "maximumCreatorIdentityOccupancy": 0.08,
+      "maximumSubjectNameOccupancy": 0.12,
+      "requiredPersonCount": 1,
+      "removeDetachedFalsePositives": true
+    },
+    "packedMaskChannels": {
+      "R": "subjectAlpha",
+      "G": "subjectEdgeBand",
+      "B": "distanceField",
+      "A": "reserved"
+    },
+    "outline": {
+      "lightSeparatorPx": 2,
+      "colorLinePx": 4,
+      "bloomRadiusPx": 10,
+      "bloomOpacity": 0.52,
+      "paletteMode": "deterministic-saturated-subject-kmeans",
+      "paletteSize": 2,
+      "persistPaletteInCardRecipe": true,
+      "requireBackgroundContrast": true,
+      "separatorEnsuresContrast": true
+    }
+  },
+  "typography": {
+    "fontFamily": "Barlow Condensed",
+    "fontFiles": [
+      "fonts/BarlowCondensed-Regular.ttf",
+      "fonts/BarlowCondensed-SemiBold.ttf"
+    ],
+    "creatorNamePx": {"maximum": 52, "minimum": 32},
+    "creatorTypePx": {"maximum": 31, "minimum": 25},
+    "bottomMetadataPx": {"maximum": 31, "minimum": 25},
+    "subjectName": {
+      "stackVerticallyThroughLength": 12,
+      "longNameFallback": "rotate-and-fit-within-name-rail"
+    },
+    "minimumReadablePx": 25
+  },
+  "recipe": {
+    "schema": "vault.scene-card-recipe",
+    "version": 1,
+    "textSource": "immutable-mint-snapshot",
+    "neverSynthesizeMissingData": true
+  },
+  "runtimeComponent": "../../../../components/tcg-v2/SceneCard.jsx",
+  "runtimeService": "../../../../../../backend/services/scene_cards.py",
+  "proofRenderer": "../../../../../../scripts/render_scene_card_proof.py",
+  "anchorsFile": "safe-zones.json",
+  "clipMask": "card-clip-mask.png",
+  "renderSeedRequired": true,
+  "flattenedPreviewIsAuthoritative": false
+}

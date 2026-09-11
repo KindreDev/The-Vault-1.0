@@ -125,7 +125,7 @@ export default function CompanionBubble() {
     if (!groupsAvailable && tab === 'groups') setTab('dm')
   }, [groupsAvailable, tab])
 
-  if (!companion.enabled || !companion.config) return null
+  if (!companion.enabled || companion.hidden || !companion.config) return null
 
   const config   = companion.config
   const compName = config.name || 'Erika'

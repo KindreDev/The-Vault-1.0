@@ -1,196 +1,290 @@
-import React, { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
+import { ArrowLeft, ArrowRight, FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
 import VaultCard from './VaultCard'
+import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
+import './PackOpening.css'
 
-const RARITY_DRAMA = {
-  celestial: { flash: 'rgba(220,220,255,0.95)', label: '✦ CELESTIAL ✦', delay: 1000 },
-  legendary: { flash: 'rgba(255,215,0,0.7)',    label: '✦ LEGENDARY ✦', delay: 800 },
-  epic:      { flash: 'rgba(255,140,0,0.5)',    label: '🔥 EPIC',        delay: 500 },
+const RARITY_ORDER = Object.freeze({ C: 0, R: 1, SR: 2, UR: 3, SPR: 4 })
+const LEGACY_RARITY = Object.freeze({
+  common: 'C', rare: 'R', uncommon: 'C', epic: 'SR', legendary: 'UR', celestial: 'UR',
+})
+const WRAPPER_ASSETS = Object.freeze({
+  permanent: '/tcg-booster-permanent-cutout.png',
+  release_standard: '/tcg-booster-standard-cutout.png',
+  release_premium: '/tcg-booster-premium-cutout.png',
+  limited: '/tcg-booster-limited-cutout.png',
+  weekly_protection: '/tcg-booster-limited-cutout.png',
+})
+
+function printedRarity(card) {
+  const raw = card?.print_rarity || card?.printRarity || card?.rarity_class || card?.rarityClass || card?.published_rarity || card?.publishedRarity || card?.rarity
+  const normalized = String(raw || '').trim().toUpperCase()
+  if (RARITY_ORDER[normalized] !== undefined) return normalized
+  return LEGACY_RARITY[String(raw || '').trim().toLowerCase()] || 'C'
 }
-// Prestige cards get their own reveal drama regardless of tier (dead path today —
-// Prestige is crafted, never pulled from packs — kept in case that ever changes)
-const FOIL_DRAMA = { flash: 'rgba(255,255,255,0.85)', label: '✨ PRESTIGE ✨', delay: 900 }
+
+function orderPack(pack) {
+  return (Array.isArray(pack) ? pack : [])
+    .map((card, index) => ({ card, index }))
+    .sort((left, right) => RARITY_ORDER[printedRarity(left.card)] - RARITY_ORDER[printedRarity(right.card)] || left.index - right.index)
+    .map(({ card }) => card)
+}
+
+function normalizePackEntry(entry) {
+  if (Array.isArray(entry)) return { product: {}, cards: entry }
+  return { product: entry?.product || entry || {}, cards: Array.isArray(entry?.cards) ? entry.cards : [] }
+}
+
+function cardImage(card) {
+  return card?.thumb_url || card?.thumbUrl || card?.image_url || card?.imageUrl || card?.art_url || card?.artUrl || null
+}
+
+function cardFace(card, className = '') {
+  return <div className={className}>
+    <TCGV2CardFace card={card} width="100%" showEffects={true}
+      fallback={<VaultCard card={card} width={320} forceEffects={true} />} />
+  </div>
+}
+
+function PhaseLabel({ phase, currentIndex, cardCount }) {
+  if (phase === 'entry' || phase === 'tear') return <><Sparkles size={18} /> Tear the top seam to open</>
+  if (phase === 'extract') return <><PackageOpen size={18} /> Cards are coming out</>
+  if (phase === 'fade') return <><PackageOpen size={18} /> Finishing the opening</>
+  if (phase === 'pile') return <><Layers3 size={18} /> Your pack is ready</>
+  if (phase === 'flip') return <><Layers3 size={18} /> Turning the pile</>
+  if (phase === 'reveal') return <>Card {currentIndex + 1} of {cardCount}</>
+  return <><Sparkles size={18} /> Pack complete</>
+}
+
+function TearTrack({ progress, onProgress, onComplete }) {
+  const trackRef = useRef(null)
+  const latestProgress = useRef(progress)
+  const completed = useRef(false)
+  const [dragging, setDragging] = useState(false)
+
+  const applyProgress = useCallback(next => {
+    latestProgress.current = Math.max(latestProgress.current, next)
+    onProgress(current => Math.max(current, next))
+    if (next >= 0.94 && !completed.current) {
+      completed.current = true
+      onComplete()
+    }
+  }, [onComplete, onProgress])
+
+  const updateProgress = useCallback(event => {
+    const rect = trackRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const next = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+    applyProgress(next)
+  }, [applyProgress])
+
+  const handleDown = event => {
+    if (event.button !== 0) return
+    setDragging(true)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    updateProgress(event)
+  }
+
+  const handleMove = event => updateProgress(event)
+
+  const handleUp = event => {
+    if (!dragging) return
+    setDragging(false)
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
+
+  const handleKeyDown = event => {
+    let next = null
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'PageUp') next = progress + 0.1
+    if (event.key === 'End') next = 1
+    if ((event.key === 'Enter' || event.key === ' ') && progress >= 0.94) next = 1
+    if (next === null) return
+    event.preventDefault()
+    applyProgress(Math.min(1, next))
+  }
+
+  return <div
+    ref={trackRef}
+    className={`pack-opening__tear-track${dragging ? ' is-dragging' : ''}`}
+    role="slider"
+    aria-label="Tear across the top seam"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow={Math.round(progress * 100)}
+    aria-valuetext={`${Math.round(progress * 100)}% torn`}
+    tabIndex={0}
+    onPointerDown={handleDown}
+    onPointerEnter={handleMove}
+    onPointerMove={handleMove}
+    onPointerUp={handleUp}
+    onPointerCancel={handleUp}
+    onKeyDown={handleKeyDown}
+  >
+    <span className="pack-opening__tear-label">Move across the seal</span>
+  </div>
+}
+
+function BoosterEnvelope({ product, collage, phase, tearProgress, onTearProgress, onTearComplete }) {
+  const wrapperSrc = product.wrapper_src || WRAPPER_ASSETS[product.product_kind] || WRAPPER_ASSETS.permanent
+  const isTorn = phase !== 'entry'
+  const identity = product.wrapper_identity || {}
+  return <div className={`pack-opening__envelope pack-opening__envelope--${phase}`} data-wrapper={identity.code || product.code || product.product_kind}>
+    {!isTorn && <img className="pack-opening__envelope-whole" src={wrapperSrc} alt={`${product.name || 'Booster'} wrapper`} />}
+    {isTorn && <>
+      <div className="pack-opening__envelope-piece pack-opening__envelope-body" aria-hidden="true"><img src={wrapperSrc} alt="" /></div>
+      <div className="pack-opening__envelope-piece pack-opening__envelope-top" aria-hidden="true"><img src={wrapperSrc} alt="" /></div>
+      <div className="pack-opening__pack-opening" aria-hidden="true" />
+    </>}
+    {!isTorn && tearProgress > 0 && <div className="pack-opening__pack-opening pack-opening__pack-opening--progress" style={{ '--tear-progress': tearProgress }} aria-hidden="true" />}
+    {collage.length > 0 && <div className="pack-opening__envelope-collage" aria-hidden="true">
+      {collage.map((image, index) => <img key={`${image}-${index}`} src={image} alt="" style={{ '--collage-index': index }} />)}
+    </div>}
+    {!isTorn && <TearTrack progress={tearProgress} onProgress={onTearProgress} onComplete={onTearComplete} />}
+    <div className="pack-opening__envelope-shine" aria-hidden="true" />
+  </div>
+}
+
+function ExtractionCards({ count, phase }) {
+  return <div className={`pack-opening__extraction ${phase === 'extract' ? 'is-active' : ''}`} aria-hidden="true">
+    {Array.from({ length: count }, (_, index) => <div className="pack-opening__extraction-card" key={index} style={{ '--card-index': index, '--card-count': count }}>
+      <img src="/card-back.png" alt="" />
+    </div>)}
+  </div>
+}
+
+function PackPile({ count, phase, firstCard, onTurn }) {
+  return <button type="button" className={`pack-opening__pile pack-opening__pile--${phase}`} onClick={onTurn} aria-label="Turn over the card pile" title="Turn over the card pile">
+    <span className="pack-opening__pile-shadow" aria-hidden="true" />
+    <div className="pack-opening__pile-shell">
+      <div className="pack-opening__pile-back" aria-hidden="true">
+        {Array.from({ length: count }, (_, index) => <div className="pack-opening__pile-card" key={index} style={{ '--pile-index': index, '--pile-count': count }}><img src="/card-back.png" alt="" /></div>)}
+      </div>
+      <div className="pack-opening__pile-front" aria-hidden="true">{firstCard && cardFace(firstCard)}</div>
+    </div>
+    <span className="pack-opening__pile-caption">Click to turn over</span>
+  </button>
+}
+
+function RevealStack({ cards, currentIndex, onAdvance }) {
+  const throwTop = useCallback(direction => onAdvance(direction), [onAdvance])
+  const remaining = cards.slice(currentIndex)
+  return <>
+    <div className="pack-opening__reveal-stack" style={{ '--stack-count': remaining.length }}>
+      {remaining.map((card, offset) => {
+        const isTop = offset === 0
+        const className = `pack-opening__stack-card${isTop ? ' is-top' : ''}`
+        if (!isTop) return <div className={className} key={`under-${currentIndex + offset}`} style={{ '--stack-offset': Math.min(offset, 4), '--stack-y': `${Math.min(offset, 4) * 8}px`, '--stack-scale': 1 - Math.min(offset, 4) * .018, zIndex: 100 - offset }}>{cardFace(card)}</div>
+        return <motion.div className={className} key={`top-${currentIndex}`} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.82} animate={{ x: 0, rotate: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) > 72 || Math.abs(info.velocity.x) > 450) throwTop(info.offset.x < 0 ? -1 : 1) }} style={{ touchAction: 'pan-y' }}>{cardFace(card)}</motion.div>
+      })}
+    </div>
+    <div className="pack-opening__reveal-controls">
+      <button type="button" onClick={() => throwTop(-1)} disabled={!remaining.length}><ArrowLeft size={20} /> Slide left</button>
+      <span>{printedRarity(remaining[0])}</span>
+      <button type="button" onClick={() => throwTop(1)} disabled={!remaining.length}>Slide right <ArrowRight size={20} /></button>
+    </div>
+  </>
+}
+
+function GridCard({ card }) {
+  return <div className="pack-opening__grid-card">{cardFace(card)}</div>
+}
 
 export default function PackOpening({ packs, onCollect, onSkip }) {
-  const [packIdx, setPackIdx]   = useState(0)
-  const [revealed, setRevealed] = useState([])
-  const [flipped, setFlipped]   = useState([])
-  const [done, setDone]         = useState(false)
-  const [flashing, setFlashing] = useState(null)
+  const [packIdx, setPackIdx] = useState(0)
+  const [phase, setPhase] = useState('entry')
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [tearProgress, setTearProgress] = useState(0)
+  const safePacks = Array.isArray(packs) ? packs : []
+  const entry = normalizePackEntry(safePacks[packIdx])
+  const currentPack = useMemo(() => orderPack(entry.cards), [entry.cards])
+  const product = entry.product
+  const collage = useMemo(() => {
+    const candidates = [
+      ...(Array.isArray(product.collage_images) ? product.collage_images : []),
+      ...(Array.isArray(product.collageImages) ? product.collageImages : []),
+      ...currentPack.map(cardImage),
+    ].filter(Boolean)
+    return [...new Set(candidates)].slice(0, 5)
+  }, [currentPack, product.collage_images, product.collageImages])
+  const packsLeft = Math.max(0, safePacks.length - packIdx - 1)
 
-  const currentPack = packs[packIdx] || []
-  const packsLeft   = packs.length - packIdx - 1
+  useEffect(() => {
+    setPhase('entry')
+    setCurrentIndex(0)
+    setTearProgress(0)
+    if (!currentPack.length) setPhase('grid')
+  }, [packIdx, currentPack.length])
 
-  // Reset state when advancing to next pack
-  const advanceToNext = () => {
-    setPackIdx(i => i + 1)
-    setRevealed([])
-    setFlipped([])
-    setDone(false)
-  }
+  useEffect(() => {
+    if (phase !== 'tear') return undefined
+    const extract = window.setTimeout(() => setPhase('extract'), 420)
+    return () => window.clearTimeout(extract)
+  }, [phase])
 
-  const flip = (i) => {
-    if (revealed.includes(i) || flipped.includes(i)) return
-    setFlipped(f => [...f, i])
-    const card  = currentPack[i]
-    const drama = (card?.foil && !RARITY_DRAMA[card?.rarity]) ? FOIL_DRAMA : RARITY_DRAMA[card?.rarity]
-    setTimeout(() => {
-      setRevealed(r => {
-        const next = [...r, i]
-        if (next.length === currentPack.length) setDone(true)
-        return next
-      })
-      if (drama) {
-        setFlashing(drama)
-        setTimeout(() => setFlashing(null), 600)
-      }
-    }, drama?.delay ?? 200)
-  }
+  useEffect(() => {
+    if (phase !== 'extract') return undefined
+    const fade = window.setTimeout(() => setPhase('fade'), Math.max(760, currentPack.length * 125))
+    return () => window.clearTimeout(fade)
+  }, [phase, currentPack.length])
 
-  const revealAll = () => {
-    currentPack.forEach((_, i) => {
-      if (!revealed.includes(i)) setTimeout(() => flip(i), i * 120)
-    })
-  }
+  useEffect(() => {
+    if (phase !== 'fade') return undefined
+    const pile = window.setTimeout(() => setPhase('pile'), 470)
+    return () => window.clearTimeout(pile)
+  }, [phase])
 
-  const CARD_W = 260
-  const CARD_H = Math.round(260 * 1.45)
+  useEffect(() => {
+    if (phase !== 'flip') return undefined
+    const timer = window.setTimeout(() => setPhase('reveal'), 520)
+    return () => window.clearTimeout(timer)
+  }, [phase])
 
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1100,
-      background: 'rgba(0,0,0,0.96)',
-      backdropFilter: 'blur(16px)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 32,
-    }}>
-      {/* Flash overlay */}
-      {flashing && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1200,
-          background: flashing.flash,
-          pointerEvents: 'none',
-          animation: 'pack-flash 0.4s ease-out forwards',
-        }}>
-          <style>{`@keyframes pack-flash { 0% { opacity:1; } 100% { opacity:0; } }`}</style>
-          <div style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            fontSize: 28, fontWeight: 800, color: '#fff',
-            letterSpacing: '0.15em', textShadow: '0 0 30px #fff',
-            animation: 'pack-flash 0.6s ease-out forwards',
-          }}>
-            {flashing.label}
-          </div>
-        </div>
-      )}
+  useEffect(() => {
+    const body = document.body
+    const root = document.documentElement
+    const previous = { bodyOverflow: body.style.overflow, bodyOverscroll: body.style.overscrollBehavior, rootOverflow: root.style.overflow, rootOverscroll: root.style.overscrollBehavior }
+    body.style.overflow = 'hidden'; body.style.overscrollBehavior = 'none'; root.style.overflow = 'hidden'; root.style.overscrollBehavior = 'none'
+    return () => { body.style.overflow = previous.bodyOverflow; body.style.overscrollBehavior = previous.bodyOverscroll; root.style.overflow = previous.rootOverflow; root.style.overscrollBehavior = previous.rootOverscroll }
+  }, [])
 
-      {/* Pack counter */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
-          {done ? 'All cards revealed!' : 'Click each card to reveal'}
-        </div>
-        {packs.length > 1 && (
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.1em' }}>
-            Pack {packIdx + 1} of {packs.length}
-          </div>
-        )}
-      </div>
+  const completeTear = useCallback(() => {
+    if (phase !== 'entry') return
+    setTearProgress(1)
+    setPhase('tear')
+  }, [phase])
+  const skipAnimation = useCallback(() => { setPhase('grid'); setCurrentIndex(currentPack.length ? currentPack.length - 1 : 0) }, [currentPack.length])
+  const turnPile = useCallback(() => { if (phase === 'pile') setPhase('flip') }, [phase])
+  const advanceReveal = useCallback(() => {
+    if (phase !== 'reveal') return
+    if (currentIndex >= currentPack.length - 1) setPhase('grid')
+    else setCurrentIndex(index => index + 1)
+  }, [currentIndex, currentPack.length, phase])
+  const advanceToNext = () => { if (packsLeft) setPackIdx(index => index + 1) }
+  const packComplete = phase === 'grid'
+  const currentCard = currentPack[currentIndex]
+  const sceneClass = `pack-opening__pack-scene pack-opening__pack-scene--${phase}`
 
-      {/* Card row */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {currentPack.map((card, i) => {
-          const isRevealed = revealed.includes(i)
-          const isFlipping = flipped.includes(i)
-          return (
-            <div
-              key={`${packIdx}-${i}`}
-              onClick={() => flip(i)}
-              style={{
-                perspective: '1200px',
-                cursor: isRevealed ? 'default' : 'pointer',
-                width: CARD_W, height: CARD_H,
-              }}
-            >
-              <div style={{
-                position: 'relative', width: '100%', height: '100%',
-                transformStyle: 'preserve-3d',
-                transform: isRevealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                transition: 'transform 0.55s cubic-bezier(0.4,0,0.2,1)',
-              }}>
-                <div style={{
-                  position: 'absolute', inset: 0,
-                  backfaceVisibility: 'hidden', borderRadius: 10, overflow: 'hidden',
-                  boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 25%, transparent)',
-                  opacity: isFlipping ? 0.5 : 1, transition: 'opacity 0.2s',
-                }}>
-                  <img src="/card-back.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </div>
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
-                  <VaultCard card={card} width={260} forceEffects={true} />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 12 }}>
-        {!done && (
-          <>
-            <button
-              onClick={revealAll}
-              style={{
-                padding: '9px 20px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)',
-                border: '0.5px solid rgba(255,255,255,0.12)',
-              }}
-            >
-              Reveal All
-            </button>
-            <button
-              onClick={onSkip}
-              style={{
-                padding: '9px 20px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-                background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.25)',
-                border: 'none',
-              }}
-            >
-              Skip All
-            </button>
-          </>
-        )}
-        {done && packsLeft > 0 && (
-          <button
-            onClick={advanceToNext}
-            style={{
-              padding: '10px 28px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 35%, transparent), color-mix(in srgb, var(--c-accent) 20%, transparent))',
-              color: 'var(--c-accent-text)', border: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)',
-              boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 20%, transparent)',
-              letterSpacing: '0.05em',
-            }}
-          >
-            Next Pack ({packsLeft} remaining) ›
-          </button>
-        )}
-        {done && packsLeft === 0 && (
-          <button
-            onClick={onCollect}
-            style={{
-              padding: '10px 28px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 40%, transparent), color-mix(in srgb, var(--c-pink) 30%, transparent))',
-              color: '#fff', border: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)',
-              boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 30%, transparent)',
-              letterSpacing: '0.05em',
-            }}
-          >
-            ✦ Add to Collection
-          </button>
-        )}
-      </div>
-    </div>
-  )
+  return createPortal(<div className="pack-opening" role="dialog" aria-modal="true" aria-label="Booster pack opening">
+    <div className="pack-opening__backdrop" aria-hidden="true" />
+    <header className="pack-opening__header">
+      <div><span className="pack-opening__eyebrow"><PhaseLabel phase={phase} currentIndex={currentIndex} cardCount={currentPack.length} /></span>{safePacks.length > 1 && <span className="pack-opening__pack-count">Pack {packIdx + 1} of {safePacks.length}</span>}</div>
+      {!packComplete && <button type="button" className="pack-opening__skip" onClick={skipAnimation}><FastForward size={18} /> Skip animation</button>}
+    </header>
+    <main className={`pack-opening__stage pack-opening__stage--${phase}`}>
+      {(phase === 'entry' || phase === 'tear' || phase === 'extract' || phase === 'fade') && <div className={sceneClass}>
+        <BoosterEnvelope product={product} collage={collage} phase={phase} tearProgress={tearProgress} onTearProgress={setTearProgress} onTearComplete={completeTear} />
+        <ExtractionCards count={currentPack.length} phase={phase} />
+      </div>}
+      {phase === 'pile' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={turnPile} />}
+      {phase === 'flip' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={() => {}} />}
+      {phase === 'reveal' && currentCard && <section className="pack-opening__reveal-stage" aria-label={`Card ${currentIndex + 1} of ${currentPack.length}`}><div className="pack-opening__reveal-hint">Throw the top card left or right to reveal what is underneath</div><div className="pack-opening__reveal-frame"><RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} /></div></section>}
+      {packComplete && <section className="pack-opening__complete" aria-label="Pack cards"><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /> Pack complete</span><h1>Cards from this pack</h1></div><span>{currentPack.length} cards</span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} />)}</div></section>}
+    </main>
+    <footer className="pack-opening__footer">
+      {packComplete && packsLeft > 0 && <button type="button" className="pack-opening__primary" onClick={advanceToNext}><PackageOpen size={19} /> Open next pack <span>({packsLeft} remaining)</span></button>}
+      {packComplete && packsLeft === 0 && <button type="button" className="pack-opening__primary pack-opening__primary--collect" onClick={onCollect}><Sparkles size={19} /> Add to Collection</button>}
+    </footer>
+  </div>, document.body)
 }

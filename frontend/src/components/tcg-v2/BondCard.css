@@ -1,0 +1,12 @@
+@font-face { font-family:'Vault Bond'; src:url('../../assets/tcg-v2/templates/scene/fonts/BarlowCondensed-SemiBold.ttf') format('truetype'); font-weight:600; }
+.bond-card-v2 { position:relative; aspect-ratio:2/3; max-width:100%; isolation:isolate; filter:drop-shadow(0 18px 28px rgba(0,0,0,.55)); user-select:none; }
+.bond-card-v2__surface { display:block; width:100%; height:100%; overflow:visible; }
+.bond-card-v2 text { font-family:'Vault Bond','Segoe UI',sans-serif; }
+.bond-card-v2__creator { fill:rgba(255,255,255,.98); stroke:rgba(74,82,110,.88); stroke-width:3px; paint-order:stroke fill; font-size:42px; font-weight:600; letter-spacing:5px; }
+.bond-card-v2__role { fill:rgba(255,255,255,.97); stroke:rgba(74,82,110,.82); stroke-width:2.5px; paint-order:stroke fill; font-size:32px; letter-spacing:7px; }
+.bond-card-v2__sparkles { fill:rgba(255,250,255,.96); stroke:rgba(255,221,248,.55); stroke-width:2px; }
+.bond-card-v2__milestone circle { fill:rgba(220,238,255,.28); stroke:rgba(255,255,255,.9); stroke-width:3px; filter:drop-shadow(0 0 8px rgba(231,213,255,.8)); }
+.bond-card-v2__milestone text { fill:#fff; stroke:rgba(103,91,138,.96); stroke-width:2.5px; paint-order:stroke fill; font-size:48px; font-weight:600; }
+.bond-card-v2__footer { fill:rgba(255,255,255,.95); stroke:rgba(85,91,112,.65); stroke-width:1.25px; paint-order:stroke fill; }
+.bond-card-v2__footer line { stroke:rgba(255,255,255,.82); stroke-width:2px; }
+.bond-card-v2__footer text { font-size:34px; letter-spacing:2px; }

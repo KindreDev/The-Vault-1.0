@@ -8,11 +8,11 @@ import VaultCard from './VaultCard'
 const SLOT_META = {
   creator:  { label: 'Creator',  hint: 'Her creator or HOF card' },
   gallery:  { label: 'Gallery',  hint: 'One of her 10 rarest gallery cards' },
-  goon:     { label: 'Goon',     hint: 'A goon card of her content' },
+  bond:     { label: 'Bond',     hint: 'An earned Bond card of her content' },
   photo:    { label: 'Photo',    hint: 'One of her 10 rarest photo cards' },
   wildcard: { label: 'Wildcard', hint: 'Any card special enough (Legendary-grade+)' },
 }
-const SLOT_ORDER = ['creator', 'gallery', 'goon', 'photo', 'wildcard']
+const SLOT_ORDER = ['creator', 'gallery', 'bond', 'photo', 'wildcard']
 const SLOT_W = 96
 
 // ── Card picker overlay for one slot ─────────────────────────────────────────

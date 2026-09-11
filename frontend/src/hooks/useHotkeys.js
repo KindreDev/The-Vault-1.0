@@ -16,7 +16,7 @@ import toast from 'react-hot-toast'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { deviceService } from '../services/device'
-import { imagesApi, sessionsApi } from '../lib/api'
+import { companionApi, imagesApi, sessionsApi } from '../lib/api'
 import {
   eventToBinding, isTypingTarget, HOTKEY_ACTIONS, VIEWER_ACTION_IDS,
 } from '../lib/hotkeys'
@@ -76,7 +76,30 @@ function runAction(actionId) {
     case 'device_pattern_next':   return cyclePattern(+1)
     case 'device_pattern_prev':   return cyclePattern(-1)
     case 'device_ramp':           return toggleRamp()
+    case 'companion_bubble':      return toggleCompanionBubble()
+    case 'companion_toggle':      return toggleCompanion()
     default:                      return
+  }
+}
+
+function toggleCompanionBubble() {
+  const s = useVaultStore.getState()
+  const next = !s.companion.hidden
+  s.setCompanionHidden(next)
+  if (next) s.setCompanionOpen(false)
+  toast(next ? 'Erika bubble hidden' : 'Erika bubble shown')
+}
+
+async function toggleCompanion() {
+  const s = useVaultStore.getState()
+  const next = !s.companion.enabled
+  try {
+    const res = await companionApi.updateConfig({ enabled: next })
+    if (res?.data) s.setCompanionConfig(res.data)
+    else s.setCompanionEnabled(next)
+    toast(next ? 'Erika enabled' : 'Erika disabled')
+  } catch {
+    toast.error('Could not update Erika')
   }
 }
 

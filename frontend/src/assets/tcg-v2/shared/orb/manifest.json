@@ -1,0 +1,45 @@
+{
+  "id": "vault-orb-gold-v1",
+  "version": 2,
+  "housing": "orb-housing-gold.png",
+  "preview": "orb-icon-preview.png",
+  "placementPreview": "orb-placement-preview.png",
+  "icons": {
+    "flame": "icons/flame.png",
+    "heart": "icons/heart.png",
+    "star": "icons/star.png",
+    "crown": "icons/crown.png",
+    "crescentMoon": "icons/crescent-moon.png",
+    "cherryBlossom": "icons/cherry-blossom.png",
+    "paw": "icons/paw.png",
+    "musicalNote": "icons/musical-note.png",
+    "cameraAperture": "icons/camera-aperture.png"
+  },
+  "selection": {
+    "source": "persisted-card-recipe",
+    "useReliableThemeMetadataWhenAvailable": true,
+    "fallback": "star",
+    "freezeAtPublication": true
+  },
+  "iconLayout": {
+    "fit": "visible-alpha-bounds",
+    "normalizedCanvas": [512, 512],
+    "housingFillRatio": 0.62,
+    "acceptedFlameIsScaleMaster": true
+  },
+  "finishMasks": {
+    "ring": "finish-orb-ring.png",
+    "glass": "finish-orb-glass.png",
+    "icon": "selected icon alpha"
+  },
+  "runtimeVfx": {
+    "implementedLater": true,
+    "channels": [
+      "ringSheen",
+      "glassBloom",
+      "iconGlow",
+      "innerParticles",
+      "pointerReactiveHighlight"
+    ]
+  }
+}

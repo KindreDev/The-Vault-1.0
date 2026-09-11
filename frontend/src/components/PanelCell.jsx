@@ -240,8 +240,8 @@ const PanelCell = forwardRef(function PanelCell({
         ) : null}
       </div>
 
-      {/* Overlay controls — visible on hover */}
-      {hovered && (
+      {/* Overlay controls — hover outside fullscreen; mouse movement in fullscreen. */}
+      {(isFullscreen ? showControls : hovered) && (
         <>
           {/* Top bar */}
           <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1.5 z-20"
@@ -254,17 +254,21 @@ const PanelCell = forwardRef(function PanelCell({
                         title={deviceSynced
                           ? 'Device is following this panel — click to release'
                           : (hasScript ? 'Sync device to this panel' : 'Sync device to this panel (current file has no script)')}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-full cursor-pointer flex-shrink-0"
+                        className="flex items-center gap-2 px-3 py-2 rounded-full cursor-pointer min-w-0"
                         style={deviceSynced
                           ? { background: 'color-mix(in srgb, var(--c-pink) 28%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 55%, transparent)' }
                           : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                  <Zap size={10} />
-                  <span className="text-[13px] leading-none">{deviceSynced ? 'Synced' : 'Sync'}</span>
+                  <Zap size={16} className="flex-shrink-0" />
+                  <span className="leading-none truncate" style={{ fontSize: 16 }}>
+                    {deviceSynced ? 'Synced' : 'Sync'} · {item?.filename ?? 'Video'}
+                  </span>
                 </button>
               )}
-              <span className="text-[9px] text-[rgba(255,255,255,0.4)] truncate max-w-[120px]">
-                {item?.filename ?? ''}
-              </span>
+              {!deviceConnected && (
+                <span className="text-[16px] text-[rgba(255,255,255,0.55)] truncate max-w-[240px]">
+                  {item?.filename ?? ''}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               {/* Zoom slider */}
@@ -379,7 +383,7 @@ const PanelCell = forwardRef(function PanelCell({
 
       {/* Device-sync marker stays visible unhovered, so it's obvious at a glance
           which panel is driving the toy mid-session. */}
-      {!hovered && deviceSynced && (
+      {!(isFullscreen ? showControls : hovered) && deviceSynced && (
         <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full z-10 pointer-events-none"
              style={{ background: 'color-mix(in srgb, var(--c-pink) 85%, transparent)', color: '#fff' }}>
           <Zap size={9} />
@@ -388,7 +392,7 @@ const PanelCell = forwardRef(function PanelCell({
       )}
 
       {/* Always-visible item count badge (when not hovered) */}
-      {!hovered && items.length > 1 && (
+      {!(isFullscreen ? showControls : hovered) && items.length > 1 && (
         <div className="absolute bottom-1.5 right-1.5 text-[8px] tabular-nums px-1.5 py-0.5 rounded-full z-10"
              style={{ background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.35)' }}>
           {idx + 1}/{items.length}

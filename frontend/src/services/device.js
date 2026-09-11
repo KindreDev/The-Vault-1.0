@@ -12,7 +12,7 @@ import {
   ButtplugBrowserWebsocketClientConnector,
   OutputType,
 } from 'buttplug'
-import { useDeviceStore, PRESETS } from '../store/deviceStore'
+import { useDeviceStore, PRESETS } from '../store/deviceStore.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const store = () => useDeviceStore.getState()
@@ -33,7 +33,7 @@ function lerpPattern(a, b, t) {
 }
 
 // ── Device Service ────────────────────────────────────────────────────────────
-class DeviceService {
+export class DeviceService {
   constructor() {
     this._client         = null
     this._patternTimer   = null
@@ -355,13 +355,38 @@ class DeviceService {
     }
   }
 
+  // Stop outputs without stopping discovery, input subscriptions, the client,
+  // or the Intiface WebSocket. A global StopCmd can make some device/server
+  // combinations effectively disappear until a full reconnect, so emergency
+  // stop is deliberately scoped per connected device.
+  _stopIntifaceOutputs() {
+    if (store().provider !== 'intiface' || !this._client) return
+    for (const dev of this._client.devices.values()) {
+      this._rawSend({
+        StopCmd: {
+          Id: this._msgId++,
+          DeviceIndex: dev.index,
+          FeatureIndex: undefined,
+          Inputs: false,
+          Outputs: true,
+        },
+      })
+    }
+  }
+
   // ── Test stroke ─────────────────────────────────────────────────────────────
 
   // Send raw WS message bypassing the SDK (for fallback/debug)
   _rawSend(msg) {
     const ws = this._client?._connector?._ws
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify([msg]))
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false
+    try {
+      ws.send(JSON.stringify([msg]))
+      return true
+    } catch (err) {
+      console.warn('Intiface command failed', err)
+      return false
+    }
   }
 
   async testStroke() {
@@ -401,7 +426,7 @@ class DeviceService {
     const { provider } = store()
     if (provider === 'intiface' && this._client) {
       // stopAllDevices() alone was not enough — see _stopScalarActuators.
-      try { await this._client.stopAllDevices() } catch (_) {}
+      this._stopIntifaceOutputs()
     } else if (provider === 'serial') {
       this._sendLinearSerial(0, 1500)
     }

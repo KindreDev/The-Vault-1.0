@@ -511,4 +511,45 @@ img.img-loaded:not([data-no-fade]) { opacity: 1; }
   border-right: 1px solid rgba(255,255,255,0.08) !important;
 }
 
+/* Loading Bay is rendered through a portal, so it needs explicit Glass hooks
+   rather than relying on page-level .vault-card ancestry. Media wells remain
+   solid black intentionally for accurate image/video contrast. */
+[data-theme="glass"] .loading-bay-backdrop {
+  background: rgba(0,0,0,0.28) !important;
+  backdrop-filter: blur(4px) saturate(1.08);
+  -webkit-backdrop-filter: blur(4px) saturate(1.08);
+}
+[data-theme="glass"] .loading-bay-shell {
+  background: rgba(7,7,9,0.56) !important;
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border-color: rgba(255,255,255,0.18) !important;
+  box-shadow: 0 28px 80px rgba(0,0,0,0.45),
+              inset 0 1px 0 rgba(255,255,255,0.09);
+}
+[data-theme="glass"] .loading-bay-card {
+  background: rgba(8,8,10,0.48) !important;
+  backdrop-filter: blur(14px) saturate(1.22);
+  -webkit-backdrop-filter: blur(14px) saturate(1.22);
+  border-color: rgba(255,255,255,0.13) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.24),
+              inset 0 1px 0 rgba(255,255,255,0.06);
+}
+[data-theme="glass"] .loading-bay-card:hover {
+  background: rgba(8,8,10,0.62) !important;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+[data-theme="glass"] .loading-bay-modal-backdrop {
+  background: rgba(0,0,0,0.38) !important;
+  backdrop-filter: blur(7px) saturate(1.1);
+  -webkit-backdrop-filter: blur(7px) saturate(1.1);
+}
+[data-theme="glass"] .loading-bay-modal-shell {
+  background: rgba(8,8,10,0.68) !important;
+  backdrop-filter: blur(30px) saturate(1.3);
+  -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  border-color: rgba(255,255,255,0.20) !important;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.52),
+              inset 0 1px 0 rgba(255,255,255,0.10);
+}
 

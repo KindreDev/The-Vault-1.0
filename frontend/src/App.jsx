@@ -23,7 +23,8 @@ const Explore       = lazy(() => import('./pages/Explore'))
 const TagManager    = lazy(() => import('./pages/TagManager'))
 const MultiPanel    = lazy(() => import('./pages/MultiPanel'))
 const DeviceControl = lazy(() => import('./pages/DeviceControl'))
-const Collection    = lazy(() => import('./pages/Collection'))
+const Collection    = lazy(() => import('./pages/TCGCollection'))
+const TCGRoomModule = lazy(() => import('./pages/TCGRoomModule'))
 const Profile       = lazy(() => import('./pages/Profile'))
 const PlaylistView  = lazy(() => import('./pages/PlaylistView'))
 const HallOfFame    = lazy(() => import('./pages/HallOfFame'))
@@ -142,6 +143,7 @@ export default function App() {
           <Route path="settings"     element={<Settings />} />
           <Route path="scan-log"     element={<ScanLog />} />
           <Route path="collection"   element={<Collection />} />
+          <Route path="collection/room" element={<TCGRoomModule />} />
           <Route path="profile"      element={<Profile />} />
           <Route path="playlists/:id"  element={<PlaylistView />} />
           <Route path="hall-of-fame"  element={<HallOfFame />} />

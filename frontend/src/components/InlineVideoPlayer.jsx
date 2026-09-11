@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { deviceService } from '../services/device'
 import { useDeviceStore } from '../store/deviceStore'
 import { imagesApi } from '../lib/api'
+import { getSavedVideoVolume, saveVideoVolume } from '../lib/videoVolume'
 
 function fmtTime(s) {
   if (!s || !isFinite(s)) return '0:00'
@@ -183,7 +184,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const [playing,      setPlaying]      = useState(false)
   const [time,         setTime]         = useState(0)
   const [duration,     setDuration]     = useState(0)
-  const [volume,       setVolume]       = useState(1)
+  const [volume,       setVolume]       = useState(getSavedVideoVolume)
   const [muted,        setMuted]        = useState(false)
   const [loopVideo,    setLoopVideo]    = useState(false)
   // Playback rate is keyboard-only for now; kept in state so a re-render (a
@@ -246,6 +247,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       const next = Math.max(0, Math.min(1, Math.round((v.volume + delta) * 20) / 20))
       v.volume = next
       setVolume(next)
+      saveVideoVolume(next)
       // Nudging the volume up off zero should actually make noise, not leave
       // you fiddling with a slider that is already at 40% behind a mute.
       if (next > 0 && v.muted) { v.muted = false; setMuted(false) }
@@ -435,6 +437,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     const v = parseFloat(e.target.value)
     setVolume(v)
     if (videoRef.current) videoRef.current.volume = v
+    saveVideoVolume(v)
     if (v > 0) setMuted(false)
   }, [])
 
@@ -624,6 +627,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
           // A fresh media element always loads at 1×; re-apply the rate the
           // user picked so it survives moving between videos.
           v.playbackRate = rate
+          // Volume is one app-wide preference and survives navigation, reloads,
+          // and switching between any of the Vault's video-player surfaces.
+          v.volume = volume
           // Explicitly call play() — browsers occasionally ignore the autoPlay
           // attribute after rapid navigation, e.g. jumping between funscript videos.
           v.play().catch(() => {})

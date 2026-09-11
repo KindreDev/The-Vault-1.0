@@ -1024,7 +1024,7 @@ const RAND_TABS = [
   { key: 'creators',  label: 'Creators',  color: 'var(--c-amber)' },
 ]
 
-function RandomDiscovery({ galleries, images, videos, creators, onContextMenu }) {
+function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, cardLimit = 8 }) {
   const t = useT()
   const [tab, setTab] = useState('galleries')
   const navigate = useNavigate()
@@ -1062,7 +1062,7 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu })
 
       {/* Card grid */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-        {items.map(item => {
+        {items.slice(0, cardLimit).map(item => {
           if (tab === 'galleries') {
             return <PortraitCard key={item.id} imgSrc={item.cover_thumb} title={item.name}
                       sub={`${item.image_count} photos${item.creator_name ? ' · ' + item.creator_name : ''}`}
@@ -1131,39 +1131,28 @@ export default function Dashboard() {
   const [showSpinModal, setShowSpinModal] = useState(false)
   const [showMixModal, setShowMixModal] = useState(false)
   const [ctxMenu, setCtxMenu] = useState(null) // { item, itemType, x, y }
+  const mainContentRef = useRef(null)
+  const [dashboardCardLimit, setDashboardCardLimit] = useState(6)
+
+  // Keep the three media rows to exactly the width of the main column. Wider
+  // displays gain cards; narrower ones lose cards before they can cross into
+  // the sticky dashboard sidebar.
+  useEffect(() => {
+    const el = mainContentRef.current
+    if (!el) return
+    const update = () => {
+      const width = el.getBoundingClientRect().width
+      setDashboardCardLimit(Math.max(1, Math.min(24, Math.floor((width + 12) / 172))))
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const openCtx = useCallback((e, item, itemType) => {
     e.preventDefault()
     setCtxMenu({ item, itemType, position: { x: e.clientX, y: e.clientY } })
-  }, [])
-
-  // Drag-to-scroll for favorites strip
-  const favsRef = useRef(null)
-  const onFavsMouseDown = useCallback((e) => {
-    const el = favsRef.current
-    if (!el || e.button !== 0) return
-    const startX      = e.clientX
-    const startScroll = el.scrollLeft
-    let moved = false
-    const onMove = (ev) => {
-      const dx = ev.clientX - startX
-      if (!moved && Math.abs(dx) > 6) {
-        moved = true
-        el.style.cursor = 'grabbing'
-      }
-      if (moved) { el.scrollLeft = startScroll - dx; ev.preventDefault() }
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      el.style.cursor = 'grab'
-      if (moved) {
-        // Eat the click that fires right after mouseup so card nav doesn't trigger
-        window.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true })
-      }
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
   }, [])
 
   const { data: stats, isLoading: statsLoading } = useQuery({ queryKey: ['vault-stats'], queryFn: () => galleriesApi.stats().then(r => r.data) })
@@ -1172,12 +1161,12 @@ export default function Dashboard() {
   const { data: galleryHof }     = useQuery({ queryKey: ['gallery-hof',  4],              queryFn: () => galleriesApi.galleryHof(4).then(r => r.data) })
   const { data: creatorHof }     = useQuery({ queryKey: ['creator-hof',  4, avatarBust],  queryFn: () => creatorsApi.hof(4).then(r => r.data) })
   const { data: quests }         = useQuery({ queryKey: ['quests'],           queryFn: () => gamiApi.quests().then(r => r.data) })
-  const { data: recent }         = useQuery({ queryKey: ['recent-galleries'], queryFn: () => galleriesApi.recent(6).then(r => r.data) })
+  const { data: recent }         = useQuery({ queryKey: ['recent-galleries', 24], queryFn: () => galleriesApi.recent(24).then(r => r.data) })
   const { data: sesStats }       = useQuery({ queryKey: ['ses-stats'],        queryFn: () => sessionsApi.stats().then(r => r.data) })
-  const { data: randomGalleries} = useQuery({ queryKey: ['random-galleries'], queryFn: () => galleriesApi.randomPicks(8).then(r => r.data) })
-  const { data: randomImages }   = useQuery({ queryKey: ['random-images'],    queryFn: () => imagesApi.randomPicks(8).then(r => r.data) })
-  const { data: randomVideos }   = useQuery({ queryKey: ['random-videos'],    queryFn: () => imagesApi.randomVideos(8).then(r => r.data) })
-  const { data: randomCreators }  = useQuery({ queryKey: ['random-creators'],  queryFn: () => creatorsApi.randomPicks(8).then(r => r.data) })
+  const { data: randomGalleries} = useQuery({ queryKey: ['random-galleries', 24], queryFn: () => galleriesApi.randomPicks(24).then(r => r.data) })
+  const { data: randomImages }   = useQuery({ queryKey: ['random-images', 24],    queryFn: () => imagesApi.randomPicks(24).then(r => r.data) })
+  const { data: randomVideos }   = useQuery({ queryKey: ['random-videos', 24],    queryFn: () => imagesApi.randomVideos(24).then(r => r.data) })
+  const { data: randomCreators } = useQuery({ queryKey: ['random-creators', 24],  queryFn: () => creatorsApi.randomPicks(24).then(r => r.data) })
   const { data: topCollections }  = useQuery({ queryKey: ['top-collections'],  queryFn: () => creatorsApi.topByValue(5).then(r => r.data), enabled: collectionsOpen })
   const { data: recentSessions } = useQuery({ queryKey: ['recent-sessions'], queryFn: () => sessionsApi.list({ limit: 8 }).then(r => r.data) })
   const { data: balance }        = useQuery({ queryKey: ['economy-balance'], queryFn: () => economyApi.balance().then(r => r.data) })
@@ -1345,7 +1334,7 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 284px', gap: 24, alignItems: 'start' }}>
 
         {/* LEFT: main content */}
-        <div className="flex flex-col gap-6 min-w-0">
+        <div ref={mainContentRef} className="flex flex-col gap-6 min-w-0">
 
           {/* Empty state */}
           {!stats?.total_galleries && (
@@ -1500,9 +1489,8 @@ export default function Dashboard() {
               </div>
               <button onClick={() => navigate('/creators')} className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('manage')}</button>
             </div>
-            <div ref={favsRef} onMouseDown={onFavsMouseDown}
-                 className="flex gap-3 overflow-x-auto pb-1 select-none"
-                 style={{ scrollbarWidth: 'none', cursor: 'grab' }}>
+            <div className="grid gap-3 overflow-hidden pb-1 select-none"
+                 style={{ gridTemplateColumns: `repeat(${dashboardCardLimit}, minmax(0, 1fr))` }}>
               {(favorites ?? []).length === 0 ? (
                 <div className="flex items-center gap-3">
                   <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('No favorites yet —')}</span>
@@ -1514,16 +1502,15 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <>
-                  {favorites.map(c => <FavCreatorCard key={c.id} creator={c} avatarBust={avatarBust} onClick={() => navigate(`/creators/${c.id}`)} />)}
-                  <div onClick={() => navigate('/creators')}
-                       className="flex flex-col items-center gap-2.5 cursor-pointer flex-shrink-0"
-                       style={{ width: 160 }}>
+                  {favorites.slice(0, dashboardCardLimit).map(c => <FavCreatorCard key={c.id} creator={c} avatarBust={avatarBust} onClick={() => navigate(`/creators/${c.id}`)} />)}
+                  {favorites.length < dashboardCardLimit && <div onClick={() => navigate('/creators')}
+                       className="flex flex-col items-center gap-2.5 cursor-pointer min-w-0">
                     <div className="rounded-full flex items-center justify-center"
                          style={{ width: 160, height: 160, background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.12)' }}>
                       <Plus size={24} style={{ color: 'rgba(255,255,255,0.2)' }} />
                     </div>
                     <div className="text-[16px] text-[rgba(255,255,255,0.25)]">{t('Add more')}</div>
-                  </div>
+                  </div>}
                 </>
               )}
             </div>
@@ -1537,6 +1524,7 @@ export default function Dashboard() {
               videos={randomVideos}
               creators={randomCreators}
               onContextMenu={openCtx}
+              cardLimit={dashboardCardLimit}
             />
           )}
 
@@ -1551,7 +1539,7 @@ export default function Dashboard() {
                   <button onClick={() => navigate('/galleries')} className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('view all')}</button>
                 </div>
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                  {recent.map(g => (
+                  {recent.slice(0, dashboardCardLimit).map(g => (
                     <PortraitCard key={g.id} imgSrc={g.cover_thumb} title={g.name}
                       sub={`${g.image_count} photos${g.creator_name ? ' · ' + g.creator_name : ''}`}
                       onClick={() => navigate(`/galleries/${g.id}`)}

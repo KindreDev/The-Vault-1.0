@@ -4,6 +4,7 @@ Handles all card creation, pack opening, upgrade lottery, variant cap,
 and dismantle/regeneration logic.
 """
 import json
+import logging
 import math
 import os
 import random
@@ -18,7 +19,7 @@ from models import (
     UserProfile,
 )
 from config import (
-    BASELINE_RARITY, DROP_WEIGHTS, GOON_THRESHOLD, PACK_COST, PACK_SIZE,
+    BASELINE_RARITY, BOND_THRESHOLD, DROP_WEIGHTS, PACK_COST, PACK_SIZE,
     RARITY_ORDER, LEGACY_RARITY_MAP, SHARD_YIELD, HEART_YIELD,
     FOIL_CHANCE, FOIL_CHANCE_PREMIUM, FOIL_SHARD_MULT,
     GALLERY_EPIC_RATING, PREMIUM_RARITY_FLOOR,
@@ -28,6 +29,9 @@ from config import (
     FORGE_VARIANT_SHARD_COST, FORGE_VARIANT_CATALYST_COST,
     FEED_CARD_TYPE_MULTIPLIERS, OVERFLOW_CXP_TO_CREDITS_RATE,
 )
+from services.creator_cards import CREATOR_CARD_TYPES, creator_card_eligible_type
+
+logger = logging.getLogger(__name__)
 
 
 # ── Inventory browsing (search + filters) ─────────────────────────────────────
@@ -64,14 +68,14 @@ def _cards_of_creators(creator_ids):
         Card.source_creator_id.in_(creator_ids),      # creator card
         Card.linked_character_id.in_(creator_ids),    # variant card's character
         Card.source_gallery_id.in_(gal),              # gallery card
-        Card.source_image_id.in_(                     # photo / goon card
+        Card.source_image_id.in_(                     # photo / Bond card
             select(Image.id).where(Image.gallery_id.in_(gal))
         ),
     )
 
 
 def apply_inventory_filters(q, *, card_type=None, rarity=None, rarity_class=None,
-                            creator_id=None, search=None):
+                            creator_id=None, search=None, legacy_mode="include"):
     """Apply the collection browser's filters to a CardInventory query joined to Card."""
     from sqlalchemy import or_, select
 
@@ -79,10 +83,14 @@ def apply_inventory_filters(q, *, card_type=None, rarity=None, rarity_class=None
         q = q.filter(Card.card_type == card_type)
     if rarity:
         q = q.filter(Card.rarity == rarity)
-    # R / SR / SSR / UR — scarcity class, a card's percentile within its own
+    # C / R / SR / SPR / UR — scarcity class, a card's percentile within its own
     # tier. Independent of the tier, so the two stack.
     if rarity_class:
         q = q.filter(Card.rarity_class == rarity_class)
+    if legacy_mode == "exclude":
+        q = q.filter(Card.is_legacy.is_(False))
+    elif legacy_mode == "only":
+        q = q.filter(Card.is_legacy.is_(True))
 
     if creator_id:
         q = q.filter(_cards_of_creators(select(Creator.id).where(Creator.id == creator_id)))
@@ -109,19 +117,19 @@ def apply_inventory_filters(q, *, card_type=None, rarity=None, rarity_class=None
     return q
 
 
-def collection_creators(db: Session) -> list:
+def collection_creators(db: Session, legacy_mode: str = "include") -> list:
     """Creators you actually own cards of, with counts — for the collection filter.
 
     Deliberately not "all creators": a filter listing hundreds of names you have
     no cards for is the navigation problem, not the fix.
     """
     counts = {}
-    invs = (
-        db.query(CardInventory)
-          .join(Card)
-          .options()
-          .all()
-    )
+    q = db.query(CardInventory).join(Card)
+    if legacy_mode == "exclude":
+        q = q.filter(Card.is_legacy.is_(False))
+    elif legacy_mode == "only":
+        q = q.filter(Card.is_legacy.is_(True))
+    invs = q.all()
     # Resolving each card's creator reuses the same rules the card face uses, so
     # the filter list can never disagree with what is printed on the cards.
     creator_of = _card_creator_map(db, [inv.card for inv in invs])
@@ -240,22 +248,24 @@ def _roll_foil(pack_type: str = "standard") -> bool:
 
 
 def _add_to_inventory(db: Session, card: Card) -> Card:
-    """Add card to user inventory. Gallery/creator/goon cards stack by source identity.
+    """Add card to user inventory. Gallery/creator/Bond cards stack by source identity.
     Returns the canonical card (may differ from input if stacking onto existing)."""
     ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
 
     if ct == "gallery" and card.source_gallery_id:
+        from services.physical_cards import grant_card_copy
         existing_inv = (
             db.query(CardInventory)
             .join(Card, CardInventory.card_id == Card.id)
             .filter(
                 Card.card_type == CardType.gallery,
                 Card.source_gallery_id == card.source_gallery_id,
+                Card.is_legacy.is_(False),
             )
             .first()
         )
         if existing_inv and existing_inv.card_id != card.id:
-            existing_inv.quantity += 1
+            grant_card_copy(db, existing_inv.card_id)
             db.delete(card)
             db.flush()
             return existing_inv.card
@@ -268,6 +278,7 @@ def _add_to_inventory(db: Session, card: Card) -> Card:
             .filter(
                 Card.card_type == CardType.creator,
                 Card.source_creator_id == card.source_creator_id,
+                Card.is_legacy.is_(False),
             )
         )
         if card.source_image_id:
@@ -276,7 +287,8 @@ def _add_to_inventory(db: Session, card: Card) -> Card:
             q = q.filter(Card.source_image_id.is_(None))
         existing_inv = q.first()
         if existing_inv and existing_inv.card_id != card.id:
-            existing_inv.quantity += 1
+            from services.physical_cards import grant_card_copy
+            grant_card_copy(db, existing_inv.card_id)
             db.delete(card)
             db.flush()
             return existing_inv.card
@@ -289,38 +301,39 @@ def _add_to_inventory(db: Session, card: Card) -> Card:
             .filter(
                 Card.card_type == CardType.hof,
                 Card.source_creator_id == card.source_creator_id,
+                Card.is_legacy.is_(False),
             )
             .first()
         )
         if existing_inv and existing_inv.card_id != card.id:
-            existing_inv.quantity += 1
+            from services.physical_cards import grant_card_copy
+            grant_card_copy(db, existing_inv.card_id)
             # HOF cards are minted pool records — never delete the mint itself
             db.flush()
             return existing_inv.card
 
-    elif ct == "goon" and card.source_image_id:
-        # Goon cards stack by source image — same image pulled twice → quantity+1
+    elif ct == "bond" and card.source_image_id:
+        # Bond cards stack by source image — same image earned twice → quantity+1
         existing_inv = (
             db.query(CardInventory)
             .join(Card, CardInventory.card_id == Card.id)
             .filter(
-                Card.card_type == CardType.goon,
+                Card.card_type == CardType.bond,
                 Card.source_image_id == card.source_image_id,
+                Card.is_legacy.is_(False),
             )
             .first()
         )
         if existing_inv and existing_inv.card_id != card.id:
-            existing_inv.quantity += 1
+            from services.physical_cards import grant_card_copy
+            grant_card_copy(db, existing_inv.card_id)
             db.delete(card)
             db.flush()
             return existing_inv.card
 
-    # Default: stack by card_id
-    existing = db.query(CardInventory).filter(CardInventory.card_id == card.id).first()
-    if existing:
-        existing.quantity += 1
-    else:
-        db.add(CardInventory(card_id=card.id, quantity=1))
+    # Default: stack by card_id and create a durable physical identity.
+    from services.physical_cards import grant_card_copy
+    grant_card_copy(db, card.id)
     db.flush()
     return card
 
@@ -352,8 +365,13 @@ def generate_card(
     lottery is the foil roll, decided by the caller (pack opening)."""
     final_rarity = baseline_override if baseline_override else BASELINE_RARITY[card_type]
 
+    if card_type == "creator":
+        creator = db.query(Creator).filter(Creator.id == source_creator_id).first()
+        if not creator or not creator_card_eligible_type(creator.creator_type):
+            raise ValueError("This entity is not eligible for a Creator card; use a cosplayer, e-thot, artist, actress, or Model/Other entity")
+
     # Gallery and creator are no longer unique — dupes can stack
-    is_unique = card_type in ("goon", "variant", "hof")
+    is_unique = card_type in ("bond", "variant", "hof")
 
     card = Card(
         card_type=CardType(card_type),
@@ -376,7 +394,7 @@ def generate_card(
 
 def _pick_image_card(db: Session, engaged_bias: bool = False) -> Optional[Card]:
     base_query = db.query(Image).filter(
-        Image.cum_count < GOON_THRESHOLD,
+        Image.cum_count < BOND_THRESHOLD,
         Image.file_path.isnot(None),
     )
     # Default: 70% pure random (discovery), 30% engagement-weighted.
@@ -411,7 +429,7 @@ def _pick_recent_image_card(db: Session) -> Optional[Card]:
         db.query(Image)
         .filter(
             Image.last_viewed_at >= cutoff,
-            Image.cum_count < GOON_THRESHOLD,
+            Image.cum_count < BOND_THRESHOLD,
             Image.file_path.isnot(None),
         )
         .order_by(Image.last_viewed_at.desc())
@@ -444,7 +462,7 @@ def _pick_gallery_card(db: Session) -> Optional[Card]:
 
 
 def _pick_creator_card(db: Session) -> Optional[Card]:
-    query = db.query(Creator).filter(Creator.creator_type != "character")
+    query = db.query(Creator).filter(Creator.creator_type.in_(CREATOR_CARD_TYPES))
     count = query.count()
     if not count:
         return _pick_gallery_card(db)
@@ -457,7 +475,8 @@ def _pick_creator_card(db: Session) -> Optional[Card]:
     # gallery image each. Beyond 5, pulls stack as dupes of existing mints.
     existing = (db.query(Card)
                   .filter(Card.card_type == CardType.creator,
-                          Card.source_creator_id == creator.id)
+                          Card.source_creator_id == creator.id,
+                          Card.is_legacy.is_(False))
                   .all())
     if len(existing) >= 5:
         return random.choice(existing)   # dupe of one of her minted arts
@@ -497,23 +516,23 @@ def _creator_birth_rarity(creator) -> Optional[str]:
     return "celestial" if cr in ("relic", "celestial") else None
 
 
-def _top_goon_image_id(db: Session) -> Optional[int]:
+def _top_bond_image_id(db: Session) -> Optional[int]:
     """The single most-gooned image in the vault — its card is born celestial."""
     img = (db.query(Image)
-             .filter(Image.cum_count >= GOON_THRESHOLD)
+             .filter(Image.cum_count >= BOND_THRESHOLD)
              .order_by(Image.cum_count.desc(), Image.id.asc())
              .first())
     return img.id if img else None
 
 
-def _pick_goon_card(db: Session) -> Optional[Card]:
-    goon_imgs = db.query(Image).filter(Image.cum_count >= GOON_THRESHOLD).all()
-    if not goon_imgs:
+def _pick_bond_card(db: Session) -> Optional[Card]:
+    bond_images = db.query(Image).filter(Image.cum_count >= BOND_THRESHOLD).all()
+    if not bond_images:
         return _pick_image_card(db)  # fallback to image card
-    img = random.choice(goon_imgs)
+    img = random.choice(bond_images)
     # Birth rule: THE most-gooned image in the vault is a celestial artifact
-    override = "celestial" if img.id == _top_goon_image_id(db) else None
-    return generate_card(db, "goon", source_image_id=img.id, baseline_override=override)
+    override = "celestial" if img.id == _top_bond_image_id(db) else None
+    return generate_card(db, "bond", source_image_id=img.id, baseline_override=override)
 
 
 # ── Hall of Fame cards ────────────────────────────────────────────────────────
@@ -557,7 +576,8 @@ def mint_hof_cards(db: Session) -> int:
     for i, creator in enumerate(hof):
         exists = (db.query(Card)
                     .filter(Card.card_type == CardType.hof,
-                            Card.source_creator_id == creator.id)
+                            Card.source_creator_id == creator.id,
+                            Card.is_legacy.is_(False))
                     .first())
         if exists:
             continue
@@ -581,7 +601,10 @@ def _pick_hof_card(db: Session) -> Optional[Card]:
     """Draw one of the minted HOF mementos from the pool (mints any missing
     ones first). Falls back to a creator card if none exist yet."""
     mint_hof_cards(db)
-    minted = db.query(Card).filter(Card.card_type == CardType.hof).all()
+    minted = db.query(Card).filter(
+        Card.card_type == CardType.hof,
+        Card.is_legacy.is_(False),
+    ).all()
     if not minted:
         return _pick_creator_card(db)
     return random.choice(minted)
@@ -594,6 +617,7 @@ def backfill_creator_card_art(db: Session) -> int:
     fixed = 0
     orphans = (db.query(Card)
                  .filter(Card.card_type == CardType.creator,
+                         Card.print_rarity.is_(None),
                          Card.source_image_id.is_(None),
                          Card.source_creator_id.isnot(None))
                  .order_by(Card.id.asc())
@@ -639,10 +663,10 @@ def apply_birth_bonuses(db: Session) -> int:
                 card.rarity = CardRarity("epic")
                 promoted += 1
     # The single most-gooned image → celestial
-    top_goon = _top_goon_image_id(db)
-    if top_goon:
-        for card in db.query(Card).filter(Card.card_type == CardType.goon,
-                                          Card.source_image_id == top_goon).all():
+    top_bond = _top_bond_image_id(db)
+    if top_bond:
+        for card in db.query(Card).filter(Card.card_type == CardType.bond,
+                                          Card.source_image_id == top_bond).all():
             if norm_rarity(card.rarity) != "celestial":
                 card.rarity = CardRarity("celestial")
                 promoted += 1
@@ -728,6 +752,7 @@ def _pick_variant_card(db: Session) -> Optional[Card]:
             Card.card_type == CardType.variant,
             Card.source_creator_id == cid,
             Card.linked_character_id == chid,
+            Card.is_legacy.is_(False),
         ).count() < VARIANT_CAP
     ]
     if not eligible:
@@ -916,8 +941,8 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
 
     # Adjust rates based on pack type
     if pack_type == "premium":
-        types   = ["image", "gallery", "creator", "goon", "variant", "collab", "hof"]
-        weights = [30, 20, 15, 9, 3, 12, 11]  # sums to 100
+        types   = ["image", "gallery", "creator", "variant", "collab", "hof"]
+        weights = [35, 20, 15, 3, 12, 15]  # Bond cards are earned, never pulled
     else:
         types   = list(DROP_WEIGHTS.keys())
         weights = list(DROP_WEIGHTS.values())
@@ -928,7 +953,6 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
                    else _pick_image_card,
         "gallery": _pick_gallery_card,
         "creator": _pick_creator_card,
-        "goon":    _pick_goon_card,
         "variant": _pick_variant_card,
         "collab":  _pick_collab_card,
         "hof":     _pick_hof_card,
@@ -981,6 +1005,13 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
     from services.gamification import notify_action
     xp = notify_action(db, "pack_opened", count=quantity, override_amount=75 * quantity)
 
+    try:
+        for card in cards:
+            authoritative, _diagnostics = prepare_card_face_for_reveal(db, card)
+    except ValueError:
+        db.rollback()
+        raise
+
     db.commit()
 
     # Re-score collection rarity so the new cards get a crs/class and the
@@ -992,7 +1023,7 @@ def open_pack(db: Session, pack_type: str = "standard", quantity: int = 1, free:
         pass
 
     return {
-        "cards": [_card_to_dict(db, c) for c in cards],
+        "cards": [_card_to_dict(db, db.get(Card, c.id)) for c in cards],
         "xp_earned": xp.amount if hasattr(xp, 'amount') else 0,
     }
 
@@ -1007,6 +1038,9 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
         raise ValueError("Inventory entry not found")
 
     card = inv.card
+    card_type = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
+    if card_type in {"hof", "bond"}:
+        raise ValueError("Personally earned Hall of Fame and Bond cards cannot be dismantled")
     rarity_str = norm_rarity(card.rarity)
     shards = SHARD_YIELD.get(rarity_str, 5) * (FOIL_SHARD_MULT if card.foil else 1)
     hearts = HEART_YIELD.get(rarity_str, 0)
@@ -1028,11 +1062,9 @@ def dismantle_card(db: Session, inventory_id: int) -> dict:
     from services.gamification import notify_action
     xp = notify_action(db, "card_dismantled")
 
-    # Remove from inventory (or decrement)
-    if inv.quantity > 1:
-        inv.quantity -= 1
-    else:
-        db.delete(inv)
+    # Remove one unplaced physical copy and update the aggregate mirror.
+    from services.physical_cards import remove_card_copy
+    remove_card_copy(db, card.id)
 
     db.commit()
     return {"shards_earned": shards, "xp_earned": xp.amount, "hearts_earned": hearts}
@@ -1055,14 +1087,14 @@ def _regenerate_unique(db: Session, old_card: Card):
     elif ct == "gallery":
         new_card = generate_card(db, "gallery", source_gallery_id=old_card.source_gallery_id)
 
-    elif ct == "goon":
-        goon_imgs = db.query(Image).filter(
-            Image.cum_count >= GOON_THRESHOLD,
+    elif ct == "bond":
+        bond_images = db.query(Image).filter(
+            Image.cum_count >= BOND_THRESHOLD,
             Image.id != old_card.source_image_id,
         ).all()
-        if goon_imgs:
-            img = random.choice(goon_imgs)
-            new_card = generate_card(db, "goon", source_image_id=img.id)
+        if bond_images:
+            img = random.choice(bond_images)
+            new_card = generate_card(db, "bond", source_image_id=img.id)
         else:
             return  # no alternatives, skip regeneration
 
@@ -1134,7 +1166,8 @@ def craft_prestige(db: Session, inventory_id: int) -> dict:
         raise ValueError(f"Need {PRESTIGE_CREDITS} credits — you have {profile.vault_credits or 0}")
 
     profile.vault_credits -= PRESTIGE_CREDITS
-    inv.quantity -= (need - 1)          # consume the duplicates, keep 1 survivor
+    from services.physical_cards import remove_card_copy
+    remove_card_copy(db, card.id, count=need - 1, preserve_last=True)
     card.foil = True
     card.is_relic = True                # legacy mirror for old shine paths
 
@@ -1158,7 +1191,8 @@ def feed_duplicate(db: Session, inventory_id: int) -> dict:
     cxp_base = CXP_FEED_YIELD.get(norm_rarity(card.rarity), 30)
     cxp_gain = max(1, int(cxp_base * _cxp_level_multiplier(db)))
 
-    inv.quantity -= 1
+    from services.physical_cards import remove_card_copy
+    remove_card_copy(db, card.id, preserve_last=True)
     card.cxp = (card.cxp or 0) + cxp_gain
 
     db.commit()
@@ -1169,7 +1203,7 @@ def feed_duplicate(db: Session, inventory_id: int) -> dict:
 
 def feed_cards(db: Session, target_inventory_id: int, source_inventory_ids: list) -> dict:
     """Feed any cards into a target card for CXP. Any rarity, any type.
-    Higher rarities yield more CXP; goon cards get 1.5×, variant cards get 2×.
+    Higher rarities yield more CXP; Bond cards get 1.5×, variant cards get 2×.
     CXP that overflows the evolution threshold converts to Vault Credits.
     """
     target_inv = db.query(CardInventory).filter(CardInventory.id == target_inventory_id).first()
@@ -1231,11 +1265,8 @@ def feed_cards(db: Session, target_inventory_id: int, source_inventory_ids: list
         total_overflow_credits += credits_from_overflow
 
         # Consume the source card (one copy)
-        if src_inv.quantity > 1:
-            src_inv.quantity -= 1
-        else:
-            db.delete(src_inv)
-            db.flush()
+        from services.physical_cards import remove_card_copy
+        remove_card_copy(db, src_card.id)
 
         cards_consumed += 1
 
@@ -1272,7 +1303,10 @@ def evolve_via_cxp(db: Session, inventory_id: int) -> dict:
 
 def dismantle_duplicates(db: Session) -> dict:
     """Dismantle all extra copies of every card, keeping exactly 1 of each."""
-    dupes = db.query(CardInventory).filter(CardInventory.quantity > 1).all()
+    dupes = db.query(CardInventory).join(Card, Card.id == CardInventory.card_id).filter(
+        CardInventory.quantity > 1,
+        Card.card_type.notin_([CardType.hof, CardType.bond]),
+    ).all()
     if not dupes:
         return {"dismantled": 0, "shards_earned": 0, "hearts_earned": 0, "xp_earned": 0}
 
@@ -1283,12 +1317,16 @@ def dismantle_duplicates(db: Session) -> dict:
     for inv in dupes:
         extras = inv.quantity - 1
         card = inv.card
+        card_type = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
+        if card_type in {"hof", "bond"}:
+            continue
         rarity_str = norm_rarity(card.rarity)
         foil_mult = FOIL_SHARD_MULT if card.foil else 1
         total_shards += SHARD_YIELD.get(rarity_str, 5) * foil_mult * extras
         total_hearts += HEART_YIELD.get(rarity_str, 0) * extras
         total_count  += extras
-        inv.quantity  = 1
+        from services.physical_cards import remove_card_copy
+        remove_card_copy(db, card.id, count=extras, preserve_last=True)
 
     materials = _get_or_create_materials(db)
     materials.shards += total_shards
@@ -1398,7 +1436,8 @@ def fuse_all(db: Session, inventory_id: int) -> dict:
         cxp_per = CXP_FEED_YIELD.get(target_rarity_str, 30)
         total_cxp += cxp_per * extras
         total_fused += extras
-        target_inv.quantity = 1
+        from services.physical_cards import remove_card_copy
+        remove_card_copy(db, target_card.id, count=extras, preserve_last=True)
 
     # Absorb same-source lower-rarity inventory entries
     same_source = []
@@ -1430,7 +1469,8 @@ def fuse_all(db: Session, inventory_id: int) -> dict:
             cxp_per = CXP_FEED_YIELD.get(rarity_str, 30)
             total_cxp += cxp_per * inv.quantity
             total_fused += inv.quantity
-            db.delete(inv)
+            from services.physical_cards import remove_card_copy
+            remove_card_copy(db, card.id, count=inv.quantity)
 
     if total_fused == 0:
         return {"fused_count": 0, "cxp_gained": 0, "new_cxp": target_card.cxp or 0}
@@ -1457,16 +1497,17 @@ def dismantle_batch(db: Session, inventory_ids: list) -> dict:
             continue
 
         card = inv.card
+        card_type = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
+        if card_type in {"hof", "bond"}:
+            continue
         rarity_str = norm_rarity(card.rarity)
         total_shards += SHARD_YIELD.get(rarity_str, 5) * (FOIL_SHARD_MULT if card.foil else 1)
         total_hearts += HEART_YIELD.get(rarity_str, 0)
         total_xp     += DISMANTLE_XP
         processed    += 1
 
-        if inv.quantity > 1:
-            inv.quantity -= 1
-        else:
-            db.delete(inv)
+        from services.physical_cards import remove_card_copy
+        remove_card_copy(db, card.id)
 
     if total_shards:
         materials = _get_or_create_materials(db)
@@ -1665,9 +1706,331 @@ def award_credits_for_action(db: Session, action: str) -> int:
 
 # ── Serialisation helper ──────────────────────────────────────────────────────
 
+MASKED_RARITIES = {"R", "SR", "SPR", "UR"}
+
+
+def prepare_card_face_for_reveal(db: Session, card: Card) -> tuple[Card, dict]:
+    """Prepare and resolve the same face contract used by collection cards.
+
+    Pack responses must never serialize the pre-mask ORM snapshot. Static
+    R+-source cards require a usable packed mask; temporal sources intentionally
+    remain flat. Quality failures are allowed as an explicit, diagnosable
+    fallback, while generation failures abort the reveal so a broken mask can
+    be retried instead of being silently published.
+    """
+    from services.foundation_catalog import prepare_acquired_visual
+    from services.masking import ensure_mask, is_temporal_source
+
+    card_id = card.id
+    authoritative = db.get(Card, card_id)
+    if authoritative is None:
+        raise ValueError(f"Card {card_id} disappeared before reveal")
+    if not prepare_acquired_visual(db, authoritative):
+        raise ValueError(f"Card {card_id} face preparation failed")
+
+    source_image = (
+        db.query(Image).filter(Image.id == authoritative.source_image_id).first()
+        if authoritative.source_image_id else None
+    )
+    mask_info = None
+    if source_image:
+        try:
+            mask_info = ensure_mask(db, source_image, force=False, upgrade_stale=True)
+        except Exception as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            raise ValueError(
+                f"Card {card_id} mask preparation failed for static source "
+                f"{source_image.id}: {detail}"
+            ) from exc
+        temporal = is_temporal_source(source_image)
+        rarity = authoritative.print_rarity or authoritative.rarity_class or "C"
+        if (rarity in MASKED_RARITIES and not temporal and mask_info
+                and not mask_info.get("usable")
+                and mask_info.get("failure_reason") != "quality-below-threshold"):
+            detail = mask_info.get("failure_detail") or source_image.mask_failure_reason
+            raise ValueError(
+                f"Card {card_id} mask preparation failed for static {rarity} source "
+                f"{source_image.id}: {detail or 'unknown mask error'}"
+            )
+        card_type = (
+            authoritative.card_type.value
+            if hasattr(authoritative.card_type, "value")
+            else authoritative.card_type
+        )
+        if rarity == "UR" and card_type != CardType.gallery.value \
+                and not temporal and mask_info and mask_info.get("usable"):
+            from services.foil_maps import ensure_foil_map
+            try:
+                foil_info = ensure_foil_map(source_image)
+            except Exception as exc:
+                detail = f"{type(exc).__name__}: {exc}"
+                raise ValueError(
+                    f"Card {card_id} foil-map preparation failed for static UR source "
+                    f"{source_image.id}: {detail}"
+                ) from exc
+            if not foil_info or not foil_info.get("path"):
+                raise ValueError(
+                    f"Card {card_id} foil-map preparation failed for static UR source "
+                    f"{source_image.id}: no foil-map artifact was produced"
+                )
+
+    db.flush()
+    # Expire both the card and source image so the response reads committed
+    # authoritative state, never the object graph selected before preparation.
+    db.expire_all()
+    authoritative = db.get(Card, card_id)
+    serialized = _card_to_dict(db, authoritative)
+    final_rarity = authoritative.print_rarity or authoritative.rarity_class or "C"
+    final_card_type = (
+        authoritative.card_type.value
+        if hasattr(authoritative.card_type, "value")
+        else authoritative.card_type
+    )
+    if (final_rarity == "UR" and final_card_type != CardType.gallery.value
+            and mask_info and mask_info.get("usable")
+            and not is_temporal_source(db.get(Image, authoritative.source_image_id))
+            and not serialized.get("foil_map_url")):
+        raise ValueError(
+            f"Card {card_id} foil-map preparation failed: the prepared UR face "
+            "did not serialize a foil-map URL"
+        )
+    diagnostics = {
+        "mask_status": serialized.get("mask_status"),
+        "mask_visual_mode": serialized.get("mask_visual_mode"),
+        "mask_failure_reason": serialized.get("mask_failure_reason"),
+        "mask_quality": serialized.get("mask_quality"),
+        "mask_url": serialized.get("mask_url"),
+        "foil_map_url": serialized.get("foil_map_url"),
+    }
+    return authoritative, diagnostics
+
+def queue_masks_for_cards(card_ids: list):
+    """Prepare expensive visual layers for these cards off the request path.
+
+    Fire-and-forget on its own session: the caller has already committed, and a
+    failure here must never take down a pack open. Anything that doesn't get a
+    mask simply renders with the whole-card holo instead.
+    """
+    if not card_ids:
+        return
+
+    def _work():
+        from database import SessionLocal
+        db2 = SessionLocal()
+        try:
+            from services import masking
+            # Standalone fictional characters use their own frozen TCG V2
+            # recipe. This branch is deliberately strict: creator×character
+            # intersections remain Cosplay/legacy variant cards.
+            queued_cards = db2.query(Card).filter(Card.id.in_(card_ids)).all()
+            foil_image_ids = {
+                queued_card.source_image_id
+                for queued_card in queued_cards
+                if queued_card.source_image_id
+                and (queued_card.rarity_class or "C") == "UR"
+                and ((queued_card.card_type.value
+                      if hasattr(queued_card.card_type, "value")
+                      else queued_card.card_type) != "gallery")
+            }
+            for queued_card in queued_cards:
+                queued_type = (
+                    queued_card.card_type.value
+                    if hasattr(queued_card.card_type, "value") else queued_card.card_type
+                )
+                if queued_type == "variant":
+                    try:
+                        from services.cosplay_cards import prepare_cosplay_visual
+                        prepare_cosplay_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "cosplay visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if queued_type == "collab":
+                    try:
+                        from services.collab_cards import prepare_collab_visual
+                        prepare_collab_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "collab visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if queued_type == "creator":
+                    try:
+                        from services.creator_cards import prepare_creator_visual
+                        prepare_creator_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "creator visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if queued_type == "gallery":
+                    try:
+                        from services.gallery_cards import prepare_gallery_visual
+                        prepare_gallery_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "gallery visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if queued_type == "bond":
+                    try:
+                        from services.bond_cards import prepare_bond_visual
+                        prepare_bond_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "Bond visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if queued_type == "hof":
+                    try:
+                        from services.hof_cards import prepare_hof_visual
+                        prepare_hof_visual(db2, queued_card)
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "Hall of Fame visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+                if not queued_card.source_creator_id or queued_card.visual_recipe:
+                    continue
+                character = db2.query(Creator).filter(
+                    Creator.id == queued_card.source_creator_id
+                ).first()
+                character_type = (
+                    character.creator_type.value
+                    if character and hasattr(character.creator_type, "value")
+                    else (character.creator_type if character else None)
+                )
+                if character_type == "character":
+                    try:
+                        from services.character_cards import prepare_character_visual
+                        prepare_character_visual(db2, queued_card, character.id)
+                    except Exception as exc:
+                        # Missing art or a failed model must not prevent the
+                        # remaining cards in the pack from being prepared.
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "character visual preparation failed for card %s: %s",
+                            queued_card.id, exc,
+                        )
+
+            rows = (db2.query(Card.source_image_id)
+                       .filter(Card.id.in_(card_ids),
+                               Card.source_image_id.isnot(None)).distinct().all())
+            for (img_id,) in rows:
+                img = db2.query(Image).filter(Image.id == img_id).first()
+                if img:
+                    # Cached masks still pass through ensure_mask so older rows
+                    # receive the persisted usable/fallback state. This is cheap
+                    # (no inference) and makes the mint response deterministic.
+                    mask_info = masking.ensure_mask(db2, img)
+                    if img_id in foil_image_ids and mask_info and mask_info.get("usable"):
+                        from services.foil_maps import ensure_foil_map
+                        ensure_foil_map(img)
+            db2.commit()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("mask queue failed: %s", e)
+        finally:
+            db2.close()
+
+    import threading
+    threading.Thread(target=_work, daemon=True).start()
+
+
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def format_period(month, year) -> Optional[str]:
+    """'Mar 2026' from the gallery's period columns."""
+    if not year:
+        return None
+    if month and 1 <= int(month) <= 12:
+        return f"{MONTH_NAMES[int(month) - 1]} {int(year)}"
+    return str(int(year))
+
+
+HOF_BOARD_LABEL = {"day": "Daily", "week": "Weekly", "month": "Monthly",
+                   "alltime": "All-Time"}
+
+
+def format_hof_period(period_type, period_key) -> Optional[str]:
+    """The date a Hall of Fame card was WON, printed for its board.
+
+    A HOF card is a dated result, so its period has to come from the crown, not
+    from the source gallery's month — the photo she won on can be years older
+    than the Tuesday she won it.
+
+        day     2026-08-14  ->  '14 Aug 2026'
+        week    2026-W33    ->  'Week 33, 2026'
+        month   2026-08     ->  'Aug 2026'
+        alltime              -> 'All-Time'
+    """
+    if period_type == "alltime" or not period_key:
+        return "All-Time" if period_type == "alltime" else None
+    try:
+        if period_type == "day":
+            y, m, d = (int(x) for x in period_key.split("-"))
+            return f"{d} {MONTH_NAMES[m - 1]} {y}"
+        if period_type == "week":
+            y, w = period_key.split("-W")
+            return f"Week {int(w)}, {y}"
+        if period_type == "month":
+            y, m = (int(x) for x in period_key.split("-"))
+            return f"{MONTH_NAMES[m - 1]} {y}"
+    except Exception:
+        pass
+    return period_key
+
+
+def compose_display_name(card_type, creator_name=None, gallery_name=None,
+                         character_name=None, collab_info=None) -> str:
+    """The card's printed name — ONE definition, for every renderer.
+
+    The web card composed this inline in VaultCard.jsx, which was fine while the
+    web card was the only reader. It no longer is: the Unreal client has to print
+    exactly the same string, and a second implementation of these rules in
+    another language would drift the first time a rule changed. So the rules live
+    here and both clients consume the finished string.
+
+        photo/creator/bond   creator
+        gallery              gallery
+        variant              "<Cosplayer> as <Character>"
+        collab               "<A> & <B>"
+        collab (variant)     "<A> & <B> as <X> & <Y>"
+
+    The period is NOT folded in — see `format_period`. Callers that want the long
+    form use `display_title`, so a layout can place the date separately.
+    """
+    if card_type == "collab" and collab_info:
+        creators = [n for n in (collab_info.get("creator_names") or []) if n]
+        chars = [n for n in (collab_info.get("character_names") or []) if n]
+        joined = " & ".join(creators)
+        if collab_info.get("subtype") == "variant" and chars:
+            return f"{joined} as {' & '.join(chars)}" if joined else " & ".join(chars)
+        if joined:
+            return joined
+
+    if card_type == "variant" and creator_name and character_name:
+        return f"{creator_name} as {character_name}"
+
+    if card_type == "gallery" and gallery_name:
+        return gallery_name
+
+    return creator_name or gallery_name or "Unknown"
+
+
 def _card_to_dict(db: Session, card: Card) -> dict:
     rarity = norm_rarity(card.rarity)
     ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
+    earned_event = ct in {"hof", "bond"}
 
     # Resolve image URL (full quality)
     image_id = card.source_image_id
@@ -1710,7 +2073,7 @@ def _card_to_dict(db: Session, card: Card) -> dict:
                     if _c:
                         creator_name = _c.name
     # Fallback: look up period AND creator_name through the source image's gallery
-    if (period_month is None or creator_name is None) and card.source_image_id:
+    if (period_month is None or creator_name is None or gallery_name is None) and card.source_image_id:
         img_gal = (
             db.query(Gallery)
             .join(Image, Image.gallery_id == Gallery.id)
@@ -1718,15 +2081,26 @@ def _card_to_dict(db: Session, card: Card) -> dict:
             .first()
         )
         if img_gal:
+            gallery_name = gallery_name or img_gal.name
             period_month = img_gal.period_month
             period_year = img_gal.period_year
             if creator_name is None:
                 if img_gal.creators:
-                    creator_name = img_gal.creators[0].name
+                    source_creator = img_gal.creators[0]
+                    creator_name = source_creator.name
+                    creator_type = (
+                        source_creator.creator_type.value
+                        if hasattr(source_creator.creator_type, "value")
+                        else source_creator.creator_type
+                    )
                 elif img_gal.creator_id:
                     _c = db.query(Creator).filter(Creator.id == img_gal.creator_id).first()
                     if _c:
                         creator_name = _c.name
+                        creator_type = (
+                            _c.creator_type.value
+                            if hasattr(_c.creator_type, "value") else _c.creator_type
+                        )
 
     # Character info (variant)
     character_name = None
@@ -1737,9 +2111,45 @@ def _card_to_dict(db: Session, card: Card) -> dict:
 
     # Focal point (from source image) + resolve static thumb URL to skip per-request DB hits
     focal_x, focal_y = 0.5, 0.0
+    mask_url = None
+    mask_quality = None
+    mask_status = "fallback"
+    mask_failure_reason = "mask-not-available"
+    mask_pipeline_version = None
+    mask_visual_mode = "flat"
+    foil_map_url = None
+    src_img = None
     if card.source_image_id:
         src_img = db.query(Image).filter(Image.id == card.source_image_id).first()
         if src_img:
+            from services.masking import MIN_QUALITY, is_temporal_source
+            temporal_source = is_temporal_source(src_img)
+            # Foil mask. `mask_url` is None whenever the card must fall back to a
+            # whole-card holo: no mask yet, a mask we don't trust, or a video
+            # source a still mask can't track.
+            mask_quality = src_img.mask_quality
+            mask_status = src_img.mask_status or (
+                "usable" if (src_img.mask_quality or 0) >= MIN_QUALITY else "fallback"
+            )
+            mask_failure_reason = src_img.mask_failure_reason
+            mask_pipeline_version = src_img.mask_pipeline_version
+            mask_visual_mode = src_img.mask_visual_mode or (
+                "layered" if mask_status == "usable" else "flat"
+            )
+            if temporal_source:
+                mask_status = "fallback"
+                mask_failure_reason = (
+                    "video-source" if src_img.is_video else "animated-image-source"
+                )
+                mask_visual_mode = "flat"
+            if (src_img.mask_path and not temporal_source
+                    and os.path.exists(src_img.mask_path)):
+                if (src_img.mask_quality or 0) >= MIN_QUALITY:
+                    version = src_img.mask_pipeline_version or "legacy"
+                    mask_url = f"/masks/{os.path.basename(src_img.mask_path)}?v={version}"
+            if ct != "gallery" and not temporal_source:
+                from services.foil_maps import foil_map_url as resolve_foil_map_url
+                foil_map_url = resolve_foil_map_url(src_img.id)
             focal_x = src_img.focal_x if src_img.focal_x is not None else 0.5
             focal_y = src_img.focal_y if src_img.focal_y is not None else 0.0
             # Resolve thumb URL to a direct static path so VaultCard skips the
@@ -1762,9 +2172,215 @@ def _card_to_dict(db: Session, card: Card) -> dict:
         except Exception:
             collab_info = None
 
+    # Which Hall of Fame board this card came off, and when it was won. Read
+    # from the crown rather than the gallery: the photo she won on can be years
+    # older than the day she won it, so the gallery's month is the wrong date.
+    hof_board = hof_period_type = hof_period_key = None
+    hof_won_at = None
+    if ct == "hof":
+        from models import HofCrown
+        crown = db.query(HofCrown).filter(HofCrown.card_id == card.id).first()
+        if crown:
+            hof_period_type = crown.period_type
+            hof_period_key = crown.period_key
+            hof_won_at = crown.won_at.isoformat() if crown.won_at else None
+        else:
+            # Pre-crown mementos from the original top-5 mint have no period;
+            # they are the standing all-time board.
+            hof_period_type = "alltime"
+        hof_board = HOF_BOARD_LABEL.get(hof_period_type)
+
+    # Composed name + period. Gallery and Hall of Fame cards carry the period in
+    # their title (a gallery IS a month's shoot, a HOF card IS a dated win);
+    # the others would just be noisier for it.
+    _display_name = compose_display_name(
+        ct, creator_name=creator_name, gallery_name=gallery_name,
+        character_name=character_name, collab_info=collab_info)
+    if ct == "hof":
+        _display_period = format_hof_period(hof_period_type, hof_period_key)
+    else:
+        _display_period = format_period(period_month, period_year)
+    card_type_wants_period = ct in ("gallery", "hof")
+
+    # TCG V2 calls the legacy `image` pull a Scene card. Expose a complete,
+    # real-data recipe when the source record contains everything the template
+    # prints. Incomplete catalog metadata is reported explicitly; it is never
+    # invented just to make a renderer happy.
+    scene_visual = None
+    if ct == "image":
+        missing_scene_data = []
+        scene_period = format_period(period_month, period_year)
+        if not creator_name:
+            missing_scene_data.append("creator_name")
+        if not creator_type:
+            missing_scene_data.append("creator_type")
+        if not gallery_name:
+            missing_scene_data.append("subject_name")
+        if not scene_period:
+            missing_scene_data.append("period")
+        if not src_img or not src_img.width or not src_img.height:
+            missing_scene_data.append("source_dimensions")
+
+        scene_visual = {
+            "card_type": "scene",
+            "template_id": "scene-floral-outline-v1",
+            "visual_mode": mask_visual_mode,
+            "extraction_status": mask_status,
+            "fallback_reason": mask_failure_reason,
+            "mask_pipeline_version": mask_pipeline_version,
+            "upgradeable": mask_visual_mode == "flat",
+            "readiness": "ready" if not missing_scene_data else "missing_metadata",
+            "missing_metadata": missing_scene_data,
+            "recipe": None,
+        }
+        if not missing_scene_data:
+            from services.scene_cards import build_scene_recipe, extract_scene_outline_palette
+            try:
+                palette_source = (src_img.thumb_path if src_img.thumb_path
+                                  and os.path.exists(src_img.thumb_path) else src_img.file_path)
+                outline_primary, outline_secondary = extract_scene_outline_palette(palette_source)
+            except (OSError, ValueError):
+                outline_primary, outline_secondary = "#5DE5FF", "#F7A8D8"
+            scene_visual["recipe"] = build_scene_recipe(
+                rarity=(card.rarity_class or "C"),
+                creator_name=creator_name,
+                creator_type=creator_type,
+                subject_name=gallery_name,
+                period_label=scene_period,
+                card_id=f"SCN-{card.id:06d}",
+                minted_at=card.generated_at,
+                image_id=card.source_image_id,
+                source_width=src_img.width,
+                source_height=src_img.height,
+                focal_x=focal_x,
+                focal_y=focal_y,
+                outline_primary=outline_primary,
+                outline_secondary=outline_secondary,
+                mask_metrics={
+                    "accepted": mask_visual_mode == "layered",
+                    "quality": mask_quality,
+                    "reasons": ([mask_failure_reason] if mask_failure_reason else []),
+                },
+                mask_pipeline_version=mask_pipeline_version,
+            )
+
+    # Character recipes are frozen during mint preparation. Serialization only
+    # exposes that immutable contract; it never reruns source selection or a
+    # masking model while somebody is browsing the collection.
+    character_visual = None
+    cosplay_visual = None
+    collab_visual = None
+    creator_visual = None
+    gallery_visual = None
+    bond_visual = None
+    hof_visual = None
+    if card.visual_recipe:
+        try:
+            frozen_visual = json.loads(card.visual_recipe)
+        except (TypeError, ValueError):
+            frozen_visual = None
+        if frozen_visual and frozen_visual.get("schema") == "vault.character-card-recipe":
+            frozen_source = frozen_visual.get("source") or {}
+            frozen_mode = frozen_visual.get("visualMode") or "full-bleed"
+            frozen_art_url = image_url
+            if frozen_source.get("kind") == "avatar":
+                frozen_character_id = frozen_source.get("characterId")
+                frozen_art_url = (
+                    f"/api/creators/{frozen_character_id}/avatar"
+                    if frozen_character_id else None
+                )
+            character_visual = {
+                "card_type": "character",
+                "template_id": frozen_visual.get("templateId"),
+                "visual_mode": frozen_mode,
+                "readiness": "ready" if frozen_art_url else "source_missing",
+                "art_url": frozen_art_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.cosplay-card-recipe":
+            cosplay_visual = {
+                "card_type": "cosplay",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if image_url else "source_missing",
+                "art_url": image_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.collab-card-recipe":
+            collab_visual = {
+                "card_type": "collab",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if image_url else "source_missing",
+                "art_url": image_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.creator-card-recipe":
+            frozen_source = frozen_visual.get("source") or {}
+            frozen_art_url = image_url
+            if frozen_source.get("kind") == "avatar":
+                frozen_creator_id = frozen_source.get("creatorId")
+                frozen_art_url = (
+                    f"/api/creators/{frozen_creator_id}/avatar"
+                    if frozen_creator_id else None
+                )
+            creator_visual = {
+                "card_type": "creator",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if frozen_art_url else "source_missing",
+                "art_url": frozen_art_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.gallery-card-recipe":
+            stack_art_urls = [
+                f"/api/images/{int(source['imageId'])}/file"
+                for source in (frozen_visual.get("stackSources") or [])
+                if source.get("imageId")
+            ]
+            gallery_visual = {
+                "card_type": "gallery",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if image_url else "source_missing",
+                "art_url": image_url,
+                "stack_art_urls": stack_art_urls,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.bond-card-recipe":
+            bond_visual = {
+                "card_type": "bond",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if image_url else "source_missing",
+                "art_url": image_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+        elif frozen_visual and frozen_visual.get("schema") == "vault.hall-of-fame-card-recipe":
+            hof_visual = {
+                "card_type": "hall-of-fame",
+                "template_id": frozen_visual.get("templateId"),
+                "readiness": "ready" if image_url else "source_missing",
+                "art_url": image_url,
+                "mask_url": mask_url,
+                "recipe": frozen_visual,
+            }
+
     return {
         "id": card.id,
+        "is_legacy": bool(card.is_legacy),
+        "catalog_code": card.catalog_code,
+        "collector_number": card.collector_number,
+        "print_rarity": card.print_rarity,
+        "parallel_of_id": card.parallel_of_id,
         "card_type": ct,
+        "acquisition_policy": {
+            "is_earned_event": earned_event,
+            "tradeable": not earned_event,
+            "dismantleable": not earned_event,
+            "reason": "Personally earned event card" if earned_event else None,
+        },
         "rarity": rarity,
         "foil": bool(card.foil),
         "prestige": bool(card.foil),            # public name for the holo treatment
@@ -1779,11 +2395,30 @@ def _card_to_dict(db: Session, card: Card) -> dict:
                          else LEVEL_CXP_STEP.get(rarity, 100) * card_level(card)),
         "rarity_score": rarity_score(card),
         "crs": round(card.crs or 0, 2),
-        "rarity_class": card.rarity_class or "R",
+        "rarity_class": card.rarity_class or "C",
         "generated_at": card.generated_at.isoformat() if card.generated_at else None,
         # Art
         "image_url": image_url,
         "thumb_url": thumb_url,
+        # Foil mask (R=subject, G=edge band, B=distance field). None => this card
+        # gets the whole-card holo instead of a subject/background split.
+        "mask_url": mask_url,
+        "mask_quality": mask_quality,
+        "mask_status": mask_status,
+        "mask_failure_reason": mask_failure_reason,
+        "mask_pipeline_version": mask_pipeline_version,
+        "mask_visual_mode": mask_visual_mode,
+        "foil_map_url": foil_map_url,
+        # V2 Scene rendering contract. The existing collection UI can ignore
+        # this until the complete family of card-type templates is activated.
+        "scene_visual": scene_visual,
+        "character_visual": character_visual,
+        "cosplay_visual": cosplay_visual,
+        "collab_visual": collab_visual,
+        "creator_visual": creator_visual,
+        "gallery_visual": gallery_visual,
+        "bond_visual": bond_visual,
+        "hof_visual": hof_visual,
         # Creator
         "creator_name": creator_name,
         "creator_avatar": creator_avatar,
@@ -1799,6 +2434,19 @@ def _card_to_dict(db: Session, card: Card) -> dict:
         "character_name": character_name,
         # Collab
         "collab_data": collab_info,
+        # Composed strings — the single source of truth for what a card is
+        # CALLED. Any client (web, Unreal) prints these rather than re-deriving
+        # them from the components above.
+        "display_name": _display_name,
+        "display_period": _display_period,
+        "display_title": (f"{_display_name}  ·  {_display_period}"
+                          if _display_period and card_type_wants_period else _display_name),
+        # Hall of Fame board — which of the four this card was won on, and when.
+        # `hof_board` is the sub-line the card frame prints under HALL OF FAME.
+        "hof_board": hof_board,
+        "hof_period_type": hof_period_type,
+        "hof_period_key": hof_period_key,
+        "hof_won_at": hof_won_at,
         # Focal point
         "image_focal_x": focal_x,
         "image_focal_y": focal_y,

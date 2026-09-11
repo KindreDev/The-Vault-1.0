@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime, Text,
-    ForeignKey, Table, Enum, UniqueConstraint
+    ForeignKey, Table, Enum, UniqueConstraint, CheckConstraint, Index, text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -179,6 +179,28 @@ class IntakeRoot(Base):
     last_scan  = Column(DateTime, nullable=True)
 
 
+class IntakeFolder(Base):
+    """A top-level directory discovered inside an intake root.
+
+    It moves as one filesystem unit so the normal scanner preserves the
+    folder=gallery contract, including nested galleries and sidecars.
+    """
+    __tablename__ = "intake_folders"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    root_id       = Column(Integer, ForeignKey("intake_roots.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_path   = Column(String, nullable=False, unique=True)
+    name          = Column(String, nullable=False)
+    file_count    = Column(Integer, default=0)
+    video_count   = Column(Integer, default=0)
+    total_size    = Column(Integer, default=0)
+    source_mtime  = Column(Float, nullable=True)
+    thumb_path    = Column(String, nullable=True)
+    status        = Column(String, default="pending", index=True)
+    error         = Column(Text, nullable=True)
+    discovered_at = Column(DateTime, default=func.now())
+
+
 class IntakeItem(Base):
     """A single candidate file discovered in an intake root. DB-only until
     committed — no Gallery/Image rows exist for it yet. Committing physically
@@ -187,16 +209,24 @@ class IntakeItem(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     root_id       = Column(Integer, ForeignKey("intake_roots.id", ondelete="SET NULL"), nullable=True, index=True)
+    folder_id     = Column(Integer, ForeignKey("intake_folders.id", ondelete="SET NULL"), nullable=True, index=True)
     source_path   = Column(String, nullable=False, unique=True)   # where the file lives right now
     filename      = Column(String, nullable=False)
     file_size     = Column(Integer, nullable=True)                 # bytes
+    source_mtime  = Column(Float, nullable=True)
+    width         = Column(Integer, nullable=True)
+    height        = Column(Integer, nullable=True)
+    duration      = Column(Float, nullable=True)
     is_video      = Column(Boolean, default=False)
     is_archive    = Column(Boolean, default=False)                 # .zip/.rar/.7z — extracted into destination on commit
     has_funscript = Column(Boolean, default=False)                 # sidecar detected alongside
     thumb_path    = Column(String, nullable=True)                  # triage-grid preview
     phash         = Column(String, nullable=True)                  # pHash hex ("" = hash failed, don't retry)
+    content_hash  = Column(String, nullable=True)
     duplicate_of  = Column(Integer, nullable=True)                 # images.id of a likely vault duplicate
-    status        = Column(String, default="pending", index=True)  # pending | committed | error
+    duplicate_kind = Column(String, nullable=True)
+    duplicate_distance = Column(Integer, nullable=True)
+    status        = Column(String, default="pending", index=True)  # pending | hidden | ignored | committed | error
     error         = Column(Text, nullable=True)                    # last commit error message
     discovered_at = Column(DateTime, default=func.now())
 
@@ -233,6 +263,8 @@ class Gallery(Base):
 
     is_favorite   = Column(Boolean, default=False)
     is_tagged     = Column(Boolean, default=False)
+    is_missing    = Column(Boolean, default=False, index=True)
+    missing_since = Column(DateTime, nullable=True)
     linked_character_id = Column(Integer, ForeignKey("creators.id"), nullable=True)
 
     # Subscription period this gallery belongs to (month/year only)
@@ -306,6 +338,18 @@ class Image(Base):
 
     # Perceptual hash for deduplication (pHash hex string, 64-bit)
     perceptual_hash  = Column(String, nullable=True, index=True)
+    content_hash     = Column(String, nullable=True, index=True)
+
+    # Subject/background mask, for the card foil effects. Packed RGBA PNG:
+    # R = subject alpha, G = edge band, B = reserved. `mask_quality` is
+    # the pipeline's own confidence — below the bar the card falls back to a
+    # whole-card holo rather than showing a bad cutout.
+    mask_path        = Column(String, nullable=True)
+    mask_quality     = Column(Float, nullable=True)
+    mask_status      = Column(String, nullable=True)  # usable | fallback | pending_retry
+    mask_failure_reason = Column(String, nullable=True)
+    mask_pipeline_version = Column(String, nullable=True)
+    mask_visual_mode = Column(String, nullable=True)  # layered | flat
 
     last_viewed_at   = Column(DateTime, nullable=True)
     # Two different real-world dates, and the distinction matters for the almanac:
@@ -331,6 +375,7 @@ class Tag(Base):
     color      = Column(String, nullable=True)
     source     = Column(Enum(TagSource), default=TagSource.manual)
     use_count  = Column(Integer, default=0)
+    is_favorite = Column(Boolean, default=False, nullable=False)
 
     images     = relationship("Image",   secondary=image_tags,   back_populates="tags")
     galleries  = relationship("Gallery", secondary=gallery_tags, back_populates="tags")
@@ -537,7 +582,7 @@ class CardType(str, enum.Enum):
     image   = "image"
     gallery = "gallery"
     creator = "creator"
-    goon    = "goon"      # image with cum_count >= threshold
+    bond    = "bond"      # image with authenticated 5/15/25 engagement milestones
     variant = "variant"   # creator × character intersection
     collab  = "collab"    # 2+ cosplayers in same gallery (image, gallery, or variant sub-type)
     hof     = "hof"       # minted Hall of Fame memento — permanent, even if she drops out
@@ -584,6 +629,24 @@ class Card(Base):
     # Collab metadata (JSON for multi-creator/character collabs)
     collab_data       = Column(Text, nullable=True)
 
+    # Immutable TCG V2 render contract. The source choice, text snapshot,
+    # palette and extraction decision are frozen when a card is prepared so a
+    # later metadata edit or masking-model update cannot silently reprint it.
+    visual_recipe     = Column(Text, nullable=True)
+    mint_audit_json   = Column(Text, nullable=True)
+
+    # Published TCG V2 printing identity.  Legacy cards leave these null.  A
+    # catalogue card is created once, can be pulled more than once, and keeps
+    # the same frozen rarity and collector number forever.
+    catalog_code       = Column(String, nullable=True, index=True)
+    collector_number   = Column(Integer, nullable=True)
+    print_rarity       = Column(String, nullable=True, index=True)  # C/R/SR/UR/SPR
+    parallel_of_id     = Column(Integer, ForeignKey("cards.id"), nullable=True)
+
+    # Cards already owned when TCG V2 is enabled are preserved as Legacy.
+    # New mints default to False and therefore enter the current collection.
+    is_legacy         = Column(Boolean, default=False, nullable=False, index=True)
+
     # Tracking
     generated_at      = Column(DateTime, default=func.now())
     last_viewed_at    = Column(DateTime, nullable=True)
@@ -606,6 +669,388 @@ class CardInventory(Base):
     card     = relationship("Card")
 
 
+PHYSICAL_CARD_LOCATIONS = (
+    "unorganized_pile", "carried", "binder_slot", "cabinet_slot", "display_stand",
+    "acrylic_case", "toploader", "set_box", "trader_reserved", "traded_away",
+)
+
+
+class TCGPhysicalCardCopy(Base):
+    """One durable identity for each owned physical copy of a printing."""
+    __tablename__ = "tcg_physical_card_copies"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    card_id        = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    copy_ordinal   = Column(Integer, nullable=False)
+    acquisition_id = Column(Integer, ForeignKey("card_acquisitions.id"), nullable=True, index=True)
+    acquired_at    = Column(DateTime, nullable=True, index=True)
+    location_kind  = Column(String, default="unorganized_pile", nullable=False, index=True)
+    location_ref   = Column(String, nullable=True, index=True)
+    location_slot  = Column(Integer, nullable=True)
+    trade_locked   = Column(Boolean, default=False, nullable=False, index=True)
+    created_at     = Column(DateTime, default=func.now(), nullable=False)
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    card = relationship("Card")
+
+    __table_args__ = (
+        UniqueConstraint("card_id", "copy_ordinal", name="uq_tcg_physical_card_copy_ordinal"),
+        CheckConstraint(
+            "location_kind IN ('unorganized_pile','carried','binder_slot','cabinet_slot',"
+            "'display_stand','acrylic_case','toploader','set_box','trader_reserved','traded_away')",
+            name="ck_tcg_physical_card_location",
+        ),
+        CheckConstraint(
+            "(location_kind IN ('unorganized_pile','carried','traded_away') AND location_ref IS NULL) OR "
+            "(location_kind IN ('binder_slot','cabinet_slot','display_stand','acrylic_case','toploader',"
+            "'set_box','trader_reserved') AND location_ref IS NOT NULL)",
+            name="ck_tcg_physical_card_location_ref",
+        ),
+        Index("ix_tcg_physical_card_location", "location_kind", "location_ref"),
+    )
+
+
+class TCGPhysicalCopyMigration(Base):
+    __tablename__ = "tcg_physical_copy_migrations"
+
+    id           = Column(Integer, primary_key=True, default=1)
+    version      = Column(Integer, default=1, nullable=False)
+    completed_at = Column(DateTime, default=func.now(), nullable=False)
+    report_json  = Column(Text, default="{}", nullable=False)
+
+
+class TCGRoomLayout(Base):
+    __tablename__ = "tcg_room_layouts"
+
+    id               = Column(Integer, primary_key=True, default=1)
+    environment_key  = Column(String, default="starter_room", nullable=False)
+    lighting_json    = Column(Text, default="{}", nullable=False)
+    revision         = Column(Integer, default=0, nullable=False)
+    undo_json        = Column(Text, default="[]", nullable=False)
+    redo_json        = Column(Text, default="[]", nullable=False)
+    created_at       = Column(DateTime, default=func.now(), nullable=False)
+    updated_at       = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class TCGDisplayItemDefinition(Base):
+    __tablename__ = "tcg_display_item_definitions"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    code              = Column(String, nullable=False, unique=True, index=True)
+    name              = Column(String, nullable=False)
+    item_type         = Column(String, nullable=False, index=True)
+    asset_id          = Column(String, nullable=True)
+    currency          = Column(String, default="shards", nullable=False)
+    unit_cost         = Column(Integer, default=0, nullable=False)
+    variants_json     = Column(Text, default="[]", nullable=False)
+    active            = Column(Boolean, default=True, nullable=False, index=True)
+    placeable         = Column(Boolean, default=True, nullable=False)
+    placement_kind    = Column(String, default="floor", nullable=False)
+    footprint_json    = Column(Text, default="{}", nullable=False)
+    permanent_fixture = Column(Boolean, default=False, nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint("currency IN ('credits','shards','earned')", name="ck_tcg_display_item_currency"),
+        CheckConstraint("unit_cost >= 0", name="ck_tcg_display_item_cost"),
+        CheckConstraint("placement_kind IN ('floor','wall')", name="ck_tcg_display_item_placement_kind"),
+    )
+
+
+class TCGOwnedDisplayItem(Base):
+    __tablename__ = "tcg_owned_display_items"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    definition_id  = Column(Integer, ForeignKey("tcg_display_item_definitions.id"), nullable=False, index=True)
+    variant_key    = Column(String, default="default", nullable=False)
+    quantity       = Column(Integer, default=0, nullable=False)
+    acquired_at    = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("definition_id", "variant_key", name="uq_tcg_owned_display_item_variant"),
+        CheckConstraint("quantity >= 0", name="ck_tcg_owned_display_item_quantity"),
+    )
+
+
+class TCGDisplayItemInstance(Base):
+    __tablename__ = "tcg_display_item_instances"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    definition_id  = Column(Integer, ForeignKey("tcg_display_item_definitions.id"), nullable=False, index=True)
+    variant_key    = Column(String, default="default", nullable=False)
+    source_type    = Column(String, nullable=False, index=True)
+    source_id      = Column(String, nullable=True)
+    acquired_at    = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("uq_tcg_furniture_purchase_request", "source_id", unique=True,
+              sqlite_where=text("source_type = 'furniture_purchase'")),
+    )
+
+
+class TCGRoomFurnitureMigration(Base):
+    __tablename__ = "tcg_room_furniture_migrations"
+
+    id           = Column(Integer, primary_key=True, default=1)
+    version      = Column(Integer, default=1, nullable=False)
+    completed_at = Column(DateTime, default=func.now(), nullable=False)
+    report_json  = Column(Text, default="{}", nullable=False)
+
+
+class TCGRoomPlacement(Base):
+    __tablename__ = "tcg_room_placements"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    layout_id        = Column(Integer, ForeignKey("tcg_room_layouts.id"), nullable=False, index=True)
+    instance_id      = Column(Integer, ForeignKey("tcg_display_item_instances.id"), nullable=False, unique=True, index=True)
+    transform_json   = Column(Text, default="{}", nullable=False)
+    snap_anchor      = Column(String, nullable=True)
+    placement_state  = Column(String, default="placed", nullable=False)
+
+
+class TCGDisplayAssignment(Base):
+    __tablename__ = "tcg_display_assignments"
+
+    id                   = Column(Integer, primary_key=True, index=True)
+    display_instance_id  = Column(Integer, ForeignKey("tcg_display_item_instances.id"), nullable=False, index=True)
+    physical_copy_id     = Column(Integer, ForeignKey("tcg_physical_card_copies.id"), nullable=False, unique=True, index=True)
+    slot_key             = Column(String, default="primary", nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("display_instance_id", "slot_key", name="uq_tcg_display_assignment_slot"),
+    )
+
+
+class TCGOnlineOrder(Base):
+    __tablename__ = "tcg_online_orders"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    status             = Column(String, default="mailed", nullable=False, index=True)
+    total_price        = Column(Integer, nullable=False)
+    contents_json      = Column(Text, default="[]", nullable=False)
+    order_seed         = Column(String, nullable=False, unique=True, index=True)
+    ordered_at         = Column(DateTime, default=func.now(), nullable=False)
+    ready_at           = Column(DateTime, nullable=False, index=True)
+    delivery_delay_seconds = Column(Integer, nullable=False)
+    collected_at       = Column(DateTime, nullable=True)
+    opened_at          = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("total_price >= 0", name="ck_tcg_online_order_price"),
+        CheckConstraint("status IN ('mailed','ready','collected','placed','opened')", name="ck_tcg_online_order_status"),
+        CheckConstraint("delivery_delay_seconds BETWEEN 3 AND 8", name="ck_tcg_online_order_delay"),
+    )
+
+
+class TCGOnlineOrderLine(Base):
+    __tablename__ = "tcg_online_order_lines"
+
+    id                   = Column(Integer, primary_key=True, index=True)
+    order_id             = Column(Integer, ForeignKey("tcg_online_orders.id"), nullable=False, index=True)
+    product_id           = Column(Integer, ForeignKey("tcg_pack_products.id"), nullable=False, index=True)
+    selected_release_id  = Column(Integer, ForeignKey("tcg_releases.id"), nullable=True)
+    quantity             = Column(Integer, nullable=False)
+    unit_price           = Column(Integer, nullable=False)
+    product_snapshot_json = Column(Text, default="{}", nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_tcg_online_order_line_quantity"),
+        CheckConstraint("unit_price >= 0", name="ck_tcg_online_order_line_price"),
+    )
+
+
+class TCGParcel(Base):
+    __tablename__ = "tcg_parcels"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    order_id      = Column(Integer, ForeignKey("tcg_online_orders.id"), nullable=False, unique=True, index=True)
+    status        = Column(String, default="mailed", nullable=False, index=True)
+    ready_at      = Column(DateTime, nullable=False, index=True)
+    collected_at  = Column(DateTime, nullable=True)
+    opened_at     = Column(DateTime, nullable=True)
+    result_json   = Column(Text, default="[]", nullable=False)
+    placement_json = Column(Text, default="{}", nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('mailed','ready','collected','placed','opened')", name="ck_tcg_parcel_status"),
+    )
+
+
+class TCGParcelPack(Base):
+    __tablename__ = "tcg_parcel_packs"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    parcel_id      = Column(Integer, ForeignKey("tcg_parcels.id"), nullable=False, index=True)
+    line_id        = Column(Integer, ForeignKey("tcg_online_order_lines.id"), nullable=False, index=True)
+    pack_index     = Column(Integer, nullable=False)
+    contents_seed  = Column(String, nullable=False, unique=True, index=True)
+    opening_id     = Column(Integer, ForeignKey("tcg_pack_openings.id"), nullable=True, unique=True)
+
+    __table_args__ = (
+        UniqueConstraint("parcel_id", "line_id", "pack_index", name="uq_tcg_parcel_pack_index"),
+    )
+
+
+class TCGTraderDefinition(Base):
+    __tablename__ = "tcg_trader_definitions"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False)
+    age = Column(Integer, nullable=False)
+    biography = Column(Text, nullable=False)
+    body_style_json = Column(Text, default="{}", nullable=False)
+    personality = Column(Text, nullable=False)
+    preferences_json = Column(Text, default="[]", nullable=False)
+    dislikes_json = Column(Text, default="[]", nullable=False)
+    quirks_json = Column(Text, default="[]", nullable=False)
+    visual_manifest_json = Column(Text, default="{}", nullable=False)
+    dialogue_manifest_json = Column(Text, default="{}", nullable=False)
+    greed = Column(Float, nullable=False)
+    competence = Column(Float, nullable=False)
+    risk_tolerance = Column(Float, nullable=False)
+    request_limit = Column(Integer, nullable=False)
+    schedule_weight = Column(Float, default=1.0, nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False, index=True)
+    __table_args__ = (
+        CheckConstraint("age >= 21", name="ck_tcg_trader_adult"),
+        CheckConstraint("greed BETWEEN 0 AND 1 AND competence BETWEEN 0 AND 1 AND risk_tolerance BETWEEN 0 AND 1", name="ck_tcg_trader_traits"),
+        CheckConstraint("request_limit BETWEEN 1 AND 4", name="ck_tcg_trader_request_limit"),
+    )
+
+
+class TCGTraderVisit(Base):
+    __tablename__ = "tcg_trader_visits"
+    id = Column(Integer, primary_key=True, index=True)
+    week_key = Column(String, nullable=False, unique=True, index=True)
+    trader_id = Column(Integer, ForeignKey("tcg_trader_definitions.id"), nullable=False, index=True)
+    visit_seed = Column(String, nullable=False, unique=True)
+    arrives_at = Column(DateTime, nullable=False)
+    departs_at = Column(DateTime, nullable=False)
+    inventory_frozen_json = Column(Text, default="[]", nullable=False)
+    request_allowance = Column(Integer, nullable=False)
+    requests_used = Column(Integer, default=0, nullable=False)
+    conversation_json = Column(Text, default="[]", nullable=False)
+    offer_state_json = Column(Text, default="{}", nullable=False)
+    status = Column(String, default="active", nullable=False)
+
+
+class TCGTraderInventory(Base):
+    __tablename__ = "tcg_trader_inventory"
+    id = Column(Integer, primary_key=True, index=True)
+    visit_id = Column(Integer, ForeignKey("tcg_trader_visits.id"), nullable=False, index=True)
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    quantity = Column(Integer, default=1, nullable=False)
+    reserved_quantity = Column(Integer, default=0, nullable=False)
+    valuation_json = Column(Text, nullable=False)
+    unit_credits = Column(Integer, nullable=False)
+    unit_shards = Column(Integer, nullable=False)
+    __table_args__ = (UniqueConstraint("visit_id", "card_id", name="uq_tcg_trader_visit_card"),)
+
+
+class TCGTraderRequest(Base):
+    __tablename__ = "tcg_trader_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    visit_id = Column(Integer, ForeignKey("tcg_trader_visits.id"), nullable=False, index=True)
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    request_index = Column(Integer, nullable=False)
+    seed = Column(String, nullable=False, unique=True)
+    status = Column(String, nullable=False)
+    result_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("visit_id", "request_index", name="uq_tcg_trader_request_index"),
+        UniqueConstraint("visit_id", "card_id", name="uq_tcg_trader_request_card"),
+    )
+
+
+class TCGTraderOffer(Base):
+    __tablename__ = "tcg_trader_offers"
+    id = Column(Integer, primary_key=True, index=True)
+    visit_id = Column(Integer, ForeignKey("tcg_trader_visits.id"), nullable=False, index=True)
+    request_id = Column(Integer, ForeignKey("tcg_trader_requests.id"), nullable=True, unique=True)
+    offer_seed = Column(String, nullable=False, unique=True)
+    offer_kind = Column(String, nullable=False, index=True)
+    status = Column(String, default="open", nullable=False, index=True)
+    user_copy_ids_json = Column(Text, default="[]", nullable=False)
+    trader_inventory_id = Column(Integer, ForeignKey("tcg_trader_inventory.id"), nullable=True)
+    target_card_id = Column(Integer, ForeignKey("cards.id"), nullable=True)
+    credits_delta = Column(Integer, default=0, nullable=False)
+    shards_delta = Column(Integer, default=0, nullable=False)
+    valuation_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+
+class TCGTraderReservation(Base):
+    __tablename__ = "tcg_trader_reservations"
+    id = Column(Integer, primary_key=True, index=True)
+    offer_id = Column(Integer, ForeignKey("tcg_trader_offers.id"), nullable=False, index=True)
+    # Historical reservations retain the consumed copy id after the copy leaves
+    # ownership, so this ledger pointer intentionally is not a live foreign key.
+    physical_copy_id = Column(Integer, nullable=True, index=True)
+    inventory_id = Column(Integer, ForeignKey("tcg_trader_inventory.id"), nullable=True, index=True)
+    status = Column(String, default="active", nullable=False, index=True)
+    previous_location_json = Column(Text, default="{}", nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    __table_args__ = (CheckConstraint("(physical_copy_id IS NULL) != (inventory_id IS NULL)", name="ck_tcg_trader_reservation_side"),)
+
+
+class TCGTraderTransaction(Base):
+    __tablename__ = "tcg_trader_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    visit_id = Column(Integer, ForeignKey("tcg_trader_visits.id"), nullable=False, index=True)
+    offer_id = Column(Integer, ForeignKey("tcg_trader_offers.id"), nullable=False, unique=True)
+    transaction_kind = Column(String, nullable=False, index=True)
+    credits_delta = Column(Integer, default=0, nullable=False)
+    shards_delta = Column(Integer, default=0, nullable=False)
+    valuation_json = Column(Text, nullable=False)
+    completed_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class TCGTraderTransactionLine(Base):
+    __tablename__ = "tcg_trader_transaction_lines"
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("tcg_trader_transactions.id"), nullable=False, index=True)
+    direction = Column(String, nullable=False)
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    physical_copy_id = Column(Integer, nullable=True)
+    quantity = Column(Integer, default=1, nullable=False)
+    snapshot_json = Column(Text, nullable=False)
+
+
+class TCGTraderSimulationReport(Base):
+    __tablename__ = "tcg_trader_simulation_reports"
+    id = Column(Integer, primary_key=True, index=True)
+    version = Column(String, nullable=False, unique=True)
+    weeks_simulated = Column(Integer, nullable=False)
+    seed = Column(String, nullable=False)
+    report_json = Column(Text, nullable=False)
+    approved = Column(Boolean, default=False, nullable=False, index=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class BondMilestone(Base):
+    """Authenticated progression for one earned Bond card.
+
+    Crossing dates remain nullable because lifetime counters imported before
+    event tracking cannot truthfully tell us when an older threshold happened.
+    """
+    __tablename__ = "bond_milestones"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    card_id        = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    image_id       = Column(Integer, ForeignKey("images.id"), nullable=False, index=True)
+    threshold      = Column(Integer, nullable=False)
+    recorded_count = Column(Integer, nullable=False)
+    crossed_at     = Column(DateTime, nullable=True)
+
+    card = relationship("Card")
+
+    __table_args__ = (
+        UniqueConstraint("card_id", "threshold", name="uq_bond_card_milestone"),
+    )
+
+
 # ── TCG: Pack opening log ─────────────────────────────────────────────────────
 class CardPack(Base):
     __tablename__ = "card_packs"
@@ -616,6 +1061,19 @@ class CardPack(Base):
     cards_awarded = Column(Text, default="[]")  # JSON list of card IDs
 
 
+class TCGSetupState(Base):
+    """Single-row state for the opt-in TCG V2 transition."""
+    __tablename__ = "tcg_setup_state"
+
+    id                = Column(Integer, primary_key=True, default=1)
+    v2_enabled        = Column(Boolean, default=False, nullable=False)
+    enabled_at        = Column(DateTime, nullable=True)
+    legacy_card_count = Column(Integer, default=0, nullable=False)
+    foundation_status = Column(String, default="pending", nullable=False)
+    foundation_total  = Column(Integer, default=0, nullable=False)
+    foundation_target = Column(Integer, default=0, nullable=False)
+
+
 # ── TCG: Crafting materials (shards & catalyst tokens) ────────────────────────
 class CraftingMaterials(Base):
     __tablename__ = "crafting_materials"
@@ -623,6 +1081,277 @@ class CraftingMaterials(Base):
     id            = Column(Integer, primary_key=True, default=1)
     shards        = Column(Integer, default=0)
     catalyst_tokens = Column(Integer, default=0)
+
+
+# -- TCG V2 collection domain -------------------------------------------------
+# These records are additive so an existing Vault can migrate without losing
+# the retired progression data stored on legacy cards.
+class TCGSettings(Base):
+    __tablename__ = "tcg_v2_settings"
+
+    id                        = Column(Integer, primary_key=True, default=1)
+    advanced_mode             = Column(Boolean, default=False, nullable=False)
+    release_generation_mode   = Column(String, default="automatic", nullable=False)
+    ai_confidence_threshold   = Column(Float, default=0.72, nullable=False)
+    enabled_theme_sources     = Column(Text, default="[]", nullable=False)
+    policy_version            = Column(String, default="classification-v1", nullable=False)
+    updated_at                = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CardContentClassification(Base):
+    __tablename__ = "card_content_classifications"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    card_id               = Column(Integer, ForeignKey("cards.id"), nullable=False, unique=True, index=True)
+    exposure_manual       = Column(String, nullable=True)
+    intensity_manual      = Column(String, nullable=True)
+    exposure_ai           = Column(String, nullable=True)
+    intensity_ai          = Column(String, nullable=True)
+    exposure_confidence   = Column(Float, nullable=True)
+    intensity_confidence  = Column(Float, nullable=True)
+    exposure_resolved     = Column(String, default="Unknown", nullable=False, index=True)
+    intensity_resolved    = Column(String, default="Unknown", nullable=False, index=True)
+    metadata_source       = Column(String, default="unknown", nullable=False)
+    ai_model              = Column(String, nullable=True)
+    policy_version        = Column(String, default="classification-v1", nullable=False)
+    evidence_json         = Column(Text, default="{}", nullable=False)
+    gallery_distribution  = Column(Text, default="{}", nullable=False)
+    updated_at            = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    card = relationship("Card")
+
+
+class TCGRelease(Base):
+    __tablename__ = "tcg_releases"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    code                  = Column(String, nullable=False, unique=True, index=True)
+    name                  = Column(String, nullable=False)
+    description           = Column(Text, default="")
+    status                = Column(String, default="draft", nullable=False, index=True)
+    release_kind          = Column(String, default="monthly", nullable=False)
+    generation_mode       = Column(String, default="automatic", nullable=False)
+    generation_seed       = Column(String, nullable=False)
+    algorithm_version     = Column(String, default="release-v1", nullable=False)
+    drafted_at            = Column(DateTime, default=func.now())
+    published_at          = Column(DateTime, nullable=True, index=True)
+    available_from        = Column(DateTime, nullable=True)
+    frozen_at             = Column(DateTime, nullable=True)
+    cover_path            = Column(String, nullable=True)
+    manifest_json         = Column(Text, default="{}", nullable=False)
+    rarity_distribution   = Column(Text, default="{}", nullable=False)
+    validation_report     = Column(Text, default="{}", nullable=False)
+    generation_report     = Column(Text, default="{}", nullable=False)
+
+
+class TCGSet(Base):
+    __tablename__ = "tcg_sets"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    release_id            = Column(Integer, ForeignKey("tcg_releases.id"), nullable=False, index=True)
+    code                  = Column(String, nullable=False, unique=True, index=True)
+    name                  = Column(String, nullable=False)
+    description           = Column(Text, default="")
+    theme_key             = Column(String, nullable=True, index=True)
+    theme_source          = Column(String, nullable=True)
+    cover_path            = Column(String, nullable=True)
+    position              = Column(Integer, default=0, nullable=False)
+    frozen_at             = Column(DateTime, nullable=True)
+    manifest_json         = Column(Text, default="{}", nullable=False)
+
+    release = relationship("TCGRelease")
+
+
+class TCGChecklistEntry(Base):
+    __tablename__ = "tcg_checklist_entries"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    release_id            = Column(Integer, ForeignKey("tcg_releases.id"), nullable=False, index=True)
+    set_id                = Column(Integer, ForeignKey("tcg_sets.id"), nullable=True, index=True)
+    card_id               = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    collector_position    = Column(Integer, nullable=False)
+    collector_suffix      = Column(String, default="", nullable=False)
+    lane                  = Column(String, nullable=True)
+    is_base_printing      = Column(Boolean, default=True, nullable=False)
+    required_for_complete = Column(Boolean, default=True, nullable=False)
+    published_rarity      = Column(String, nullable=False, index=True)
+    selection_reason      = Column(Text, default="")
+
+    card = relationship("Card")
+    release = relationship("TCGRelease")
+    set = relationship("TCGSet")
+
+    __table_args__ = (
+        UniqueConstraint("release_id", "collector_position", "collector_suffix", name="uq_tcg_release_number"),
+        UniqueConstraint("release_id", "card_id", name="uq_tcg_release_card"),
+    )
+
+
+class CardAcquisition(Base):
+    __tablename__ = "card_acquisitions"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    card_id       = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    quantity      = Column(Integer, default=1, nullable=False)
+    acquired_at   = Column(DateTime, nullable=True, index=True)
+    source_type   = Column(String, nullable=False, index=True)
+    source_id     = Column(String, nullable=True)
+    pack_opening_id = Column(Integer, ForeignKey("tcg_pack_openings.id"), nullable=True, index=True)
+    notes         = Column(Text, default="")
+
+    card = relationship("Card")
+
+
+class TCGPackProduct(Base):
+    __tablename__ = "tcg_pack_products"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    code                  = Column(String, nullable=False, unique=True, index=True)
+    name                  = Column(String, nullable=False)
+    product_kind          = Column(String, nullable=False, index=True)
+    release_id            = Column(Integer, ForeignKey("tcg_releases.id"), nullable=True, index=True)
+    card_count            = Column(Integer, nullable=False)
+    rarity_floor          = Column(String, nullable=True)
+    guaranteed_slots      = Column(Text, default="[]", nullable=False)
+    odds_json             = Column(Text, default="{}", nullable=False)
+    replacement_rules     = Column(Text, default="{}", nullable=False)
+    duplicate_protection  = Column(Text, default="{}", nullable=False)
+    eligible_pool_json    = Column(Text, default="{}", nullable=False)
+    regular_price         = Column(Integer, default=0, nullable=False)
+    launch_price          = Column(Integer, nullable=True)
+    launch_days           = Column(Integer, default=7, nullable=False)
+    available_from        = Column(DateTime, nullable=True)
+    available_until       = Column(DateTime, nullable=True)
+    purchase_limit        = Column(Integer, nullable=True)
+    purchasable           = Column(Boolean, default=True, nullable=False)
+    active                = Column(Boolean, default=False, nullable=False, index=True)
+    simulation_report     = Column(Text, default="{}", nullable=False)
+
+
+class TCGPackOpening(Base):
+    __tablename__ = "tcg_pack_openings"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    product_id     = Column(Integer, ForeignKey("tcg_pack_products.id"), nullable=False, index=True)
+    opened_at      = Column(DateTime, default=func.now(), nullable=False, index=True)
+    price_paid     = Column(Integer, default=0, nullable=False)
+    opening_seed   = Column(String, nullable=False)
+    selected_release_id = Column(Integer, ForeignKey("tcg_releases.id"), nullable=True)
+    integrity_json = Column(Text, default="{}", nullable=False)
+
+
+class TCGPackOpeningCard(Base):
+    __tablename__ = "tcg_pack_opening_cards"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    opening_id     = Column(Integer, ForeignKey("tcg_pack_openings.id"), nullable=False, index=True)
+    card_id        = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    slot_index     = Column(Integer, nullable=False)
+    slot_rule      = Column(String, nullable=True)
+    was_owned      = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("opening_id", "slot_index", name="uq_tcg_opening_slot"),
+    )
+
+
+class TCGPackToken(Base):
+    __tablename__ = "tcg_pack_tokens"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    product_id     = Column(Integer, ForeignKey("tcg_pack_products.id"), nullable=False, index=True)
+    quantity       = Column(Integer, default=1, nullable=False)
+    source_type    = Column(String, nullable=False, index=True)
+    source_id      = Column(String, nullable=True)
+    cycle_key      = Column(String, nullable=True, index=True)
+    earned_at      = Column(DateTime, default=func.now(), nullable=False)
+    consumed_at    = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("product_id", "source_type", "cycle_key", name="uq_tcg_pack_token_cycle"),
+    )
+
+
+class CardPresentationOverride(Base):
+    __tablename__ = "card_presentation_overrides"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    card_id             = Column(Integer, ForeignKey("cards.id"), nullable=False, unique=True, index=True)
+    signature_x         = Column(Float, nullable=True)
+    signature_y         = Column(Float, nullable=True)
+    signature_scale     = Column(Float, nullable=True)
+    signature_rotation  = Column(Float, nullable=True)
+    artwork_x           = Column(Float, nullable=True)
+    artwork_y           = Column(Float, nullable=True)
+    artwork_scale       = Column(Float, nullable=True)
+    mask_override_json  = Column(Text, default="{}", nullable=False)
+    revision            = Column(Integer, default=1, nullable=False)
+    updated_at          = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class TCGBinder(Base):
+    __tablename__ = "tcg_binders"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String, nullable=False)
+    description = Column(Text, default="")
+    cover_style = Column(String, default="obsidian")
+    spine_style = Column(String, default="standard")
+    page_style  = Column(String, default="nine-pocket")
+    cover_image_id = Column(Integer, ForeignKey("images.id"), nullable=True)
+    cover_x     = Column(Float, default=0.5, nullable=False)
+    cover_y     = Column(Float, default=0.5, nullable=False)
+    cover_scale = Column(Float, default=1.0, nullable=False)
+    purchase_price = Column(Integer, default=0, nullable=False)
+    position    = Column(Integer, default=0, nullable=False)
+    created_at  = Column(DateTime, default=func.now())
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class TCGBinderSection(Base):
+    __tablename__ = "tcg_binder_sections"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    binder_id  = Column(Integer, ForeignKey("tcg_binders.id"), nullable=False, index=True)
+    name       = Column(String, default="Main", nullable=False)
+    position   = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("binder_id", "name", name="uq_tcg_binder_section_name"),
+        UniqueConstraint("binder_id", "position", name="uq_tcg_binder_section_position"),
+    )
+
+
+class TCGBinderSlot(Base):
+    __tablename__ = "tcg_binder_slots"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    binder_id    = Column(Integer, ForeignKey("tcg_binders.id"), nullable=False, index=True)
+    section_id   = Column(Integer, ForeignKey("tcg_binder_sections.id"), nullable=True, index=True)
+    section_name = Column(String, default="Main", nullable=False)
+    page_number  = Column(Integer, nullable=False)
+    slot_number  = Column(Integer, nullable=False)
+    card_id      = Column(Integer, ForeignKey("cards.id"), nullable=True, index=True)
+    physical_copy_id = Column(Integer, ForeignKey("tcg_physical_card_copies.id"), nullable=True, unique=True, index=True)
+    sleeve_style = Column(String, nullable=True)
+    case_style   = Column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("binder_id", "section_name", "page_number", "slot_number", name="uq_tcg_binder_slot"),
+    )
+
+
+class TCGWorkshopUnlock(Base):
+    __tablename__ = "tcg_workshop_unlocks"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    item_code   = Column(String, nullable=False, unique=True, index=True)
+    item_type   = Column(String, nullable=False, index=True)
+    name        = Column(String, nullable=False)
+    shard_cost  = Column(Integer, nullable=False)
+    owned       = Column(Boolean, default=False, nullable=False)
+    unlocked_at = Column(DateTime, nullable=True)
 
 
 # ── Companion (Erika AI) ──────────────────────────────────────────────────────
@@ -890,7 +1619,7 @@ class HofRank(Base):
 
 
 class CreatorShowcase(Base):
-    """One row per filled slot. Slots: creator | gallery | goon | photo | wildcard.
+    """One row per filled slot. Slots: creator | gallery | bond | photo | wildcard.
     A card (inventory entry) can sit in only one showcase at a time. Filling all
     5 = Mastery (one-time bond reward; creators.showcase_mastery_at records it)."""
     __tablename__ = "creator_showcase"
@@ -935,3 +1664,32 @@ class GroupMessage(Base):
     author_name = Column(String, default="")       # denormalized for display
     content     = Column(Text, default="")
     created_at  = Column(DateTime, default=func.now())
+
+
+# ── Durable AI tagging jobs ───────────────────────────────────────────────────
+class AITagJob(Base):
+    """Persisted checkpoint for long-running AI tagging work.
+
+    The worker itself is deliberately not persisted.  A running job becomes
+    paused after an app restart and can be explicitly resumed from its last
+    committed image id.
+    """
+    __tablename__ = "ai_tag_jobs"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    status         = Column(String, default="queued", index=True)  # queued|running|paused|done|cancelled|failed
+    scope          = Column(String, default="library")
+    folder_path    = Column(String, nullable=True)
+    creator_id     = Column(Integer, nullable=True)
+    threshold      = Column(Float, default=0.35)
+    retag          = Column(Boolean, default=False)
+    model_override = Column(String, nullable=True)
+    total          = Column(Integer, default=0)
+    progress       = Column(Integer, default=0)
+    tagged         = Column(Integer, default=0)
+    skipped        = Column(Integer, default=0)
+    errors         = Column(Integer, default=0)
+    last_image_id  = Column(Integer, default=0)
+    message        = Column(String, default="Queued")
+    created_at     = Column(DateTime, default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())

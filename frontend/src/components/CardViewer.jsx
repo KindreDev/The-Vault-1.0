@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, RotateCcw, Crosshair, TrendingUp } from 'lucide-react'
 import VaultCard, { RARITY_CONFIG } from './VaultCard'
+import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
 import CardFeedPanel from './CardFeedPanel'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { cardsApi, imagesApi, economyApi } from '../lib/api'
@@ -401,7 +402,8 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             <div style={{
               ...(is3D ? { backfaceVisibility: 'hidden', transform: `translateZ(${DEPTH / 2}px)` } : {}),
             }}>
-              <VaultCard card={cardData} width={vaultW} forceEffects={true} disableTilt={true} fullRes={fullResReady} cursorTrack={true} />
+              <TCGV2CardFace card={cardData} width={vaultW} showEffects={true}
+                fallback={<VaultCard card={cardData} width={vaultW} forceEffects={true} disableTilt={true} fullRes={fullResReady} cursorTrack={true} />} />
             </div>
 
             {/* Back face */}
@@ -524,7 +526,8 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
               background: 'rgba(255,255,255,0.03)',
               border: '0.5px solid rgba(255,255,255,0.06)',
             }}>
-              <VaultCard card={f.card} width={54} forceEffects={false} hideLabel={true} />
+              <TCGV2CardFace card={f.card} width={54} showEffects={false}
+                fallback={<VaultCard card={f.card} width={54} forceEffects={false} hideLabel={true} />} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>
                   {f.quantity > 1 ? `×${f.quantity} ` : ''}{f.rarity}

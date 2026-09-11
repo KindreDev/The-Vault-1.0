@@ -1,0 +1,56 @@
+10:51:34 PM [vite] http proxy error: /api/tcg-room/copies/visible
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:34 PM [vite] http proxy error: /api/tcg-room/bootstrap
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:35 PM [vite] http proxy error: /api/tcg-room/copies/visible
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:35 PM [vite] http proxy error: /api/tcg-room/copies?location_kind=carried
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:35 PM [vite] http proxy error: /api/tcg-room/bootstrap
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:36 PM [vite] http proxy error: /api/tcg-room/copies?location_kind=carried
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:38 PM [vite] http proxy error: /api/tasks
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:38 PM [vite] http proxy error: /api/tcg-room/copies/visible
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:38 PM [vite] http proxy error: /api/tcg-room/bootstrap
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:39 PM [vite] http proxy error: /api/tasks
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:39 PM [vite] http proxy error: /api/tcg-room/copies/visible
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:39 PM [vite] http proxy error: /api/tcg-room/copies?location_kind=carried
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:39 PM [vite] http proxy error: /api/tcg-room/bootstrap
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)
+10:51:40 PM [vite] http proxy error: /api/tcg-room/copies?location_kind=carried
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1339:18)
+    at afterConnectMultiple (node:net:1942:7)

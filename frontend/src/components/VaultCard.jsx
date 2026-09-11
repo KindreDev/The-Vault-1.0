@@ -49,10 +49,10 @@ export const RARITY_CONFIG = {
   },
 }
 
-// ── SR / SSR class border ─────────────────────────────────────────────────────
-// SR & SSR wear a polished metallic border in their tier's colour (a brushed-metal
-// bevel); SSR additionally gets a subtle twinkling-stars overlay. UR & Prestige
-// are untouched.
+// ── SR / SPR class border ─────────────────────────────────────────────────────
+// SR & SPR wear a polished metallic border in their tier's colour (a brushed-metal
+// bevel); SPR additionally gets a subtle twinkling-stars overlay. UR & Prestige
+// are untouched. C is the new bottom band and wears nothing.
 const METAL_GRADIENT = {
   common:    'linear-gradient(135deg,#E8DEFF,var(--c-accent) 20%,#453f86 42%,#9a90ef 60%,#EDE6FF 80%,#6a62c4)',
   epic:      'linear-gradient(135deg,#FFDCA6,#ff8800 20%,#7a3200 42%,#ff9f42 60%,#FFE8C0 80%,#cf5a08)',
@@ -60,8 +60,8 @@ const METAL_GRADIENT = {
   celestial: 'linear-gradient(135deg,#FFFFFF,#cfd3f4 20%,#868ec0 42%,#e8ebff 60%,#FFFFFF 80%,#b8bee8)',
 }
 
-// ⭐ SSR twinkle intensity — change THIS ONE number to tune it (0 = off, 1 = full).
-const SSR_TWINKLE_OPACITY = 0.4
+// ⭐ SPR twinkle intensity — change THIS ONE number to tune it (0 = off, 1 = full).
+const SPR_TWINKLE_OPACITY = 0.4
 
 // ── Flame particle canvas (Legendary) ─────────────────────────────────────────
 function FlameCanvas({ width = 220, height = 320 }) {
@@ -233,10 +233,10 @@ function VaultCard({
   // Top class of a tier. UR cards wear the ex-foil webp textures; a UR that's
   // also Prestige gets the golden, denser flower field.
   const isUR = rarity_class === 'UR'
-  // SR/SSR wear the metallic tier border; SSR also gets the twinkle overlay.
+  // SR/SPR wear the metallic tier border; SPR also gets the twinkle overlay.
   const isSR    = rarity_class === 'SR'
-  const isSSR   = rarity_class === 'SSR'
-  const isMetal = isSR || isSSR
+  const isSPR   = rarity_class === 'SPR'
+  const isMetal = isSR || isSPR
   const cfg = RARITY_CONFIG[rarity] || RARITY_CONFIG.common
   const height = Math.round(width * 1.45)
   const cardRef = useRef(null)
@@ -367,7 +367,7 @@ function VaultCard({
        : 'Collab')
     : card_type === 'gallery' ? 'Gallery'
     : card_type === 'creator' ? (creator_type || 'Creator')
-    : card_type === 'goon' ? '★ Goon Card'
+    : card_type === 'bond' ? '♥ Bond Card'
     : card_type === 'variant' ? 'Variant'
     : card_type === 'hof' ? '🏆 Hall of Fame'
     : 'Photo'
@@ -582,7 +582,7 @@ function VaultCard({
                 {displayName}
               </div>
             ) : (
-              /* Image / Gallery / Goon: Creator → in → Gallery → Date */
+              /* Image / Gallery / Bond: Creator → in → Gallery → Date */
               <>
                 {creator_name && (
                   <div style={{
@@ -643,7 +643,7 @@ function VaultCard({
 
           {/* epic smoke removed — superseded by holofoil effect */}
 
-          {/* ── Rarity-class badge (R / SR / SSR / UR) ──────────────────────────── */}
+          {/* ── Rarity-class badge (C / R / SR / SPR / UR) ──────────────────────── */}
           {rarity_class && width > 120 && !hideLabel && (
             <span className={`rc-badge rc-${rarity} rc-${rarity_class}`}
                   style={{ fontSize: Math.min(15, Math.max(10, width * 0.05)),
@@ -693,8 +693,8 @@ function VaultCard({
             }}
           />
 
-          {/* ── SSR twinkling stars — subtle overlay over the art/frame ── */}
-          {isSSR && showEffects && inViewport && (
+          {/* ── SPR twinkling stars — subtle overlay over the art/frame ── */}
+          {isSPR && showEffects && inViewport && (
             <div style={{
               position: 'absolute', inset: 0, zIndex: 7, pointerEvents: 'none',
               borderRadius: 14,
@@ -702,7 +702,7 @@ function VaultCard({
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               mixBlendMode: 'screen',
-              opacity: SSR_TWINKLE_OPACITY,
+              opacity: SPR_TWINKLE_OPACITY,
             }} />
           )}
 

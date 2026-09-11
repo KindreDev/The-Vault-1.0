@@ -1,0 +1,67 @@
+@font-face {
+  font-family: 'Vault Gallery';
+  src: url('../../assets/tcg-v2/templates/scene/fonts/BarlowCondensed-SemiBold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+.gallery-card-v2 {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  max-width: 100%;
+  isolation: isolate;
+  filter: drop-shadow(0 16px 26px rgba(0, 0, 0, .48));
+  user-select: none;
+}
+
+.gallery-card-v2[role='button'] { cursor: pointer; }
+.gallery-card-v2__surface { display: block; width: 100%; height: 100%; overflow: visible; }
+.gallery-card-v2__angle-photo {
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+.gallery-card-v2__angle-photo--left { opacity: var(--tcg-gallery-left-opacity, 0); }
+.gallery-card-v2__angle-photo--right { opacity: var(--tcg-gallery-right-opacity, 0); }
+.gallery-card-v2__identity text { font-family: 'Vault Gallery', 'Arial Narrow', sans-serif; paint-order: stroke fill; }
+
+.gallery-card-v2__creator {
+  font-family: Georgia, 'Times New Roman', serif !important;
+  fill: #6A421B;
+  stroke: #FFF7D5;
+  stroke-width: 7px;
+  font-size: 67px;
+  font-weight: 700;
+  letter-spacing: .035em;
+}
+
+.gallery-card-v2__type {
+  font-family: Georgia, 'Times New Roman', serif !important;
+  fill: #3E352C;
+  stroke: #FFF9E7;
+  stroke-width: 5px;
+  font-size: 31px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.gallery-card-v2__name {
+  font-family: Georgia, 'Times New Roman', serif !important;
+  fill: #6A421B;
+  stroke: #FFF9E7;
+  stroke-width: 8px;
+  font-size: 67px;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+
+.gallery-card-v2__metadata {
+  fill: #3A4A50;
+  stroke: #FFF9E7;
+  stroke-width: 4px;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+
+.gallery-card-v2__signature { filter: drop-shadow(0 5px 4px rgba(0, 0, 0, .52)); }

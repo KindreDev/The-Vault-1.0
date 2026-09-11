@@ -2,15 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Pencil, Trash2, Plus, Droplets, Waves } from 'lucide-react'
+import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Pencil, Trash2, Plus, Droplets, Waves, Pause, Play } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS } from '../store/vault'
 import { useT, LANGUAGES } from '../i18n'
 import HotkeySettings from '../components/settings/HotkeySettings'
 import Almanac from '../components/stats/Almanac'
-import HofFullListModal from '../components/HofFullListModal'
-import CreatorStatsModal from '../components/CreatorStatsModal'
+import AnalyticsDashboard from '../components/analytics/AnalyticsDashboard'
 import { useSession } from '../hooks/useSession'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
@@ -719,19 +718,6 @@ function fmtSeconds(sec) {
   return `${m}m`
 }
 
-function CreatorBar({ name, value, maxVal, label, color = 'var(--c-pink)', gradientEnd = '#F47AA0', rank }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.3)', width: 28, textAlign: 'right', flexShrink: 0 }}>#{rank}</div>
-      <div style={{ fontSize: 19, fontWeight: 600, color: 'rgba(255,255,255,0.8)', width: 180, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-      <div style={{ flex: 1, height: 26, borderRadius: 4, background: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', borderRadius: 4, width: `${(value / maxVal) * 100}%`, background: `linear-gradient(to right, ${color}, ${gradientEnd})`, transition: 'width 0.4s ease' }} />
-      </div>
-      <div style={{ fontSize: 19, fontWeight: 700, color, width: 72, textAlign: 'right', flexShrink: 0 }}>{label}</div>
-    </div>
-  )
-}
-
 // XP needed to reach a given level: sum(500*i, i=1..lvl-1) = 500*(lvl-1)*lvl/2
 const xpForLevel = lvl => lvl <= 1 ? 0 : 500 * (lvl - 1) * lvl / 2
 
@@ -1177,39 +1163,10 @@ function SessionEditor({ session, onClose, onSaved }) {
   )
 }
 
-// Opens the full ranked list behind a Top-Creators chart.
-function SeeAllCreators({ onClick }) {
-  const t = useT()
-  return (
-    <div className="flex justify-center mt-4">
-      <button onClick={onClick}
-              className="flex items-center gap-2 px-4 py-2 rounded-[9px] cursor-pointer transition-colors hover:bg-white/10"
-              style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)',
-                       background: 'rgba(255,255,255,0.04)',
-                       border: '0.5px solid rgba(255,255,255,0.12)' }}>
-        {t('See all creators')} <ChevronDown size={15} />
-      </button>
-    </div>
-  )
-}
-
 export function Stats() {
-  // The existing page is all "right now" — last 7 days, 13 weeks, all-time
-  // totals. The History tab (components/stats/Almanac.jsx) is the long view. Tabs
-  // this component is already ~770 lines.
+  // Overview owns the current/lifetime snapshot. Analytics owns changes over
+  // time, and Collection History owns the archive's long view.
   const [statsTab, setStatsTab] = React.useState('overview')
-  // Each Top-Creators chart shows six; these open the full ranked list behind
-  // it, reusing the same infinite-scroll modal the Hall of Fame uses.
-  const [leaderboard, setLeaderboard] = React.useState(null)   // metric key
-  const [statsCreatorId, setStatsCreatorId] = React.useState(null)
-  const fetchLeaderboard = React.useCallback(
-    (limit, offset) => creatorsApi.leaderboard(leaderboard, limit, offset).then(r => r.data),
-    [leaderboard])
-  const LEADERBOARDS = {
-    time_spent: { title: 'All creators · time spent', subtitle: 'Ranked by hours you have spent with her' },
-    sessions:   { title: 'All creators · session count', subtitle: 'Ranked by sessions logged' },
-    edges:      { title: 'All creators · edges', subtitle: 'Ranked by edges held' },
-  }
   const addXpToast     = useVaultStore(s => s.addXpToast)
   const sessionActive  = useVaultStore(s => s.sessionActive)
   const { startSession, finishSession } = useSession()
@@ -1297,39 +1254,6 @@ export function Stats() {
     return PERSONALITY.find(p => p.test(h)) ?? null
   }, [stats?.peak_hour])
 
-  const byDay  = stats?.sessions_by_day  ?? []
-  const byDate = stats?.sessions_by_date ?? []
-  const byHour = stats?.sessions_by_hour ?? []
-  const maxDay  = Math.max(1, ...byDay.map(d => d.count))
-  const maxHour = Math.max(1, ...byHour.map(d => d.count))
-
-  const heatmapCells = React.useMemo(() => {
-    const map = {}
-    for (const d of byDate) map[d.date] = d.count
-    const cells = []
-    const today = new Date()
-    for (let i = 90; i >= 0; i--) {
-      const dt = new Date(today)
-      dt.setDate(today.getDate() - i)
-      const key = dt.toISOString().slice(0, 10)
-      cells.push({ date: key, count: map[key] ?? 0 })
-    }
-    return cells
-  }, [byDate])
-  const maxHeat = Math.max(1, ...heatmapCells.map(c => c.count))
-
-  // Day-of-week totals computed from the 91-day date array (Mon first)
-  const byWeekday = React.useMemo(() => {
-    const totals = [0, 0, 0, 0, 0, 0, 0]
-    for (const d of byDate) totals[new Date(d.date + 'T12:00:00').getDay()] += d.count
-    return [1, 2, 3, 4, 5, 6, 0].map((dow, i) => ({
-      label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
-      count: totals[dow],
-      isWeekend: dow === 0 || dow === 6,
-    }))
-  }, [byDate])
-  const maxWeekday = Math.max(1, ...byWeekday.map(d => d.count))
-
   // Level progress (100-level quadratic curve)
   const lvl       = profile?.level ?? 1
   const totalXp   = profile?.total_xp ?? 0
@@ -1339,33 +1263,8 @@ export function Stats() {
   const lvlPct    = lvl >= 100 ? 100 : Math.min(100, ((totalXp - curThresh) / (nextThresh - curThresh)) * 100)
   const xpToNext  = Math.max(0, nextThresh - totalXp)
 
-  // Consistency score — how many of the last 91 days had at least one session
-  const activeDays     = byDate.filter(d => d.count > 0).length
-  const consistencyPct = Math.round((activeDays / 91) * 100)
-
-  // AM vs PM session split
-  const amTotal = byHour.filter(d => d.hour < 12).reduce((s, d) => s + d.count, 0)
-  const pmTotal = byHour.filter(d => d.hour >= 12).reduce((s, d) => s + d.count, 0)
-  const amPmTotal = Math.max(1, amTotal + pmTotal)
-  const pmPct = Math.round((pmTotal / amPmTotal) * 100)
-  const amPct = 100 - pmPct
-
-  const heatColor = (count) => {
-    if (count === 0) return 'rgba(255,255,255,0.05)'
-    const intensity = Math.min(1, count / Math.max(maxHeat, 1))
-    if (intensity < 0.33) return 'color-mix(in srgb, var(--c-pink) 30%, transparent)'
-    if (intensity < 0.66) return 'color-mix(in srgb, var(--c-pink) 60%, transparent)'
-    return 'var(--c-pink)'
-  }
-
   const totalViewFmt   = fmtSeconds(stats?.total_view_seconds)
   const totalCount     = stats?.total ?? 0
-  const topByTime      = stats?.top_creators_by_time ?? []
-  const maxViewSecs    = Math.max(1, ...topByTime.map(c => c.seconds))
-  const topBySessions  = stats?.top_creators_chart ?? []
-  const maxSessionCount = Math.max(1, ...topBySessions.map(c => c.count))
-  const topByEdges     = stats?.top_creators_by_edges ?? []
-  const maxEdges       = Math.max(1, ...topByEdges.map(c => c.edges))
 
   return (
     <div className="p-5 flex flex-col gap-5">
@@ -1382,11 +1281,12 @@ export function Stats() {
         </button>
       </div>
 
-      {/* Tabs — Overview is everything that was here before, untouched */}
+      {/* Each tab now has one clear job. */}
       <div className="flex items-center gap-2">
         {[
           { id: 'overview', label: 'Overview' },
-          { id: 'almanac',  label: 'History' },
+          { id: 'analytics', label: 'Analytics' },
+          { id: 'almanac',  label: 'Collection History' },
         ].map(tab => {
           const active = statsTab === tab.id
           return (
@@ -1402,17 +1302,8 @@ export function Stats() {
         })}
       </div>
 
-      <HofFullListModal
-        open={!!leaderboard}
-        title={LEADERBOARDS[leaderboard]?.title}
-        subtitle={LEADERBOARDS[leaderboard]?.subtitle}
-        fetchPage={fetchLeaderboard}
-        onRowClick={(item) => { setLeaderboard(null); setStatsCreatorId(item.id) }}
-        onClose={() => setLeaderboard(null)}
-      />
-      <CreatorStatsModal creatorId={statsCreatorId} onClose={() => setStatsCreatorId(null)} />
-
       {statsTab === 'almanac' && <Almanac />}
+      {statsTab === 'analytics' && <AnalyticsDashboard />}
       {statsTab === 'overview' && (<>
 
       {/* Wrapped Hero Banner — split with world map */}
@@ -1500,7 +1391,7 @@ export function Stats() {
               const visible = groups.slice(0, 6)
               return (
                 <div style={{ marginTop: 22, borderTop: '0.5px solid rgba(255,255,255,0.07)', paddingTop: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>{t('Recent sessions')}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>{t('Recent sessions')}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {visible.map((g, i) => (
                       <div key={i} style={{
@@ -1508,13 +1399,13 @@ export function Stats() {
                         padding: '7px 0',
                         borderBottom: i < visible.length - 1 ? '0.5px solid rgba(255,255,255,0.05)' : 'none',
                       }}>
-                        <span style={{ fontSize: 14, flexShrink: 0, opacity: 0.5 }}>💧</span>
+                        <span style={{ fontSize: 16, flexShrink: 0, opacity: 0.5 }}>💧</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {g.creators.length > 0 ? g.creators.join(' · ') : (g.gallery_name || t('Unknown'))}
                           </div>
                           {g.gallery_name && g.creators.length > 0 && (
-                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {g.gallery_name}
                             </div>
                           )}
@@ -1522,7 +1413,7 @@ export function Stats() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                           {g.duration_sec > 0 && <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{fmtDuration(g.duration_sec)}</span>}
                           {g.xp_earned > 0 && <span style={{ fontSize: 16, fontWeight: 700, color: accent }}>+{g.xp_earned} XP</span>}
-                          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', minWidth: 52, textAlign: 'right' }}>{relTime(g.logged_at)}</span>
+                          <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', minWidth: 52, textAlign: 'right' }}>{relTime(g.logged_at)}</span>
                         </div>
                       </div>
                     ))}
@@ -1548,11 +1439,11 @@ export function Stats() {
              style={{ width: totalCount > 0 ? '42%' : '100%', flexShrink: 0, background: 'rgba(255,255,255,0.03)', border: `0.5px solid rgba(${accentRgb},0.2)`, minHeight: 220 }}
              onClick={() => setShowMapModal(true)}>
           <div className="flex items-center justify-between px-4 pt-3 flex-shrink-0">
-            <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+            <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
               <Globe size={14} style={{ color: accent }} /> {t('Creator Origins')}
             </div>
             {(byCountry || []).length > 0 && (
-              <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>
+              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
                 {(byCountry || []).length} {t('countries · click to explore')}
               </span>
             )}
@@ -1576,27 +1467,6 @@ export function Stats() {
         <SessionsModal onClose={() => setShowSessionsModal(false)} />
       )}
 
-      {/* Stats grid */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))' }}>
-        {[
-          { label: 'Sessions total',     value: totalCount,                                       color: 'var(--c-pink)' },
-          { label: 'This week',          value: stats?.this_week ?? 0 },
-          { label: 'Session time',       value: fmtDuration(stats?.total_duration_sec),            color: 'var(--c-pink)' },
-          { label: 'Avg session',        value: fmtDuration(stats?.avg_duration_sec) },
-          { label: 'Viewing time',       value: totalViewFmt ?? '—',                              color: 'var(--c-accent)' },
-          { label: 'Cummed (all-time)',   value: (stats?.total_cum_count ?? 0).toLocaleString(),   color: '#F47AA0' },
-          { label: 'Edges (all-time)',    value: (stats?.total_edge_count ?? 0).toLocaleString(), color: 'var(--c-accent-text)' },
-          { label: 'Edges per O',         value: stats?.edges_per_cum ? `${stats.edges_per_cum}×` : '—', color: 'var(--c-accent-text)' },
-          { label: 'Peak hour',          value: fmtHour(stats?.peak_hour) },
-          { label: 'XP from sessions',   value: `${(totalCount * 25).toLocaleString()} XP` },
-        ].map(s => (
-          <div key={s.label} className="rounded-[10px] p-4" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 24, fontWeight: 600, color: s.color || 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.value}</div>
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{t(s.label)}</div>
-          </div>
-        ))}
-      </div>
-
       {/* Personality card */}
       {personality && (
         <div className="vault-card p-5 flex items-center gap-5">
@@ -1610,103 +1480,6 @@ export function Stats() {
             <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{t('Peak hour')}</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: personality.color }}>{fmtHour(stats?.peak_hour)}</div>
           </div>
-        </div>
-      )}
-
-      {/* Session chart + Hourly distribution */}
-      <div className="flex gap-4 flex-wrap">
-        {byDay.length > 0 && (
-          <div className="vault-card p-5 flex-1" style={{ minWidth: 300 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Sessions · last 7 days')}</div>
-            <div className="flex items-end gap-3" style={{ height: 160 }}>
-              {byDay.map(d => {
-                const pct = d.count / maxDay
-                return (
-                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                    <div style={{ fontSize: 16, fontWeight: 700, color: d.count > 0 ? 'var(--c-pink)' : 'transparent' }}>{d.count}</div>
-                    <div className="w-full rounded-t-[4px] transition-all"
-                         style={{ height: `${Math.max(4, pct * 110)}px`, background: d.count > 0 ? 'linear-gradient(to top, var(--c-pink), #F47AA0)' : 'rgba(255,255,255,0.07)' }} />
-                    <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {byHour.some(h => h.count > 0) && (
-          <div className="vault-card p-5 flex-1" style={{ minWidth: 300 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Activity by hour')}</div>
-            <div className="flex items-end gap-px" style={{ height: 160 }}>
-              {byHour.map(d => {
-                const pct = d.count / maxHour
-                const isAM = d.hour < 12
-                return (
-                  <div key={d.hour} className="flex-1 flex flex-col items-center min-w-0" style={{ gap: 3 }}>
-                    <div className="w-full rounded-t-[2px]"
-                         style={{ height: `${Math.max(2, pct * 110)}px`, background: d.count > 0 ? (isAM ? 'color-mix(in srgb, var(--c-amber) 85%, transparent)' : 'color-mix(in srgb, var(--c-accent) 85%, transparent)') : 'rgba(255,255,255,0.06)' }} />
-                    {d.hour % 6 === 0 && (
-                      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap', marginTop: 3 }}>
-                        {d.hour === 0 ? '12a' : d.hour === 12 ? '12p' : d.hour < 12 ? `${d.hour}a` : `${d.hour - 12}p`}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-              <span style={{ fontSize: 16, color: 'color-mix(in srgb, var(--c-amber) 80%, transparent)' }}>{t('■ AM')}</span>
-              <span style={{ fontSize: 16, color: 'color-mix(in srgb, var(--c-accent) 80%, transparent)' }}>{t('■ PM')}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Top creators by time spent */}
-      {topByTime.length > 0 && (
-        <div className="vault-card p-5">
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · time spent')}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {topByTime.map((c, i) => (
-              <CreatorBar key={c.name} rank={i + 1} name={c.name}
-                value={c.seconds} maxVal={maxViewSecs}
-                label={fmtSeconds(c.seconds) ?? '<1m'}
-                color="var(--c-accent)" gradientEnd="var(--c-accent-text)" />
-            ))}
-          </div>
-          <SeeAllCreators onClick={() => setLeaderboard('time_spent')} />
-        </div>
-      )}
-
-      {/* Top creators by sessions */}
-      {topBySessions.length > 0 && (
-        <div className="vault-card p-5">
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · session count')}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {topBySessions.map((c, i) => (
-              <CreatorBar key={c.name} rank={i + 1} name={c.name}
-                value={c.count} maxVal={maxSessionCount}
-                label={String(c.count)}
-                color="var(--c-pink)" gradientEnd="#F47AA0" />
-            ))}
-          </div>
-          <SeeAllCreators onClick={() => setLeaderboard('sessions')} />
-        </div>
-      )}
-
-      {/* Top creators by edges — who you hold back the longest for */}
-      {topByEdges.length > 0 && (
-        <div className="vault-card p-5">
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Top creators · edges')}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {topByEdges.map((c, i) => (
-              <CreatorBar key={c.name} rank={i + 1} name={c.name}
-                value={c.edges} maxVal={maxEdges}
-                label={String(c.edges)}
-                color="var(--c-accent)" gradientEnd="#A89FE8" />
-            ))}
-          </div>
-          <SeeAllCreators onClick={() => setLeaderboard('edges')} />
         </div>
       )}
 
@@ -1727,7 +1500,7 @@ export function Stats() {
                     return (
                       <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                         {/* value label — always reserve space so bars align */}
-                        <div style={{ fontSize: 13, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, var(--c-accent))' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, var(--c-accent))' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
                           {d.xp > 0 ? d.xp.toLocaleString() : '0'}
                         </div>
                         {/* bar area — grows to fill; bar rises from the bottom */}
@@ -1737,7 +1510,7 @@ export function Stats() {
                                         background: d.xp > 0 ? 'linear-gradient(to top, var(--accent, var(--c-accent)), var(--c-accent-text))' : 'rgba(255,255,255,0.07)' }} />
                         </div>
                         {/* date label */}
-                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>{d.date.slice(5)}</div>
+                        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>{d.date.slice(5)}</div>
                       </div>
                     )
                   })}
@@ -1804,9 +1577,9 @@ export function Stats() {
                         {entries.map(ct => (
                           <div key={ct.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <div style={{ width: 8, height: 8, borderRadius: 2, background: ct.color, flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t(ct.label)}</span>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: ct.color }}>{(byType[ct.key] || 0).toLocaleString()}</span>
-                            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>
+                            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', flex: 1 }}>{t(ct.label)}</span>
+                            <span style={{ fontSize: 16, fontWeight: 700, color: ct.color }}>{(byType[ct.key] || 0).toLocaleString()}</span>
+                            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', width: 38, textAlign: 'right' }}>
                               {Math.round(((byType[ct.key] || 0) / Math.max(1, totalPhotos)) * 100)}%
                             </span>
                           </div>
@@ -1814,8 +1587,8 @@ export function Stats() {
                         {unassigned > 0 && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(255,255,255,0.15)', flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)', flex: 1 }}>{t('Unassigned')}</span>
-                            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.3)' }}>{unassigned.toLocaleString()}</span>
+                            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', flex: 1 }}>{t('Unassigned')}</span>
+                            <span style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.3)' }}>{unassigned.toLocaleString()}</span>
                           </div>
                         )}
                       </div>
@@ -1902,88 +1675,8 @@ export function Stats() {
         </div>
       )}
 
-      {/* Row: Heatmap (left) · 2×2 grid: Day of week · AM/PM · Packs · Card rarity (right) */}
-      {heatmapCells.length > 0 && (
-        <div className="flex gap-4" style={{ alignItems: 'stretch' }}>
-
-          {/* Heatmap — fixed width so grid can breathe */}
-          <div className="vault-card p-5 flex flex-col" style={{ width: '42%', flexShrink: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Activity · last 13 weeks')}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(13, 1fr)', gridTemplateRows: 'repeat(7, 1fr)', gridAutoFlow: 'column', gap: 4, flex: 1 }}>
-              {heatmapCells.map((cell) => (
-                <div key={cell.date}
-                     title={`${cell.date}: ${cell.count} session${cell.count !== 1 ? 's' : ''}`}
-                     style={{ borderRadius: 3, background: heatColor(cell.count), cursor: 'default' }} />
-              ))}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>{t('Less')}</span>
-              {[0, 0.3, 0.6, 1].map(v => (
-                <div key={v} style={{ width: 16, height: 16, borderRadius: 3, background: heatColor(v * maxHeat) }} />
-              ))}
-              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.22)' }}>{t('More')}</span>
-            </div>
-          </div>
-
-          {/* 2×2 grid */}
-          <div className="flex-1 grid gap-4" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-
-            {/* Day of week */}
-            <div className="vault-card p-4 flex flex-col">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('By day')}</div>
-              <div className="flex items-end gap-1 flex-1" style={{ minHeight: 90 }}>
-                {byWeekday.map(d => {
-                  const pct = d.count / maxWeekday
-                  const color = d.isWeekend ? 'var(--c-pink)' : 'var(--c-accent)'
-                  const gradEnd = d.isWeekend ? '#F47AA0' : 'var(--c-accent-text)'
-                  return (
-                    <div key={d.label} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                      <div className="w-full rounded-t-[3px] transition-all"
-                           style={{ height: `${Math.max(3, pct * 70)}px`, background: d.count > 0 ? `linear-gradient(to top, ${color}, ${gradEnd})` : 'rgba(255,255,255,0.07)' }} />
-                      <div style={{ fontSize: 16, color: d.isWeekend ? 'var(--c-pink)' : 'rgba(255,255,255,0.3)', fontWeight: d.isWeekend ? 600 : 400 }}>{t(d.label)}</div>
-                    </div>
-                  )
-                })}
-              </div>
-              {byWeekday.some(d => d.count > 0) && (() => {
-                const peak = byWeekday.reduce((a, b) => b.count > a.count ? b : a)
-                return <div style={{ marginTop: 10, fontSize: 16, color: 'rgba(255,255,255,0.28)' }}>
-                  {t('Peak:')} <span style={{ color: peak.isWeekend ? 'var(--c-pink)' : 'var(--c-accent-text)', fontWeight: 600 }}>{t(peak.label)}s</span>
-                </div>
-              })()}
-            </div>
-
-            {/* AM vs PM */}
-            <div className="vault-card p-4 flex flex-col">
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('AM vs PM')}</div>
-              <div className="flex items-center gap-4 flex-1">
-                <div style={{
-                  width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
-                  background: `conic-gradient(var(--c-amber) ${amPct * 3.6}deg, var(--c-accent) 0deg)`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#1a1a1a' }} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 16, color: 'var(--c-amber-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--c-amber)', display: 'inline-block' }} />{t('AM')}
-                    </span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-amber-text)' }}>{amPct}%</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 16, color: 'var(--c-accent-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--c-accent)', display: 'inline-block' }} />{t('PM')}
-                    </span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-accent-text)' }}>{pmPct}%</span>
-                  </div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
-                    {pmPct >= 70 ? t('Night person') : pmPct >= 55 ? t('Mostly evenings') : amPct >= 70 ? t('Early riser') : t('Balanced')}
-                  </div>
-                </div>
-              </div>
-            </div>
-
+      {/* Gamification snapshot stays in Overview; time patterns live in Analytics. */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
             {/* Packs opened */}
             <div className="vault-card p-4 flex flex-col justify-between">
               <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{t('Packs opened')}</div>
@@ -2052,9 +1745,7 @@ export function Stats() {
               )
             })()}
 
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Empty state */}
       {totalCount === 0 && !stats && (
@@ -2739,6 +2430,12 @@ export function Settings() {
     queryFn: () => fetch('/api/scanner/roots').then(r => r.json()),
   })
 
+  const { data: missingGalleries = [] } = useQuery({
+    queryKey: ['missing-galleries'],
+    queryFn: () => scannerApi.missingGalleries().then(r => r.data),
+    refetchInterval: 15000,
+  })
+
   const { data: scanStatus } = useQuery({
     queryKey: ['scan-status'],
     queryFn: () => fetch('/api/scanner/status').then(r => r.json()),
@@ -3008,6 +2705,61 @@ export function Settings() {
                   </div>
                 </SettingsSection>
 
+                <SettingsSection title={t('Missing folders')} icon={AlertCircle} accentColor="var(--c-pink)" defaultOpen={missingGalleries.length > 0}>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <p className="text-base text-white/45">
+                      {missingGalleries.length
+                        ? `${missingGalleries.length} galleries are hidden because their folders are unavailable.`
+                        : t('No missing gallery folders detected.')}
+                    </p>
+                    <button onClick={async () => {
+                              await scannerApi.reconcileGalleries()
+                              qc.invalidateQueries({ queryKey: ['missing-galleries'] })
+                              qc.invalidateQueries({ queryKey: ['galleries'] })
+                            }}
+                            className="px-3 py-2 rounded-lg text-base cursor-pointer"
+                            style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)' }}>
+                      {t('Check now')}
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {missingGalleries.map(gallery => (
+                      <div key={gallery.id} className="rounded-lg p-3 border border-white/10 bg-black/20">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-base text-white/80 truncate">{gallery.name}</div>
+                            <div className="text-base text-white/35 truncate" title={gallery.folder_path}>{gallery.folder_path}</div>
+                            <div className="text-base mt-1" style={{ color: gallery.root_online ? 'var(--c-amber)' : 'var(--c-pink)' }}>
+                              {gallery.root_online ? `${gallery.image_count} files · owning root is online` : 'Owning root is offline — protected from automatic removal'}
+                            </div>
+                          </div>
+                          <button onClick={async () => {
+                                    const result = await scannerApi.browseFolder()
+                                    if (!result.data?.path) return
+                                    await scannerApi.relinkGallery(gallery.id, result.data.path)
+                                    qc.invalidateQueries({ queryKey: ['missing-galleries'] })
+                                    qc.invalidateQueries({ queryKey: ['galleries'] })
+                                  }}
+                                  className="px-3 py-2 rounded-lg text-base cursor-pointer"
+                                  style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 15%, transparent)' }}>
+                            {t('Relink')}
+                          </button>
+                          <button onClick={async () => {
+                                    if (!window.confirm(`Remove the missing gallery “${gallery.name}” from The Vault? Files on disk are not touched.`)) return
+                                    await scannerApi.removeMissingGallery(gallery.id)
+                                    qc.invalidateQueries({ queryKey: ['missing-galleries'] })
+                                    qc.invalidateQueries({ queryKey: ['galleries'] })
+                                  }}
+                                  className="px-3 py-2 rounded-lg text-base cursor-pointer"
+                                  style={{ color: '#F4C0D1', background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)' }}>
+                            {t('Remove')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </SettingsSection>
+
                 <SettingsSection title={t('Creator folder sync')} icon={RefreshCw} accentColor="var(--c-accent)" defaultOpen={false}>
                   <p className="text-[16px] text-white/45 mb-4">
                     {t("Re-checks every creator's source folder and assigns any galleries added since it was last set. Also runs automatically on each scan — use this if you assigned a source folder after importing.")}
@@ -3234,7 +2986,7 @@ export function Settings() {
                 </SettingsSection>
 
                 <SettingsSection title={t('Run tagging')} icon={Cpu} accentColor="var(--c-accent)">
-                  {tagStatus?.running ? (
+                  {(tagStatus?.running || tagStatus?.paused) ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
@@ -3261,11 +3013,26 @@ export function Settings() {
                             <span className="text-[14px] text-white/55 flex-shrink-0">{tagStatus.progress} / {tagStatus.total}</span>
                           )}
                         </div>
-                        <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] cursor-pointer ml-2 flex-shrink-0"
-                                style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
-                          <X size={10} /> {t('Cancel')}
-                        </button>
+                        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                          {tagStatus.paused ? (
+                            <button onClick={async () => { await taggerApi.resume(tagStatus.job_id); qc.invalidateQueries({ queryKey: ['ai-tag-status'] }); qc.invalidateQueries({ queryKey: ['task-queue'] }) }}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
+                                    style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
+                              <Play size={14} /> {t('Resume')}
+                            </button>
+                          ) : (
+                            <button onClick={async () => { await taggerApi.pause(); qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
+                                    style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
+                              <Pause size={14} /> {t('Pause')}
+                            </button>
+                          )}
+                          <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
+                                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
+                            <X size={14} /> {t('Cancel')}
+                          </button>
+                        </div>
                       </div>
                       <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
                         {tagStatus.total > 0 ? (() => {
@@ -3279,11 +3046,16 @@ export function Settings() {
                       </div>
                       {tagStatus.total > 0 ? (() => {
                         let etaStr = ''
-                        if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
+                        if (tagStatus.paused) {
+                          etaStr = t('Paused — progress saved')
+                        } else if (Number.isFinite(tagStatus.eta_seconds)) {
+                          const remaining = tagStatus.eta_seconds
+                          etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)}h left` : remaining >= 60 ? `~${Math.round(remaining/60)}m left` : `~${Math.round(remaining)}s left`
+                        } else if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
                           const elapsed = (Date.now() - tagRunStartRef.current.ts) / 1000
                           const done = tagStatus.progress - tagRunStartRef.current.progress
                           const remaining = (tagStatus.total - tagStatus.progress) / (done / elapsed)
-                          if (remaining > 0 && remaining < 86400) {
+                          if (remaining > 0) {
                             etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)}h left` : remaining >= 60 ? `~${Math.round(remaining/60)}m left` : `~${Math.round(remaining)}s left`
                             tagEtaRef.current = etaStr
                           } else { etaStr = tagEtaRef.current || '' }

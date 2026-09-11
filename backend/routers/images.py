@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, Res
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, nullslast, select, or_, and_
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from database import get_db, _read_config
 from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
@@ -17,6 +17,7 @@ from services import activity
 from services import dedup as dedup_svc
 from services import edges as edges_svc
 from services import entity_stats
+from services.tag_filters import apply_image_tag_filters
 
 router = APIRouter()
 
@@ -83,6 +84,11 @@ def _apply_image_filters(
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     creator_id: Optional[int] = None,
     creator_type: Optional[str] = None,
     series: Optional[str] = None,
@@ -103,10 +109,15 @@ def _apply_image_filters(
     """
     if search:
         q = q.filter(Image.filename.ilike(f"%{search}%"))
-    # Multi-tag: comma-separated, each tag must be present (AND)
-    tag_list = [t.strip().lower() for t in (tags or tag or '').split(',') if t.strip()]
-    for tag_name in tag_list:
-        q = q.filter(Image.tags.any(Tag.name == tag_name))
+    q = apply_image_tag_filters(
+        q,
+        include_raw=tags or tag,
+        include_ids_raw=tag_ids,
+        include_mode=tag_mode,
+        exclude_raw=exclude_tags,
+        exclude_ids_raw=exclude_tag_ids,
+        exclude_mode=exclude_mode,
+    )
     if creator_id or creator_type or series:
         if creator_id:
             # Dual-path: images directly assigned to creator (file-level) OR gallery-assigned.
@@ -187,7 +198,12 @@ def list_images(
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
     _seed: float = 0,  # stable shuffle seed for sort_by=random. float, because the
                        # client seeds with Math.random(); scaled to an int below.
-    tags: Optional[str] = None,  # comma-separated, AND logic
+    tags: Optional[str] = None,  # legacy/name-based include tags; tag_mode controls all/any
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     skip: int = 0,
     limit: int = 200,
 ):
@@ -197,7 +213,9 @@ def list_images(
     )
     q = _apply_image_filters(
         q, db,
-        search=search, tag=tag, tags=tags, creator_id=creator_id,
+        search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
+        exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
+        exclude_mode=exclude_mode, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
         is_video=is_video, favorite=favorite, has_funscript=has_funscript,
         period=period,
@@ -255,12 +273,18 @@ def list_image_periods(
     search: Optional[str] = None,
     tag: Optional[str] = None,
     tags: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    tag_mode: Literal["all", "any"] = "all",
+    exclude_tags: Optional[str] = None,
+    exclude_tag_ids: Optional[str] = None,
+    exclude_mode: Literal["all", "any"] = "any",
     creator_id: Optional[int] = None,
     creator_type: Optional[str] = None,
     series: Optional[str] = None,
     gallery_id: Optional[int] = None,
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
+    has_funscript: Optional[bool] = None,
 ):
     """Distinct collection periods (from each image's gallery) for the filter
     dropdown in the Image/Video view, newest first. Respects the same filters as
@@ -270,9 +294,11 @@ def list_image_periods(
     from datetime import datetime
     filtered_ids = _apply_image_filters(
         db.query(Image.id), db,
-        search=search, tag=tag, tags=tags, creator_id=creator_id,
+        search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
+        exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
+        exclude_mode=exclude_mode, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
-        is_video=is_video, favorite=favorite,
+        is_video=is_video, favorite=favorite, has_funscript=has_funscript,
     ).scalar_subquery()
     rows = (
         db.query(Gallery.period_year, Gallery.period_month, func.count(Image.id.distinct()))
@@ -373,6 +399,8 @@ def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
         raise HTTPException(404, "Image not found")
     img.cum_count += 1
     activity.record(db, "cum", image_id=img.id)
+    from services.bond_cards import sync_bond_card_for_image
+    sync_bond_card_for_image(db, img, live_event=True)
     # Also bump gallery count
     if img.gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == img.gallery_id).first()

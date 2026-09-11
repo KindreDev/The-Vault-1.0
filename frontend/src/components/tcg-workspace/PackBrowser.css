@@ -1,0 +1,96 @@
+.tcgws-packs > header {
+  margin-bottom: 4px;
+}
+
+.tcgws-packs > header p {
+  display: none;
+}
+
+/* The wrapper and its details are the product; the old article background is not. */
+.tcgws-packs .tcgws-pack-grid > article {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 8px 0 18px;
+}
+
+.tcgws-packs .tcgws-pack-grid > article > section {
+  padding: 12px 4px 0 0;
+}
+
+.tcgws-packs .tcgws-pack-grid > article > section > span:first-child {
+  color: var(--tcg-muted);
+  font-size: 16px;
+  text-transform: capitalize;
+}
+
+.tcgws-packs .tcgws-pack-grid h2 {
+  margin: 6px 0 12px;
+}
+
+.tcgws-pack-facts {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 14px;
+}
+
+.tcgws-pack-facts p,
+.tcgws-pack-facts > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--tcg-muted);
+  line-height: 1.35;
+}
+
+.tcgws-pack-facts p:first-child,
+.tcgws-pack-facts p:nth-child(2) {
+  color: var(--c-accent-text, #fff);
+  font-weight: 700;
+}
+
+.tcgws-pack-facts > span {
+  display: block;
+  overflow: hidden;
+  color: var(--tcg-muted);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tcgws-packs .tcgws-pack-integrity {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tcgws-packs .tcgws-pack-integrity > summary {
+  border-radius: 10px;
+}
+
+.tcgws-packs .tcgws-pack-integrity[open] > summary {
+  border-radius: 10px 10px 0 0;
+}
+
+.tcgws-packs .tcgws-pack-grid > article > section > button {
+  border-radius: 10px;
+}
+
+.tcgws-packs .tcgws-pack-grid > article > section > button:disabled {
+  color: var(--tcg-muted);
+  cursor: not-allowed;
+  opacity: .8;
+}
+
+@media (min-width: 761px) {
+  .tcgws-packs .tcgws-pack-grid > article {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .tcgws-packs .tcgws-pack-grid > article {
+    padding-bottom: 24px;
+  }
+}

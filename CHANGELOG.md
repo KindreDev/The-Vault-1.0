@@ -14,6 +14,130 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Added
+- Analytics trend graphics now fill their allocated compact chart space without changing the surrounding layout.
+- Analytics now has a page-wide range control with in-place loading, undistorted labeled charts, clear new-versus-rewatched history, distinct personal bests, a balanced timing-and-edges row, and all session summary metrics removed from Overview.
+- Long AI-tagging runs can now be paused, survive a Vault restart, and resume from their last committed checkpoint.
+- Settings now identifies unavailable gallery folders with safe Relink and Remove controls while protecting offline library roots.
+- Collection Room furniture is now purchased into a persistent inventory and manually placed, moved, rotated, returned, undone, and redone without resizing.
+- The Collection Room door now opens a persistent weekly visitor scene with authored dialogue, protected card deals, requests, and immutable deal history behind the economy approval gate.
+- Visible Collection Room cards now use their authoritative faces, separated masks, rarity-specific WebGL foil, angle-reactive Gallery artwork, and independent protective layers without flat premium fallbacks.
+- The optional Collection Room now provides a first-person 3D home for persisted pack ordering, parcel opening, copy placement, binders, cabinets, posters, and display layouts.
+- The optional Collection Room asset module now ships a verified 57-asset Blender environment with detailed technology, mailed parcels, lighting, and bedroom decor.
+- Weekly trader visits now persist deterministic adult visitors, frozen gated stock and requests, shared valuation audits, reservations, and atomic buy, sell, barter, and transaction ledgers behind simulation approval.
+- Collection Room state now persists revision-safe layouts, owned display-item instances, and delayed mailed pack parcels whose cards are granted only after collection, placement, and atomic opening.
+- TCG cards now have durable physical-copy identities, normalized binder locations, atomic legacy reconciliation, and explicit ledger audit and repair controls.
+- Collection Room now has an optional versioned module manager with resumable downloads, integrity verification, repair, updates, cancellation, and collection-safe uninstall.
+- Collection filters now include searchable creator, character, and binder-assignment selectors with inherited source relationships.
+- HOF and Bond card records now expose their earned-event ownership policy and canonical event detail in the collection API.
+- Binder shelves now paginate after nine binders, and cover customization offers a searchable Vault-photo chooser with direct drag-and-drop replacement.
+- All-Time Hall of Fame now records durable champion reigns and mints a distinct SR-or-higher card for each lead transition.
+- Favorite tags can now be curated in Tag Manager and contribute a deterministic R or SR floor to half of matching future printings.
+- New TCG printings now freeze an auditable personal-value score built from viewing time, duration-normalized video replays, sexual engagement, ratings, favorites, favorite creators, and favorite tags.
+- Card Collection now includes a physical binder cabinet with purchasable material covers, custom Vault-photo crops, animated page spreads, card pockets, range selection, and bulk binder placement.
+- The Founder's Catalogue now contains twenty compact, memorable sets built from galleries, years, card formats, rarity finishes, and erotic collection themes.
+- TCG V2 now has a release-aware collection workspace with frozen Sets, truthful missing slots, full card records, independent Exposure and Sexual Intensity classification, acquisition history, source provenance, Binders, Boosters, Workshop customization, and Advanced Mode controls.
+- Release products now use metallic collage booster envelopes that cycle real eligible artwork, disclose guarantees and pool integrity, and support persisted pack openings and targeted weekly protection rewards.
+- Missed monthly releases now resume sequentially in the background from oldest to newest, stopping safely on failed validation or Manual Review.
+- Hioshi and Narga UR Scene cards now test source-aligned foil surface maps generated from image detail and the existing packed subject masks.
+- TCG V2 now publishes a finite 60,000-card Foundation catalogue with stable collector numbers and persisted C/R/SR/UR rarity, scarce qualifying SPR parallels, a real ten-card Permanent Vault Booster, approved V2 faces throughout pack reveals and the collection, and visible placeholders for upcoming release, limited, and weekly-protection packs.
+- Starting TCG V2 now safely preserves every previously owned card as an internally marked Legacy card, hides Legacy cards by default behind a conditional collection toggle, and uses neutral placeholder booster artwork until the final pack designs are ready.
+- TCG V2 now has one safe card-face adapter that routes real persisted Scene, Character, Cosplay, Collab, Creator, Gallery, Bond, and Hall of Fame contracts into their approved renderers without inventing missing art, metadata, or signatures.
+- Every TCG V2 card type now shares one packed-mask contract with independent subject, background, and edge effect surfaces for future rarity-specific foil, while failed masks retain a seamless whole-card fallback; Hall of Fame mementos now use their approved regal-gold frozen renderer on the same system.
+- Bond cards are now earned at five real cum logs and evolve through authenticated 15 and 25 milestones, using the accepted pearlescent-hearts design with aligned face-safe corner medallions and independent art, mask, frame, heart, text, signature, count, and future foil layers while leaving unknown legacy crossing dates honestly blank.
+- Gallery cards now have a frozen scrapbook-Polaroid renderer that preserves the real gallery, optional assigned creator and period, source photo, palette, rarity, and mint ID as independently effectable layers.
+- Gallery cards now fan up to three additional frozen photographs behind the hero print, using only real images from that gallery to make each card read as a complete photoset.
+- Creator cards now have a frozen editorial portrait renderer with a vertical archival rail, prominent creator subtype and card ID, eligibility limited to cosplayers, e-thots, artists, actresses, and Model/Other entities, optional real provenance fields, type-specific rarity, serial, and separate future foil/signature layers.
+- Collab cards now have a layered physical gold gift-frame renderer and frozen multi-creator recipe that preserves verified participant, gallery, period, source, palette, rarity, and signature data.
+- Cosplay cards now have an accepted-style comic-print renderer with frozen creator, character, gallery, period, palette, source, and modular hero-motif data for real creator×character cards.
+- Character cards now have a deterministic mint-preparation bridge that prefers explicitly linked full-resolution collection images, safely falls back to the character avatar, and freezes the source, palette, text, and extraction decision into the card record.
+- The TCG V2 asset system now includes forty transparent rarity labels: C, R, SR, UR, and SPR rendered in the distinct accepted style of each of the eight card types, with matching masks for coded foil effects.
+- Galleries, Photos, and Videos now have a compact tag-filter popover with separate include/exclude groups, All/Any matching, category-aware autocomplete, stable shareable filters, and theme-independent semantic colors.
+- Viewer hotkeys can now open the slideshow Keep Going menu, hide Erika's bubble, or enable and disable Erika entirely.
+- Loading Bay can now import complete gallery folders into a creator without flattening them, preserving nested folders, sidecars, and the folder-as-gallery structure.
+- Loading Bay now has permanent ignore, temporary hide-until-next-scan, explicit permanent deletion, playable video previews, duplicate-only filters, exact/visual match explanations, and bulk duplicate actions.
+- Loading Bay duplicate comparisons now show resolution and file size on both sides, plus duration for videos; archive inspection has a visible elapsed-time progress bar.
+- Loading Bay gallery cards now open into a paginated file inspector, cycle available covers on hover, and explain when video poster generation failed.
+- Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
+
+### Changed
+- Analytics chart axis titles now stay clear of the vertical tick labels, including longer metric names.
+- Analytics compact trend charts are now taller so percentage axis labels have comfortable separation.
+- AI tagging now streams media in bounded chunks, prefetches original-file decoding, batches GPU inference, and extracts video samples in one FFmpeg process.
+- The Collection Room is now a bright 12-by-12-metre home with a sparse permanent layout, aligned windows, a usable kitchen, clear routes, distinct materials, corrected computer and store surfaces, crisp binders, safe menu exits, and inspection-only live foil.
+- Binder-assignment filtering now supports an explicit Unassigned option alongside current binders.
+- Binder cover selection now searches and paginates through the entire owned-card collection instead of stopping after the first 250 cards.
+- Release and set browsers now use player-facing publication wording with taller set previews and larger multi-photo release detail previews.
+- Binder customization now lives on each owned binder, while new binders are purchased from Shop with Vault Credits and displayed directly inside the physical shelf bays.
+- Card Collection now opens to All Cards and uses rounded Vault-native navigation, identifiable missing slots, animated card inspection, physical page-turning binders, streamlined floating booster products, and viewport-locked pack reveals.
+- Published release boosters now identify their release pools clearly and become purchasable after automatic validation instead of exposing simulation approval jargon.
+- Booster openings now use a correctly sized split wrapper, full-size rapid card extraction, click-to-turn face-up pile, persistent-stack swipe reveals, rarity-ordered pulls, skip-to-grid, and multi-pack progression.
+- Strong personal engagement now protects future printings from Common and can force SR or UR rarity, while exceptional eligible sources can receive linked SPR signature printings without changing pack odds.
+- Card Collection now follows the active Vault appearance, uses a compact Vault-native navigation bar, folds creator, character, Hall of Fame, Bond, missing, and duplicate browsing into All Cards, and presents releases and boosters as large visual products.
+- Booster pack availability now distinguishes unscheduled limited products and weekly quest rewards, while drag-to-tear controls remain interactive during opening.
+- Monthly release generation now batches evidence across large catalogs and deterministically satisfies the 50 UR / 120 SR release floors without changing any card's published rarity.
+- TCG V2 published rarity is immutable: legacy card leveling, rarity evolution, Prestige, and card crafting are retired in favor of duplicate-derived Shards and physical collection customization.
+- R, SR, SPR, and UR rarity artwork now behaves as escalating emissive material with breathing inner cores, expanding bloom, luminance pulses, and restrained white shimmer instead of passive hue-cycling gradients.
+- Gallery SR and SPR cards now reveal alternate photos by viewing angle; R uses the separated Cosmos textures without tinting the source photo, SR backgrounds layer fixed Cosmos and Glitter over a densely repeating tilt-reactive metal surface without touching subjects, and animated GIF sources remain unmasked.
+- R, SPR, and UR rarity artwork now cycles through independent side-to-side color and brightness sweeps; Gallery UR photographs retain only the clean rainbow finish while SPR frame assets gain a separate light-reactive paper grain.
+- The revised source-aligned UR finish now applies automatically to every reliably masked non-Gallery UR; Gallery URs remain reserved for their separate multi-photo treatment.
+- SPR backgrounds now follow the complete VMAX interference stack, staying restrained at rest and blooming through both texture passes as the card tilts.
+- UR Full-Art cards retain their exclusion shimmer without the former rectangular boundary, and R-or-higher rarity letters keep a permanent animated rainbow finish.
+- UR radial lighting now remains full-card sized while tracking the cursor, eliminating its translated tile edge without dropping any foil pass; rarity-letter rainbows are clearer at rest.
+- UR Full-Art gradients now move on bounded, non-tiling surfaces, deliver stronger chroma through a clearer overlay, use seamless card-spanning light falloff, and reveal a finely repeated, light-reactive physical texture behind the subject.
+- R, SR, SPR, and UR rarity letters now carry an always-moving, tilt-reactive alpha-clipped rainbow shine across every card type; UR Gallery cards reveal two additional real photos by viewing angle, and Scene signatures sit in the open lower-art area.
+- SPR signatures are larger and their finer repeating texture is slightly softer; UR backgrounds now use the reference Full-Art gradient hierarchy with the dedicated metal texture and improved art visibility.
+- All-Time Hall of Fame finishes now preserve the source photo's original contrast and color while retaining their opaline material treatment.
+- TCG V2 cards now use cursor-reactive physical finishes: reference-tuned Cosmos R with a maskless fallback, tilt-weighted layer-separated SR with base-light-only subjects, balanced masked SPR texture, slower translucent UR foil, independently reactive full-alpha frame and rarity artwork, source-matched Scene outlines, mandatory handwritten neon SPR signatures on existing cards, and a smaller Gallery hero print that reveals its photo stack.
+- Legacy Standard and Premium generators can no longer service the TCG V2 shop; earned old pack tokens convert to Permanent Vault Boosters while unpublished release packs remain unavailable instead of minting old cards.
+- The former Goon card domain is now Bond everywhere—storage type, recipes, milestones, IDs, filters, showcase slots, UI, tests, and documentation—with existing owned cards migrated automatically without losing progress.
+- Hall of Fame cards now preserve one approved layout while their real winning period determines the physical honor treatment: one-star bronze Daily, two-star silver Weekly, three-star gold Monthly, and four-star opaline All-Time.
+- Hall of Fame cards now feature a dedicated honor plaque and larger, clearer period and card-code lettering.
+- Collab cards now reserve their lowered top heading for verified assigned characters, omit it when none exist, and keep gallery names out of that field.
+- Cosplay cards now identify the cosplay itself: the franchise owns the top label and the banner names the creator-character pairing once, without the redundant generic creator role.
+- Character cards now reserve the pop-art cutout for stable, compact, well-framed subjects and preserve small, hazy, irregular, or unstable silhouettes with the full-bleed fallback.
+- Character cards now use a palette-matched pop-art cutout when extraction is reliable and the approved full-bleed layout when it is not, with independent future foil hooks for the background, subject, frame, rarity, signature, and orb.
+- Scene cards now have a production-ready composer with readable live mint data, accepted type-specific rarity typography, separate foil/signature layers, hybrid subject extraction for reliable two-color outlines, and an automatic full-card fallback that keeps failed masks mintable.
+- The new TCG character template now uses a properly scaled modular orb whose housing, icon, glass, and foil surfaces remain independent, with nine consistently sized icon choices.
+- Slideshow and multi-panel fullscreen controls now hide while idle and return on mouse movement, with a larger video-labelled funscript sync control.
+- Dashboard favorites, discovery, and recently added rows now fill their available width with as many cards as fit without crossing into the sidebar.
+- **Card classes are now C / R / SR / SPR / UR** — five bands instead of four. SSR is renamed **SPR**, and a new **C** band sits below R, so the bottom of a tier reads as common rather than every card being at least Rare. Classes are still ranked within each tier, so a Core-UR remains its own chase. Existing cards are re-scored automatically.
+- Loading Bay now fully follows appearance palettes, including dedicated frosted shells, cards, backdrops, and comparison modals for the Glass theme.
+- Loading Bay duplicate previews use a clearly labelled, full-size side-by-side comparison again, and video previews now stay contained below the modal header.
+- Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
+
+### Fixed
+- Emergency Stop now halts each Intiface device's outputs without dropping its connection, so playback can restart immediately.
+- Deleted folders no longer leave browsable broken galleries, while manually renamed folders are relinked without losing gallery or image metadata.
+- Collection Room now opens with clean interior framing, safe streamed-asset disposal across quality changes, authoritative physical-copy binder filing, PC-only purchases, and visible carried and placed parcel states.
+- HOF and Bond cards are excluded from every release and booster eligibility pool, including weekly protection, and cannot be dismantled through any card endpoint.
+- Daily and weekly quest completion now awards current V2 pack tokens without changing legacy standard or premium pack counters.
+- Booster reveals now prepare one mask-ready face synchronously across release and Permanent products, retry failed inference on a clean CPU session, and expose readiness errors instead of publishing silent flat static foils.
+- Binder customization now opens independently from the binder cover instead of opening the binder.
+- Binder and release browsing now keep page navigation stable, align binders to cabinet bays, and remove redundant preview labels.
+- Booster reveals now prepare source-aligned foil maps for usable non-gallery UR cards while preserving Gallery UR texture behavior.
+
+- Booster purchases now show themed indeterminate preparation feedback while foil masks are built, and pack wrappers use transparent cutouts without opaque canvas residue.
+- Booster pack products and the opening reveal are now larger and card-proportioned, with a smooth wrapper fade after extraction.
+- Booster reveals now prepare and serialize subject masks before displaying foil cards, pack probabilities use a readable disclosure instead of raw JSON, and card audits provide a direct return to card details.
+
+- R cards now preserve the source photo's color and contrast under a localized neutral plastic reflection instead of flooding the full card with tinted glare.
+- UR foil-map prototypes now keep subjects clear with only a faint physical response, a subtle foreground lift, and softened moving gradient boundaries.
+- UR card foil now preserves the direct Pokemon V Full-Art behavior while compositing it translucently over the source image and using its texture as a cursor-lit physical specular map.
+- SR, SPR, and UR rarity badges now retain their original full-color artwork under a clearly reactive alpha-clipped foil sweep instead of bleaching most letters white.
+- Generated SPR signatures now use the locally bundled Mr De Haviland script with their existing palette-matched neon foil treatment.
+- Restored mask-separated UR and SPR card finishes and made cached mask files read-only during card viewing, preventing dev and installed builds from silently rewriting shared masks.
+- Prevented legacy rarity maintenance from scanning the full media library and stalling application startup.
+- The development launcher now waits for the backend health check before starting Vite, preventing slow database startup from becoming a wall of misleading proxy errors and stopping cleanly when the backend genuinely fails.
+- Video volume now stays at the last chosen level across every video player until it is changed again.
+- Video period choices now respect the Funscript-only filter instead of counting unscripted videos.
+- Pack opening now covers the whole screen instead of being trapped inside the page area, so cards are no longer cut off with the shop showing through underneath.
+- Loading Bay keeps files visible and reports the exact error when permanent deletion fails instead of silently dropping the entry.
+- Loading Bay now repairs legacy duplicate evidence instead of showing `None/64`, always loads the original Vault thumbnail in comparisons, keeps the matched original visible in regular previews, and gives video previews an explicit Back to Loading Bay control.
+
+### Removed
+- Obsolete Legacy cards and their owned copies were removed while current Vault TCG cards remain intact.
+
 ## [1.8.0] - 2026-08-13
 
 ### Added
@@ -191,9 +315,9 @@ A ground-up rework of the trading-card system:
 - Pack economy rework: both packs now have distinct identities instead of premium being strictly better. Booster (now 400cr) is "your history" — pulls lean into what you've actually watched and rated, with DOUBLE foil odds (10%): the foil hunter's pack. Premium (now 800cr) is the tier hunter's pack — guaranteed Epic+, heavy goon/collab/HOF rates, but only 5% foils. Prices raised as an inflation sink.
 - Adding files to the collection no longer prints credits (XP only) — bulk imports were minting fortunes; credits now come from sessions, quests, and play.
 - Card rarity rework: 7 tiers trimmed to 4 (Common / Epic / Legendary / Celestial) and rarity is now FIXED at birth — cards never transmute tiers, so no tier is filler. Progression moved to two new axes: card LEVEL (1–10, grown by CXP from feeding and real sessions) and FOIL variants (premium holo versions rolled in packs or crafted with a catalyst — catalysts no longer bump rarity). Existing collections migrate automatically; anything that had been lottery-upgraded or relic-flagged becomes a foil so no card loses its shine.
-- Goon cards now trigger at 10 cums on an image (was 20) and are born Legendary; the single most-gooned image in the vault is a Celestial artifact. 9★+ galleries are born Epic; My Queen-tier creators mint Celestial creator cards.
+- Bond cards now trigger at 10 cums on an image (was 20) and are born Legendary; the single most-gooned image in the vault is a Celestial artifact. 9★+ galleries are born Epic; My Queen-tier creators mint Celestial creator cards.
 - Card visuals reworked for the 4 tiers using the hand-made borders: purple → orange → gold → celestial, each with its own holo treatment (glare / metal shimmer / gold cosmic dust / prismatic sunpillar).
-- Creator Showcase: every creator profile now has 5 card display slots in the hero (her creator/HOF card, one of her 10 rarest gallery cards, a goon card of her content, one of her 10 rarest photos, and a wildcard for any Legendary-grade+ card). A card can only sit in one showcase at a time. Fill all 5 for MASTERY — a golden badge, a one-time bond surge… and she notices (check your DMs). The Edit/Feed/Talk/AI Tag/Favorite buttons moved to the bottom edge of the hero to make room.
+- Creator Showcase: every creator profile now has 5 card display slots in the hero (her creator/HOF card, one of her 10 rarest gallery cards, a Bond card of her content, one of her 10 rarest photos, and a wildcard for any Legendary-grade+ card). A card can only sit in one showcase at a time. Fill all 5 for MASTERY — a golden badge, a one-time bond surge… and she notices (check your DMs). The Edit/Feed/Talk/AI Tag/Favorite buttons moved to the bottom edge of the hero to make room.
 - Hall of Fame cards: any creator who ever enters the Hall of Fame gets a permanent HOF memento card minted into the pool (kept forever, even if later drops out) — Legendary, with the top 3 minted Celestial. Generous pull odds in both packs.
 - Every card now carries a rarity score (tier × prestige × level) so the rarest cards in the collection can be ranked.
 - Help: the in-app **Cards** reference tab was rewritten for the reworked system — the four tiers, R/SR/SSR/UR True Rarity classes, Prestige crafting, card visuals, level & CXP, the two packs, currencies, and the Forge.

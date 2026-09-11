@@ -1,0 +1,15 @@
+F:\The Vault Git\The Vault\backend\venv\Lib\site-packages\pydantic\_internal\_fields.py:132: UserWarning: Field "model_ready" in TagVocabSummary has conflict with protected namespace "model_".
+
+You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+  warnings.warn(
+F:\The Vault Git\The Vault\backend\venv\Lib\site-packages\pydantic\_internal\_fields.py:132: UserWarning: Field "model_override" in TaggerStartRequest has conflict with protected namespace "model_".
+
+You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+  warnings.warn(
+F:\The Vault Git\The Vault\backend\main.py:1032: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")

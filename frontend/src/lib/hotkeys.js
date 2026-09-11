@@ -30,6 +30,7 @@ export const SCOPE_VIEWER = 'viewer'
 export const HOTKEY_GROUPS = [
   { name: 'Session',     scope: SCOPE_GLOBAL, blurb: 'Timers and logging. Work anywhere in the app.' },
   { name: 'Device',      scope: SCOPE_GLOBAL, blurb: 'Reach these without leaving whatever you are looking at.' },
+  { name: 'Companion',   scope: SCOPE_GLOBAL, blurb: 'Show, hide, enable, or disable Erika from anywhere.' },
   { name: 'Viewer',      scope: SCOPE_VIEWER, blurb: 'Only active while a viewer or the panel wall is open.' },
   { name: 'Video',       scope: SCOPE_VIEWER, blurb: 'Apply to the video you are watching, in every viewer.' },
   { name: 'Rating',      scope: SCOPE_VIEWER, blurb: 'Number keys star whatever has focus.', collapsible: true },
@@ -171,6 +172,24 @@ export const HOTKEY_ACTIONS = [
     default: 'ctrl+r',
   },
 
+  // ── Companion ──────────────────────────────────────────────────────────────
+  {
+    id:      'companion_bubble',
+    label:   'Show / hide Erika bubble',
+    hint:    'Temporarily hides the floating bubble without disabling Erika.',
+    group:   'Companion',
+    scope:   SCOPE_GLOBAL,
+    default: 'ctrl+shift+b',
+  },
+  {
+    id:      'companion_toggle',
+    label:   'Enable / disable Erika',
+    hint:    'Toggles the AI companion as a whole and saves the setting.',
+    group:   'Companion',
+    scope:   SCOPE_GLOBAL,
+    default: 'ctrl+shift+a',
+  },
+
   // ── Viewer ─────────────────────────────────────────────────────────────────
   // The seek pair falls back to next/previous on a photo, so the stock bindings
   // behave exactly as they always have: arrows seek a video, arrows walk a set
@@ -262,6 +281,14 @@ export const HOTKEY_ACTIONS = [
     group:   'Viewer',
     scope:   SCOPE_VIEWER,
     default: 'f',
+  },
+  {
+    id:      'viewer_keep_going',
+    label:   'Open Keep going menu',
+    hint:    'Opens the slideshow continuation choices on demand.',
+    group:   'Viewer',
+    scope:   SCOPE_VIEWER,
+    default: 'k',
   },
   {
     id:      'viewer_favorite',

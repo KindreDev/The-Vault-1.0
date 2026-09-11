@@ -1,0 +1,338 @@
+{
+  "character": {
+    "c": {
+      "x": 277,
+      "y": 87,
+      "width": 173,
+      "height": 200,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 272,
+      "y": 91,
+      "width": 189,
+      "height": 192,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 214,
+      "y": 87,
+      "width": 317,
+      "height": 200,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 179,
+      "y": 89,
+      "width": 373,
+      "height": 196,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 144,
+      "y": 87,
+      "width": 456,
+      "height": 200,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "scene": {
+    "c": {
+      "x": 271,
+      "y": 77,
+      "width": 185,
+      "height": 216,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 280,
+      "y": 78,
+      "width": 174,
+      "height": 212,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 207,
+      "y": 76,
+      "width": 315,
+      "height": 217,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 194,
+      "y": 77,
+      "width": 345,
+      "height": 215,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 132,
+      "y": 76,
+      "width": 464,
+      "height": 217,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "cosplay": {
+    "c": {
+      "x": 269,
+      "y": 79,
+      "width": 194,
+      "height": 213,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 255,
+      "y": 84,
+      "width": 227,
+      "height": 203,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 173,
+      "y": 79,
+      "width": 390,
+      "height": 213,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 149,
+      "y": 82,
+      "width": 437,
+      "height": 208,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 109,
+      "y": 88,
+      "width": 518,
+      "height": 196,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "creator": {
+    "c": {
+      "x": 251,
+      "y": 70,
+      "width": 219,
+      "height": 220,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 254,
+      "y": 70,
+      "width": 229,
+      "height": 220,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 169,
+      "y": 70,
+      "width": 390,
+      "height": 220,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 169,
+      "y": 70,
+      "width": 399,
+      "height": 220,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 118,
+      "y": 80,
+      "width": 492,
+      "height": 200,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "collab": {
+    "c": {
+      "x": 240,
+      "y": 49,
+      "width": 235,
+      "height": 263,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 241,
+      "y": 51,
+      "width": 241,
+      "height": 258,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 177,
+      "y": 49,
+      "width": 375,
+      "height": 262,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 148,
+      "y": 49,
+      "width": 425,
+      "height": 261,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 107,
+      "y": 49,
+      "width": 514,
+      "height": 262,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "gallery": {
+    "c": {
+      "x": 268,
+      "y": 78,
+      "width": 201,
+      "height": 221,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 254,
+      "y": 83,
+      "width": 235,
+      "height": 211,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 172,
+      "y": 78,
+      "width": 398,
+      "height": 221,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 148,
+      "y": 81,
+      "width": 445,
+      "height": 216,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 93,
+      "y": 81,
+      "width": 556,
+      "height": 216,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "bond-card": {
+    "c": {
+      "x": 257,
+      "y": 75,
+      "width": 218,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 240,
+      "y": 75,
+      "width": 234,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 181,
+      "y": 75,
+      "width": 351,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 180,
+      "y": 75,
+      "width": 378,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 112,
+      "y": 75,
+      "width": 489,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  },
+  "hall-of-fame": {
+    "c": {
+      "x": 270,
+      "y": 81,
+      "width": 187,
+      "height": 214,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "r": {
+      "x": 265,
+      "y": 85,
+      "width": 203,
+      "height": 206,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "sr": {
+      "x": 206,
+      "y": 81,
+      "width": 332,
+      "height": 214,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "ur": {
+      "x": 173,
+      "y": 83,
+      "width": 386,
+      "height": 210,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    },
+    "spr": {
+      "x": 136,
+      "y": 81,
+      "width": 471,
+      "height": 214,
+      "canvasWidth": 720,
+      "canvasHeight": 360
+    }
+  }
+}

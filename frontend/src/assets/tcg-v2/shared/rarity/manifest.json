@@ -1,0 +1,32 @@
+{
+  "id": "vault-rarity-assets-v2",
+  "version": 2,
+  "order": ["C", "R", "SR", "UR", "SPR"],
+  "assetPattern": "types/{cardType}/{rarityLowercase}.png",
+  "glyphMaskPattern": "type-glyph-masks/{cardType}/{rarityLowercase}.png",
+  "alphaBounds": "bounds.json",
+  "cardTypes": {
+    "character": {"anchorRole": "lower-right-near-orb", "treatment": "delicate-metallic-serif"},
+    "scene": {"anchorRole": "upper-left", "treatment": "rainbow-dimensional-block"},
+    "cosplay": {"anchorRole": "upper-left-banner", "treatment": "yellow-glitter-serif"},
+    "creator": {"anchorRole": "spine", "treatment": "editorial-champagne-plaque"},
+    "collab": {"anchorRole": "upper-left", "treatment": "glowing-gold-serif"},
+    "gallery": {"anchorRole": "lower-right", "treatment": "double-outline-gold-serif"},
+    "bond-card": {"anchorRole": "upper-center", "treatment": "icy-luminous-capsule"},
+    "hall-of-fame": {"anchorRole": "lower-center", "treatment": "regal-gold-serif"}
+  },
+  "foilStrength": {
+    "C": 0.0,
+    "R": 0.18,
+    "SR": 0.45,
+    "UR": 0.75,
+    "SPR": 1.0
+  },
+  "signature": {
+    "separateLayer": true,
+    "visibleOnlyFor": "SPR",
+    "authorship": "vault"
+  },
+  "preview": "rarity-by-card-type-preview.png",
+  "sourceAtlas": "source/material-atlas-generated.png"
+}

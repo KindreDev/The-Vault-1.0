@@ -9,6 +9,7 @@ class TagBase(BaseModel):
     name: str
     category: str = "general"
     color: Optional[str] = None
+    is_favorite: bool = False
 
 class TagCreate(TagBase):
     pass
@@ -16,6 +17,7 @@ class TagCreate(TagBase):
 class TagUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
+    is_favorite: Optional[bool] = None
 
 class TagMerge(BaseModel):
     source_id: int   # tag to absorb (will be deleted)
@@ -196,6 +198,8 @@ class GalleryOut(GalleryBase):
     is_favorite: bool
     is_tagged: bool
     is_mix: bool = False
+    is_missing: bool = False
+    missing_since: Optional[datetime] = None
     period_month: Optional[int] = None
     period_year: Optional[int] = None
     purchase_value: Optional[float] = 0.0
@@ -410,6 +414,11 @@ class TaggerStatus(BaseModel):
     active_model: Optional[str] = None   # "WD14" | "JoyTag" | "Auto" | None
     device: Optional[str] = None         # "gpu" | "cpu" | None
     cuda_available: bool = False
+    status: str = "idle"
+    paused: bool = False
+    job_id: Optional[int] = None
+    eta_seconds: Optional[int] = None
+    items_per_second: Optional[float] = None
 
 class TaggerStartRequest(BaseModel):
     scope: str = "library"               # "library" | "folder" | "creator"

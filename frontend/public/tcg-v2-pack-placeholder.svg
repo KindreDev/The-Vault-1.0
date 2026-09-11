@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 1040">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#18162c"/><stop offset=".55" stop-color="#24203f"/><stop offset="1" stop-color="#11101f"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#a69dff" stop-opacity=".42"/><stop offset="1" stop-color="#a69dff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="760" height="1040" rx="42" fill="url(#bg)"/><circle cx="380" cy="470" r="330" fill="url(#glow)"/>
+  <rect x="42" y="42" width="676" height="956" rx="30" fill="none" stroke="#bcb6ff" stroke-opacity=".45" stroke-width="3"/>
+  <rect x="68" y="68" width="624" height="904" rx="24" fill="none" stroke="#fff" stroke-opacity=".1"/>
+  <g transform="translate(380 455) rotate(-7)"><rect x="-160" y="-240" width="320" height="480" rx="28" fill="#0b0a13" stroke="#d5d1ff" stroke-width="8"/><path d="M-112-170h224M-112-120h150M-112 142h224" stroke="#d5d1ff" stroke-opacity=".45" stroke-width="8" stroke-linecap="round"/><path d="M0-45l21 43 48 7-35 34 8 48L0 65l-42 22 8-48-35-34 48-7z" fill="#d5d1ff" fill-opacity=".8"/></g>
+  <g fill="#fff" fill-opacity=".75"><circle cx="152" cy="212" r="7"/><circle cx="620" cy="284" r="5"/><circle cx="158" cy="702" r="5"/><circle cx="610" cy="680" r="8"/></g>
+  <text x="380" y="820" fill="#fff" font-family="Arial, sans-serif" font-size="34" font-weight="700" text-anchor="middle" letter-spacing="5">PACK ART</text>
+  <text x="380" y="866" fill="#fff" fill-opacity=".5" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" letter-spacing="3">COMING LATER</text>
+</svg>

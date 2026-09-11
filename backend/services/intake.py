@@ -19,19 +19,21 @@ import time
 import shutil
 import subprocess
 import zipfile
+import hashlib
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
-from models import IntakeRoot, IntakeItem, Creator, Gallery, LibraryRoot
+from models import IntakeRoot, IntakeFolder, IntakeItem, Creator, Gallery, LibraryRoot, Image
 from database import CONFIG_FILE, SessionLocal
 from services.scanner import (
     IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
     make_thumb_path, generate_thumbnail, generate_video_thumbnail,
-    scan_folder_path,
+    scan_folder_path, get_image_dimensions,
 )
 
 ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z"}
@@ -111,6 +113,7 @@ def get_intake_config() -> dict:
         fs_dest = "beside"
     return {
         "new_creator_base": cfg.get("intake_new_creator_base", ""),
+        "unsorted_folder": cfg.get("intake_unsorted_folder", ""),
         "extract_archives": cfg.get("intake_extract_archives", True),
         "archive_after": after,
         "funscript_dest": fs_dest,
@@ -120,6 +123,7 @@ def get_intake_config() -> dict:
 
 
 def set_intake_config(new_creator_base: Optional[str], extract_archives: Optional[bool],
+                      unsorted_folder: Optional[str] = None,
                       archive_after: Optional[str] = None,
                       funscript_dest: Optional[str] = None) -> dict:
     cfg = _read_config()
@@ -128,6 +132,11 @@ def set_intake_config(new_creator_base: Optional[str], extract_archives: Optiona
         if base and not os.path.isdir(base):
             os.makedirs(base, exist_ok=True)
         cfg["intake_new_creator_base"] = base
+    if unsorted_folder is not None:
+        unsorted = unsorted_folder.strip()
+        if unsorted and not os.path.isdir(unsorted):
+            os.makedirs(unsorted, exist_ok=True)
+        cfg["intake_unsorted_folder"] = unsorted
     if extract_archives is not None:
         cfg["intake_extract_archives"] = bool(extract_archives)
     if archive_after is not None:
@@ -193,6 +202,95 @@ def _move_file(src: str, dest: str):
                 pass
             raise IOError("size mismatch after cross-volume copy — source kept")
         os.remove(src)
+
+
+def _tree_signature(path: str) -> tuple[int, int, float]:
+    """Return (supported file count, total bytes, newest mtime) for a tree."""
+    count = total = 0
+    newest = 0.0
+    for dirpath, _dirs, files in os.walk(path):
+        for name in files:
+            full = os.path.join(dirpath, name)
+            try:
+                stat = os.stat(full)
+            except OSError:
+                continue
+            if _classify(os.path.splitext(name)[1]):
+                count += 1
+            total += stat.st_size
+            newest = max(newest, stat.st_mtime)
+    return count, total, newest
+
+
+def _move_directory(src: str, dest: str, conflict: str = "rename") -> str:
+    """Move a folder safely, verifying cross-volume copies before removal."""
+    if os.path.exists(dest):
+        if conflict == "cancel":
+            raise FileExistsError(f"Destination already exists: {dest}")
+        if conflict == "rename":
+            dest = _unique_dir(os.path.dirname(dest), os.path.basename(dest))
+        elif conflict == "merge":
+            for name in os.listdir(src):
+                child_src = os.path.join(src, name)
+                child_dest = os.path.join(dest, name)
+                if os.path.isdir(child_src):
+                    _move_directory(child_src, child_dest, "merge")
+                else:
+                    _move_file(child_src, _unique_dest(dest, name))
+            os.rmdir(src)
+            return dest
+        else:
+            raise ValueError("Unknown folder conflict policy")
+
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if _same_volume(src, dest):
+        os.replace(src, dest)
+        return dest
+
+    before = _tree_signature(src)
+    shutil.copytree(src, dest)
+    after = _tree_signature(dest)
+    if before[:2] != after[:2]:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise IOError("folder verification failed after cross-volume copy; source kept")
+    shutil.rmtree(src)
+    return dest
+
+
+def _sha256_file(path: str) -> Optional[str]:
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _media_metadata(path: str, is_video: bool) -> tuple[Optional[int], Optional[int], Optional[float]]:
+    """Read dimensions and, for videos, duration without decoding the media."""
+    if not is_video:
+        width, height = get_image_dimensions(path)
+        return width, height, None
+    try:
+        from services.ai_tagger import _get_ffmpeg_exe
+        ffprobe = _get_ffmpeg_exe().replace("ffmpeg", "ffprobe")
+        no_window = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height:format=duration",
+             "-of", "json", path],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=15, creationflags=no_window,
+        )
+        payload = json.loads(result.stdout or "{}")
+        stream = (payload.get("streams") or [{}])[0]
+        duration_raw = (payload.get("format") or {}).get("duration")
+        return stream.get("width"), stream.get("height"), (
+            float(duration_raw) if duration_raw is not None else None)
+    except Exception:
+        return None, None, None
 
 
 def _move_funscript(src_media: str, dest_media: str, mode: str = "beside") -> Optional[str]:
@@ -430,6 +528,7 @@ def list_archive_contents(path: str) -> dict:
         can_preview = False
 
     return {
+        "format": ext.lstrip("."),
         "supported": supported, "error": error,
         "counts": {"images": images, "videos": videos, "other": other},
         "entries": entries[:500],
@@ -548,31 +647,59 @@ def _load_vault_hashes(db: Session) -> list:
 
 def _find_duplicate(db: Session, full_path: str, is_video: bool,
                     size: Optional[int], vault_hashes: list):
-    """Return (phash_hex_or_None, duplicate_image_id_or_None).
-    Images: pHash near-match against the vault index. Videos: exact byte-size
-    match (pHashing video frames at intake time is not worth the cost)."""
-    from models import Image
+    """Return explainable duplicate evidence.
+
+    Same-size vault files are content-hashed first, making unattended deletion
+    safe. Images then fall back to a perceptual near-match; videos never do.
+    """
+    content_hash = None
+    if size:
+        candidates = (db.query(Image)
+                         .filter(Image.is_video == is_video, Image.file_size == size)
+                         .all())
+        if candidates:
+            content_hash = _sha256_file(full_path)
+            if content_hash:
+                for candidate in candidates:
+                    if not candidate.content_hash and os.path.isfile(candidate.file_path):
+                        candidate.content_hash = _sha256_file(candidate.file_path)
+                    if candidate.content_hash == content_hash:
+                        return {
+                            "phash": None,
+                            "content_hash": content_hash,
+                            "duplicate_of": candidate.id,
+                            "duplicate_kind": "exact_content",
+                            "duplicate_distance": 0,
+                        }
     if is_video:
-        if size:
-            m = (db.query(Image.id)
-                   .filter(Image.is_video == True, Image.file_size == size)  # noqa: E712
-                   .first())
-            return None, (m[0] if m else None)
-        return None, None
+        return {"phash": None, "content_hash": content_hash if content_hash is not None else "", "duplicate_of": None,
+                "duplicate_kind": None, "duplicate_distance": None}
     from services.dedup import _hash_file
     h = _hash_file(full_path)
     if not h:
-        return "", None   # "" = tried and failed; don't retry every scan
+        return {"phash": "", "content_hash": content_hash, "duplicate_of": None,
+                "duplicate_kind": None, "duplicate_distance": None}
     hv = int(h, 16)
+    best_id = None
+    best_distance = 65
     for iid, other in vault_hashes:
-        if bin(hv ^ other).count("1") <= _DUP_HAMMING_THRESHOLD:
-            return h, iid
-    return h, None
+        distance = (hv ^ other).bit_count()
+        if distance < best_distance:
+            best_id, best_distance = iid, distance
+    if best_id is not None and best_distance <= _DUP_HAMMING_THRESHOLD:
+        return {"phash": h, "content_hash": content_hash, "duplicate_of": best_id,
+                "duplicate_kind": "perceptual_image", "duplicate_distance": best_distance}
+    return {"phash": h, "content_hash": content_hash, "duplicate_of": None,
+            "duplicate_kind": None, "duplicate_distance": None}
+
+
+def _apply_duplicate(item: IntakeItem, evidence: dict):
+    for key in ("phash", "content_hash", "duplicate_of", "duplicate_kind", "duplicate_distance"):
+        setattr(item, key, evidence.get(key))
 
 
 def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str] = None):
-    """Walk enabled intake roots and upsert `intake_items` (status=pending).
-    Does NOT create Gallery/Image rows."""
+    """Discover loose root files plus top-level gallery-folder packages."""
     _set_state(running=True, progress=0, total=0, current_path=None,
                cancelled=False, message="Scanning intake…",
                job_id=job_id, done_job_id=None)
@@ -585,41 +712,110 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
             _set_state(message="No intake folders configured.")
             return
 
-        # Gather candidates first so we have an accurate progress total.
-        candidates = []  # (root, dirpath, filename)
+        # A temporary hide lasts exactly until this scan begins.
+        db.query(IntakeItem).filter(IntakeItem.status == "hidden").update(
+            {IntakeItem.status: "pending"}, synchronize_session=False)
+        db.query(IntakeFolder).filter(IntakeFolder.status == "hidden").update(
+            {IntakeFolder.status: "pending"}, synchronize_session=False)
+        db.commit()
+
+        # Files directly under a root stay loose. Each top-level child directory
+        # becomes one movable gallery package and owns every candidate below it.
+        candidates = []  # (root, full_path, intake_folder_or_none)
         for root in roots:
             if not os.path.isdir(root.path):
                 continue
-            for dirpath, _dirs, files in os.walk(root.path):
-                for fn in files:
-                    if _classify(os.path.splitext(fn)[1]) is None:
-                        continue
-                    full = os.path.join(dirpath, fn)
-                    if _is_partial(fn, full):
-                        continue
-                    candidates.append((root, dirpath, fn))
+            try:
+                root_entries = list(os.scandir(root.path))
+            except OSError:
+                continue
+
+            for entry in root_entries:
+                if entry.is_file():
+                    if _classify(os.path.splitext(entry.name)[1]) and not _is_partial(entry.name, entry.path):
+                        candidates.append((root, entry.path, None))
+                    continue
+                if not entry.is_dir():
+                    continue
+
+                folder_files = []
+                videos = total_size = 0
+                newest = 0.0
+                for dirpath, _dirs, files in os.walk(entry.path):
+                    for filename in files:
+                        if _classify(os.path.splitext(filename)[1]) is None:
+                            continue
+                        full = os.path.join(dirpath, filename)
+                        if _is_partial(filename, full):
+                            continue
+                        try:
+                            stat = os.stat(full)
+                        except OSError:
+                            continue
+                        folder_files.append(full)
+                        total_size += stat.st_size
+                        newest = max(newest, stat.st_mtime)
+                        videos += int(_classify(os.path.splitext(filename)[1]) == "video")
+                if not folder_files:
+                    continue
+
+                folder = db.query(IntakeFolder).filter(IntakeFolder.source_path == entry.path).first()
+                if not folder:
+                    folder = IntakeFolder(root_id=root.id, source_path=entry.path,
+                                          name=entry.name, status="pending")
+                    db.add(folder)
+                    db.flush()
+                elif folder.status == "ignored":
+                    unchanged = (folder.file_count == len(folder_files)
+                                 and folder.total_size == total_size
+                                 and folder.source_mtime == newest)
+                    if not unchanged:
+                        folder.status = "pending"
+                folder.root_id = root.id
+                folder.name = entry.name
+                folder.file_count = len(folder_files)
+                folder.video_count = videos
+                folder.total_size = total_size
+                folder.source_mtime = newest
+                folder.error = None if folder.status == "pending" else folder.error
+                for full in folder_files:
+                    candidates.append((root, full, folder))
+            db.commit()
 
         _set_state(total=len(candidates), message=f"Found {len(candidates)} candidate file(s).")
 
         vault_hashes = _load_vault_hashes(db)
         found = 0
-        for idx, (root, dirpath, fn) in enumerate(candidates):
+        for idx, (root, full, folder) in enumerate(candidates):
             if _cancelled():
                 _set_state(message="Intake scan cancelled.")
                 break
-            full = os.path.join(dirpath, fn)
             _set_state(progress=idx + 1, current_path=full)
 
-            if db.query(IntakeItem).filter(IntakeItem.source_path == full).first():
-                continue  # already known (pending/committed/error)
-
+            fn = os.path.basename(full)
             kind = _classify(os.path.splitext(fn)[1])
             is_video = kind == "video"
             is_archive = kind == "archive"
+            existing = db.query(IntakeItem).filter(IntakeItem.source_path == full).first()
             try:
-                size = os.path.getsize(full)
+                stat = os.stat(full)
+                size, mtime = stat.st_size, stat.st_mtime
             except OSError:
-                size = None
+                size, mtime = None, None
+            if existing:
+                existing.folder_id = folder.id if folder else None
+                if folder and not folder.thumb_path and existing.thumb_path:
+                    folder.thumb_path = existing.thumb_path
+                if not is_archive and (existing.width is None or existing.height is None
+                                       or (is_video and existing.duration is None)):
+                    existing.width, existing.height, existing.duration = _media_metadata(full, is_video)
+                if existing.status == "ignored":
+                    if existing.file_size == size and existing.source_mtime == mtime:
+                        continue
+                    existing.status = "pending"
+                    existing.error = None
+                else:
+                    continue
 
             thumb_path = None
             if not is_archive:
@@ -631,16 +827,29 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
             if is_video:
                 has_fs = os.path.exists(os.path.splitext(full)[0] + ".funscript")
 
-            phash, dup_of = (None, None)
+            evidence = {"phash": None, "content_hash": None, "duplicate_of": None,
+                        "duplicate_kind": None, "duplicate_distance": None}
             if not is_archive:
-                phash, dup_of = _find_duplicate(db, full, is_video, size, vault_hashes)
+                evidence = _find_duplicate(db, full, is_video, size, vault_hashes)
 
-            db.add(IntakeItem(
-                root_id=root.id, source_path=full, filename=fn, file_size=size,
-                is_video=is_video, is_archive=is_archive, has_funscript=has_fs,
-                thumb_path=thumb_path, phash=phash, duplicate_of=dup_of,
-                status="pending",
-            ))
+            item = existing or IntakeItem(source_path=full)
+            item.root_id = root.id
+            item.folder_id = folder.id if folder else None
+            item.filename = fn
+            item.file_size = size
+            item.source_mtime = mtime
+            if not is_archive:
+                item.width, item.height, item.duration = _media_metadata(full, is_video)
+            item.is_video = is_video
+            item.is_archive = is_archive
+            item.has_funscript = has_fs
+            item.thumb_path = thumb_path
+            item.status = "pending"
+            _apply_duplicate(item, evidence)
+            if not existing:
+                db.add(item)
+            if folder and not folder.thumb_path and thumb_path:
+                folder.thumb_path = thumb_path
             found += 1
             root.last_scan = datetime.utcnow()
             db.commit()
@@ -651,9 +860,15 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
         removed = 0
         for it in db.query(IntakeItem).filter(IntakeItem.status == "pending").all():
             if os.path.exists(it.source_path):
-                if not it.is_archive and it.phash is None and it.duplicate_of is None:
-                    it.phash, it.duplicate_of = _find_duplicate(
-                        db, it.source_path, it.is_video, it.file_size, vault_hashes)
+                needs_evidence = (
+                    it.duplicate_kind is None
+                    and (it.duplicate_of is not None
+                         or (it.is_video and it.content_hash is None)
+                         or (not it.is_video and it.phash is None))
+                )
+                if not it.is_archive and needs_evidence:
+                    _apply_duplicate(it, _find_duplicate(
+                        db, it.source_path, it.is_video, it.file_size, vault_hashes))
                 continue
             if it.thumb_path and os.path.exists(it.thumb_path):
                 try:
@@ -663,6 +878,12 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
             db.delete(it)
             removed += 1
         db.commit()  # persists prunes + duplicate backfills
+
+        # Pending folder rows disappear when their directory was moved/deleted.
+        for folder in db.query(IntakeFolder).filter(IntakeFolder.status.in_(("pending", "error"))).all():
+            if not os.path.isdir(folder.source_path):
+                db.delete(folder)
+        db.commit()
 
         if not _cancelled():
             msg = f"Intake scan complete. {found} new item(s)."
@@ -724,6 +945,14 @@ def _resolve_target(db: Session, target: dict) -> tuple[str, Optional[Gallery]]:
     so the post-move scan auto-links the creator."""
     mode = target.get("mode")
 
+    if mode == "unsorted":
+        path = (_read_config().get("intake_unsorted_folder") or "").strip()
+        if not path:
+            raise ValueError("Set an Unsorted folder in Loading Bay settings first.")
+        destination = validate_unsorted_folder(db, path)
+        os.makedirs(destination, exist_ok=True)
+        return destination, None
+
     if mode == "existing_gallery":
         g = db.query(Gallery).filter(Gallery.id == target.get("gallery_id")).first()
         if not g or not g.folder_path:
@@ -762,6 +991,36 @@ def _resolve_target(db: Session, target: dict) -> tuple[str, Optional[Gallery]]:
     # creator_root
     os.makedirs(root, exist_ok=True)
     return root, None
+
+
+def _clear_gallery_creators_under(db: Session, folder_path: str):
+    """Raw imports are intentionally unassigned, even if their destination
+    happens to sit beneath a creator source folder that scanner auto-matches."""
+    base = os.path.normcase(os.path.normpath(folder_path))
+    for gallery in db.query(Gallery).all():
+        candidate = os.path.normcase(os.path.normpath(gallery.folder_path or ""))
+        if candidate == base or candidate.startswith(base + os.sep):
+            gallery.creator_id = None
+            gallery.creators.clear()
+    db.commit()
+
+
+def validate_unsorted_folder(db: Session, path: str) -> str:
+    """Return an absolute safe Unsorted path or reject overlap with intake."""
+    destination = os.path.abspath((path or "").strip())
+    if not (path or "").strip():
+        raise ValueError("Choose an Unsorted folder first.")
+    for root in db.query(IntakeRoot).filter(IntakeRoot.enabled == True).all():  # noqa: E712
+        try:
+            intake_root = os.path.abspath(root.path)
+            if os.path.commonpath((destination, intake_root)) in (destination, intake_root):
+                raise ValueError(
+                    "The Unsorted folder must be separate from every Loading Bay folder."
+                )
+        except ValueError as exc:
+            if "separate from" in str(exc):
+                raise
+    return destination
 
 
 # ── Commit: physically move items into the vault ───────────────────────────────
@@ -853,6 +1112,8 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                     scan_db = SessionLocal()
                     try:
                         scan_folder_path(scan_db, d)
+                        if target.get("mode") == "unsorted":
+                            _clear_gallery_creators_under(scan_db, d)
                     finally:
                         scan_db.close()
 
@@ -888,30 +1149,396 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
     return report
 
 
-def discard_items(db: Session, item_ids: list, delete_file: bool = False) -> dict:
-    """Drop intake rows. With delete_file=True the source file is deleted from
-    disk too; otherwise it is left in place (just removed from the triage list)."""
-    removed = 0
-    deleted = 0
+def commit_folders(db: Session, folder_ids: list, target: dict, job_id: Optional[str] = None):
+    """Move complete gallery packages beneath a creator root and scan them."""
+    _intake_state.pop("report", None)
+    _set_state(running=True, progress=0, total=len(folder_ids), current_path=None,
+               cancelled=False, message="Importing galleriesâ€¦",
+               job_id=job_id, done_job_id=None)
+    report = []
+    try:
+        if target.get("mode") in ("existing_gallery", "new_folder"):
+            raise ValueError("Whole galleries must be sent to a creator root.")
+        dest_root, _gallery = _resolve_target(db, target)
+        db.commit()
+        conflict = target.get("folder_conflict", "rename")
+        for idx, folder_id in enumerate(folder_ids):
+            if _cancelled():
+                break
+            folder = db.query(IntakeFolder).filter(IntakeFolder.id == folder_id).first()
+            if not folder or folder.status == "committed":
+                continue
+            _set_state(progress=idx + 1, current_path=folder.source_path)
+            try:
+                if not os.path.isdir(folder.source_path):
+                    raise FileNotFoundError("source folder no longer exists")
+                dest = _move_directory(
+                    folder.source_path,
+                    os.path.join(dest_root, _sanitize(folder.name)),
+                    conflict,
+                )
+                children = db.query(IntakeItem).filter(IntakeItem.folder_id == folder.id).all()
+                for item in children:
+                    item.status = "committed"
+                    if item.thumb_path and os.path.exists(item.thumb_path):
+                        try:
+                            os.remove(item.thumb_path)
+                        except OSError:
+                            pass
+                folder.status = "committed"
+                folder.error = None
+                db.commit()
+                scan_db = SessionLocal()
+                try:
+                    scan_folder_path(scan_db, dest)
+                    if target.get("mode") == "unsorted":
+                        _clear_gallery_creators_under(scan_db, dest)
+                finally:
+                    scan_db.close()
+                report.append({"folder_id": folder.id, "filename": folder.name,
+                               "result": "moved", "dest": dest})
+            except Exception as exc:
+                folder.status = "error"
+                folder.error = str(exc)
+                db.commit()
+                report.append({"folder_id": folder.id, "filename": folder.name,
+                               "result": "error", "message": str(exc)})
+        succeeded = sum(row["result"] != "error" for row in report)
+        _set_state(message=f"Imported {succeeded} gallery folder(s).")
+    except Exception as exc:
+        db.rollback()
+        _set_state(message=f"Gallery import error: {exc}")
+    finally:
+        _intake_state["report"] = report
+        _set_state(done_job_id=job_id, running=False, current_path=None)
+        db.close()
+    return report
+
+
+def _inside_root(db: Session, path: str, root_id: Optional[int]) -> bool:
+    root = db.query(IntakeRoot).filter(IntakeRoot.id == root_id).first()
+    if not root:
+        return False
+    try:
+        return os.path.commonpath((os.path.abspath(path), os.path.abspath(root.path))) == os.path.abspath(root.path)
+    except ValueError:
+        return False
+
+
+def discard_items(db: Session, item_ids: list, action: str = "hide") -> dict:
+    """Hide, persistently ignore, or reliably delete loose intake files."""
+    if action not in {"hide", "ignore", "delete"}:
+        raise ValueError("Unknown Loading Bay action")
+    affected = deleted = 0
+    errors = []
     for iid in item_ids:
         item = db.query(IntakeItem).filter(IntakeItem.id == iid).first()
         if not item:
             continue
-        if delete_file and item.source_path and os.path.exists(item.source_path):
+        if action == "hide":
+            item.status = "hidden"
+            affected += 1
+            continue
+        if action == "ignore":
             try:
-                os.remove(item.source_path)
-                deleted += 1
+                stat = os.stat(item.source_path)
+                item.file_size = stat.st_size
+                item.source_mtime = stat.st_mtime
             except OSError:
                 pass
+            item.status = "ignored"
+            affected += 1
+            continue
+        if not _inside_root(db, item.source_path, item.root_id):
+            errors.append({"id": iid, "name": item.filename, "error": "Path is outside its Loading Bay root"})
+            continue
+        try:
+            if item.source_path and os.path.exists(item.source_path):
+                os.remove(item.source_path)
+            sidecar = os.path.splitext(item.source_path)[0] + ".funscript"
+            if item.has_funscript and os.path.exists(sidecar):
+                os.remove(sidecar)
+            deleted += 1
+        except OSError as exc:
+            errors.append({"id": iid, "name": item.filename, "error": str(exc)})
+            continue
         if item.thumb_path and os.path.exists(item.thumb_path):
             try:
                 os.remove(item.thumb_path)
             except OSError:
                 pass
         db.delete(item)
-        removed += 1
+        affected += 1
     db.commit()
-    return {"removed": removed, "deleted_files": deleted}
+    return {"affected": affected, "deleted_files": deleted, "errors": errors}
+
+
+def discard_folders(db: Session, folder_ids: list, action: str = "hide") -> dict:
+    """Hide, persistently ignore, or delete complete gallery packages."""
+    if action not in {"hide", "ignore", "delete"}:
+        raise ValueError("Unknown Loading Bay action")
+    affected = deleted = 0
+    errors = []
+    for folder_id in folder_ids:
+        folder = db.query(IntakeFolder).filter(IntakeFolder.id == folder_id).first()
+        if not folder:
+            continue
+        children = db.query(IntakeItem).filter(IntakeItem.folder_id == folder.id).all()
+        if action in {"hide", "ignore"}:
+            folder.status = "hidden" if action == "hide" else "ignored"
+            for item in children:
+                item.status = folder.status
+            affected += 1
+            continue
+        if not _inside_root(db, folder.source_path, folder.root_id):
+            errors.append({"id": folder.id, "name": folder.name, "error": "Path is outside its Loading Bay root"})
+            continue
+        try:
+            if os.path.isdir(folder.source_path):
+                shutil.rmtree(folder.source_path)
+            deleted += 1
+        except OSError as exc:
+            errors.append({"id": folder.id, "name": folder.name, "error": str(exc)})
+            continue
+        for item in children:
+            if item.thumb_path and os.path.exists(item.thumb_path):
+                try:
+                    os.remove(item.thumb_path)
+                except OSError:
+                    pass
+            db.delete(item)
+        db.delete(folder)
+        affected += 1
+    db.commit()
+    return {"affected": affected, "deleted_folders": deleted, "errors": errors}
+
+
+def _item_query(db: Session, status: str = "pending", kind: str = "all",
+                search: str = "", duplicates: str = "all"):
+    q = db.query(IntakeItem).filter(IntakeItem.folder_id.is_(None))
+    if status and status != "all":
+        q = q.filter(IntakeItem.status == status)
+    if kind == "image":
+        q = q.filter(IntakeItem.is_video == False, IntakeItem.is_archive == False)  # noqa: E712
+    elif kind == "video":
+        q = q.filter(IntakeItem.is_video == True)  # noqa: E712
+    elif kind == "archive":
+        q = q.filter(IntakeItem.is_archive == True)  # noqa: E712
+    if search.strip():
+        q = q.filter(IntakeItem.filename.ilike(f"%{search.strip()}%"))
+    if duplicates == "duplicates":
+        q = q.filter(IntakeItem.duplicate_of.isnot(None))
+    elif duplicates == "exact":
+        q = q.filter(IntakeItem.duplicate_kind == "exact_content")
+    elif duplicates == "visual":
+        q = q.filter(IntakeItem.duplicate_kind == "perceptual_image")
+    return q
+
+
+def _duplicate_payload(db: Session, item: IntakeItem) -> Optional[dict]:
+    if not item.duplicate_of:
+        return None
+    match = db.query(Image).filter(Image.id == item.duplicate_of).first()
+    if not match:
+        item.duplicate_of = None
+        item.duplicate_kind = None
+        item.duplicate_distance = None
+        db.commit()
+        return None
+    # Rows created by the first Loading Bay duplicate implementation only had
+    # duplicate_of. Repair their evidence lazily so the UI never says None/64.
+    if item.duplicate_kind is None:
+        if (not item.is_video and item.phash and match.perceptual_hash):
+            try:
+                distance = (int(item.phash, 16) ^ int(match.perceptual_hash, 16)).bit_count()
+            except (TypeError, ValueError):
+                distance = None
+            if distance is not None and distance <= _DUP_HAMMING_THRESHOLD:
+                item.duplicate_kind = "perceptual_image"
+                item.duplicate_distance = distance
+            else:
+                item.duplicate_of = None
+        elif os.path.isfile(item.source_path):
+            _apply_duplicate(item, _find_duplicate(
+                db, item.source_path, item.is_video, item.file_size,
+                [] if item.is_video else _load_vault_hashes(db)))
+        db.commit()
+        if not item.duplicate_of:
+            return None
+        match = db.query(Image).filter(Image.id == item.duplicate_of).first()
+        if not match:
+            return None
+
+    if os.path.isfile(match.file_path) and (
+            match.width is None or match.height is None
+            or (match.is_video and match.duration is None)):
+        width, height, duration = _media_metadata(match.file_path, bool(match.is_video))
+        match.width = match.width or width
+        match.height = match.height or height
+        match.duration = match.duration or duration
+        db.commit()
+    gallery = match.gallery
+    creator = gallery.creator if gallery else None
+    if item.duplicate_kind == "exact_content":
+        reason = "Exact byte-for-byte content match (SHA-256)."
+    else:
+        reason = f"Visual perceptual-hash match at distance {item.duplicate_distance}/64 (lower is closer)."
+    return {
+        "image_id": match.id,
+        "filename": match.filename,
+        "gallery_id": gallery.id if gallery else None,
+        "gallery_name": gallery.name if gallery else None,
+        "creator_id": creator.id if creator else None,
+        "creator_name": creator.name if creator else None,
+        "thumb": (f"/api/images/{match.id}/thumb" if match.is_video
+                  else f"/api/images/{match.id}/preview?w=1080"),
+        "file_url": f"/api/images/{match.id}/file",
+        "file_size": match.file_size,
+        "width": match.width,
+        "height": match.height,
+        "duration": match.duration,
+        "is_video": bool(match.is_video),
+        "kind": item.duplicate_kind,
+        "distance": item.duplicate_distance,
+        "reason": reason,
+        "safe_to_auto_delete": item.duplicate_kind == "exact_content",
+    }
+
+
+def _item_payload(db: Session, item: IntakeItem) -> dict:
+    if (not item.is_archive and os.path.isfile(item.source_path)
+            and (item.width is None or item.height is None
+                 or (item.is_video and item.duration is None))):
+        item.width, item.height, item.duration = _media_metadata(item.source_path, bool(item.is_video))
+        db.commit()
+    return {
+        "id": item.id, "filename": item.filename, "file_size": item.file_size,
+        "width": item.width, "height": item.height, "duration": item.duration,
+        "is_video": item.is_video, "is_archive": item.is_archive,
+        "has_funscript": item.has_funscript,
+        "duplicate_of": item.duplicate_of,
+        "duplicate_kind": item.duplicate_kind,
+        "duplicate_distance": item.duplicate_distance,
+        "duplicate": _duplicate_payload(db, item),
+        "discovered_at": item.discovered_at.isoformat() if item.discovered_at else None,
+        "thumb": f"/thumbs/{os.path.basename(item.thumb_path)}" if item.thumb_path else None,
+        "status": item.status, "error": item.error,
+    }
+
+
+def list_items(db: Session, *, status: str = "pending", page: int = 1, limit: int = 120,
+               kind: str = "all", search: str = "", duplicates: str = "all",
+               sort: str = "date", direction: str = "desc") -> dict:
+    q = _item_query(db, status, kind, search, duplicates)
+    total = q.count()
+    duplicate_total = q.filter(IntakeItem.duplicate_of.isnot(None)).count()
+    order_col = {
+        "name": IntakeItem.filename,
+        "size": IntakeItem.file_size,
+        "duplicate": case((IntakeItem.duplicate_kind == "exact_content", 0),
+                          (IntakeItem.duplicate_kind == "perceptual_image", 1), else_=2),
+    }.get(sort, IntakeItem.discovered_at)
+    order = order_col.asc() if direction == "asc" else order_col.desc()
+    limit = max(1, min(int(limit), 200))
+    page = max(1, int(page))
+    rows = q.order_by(order, IntakeItem.id.desc()).offset((page - 1) * limit).limit(limit).all()
+    return {"total": total, "duplicate_total": duplicate_total, "page": page,
+            "limit": limit, "has_more": page * limit < total,
+            "items": [_item_payload(db, item) for item in rows]}
+
+
+def list_folders(db: Session, *, status: str = "pending", page: int = 1,
+                 limit: int = 60, search: str = "", sort: str = "date",
+                 direction: str = "desc") -> dict:
+    q = db.query(IntakeFolder)
+    if status and status != "all":
+        q = q.filter(IntakeFolder.status == status)
+    if search.strip():
+        q = q.filter(IntakeFolder.name.ilike(f"%{search.strip()}%"))
+    total = q.count()
+    order_col = {"name": IntakeFolder.name, "size": IntakeFolder.total_size}.get(
+        sort, IntakeFolder.discovered_at)
+    order = order_col.asc() if direction == "asc" else order_col.desc()
+    limit = max(1, min(int(limit), 100))
+    page = max(1, int(page))
+    rows = q.order_by(order, IntakeFolder.id.desc()).offset((page - 1) * limit).limit(limit).all()
+    payload = []
+    for folder in rows:
+        children = db.query(IntakeItem).filter(IntakeItem.folder_id == folder.id)
+        exact = children.filter(IntakeItem.duplicate_kind == "exact_content").count()
+        visual = children.filter(IntakeItem.duplicate_kind == "perceptual_image").count()
+        preview_thumbs = [
+            f"/thumbs/{os.path.basename(path)}" for (path,) in
+            children.filter(IntakeItem.thumb_path.isnot(None))
+                    .order_by(IntakeItem.id.asc()).with_entities(IntakeItem.thumb_path)
+                    .limit(8).all() if path
+        ]
+        preview_reason = None
+        if not preview_thumbs:
+            if folder.video_count and folder.video_count == folder.file_count:
+                preview_reason = (
+                    "No poster frame could be extracted from these videos. Their codec or container "
+                    "may not be readable by FFmpeg, or the files may still be incomplete."
+                )
+            else:
+                preview_reason = (
+                    "None of the supported files produced a thumbnail. Open the folder to inspect "
+                    "each file directly."
+                )
+        payload.append({
+            "id": folder.id, "name": folder.name, "file_count": folder.file_count,
+            "video_count": folder.video_count, "total_size": folder.total_size,
+            "duplicate_count": exact + visual, "exact_duplicate_count": exact,
+            "visual_duplicate_count": visual,
+            "thumb": f"/thumbs/{os.path.basename(folder.thumb_path)}" if folder.thumb_path else None,
+            "preview_thumbs": preview_thumbs, "preview_reason": preview_reason,
+            "status": folder.status, "error": folder.error,
+            "discovered_at": folder.discovered_at.isoformat() if folder.discovered_at else None,
+        })
+    return {"total": total, "page": page, "limit": limit,
+            "has_more": page * limit < total, "items": payload}
+
+
+def get_folder_contents(db: Session, folder_id: int, *, page: int = 1,
+                        limit: int = 120) -> Optional[dict]:
+    """Return every supported file in a pending gallery package for inspection."""
+    folder = db.query(IntakeFolder).filter(IntakeFolder.id == folder_id).first()
+    if not folder:
+        return None
+    query = db.query(IntakeItem).filter(IntakeItem.folder_id == folder.id)
+    total = query.count()
+    page = max(1, int(page))
+    limit = max(1, min(int(limit), 200))
+    children = (query.order_by(IntakeItem.filename.asc())
+                     .offset((page - 1) * limit).limit(limit).all())
+    preview_reason = None
+    if children and not folder.thumb_path:
+        if all(item.is_video for item in children):
+            preview_reason = (
+                "No poster frame could be extracted from these videos. Their codec or container "
+                "may not be readable by FFmpeg, or the files may still be incomplete. "
+                "You can still try opening each video."
+            )
+        else:
+            preview_reason = (
+                "None of these files produced a thumbnail, but each supported file can still be opened."
+            )
+    return {
+        "id": folder.id, "name": folder.name, "file_count": folder.file_count,
+        "video_count": folder.video_count, "total_size": folder.total_size,
+        "preview_reason": preview_reason,
+        "page": page, "limit": limit, "total": total,
+        "has_more": page * limit < total,
+        "items": [_item_payload(db, item) for item in children],
+    }
+
+
+def bulk_duplicate_action(db: Session, action: str, *, include_visual: bool = False,
+                          kind: str = "all", search: str = "") -> dict:
+    duplicate_filter = "duplicates" if include_visual else "exact"
+    ids = [row[0] for row in _item_query(
+        db, "pending", kind, search, duplicate_filter).with_entities(IntakeItem.id).all()]
+    return discard_items(db, ids, action)
 
 
 # ── Intake root management ─────────────────────────────────────────────────────

@@ -449,6 +449,185 @@ def match_funscript_library(db: Session, library_path: str):
         db.close()
 
 
+def _path_is_within(path: str, root_path: str) -> bool:
+    try:
+        return os.path.commonpath([
+            os.path.normcase(os.path.abspath(path)),
+            os.path.normcase(os.path.abspath(root_path)),
+        ]) == os.path.normcase(os.path.abspath(root_path))
+    except (OSError, ValueError):
+        return False
+
+
+def audit_gallery_availability(db: Session, roots=None) -> dict:
+    """Repair root ownership and mark missing galleries without unsafe deletion."""
+    roots = roots or db.query(LibraryRoot).filter(LibraryRoot.enabled == True).all()  # noqa: E712
+    online = [r for r in roots if r.path and os.path.isdir(r.path)]
+    repaired = missing = restored = 0
+
+    # Older folder-only imports can be rootless. Attach them to the deepest
+    # configured containing root so offline-drive protection works thereafter.
+    rootless = db.query(Gallery).filter(Gallery.library_root_id.is_(None)).all()
+    for gallery in rootless:
+        if not gallery.folder_path or gallery.folder_path.startswith("__"):
+            continue
+        matches = [r for r in online if _path_is_within(gallery.folder_path, r.path)]
+        if matches:
+            gallery.library_root_id = max(matches, key=lambda r: len(os.path.normpath(r.path))).id
+            repaired += 1
+
+    for root in roots:
+        if root not in online:
+            continue  # an unavailable root never makes its galleries "missing"
+        for gallery in db.query(Gallery).filter(Gallery.library_root_id == root.id).all():
+            if gallery.is_mix or not gallery.folder_path:
+                continue
+            exists = os.path.isdir(gallery.folder_path)
+            if not exists and not gallery.is_missing:
+                gallery.is_missing = True
+                gallery.missing_since = datetime.utcnow()
+                missing += 1
+            elif exists and gallery.is_missing:
+                gallery.is_missing = False
+                gallery.missing_since = None
+                restored += 1
+    db.commit()
+    return {"missing": missing, "restored": restored, "roots_repaired": repaired}
+
+
+def reconcile_gallery_availability():
+    """Startup-safe wrapper used without an existing request session."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        return audit_gallery_availability(db)
+    finally:
+        db.close()
+
+
+def missing_gallery_rows(db: Session) -> list[dict]:
+    roots = {root.id: root for root in db.query(LibraryRoot).all()}
+    rows = []
+    for gallery in (db.query(Gallery).filter(Gallery.is_missing == True)  # noqa: E712
+                    .order_by(Gallery.missing_since.desc(), Gallery.id.desc()).all()):
+        root = roots.get(gallery.library_root_id)
+        rows.append({
+            "id": gallery.id,
+            "name": gallery.name,
+            "folder_path": gallery.folder_path,
+            "image_count": gallery.image_count or 0,
+            "missing_since": gallery.missing_since,
+            "root_online": bool(root and root.path and os.path.isdir(root.path)),
+        })
+    return rows
+
+
+def relink_missing_gallery(db: Session, gallery_id: int, new_path: str) -> Gallery:
+    gallery = db.get(Gallery, gallery_id)
+    if not gallery or not gallery.is_missing:
+        raise ValueError("Missing gallery not found")
+    new_path = os.path.abspath(os.path.normpath(new_path))
+    if not os.path.isdir(new_path):
+        raise ValueError("Replacement folder does not exist")
+    conflict = db.query(Gallery).filter(Gallery.folder_path == new_path, Gallery.id != gallery_id).first()
+    if conflict:
+        raise ValueError("That folder already belongs to another gallery")
+
+    disk_names = {name.lower(): name for name in os.listdir(new_path)}
+    matched = 0
+    for image in db.query(Image).filter(Image.gallery_id == gallery.id).all():
+        actual = disk_names.get((image.filename or "").lower())
+        if not actual:
+            continue
+        image.filename = actual
+        image.file_path = os.path.join(new_path, actual)
+        if image.is_video:
+            funscript = os.path.splitext(image.file_path)[0] + ".funscript"
+            image.funscript_path = funscript if os.path.exists(funscript) else None
+        matched += 1
+    if not matched:
+        raise ValueError("No matching media filenames were found in that folder")
+
+    gallery.folder_path = new_path
+    gallery.name = os.path.basename(new_path) or gallery.name
+    gallery.is_missing = False
+    gallery.missing_since = None
+    online_roots = [r for r in db.query(LibraryRoot).filter(LibraryRoot.enabled == True).all()  # noqa: E712
+                    if r.path and os.path.isdir(r.path) and _path_is_within(new_path, r.path)]
+    if online_roots:
+        gallery.library_root_id = max(online_roots, key=lambda r: len(os.path.normpath(r.path))).id
+    db.commit()
+    db.refresh(gallery)
+    return gallery
+
+
+def remove_missing_gallery(db: Session, gallery_id: int) -> bool:
+    gallery = db.get(Gallery, gallery_id)
+    if not gallery or not gallery.is_missing:
+        return False
+    for image in db.query(Image).filter(Image.gallery_id == gallery.id).all():
+        if image.thumb_path:
+            try:
+                os.remove(image.thumb_path)
+            except OSError:
+                pass
+    db.delete(gallery)
+    db.commit()
+    return True
+
+
+def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[str]):
+    """Relink a manually renamed folder while preserving gallery metadata."""
+    if not root or not media_files:
+        return None
+    new_sizes = {}
+    for name in media_files:
+        path = os.path.join(dirpath, name)
+        try:
+            new_sizes[(name.lower(), os.path.getsize(path))] = name
+        except OSError:
+            pass
+    if not new_sizes:
+        return None
+
+    scored = []
+    candidates = (db.query(Gallery)
+                  .filter(Gallery.library_root_id == root.id, Gallery.is_missing == True)  # noqa: E712
+                  .all())
+    for gallery in candidates:
+        old = db.query(Image.filename, Image.file_size).filter(Image.gallery_id == gallery.id).all()
+        old_keys = {(name.lower(), size) for name, size in old if name and size is not None}
+        overlap = len(set(new_sizes) & old_keys)
+        denominator = min(len(new_sizes), len(old_keys))
+        if overlap and denominator and overlap / denominator >= 0.6 and (overlap >= 2 or denominator == 1):
+            scored.append((overlap / denominator, overlap, gallery))
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    if not scored or (len(scored) > 1 and scored[0][:2] == scored[1][:2]):
+        return None  # ambiguous matches require manual relinking
+
+    gallery = scored[0][2]
+    old_path = gallery.folder_path
+    gallery.folder_path = dirpath
+    gallery.name = os.path.basename(dirpath) or gallery.name
+    gallery.library_root_id = root.id
+    gallery.is_missing = False
+    gallery.missing_since = None
+    gallery.scanned_at = datetime.utcnow()
+    by_name = {name.lower(): name for name in media_files}
+    for image in db.query(Image).filter(Image.gallery_id == gallery.id).all():
+        actual = by_name.get((image.filename or "").lower())
+        if not actual:
+            continue
+        image.file_path = os.path.join(dirpath, actual)
+        image.filename = actual
+        if image.is_video:
+            funscript = os.path.splitext(image.file_path)[0] + ".funscript"
+            image.funscript_path = funscript if os.path.exists(funscript) else None
+    db.flush()
+    _log(f"Relinked renamed gallery: {old_path} -> {dirpath}")
+    return gallery
+
+
 def scan_library(db: Session, root_id: Optional[int] = None):
     """
     Walk all enabled library roots (or a specific one), create Gallery records
@@ -485,6 +664,13 @@ def scan_library(db: Session, root_id: Optional[int] = None):
             _scan_state["running"] = False
             return
 
+        audit = audit_gallery_availability(db, roots)
+        if audit["missing"] or audit["roots_repaired"]:
+            _log(
+                f"Availability audit: {audit['missing']} missing, "
+                f"{audit['roots_repaired']} root links repaired"
+            )
+
         folders_to_scan = []
         for root in roots:
             if not os.path.exists(root.path):
@@ -514,13 +700,13 @@ def scan_library(db: Session, root_id: Optional[int] = None):
             db.commit()
 
         if not _scan_state["cancelled"]:
-            # Deferred prune of stale rows (runs after transplanting any moved
-            # files), then clean up galleries whose folders were deleted entirely.
-            _scan_state["message"] = "Reconciling moved & deleted files…"
+            # Deferred prune of stale rows runs after transplanting moved files.
+            # Entirely missing folders remain as hidden, recoverable records until
+            # the user relinks or explicitly removes them in Settings.
+            _scan_state["message"] = "Reconciling moved & unavailable files…"
             removed_images = _prune_scanned_galleries(db, move_ctx["galleries"])
             _scan_state["removed_images"] = removed_images
-            removed_galleries = _prune_missing_galleries(db, roots)
-            _scan_state["removed_galleries"] = removed_galleries
+            removed_galleries = 0
 
             moved_images = _scan_state.get("moved_images", 0)
             msg = (
@@ -530,11 +716,8 @@ def scan_library(db: Session, root_id: Optional[int] = None):
             )
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
-            if removed_galleries or removed_images:
-                msg += (
-                    f" Removed {removed_galleries} deleted galleries, "
-                    f"{removed_images} missing files."
-                )
+            if removed_images:
+                msg += f" Removed {removed_images} missing files."
             _scan_state["message"] = msg
             _log(msg)
 
@@ -782,6 +965,14 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
 
     if not media_files:
         return
+
+    if not gallery:
+        gallery = _claim_renamed_gallery(db, root, dirpath, media_files)
+    if gallery:
+        gallery.is_missing = False
+        gallery.missing_since = None
+        if root and gallery.library_root_id is None:
+            gallery.library_root_id = root.id
 
     is_new_gallery = False
     if not gallery:

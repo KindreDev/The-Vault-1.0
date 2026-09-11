@@ -12,7 +12,7 @@ const OVERSCAN     = 2
 const CXP_FEED_YIELD = {
   common: 40, epic: 250, legendary: 800, celestial: 2500,
 }
-const TYPE_MULTS = { goon: 1.5, variant: 2.0 }
+const TYPE_MULTS = { bond: 1.5, variant: 2.0 }
 // Level steps per rarity (mirrors backend): CXP cap = step × 9 (level 10)
 const LEVEL_CXP_STEP = { common: 100, epic: 400, legendary: 1200, celestial: 3000 }
 const OVERFLOW_RATE = 5
@@ -397,8 +397,8 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
                         {item.rarity}
                       </div>
                       <div style={{ fontSize: 10, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        {item.card_type === 'goon' && (
-                          <span style={{ color: 'var(--c-pink)', fontWeight: 700 }}>GOON ×1.5</span>
+                        {item.card_type === 'bond' && (
+                          <span style={{ color: 'var(--c-pink)', fontWeight: 700 }}>BOND ×1.5</span>
                         )}
                         {item.card_type === 'variant' && (
                           <span style={{ color: '#c9a84c', fontWeight: 700 }}>VARIANT ×2</span>

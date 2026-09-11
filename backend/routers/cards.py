@@ -42,6 +42,13 @@ def _inv_to_dict(db: Session, inv: CardInventory) -> dict:
     return d
 
 
+def _retired_v1_progression() -> None:
+    raise HTTPException(
+        status_code=410,
+        detail="This TCG V1 progression action was retired. Published V2 rarity is immutable; use the Workshop and Shards instead.",
+    )
+
+
 # ── Inventory ─────────────────────────────────────────────────────────────────
 
 @router.get("/inventory")
@@ -51,6 +58,7 @@ def get_inventory(
     rarity_class: Optional[str] = None,
     creator_id: Optional[int] = None,
     search: Optional[str] = None,
+    legacy_mode: str = "include",
     sort: str = "rarity_desc",
     skip: int = 0,
     limit: int = 10000,
@@ -60,6 +68,7 @@ def get_inventory(
         db.query(CardInventory).join(Card),
         card_type=card_type, rarity=rarity, rarity_class=rarity_class,
         creator_id=creator_id, search=search,
+        legacy_mode=legacy_mode,
     )
 
     from config import RARITY_ORDER
@@ -94,9 +103,31 @@ def get_inventory(
 
 
 @router.get("/creators")
-def get_collection_creators(db: Session = Depends(get_db)):
+def get_collection_creators(legacy_mode: str = "include", db: Session = Depends(get_db)):
     """Creators you own cards of, with counts — populates the collection filter."""
-    return card_svc.collection_creators(db)
+    return card_svc.collection_creators(db, legacy_mode=legacy_mode)
+
+
+@router.get("/setup")
+def get_tcg_setup(db: Session = Depends(get_db)):
+    from services.tcg_setup import setup_status
+    return setup_status(db)
+
+
+@router.post("/setup")
+def start_tcg_v2(db: Session = Depends(get_db)):
+    from services.tcg_setup import enable_tcg_v2
+    return enable_tcg_v2(db)
+
+
+@router.post("/setup/foundation")
+def publish_foundation_catalog(db: Session = Depends(get_db)):
+    """Publish the finite, stable TCG V2 Foundation checklist."""
+    from services.foundation_catalog import build_foundation_catalog
+    try:
+        return build_foundation_catalog(db)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/rarity-distribution")
@@ -118,7 +149,7 @@ def card_rarity_distribution(db: Session = Depends(get_db)):
 
 @router.post("/recompute-rarity")
 def recompute_rarity(db: Session = Depends(get_db)):
-    """Recompute every card's Collection Rarity Score + R/SR/SSR/UR class."""
+    """Recompute every card's Collection Rarity Score + C/R/SR/SPR/UR class."""
     from services.rarity import compute_rarity
     return {"scored": compute_rarity(db)}
 
@@ -136,7 +167,12 @@ def get_card(card_id: int, db: Session = Depends(get_db)):
 @router.post("/packs/open")
 def open_pack(req: OpenPackRequest, db: Session = Depends(get_db)):
     try:
-        result = card_svc.open_pack(db, pack_type=req.pack_type, quantity=req.quantity)
+        from services.tcg_setup import require_tcg_v2
+        require_tcg_v2(db)
+        if req.pack_type != "vault":
+            raise ValueError("That release pack is not published yet")
+        from services.foundation_catalog import acquire_vault_booster
+        result = acquire_vault_booster(db, quantity=req.quantity, cost_per_pack=400)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return result
@@ -159,10 +195,15 @@ def open_pack_from_inventory(req: OpenPackRequest, db: Session = Depends(get_db)
         if available < req.quantity:
             raise HTTPException(400, f"Not enough standard packs (have {available}, need {req.quantity})")
         profile.standard_packs -= req.quantity
-    db.commit()
     try:
-        result = card_svc.open_pack(db, pack_type=req.pack_type, quantity=req.quantity, free=True)
+        from services.tcg_setup import require_tcg_v2
+        require_tcg_v2(db)
+        from services.foundation_catalog import acquire_vault_booster
+        result = acquire_vault_booster(
+            db, quantity=req.quantity, cost_per_pack=400, free=True
+        )
     except ValueError as e:
+        db.rollback()
         raise HTTPException(400, str(e))
     return result
 
@@ -182,48 +223,31 @@ def dismantle_card(inventory_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{inventory_id}/apply-catalyst")
 def apply_catalyst(inventory_id: int, db: Session = Depends(get_db)):
-    try:
-        result = card_svc.apply_catalyst(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return result
+    _retired_v1_progression()
 
 
 @router.post("/{inventory_id}/craft-prestige")
 def craft_prestige(inventory_id: int, db: Session = Depends(get_db)):
-    """Turn a card Prestige by spending duplicates + credits (see craft_prestige)."""
-    try:
-        return card_svc.craft_prestige(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    _retired_v1_progression()
 
 
 # ── CXP: feed duplicate ───────────────────────────────────────────────────────
 
 @router.post("/{inventory_id}/feed-duplicate")
 def feed_duplicate(inventory_id: int, db: Session = Depends(get_db)):
-    try:
-        return card_svc.feed_duplicate(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    _retired_v1_progression()
 
 
 # ── CXP: evolve via threshold + shards ────────────────────────────────────────
 
 @router.post("/{inventory_id}/feed-cards")
 def feed_cards(inventory_id: int, req: FeedCardsRequest, db: Session = Depends(get_db)):
-    try:
-        return card_svc.feed_cards(db, inventory_id, req.source_ids)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    _retired_v1_progression()
 
 
 @router.post("/{inventory_id}/evolve-cxp")
 def evolve_via_cxp(inventory_id: int, db: Session = Depends(get_db)):
-    try:
-        return card_svc.evolve_via_cxp(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    _retired_v1_progression()
 
 
 # ── Batch dismantle ───────────────────────────────────────────────────────────
@@ -240,18 +264,18 @@ def dismantle_duplicates(db: Session = Depends(get_db)):
     return card_svc.dismantle_duplicates(db)
 
 
-# ── Consolidate goon stack orphans ────────────────────────────────────────────
-# One-time fix: goon cards that were created before the stacking fix each got
+# ── Consolidate Bond stack orphans ────────────────────────────────────────────
+# One-time fix: Bond cards that were created before the stacking fix each got
 # their own CardInventory row (quantity=1). This merges them by source_image_id.
 
-@router.post("/forge/consolidate-goon-stacks")
-def consolidate_goon_stacks(db: Session = Depends(get_db)):
+@router.post("/forge/consolidate-bond-stacks")
+def consolidate_bond_stacks(db: Session = Depends(get_db)):
     from sqlalchemy import func
     from models import Card, CardInventory, CardType as CT
     invs = (
         db.query(CardInventory)
         .join(Card, CardInventory.card_id == Card.id)
-        .filter(Card.card_type == CT.goon, Card.source_image_id.isnot(None))
+        .filter(Card.card_type == CT.bond, Card.source_image_id.isnot(None))
         .all()
     )
     # Group by source_image_id
@@ -260,6 +284,7 @@ def consolidate_goon_stacks(db: Session = Depends(get_db)):
         img_id = inv.card.source_image_id
         groups.setdefault(img_id, []).append(inv)
 
+    from services.physical_cards import merge_printing_copies
     merged = 0
     for img_id, group in groups.items():
         if len(group) < 2:
@@ -267,7 +292,7 @@ def consolidate_goon_stacks(db: Session = Depends(get_db)):
         # Keep the first, merge the rest into it
         canonical = group[0]
         for dup in group[1:]:
-            canonical.quantity += dup.quantity
+            merge_printing_copies(db, dup.card_id, canonical.card_id)
             db.delete(dup.card)   # cascade deletes inventory row
             merged += 1
 
@@ -279,15 +304,12 @@ def consolidate_goon_stacks(db: Session = Depends(get_db)):
 
 @router.get("/{inventory_id}/fuseable")
 def get_fuseable(inventory_id: int, db: Session = Depends(get_db)):
-    return card_svc.get_fuseable(db, inventory_id)
+    _retired_v1_progression()
 
 
 @router.post("/{inventory_id}/fuse-all")
 def fuse_all(inventory_id: int, db: Session = Depends(get_db)):
-    try:
-        return card_svc.fuse_all(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    _retired_v1_progression()
 
 
 # ── Forge: materials & crafting ───────────────────────────────────────────────
@@ -299,29 +321,25 @@ def get_materials(db: Session = Depends(get_db)):
         m = CraftingMaterials()
         db.add(m)
         db.commit()
-    return {"shards": m.shards, "catalyst_tokens": m.catalyst_tokens}
+    return {"shards": m.shards}
 
 
 @router.post("/forge/craft-catalyst")
 def craft_catalyst(db: Session = Depends(get_db)):
-    try:
-        result = card_svc.craft_catalyst(db)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return result
+    _retired_v1_progression()
 
 
 @router.get("/forge/variant-pairs")
 def get_variant_pairs(db: Session = Depends(get_db)):
     """Return all real creator×character pairs available for variant forging."""
-    return card_svc.get_variant_pairs(db)
+    _retired_v1_progression()
 
 
 @router.post("/forge/craft-variant")
 def craft_variant(req: ForgeVariantRequest, db: Session = Depends(get_db)):
     """Forge a new variant card from a creator×character pair."""
     try:
-        return card_svc.forge_variant(db, req.creator_id, req.character_id)
+        _retired_v1_progression()
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -330,7 +348,7 @@ def craft_variant(req: ForgeVariantRequest, db: Session = Depends(get_db)):
 def shards_to_credits(amount: int, db: Session = Depends(get_db)):
     """Exchange shards for Vault Credits at 3 credits per shard (min 25, step 25)."""
     try:
-        result = card_svc.shards_to_credits(db, amount)
+        _retired_v1_progression()
     except ValueError as e:
         raise HTTPException(400, str(e))
     return result
