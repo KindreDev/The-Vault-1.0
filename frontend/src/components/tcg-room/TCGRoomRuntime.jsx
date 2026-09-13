@@ -124,7 +124,7 @@ export default function TCGRoomRuntime({ version }) {
   }, [nearby, paused])
   const parcels = preview.parcel ? [preview.parcel] : (data?.parcels || [])
   const readyParcel = useMemo(() => parcels.find(parcel => parcel.status === 'ready'), [parcels])
-  const worldParcel = useMemo(() => parcels.find(parcel => ['ready', 'placed'].includes(parcel.status)), [parcels])
+  const worldParcel = useMemo(() => parcels.find(parcel => ['ready', 'collected', 'placed'].includes(parcel.status)), [parcels])
   const focusKind = focused?.interactive
   const promptTarget = preview.traderProof === 'prompt' ? DEV_FOCUS.door : nearby
   const closePanel = () => { setFocused(null); setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false) }
@@ -152,9 +152,11 @@ export default function TCGRoomRuntime({ version }) {
 
   if (isError) return <main className="tcg-room tcg-room--fallback"><div className="tcg-room__fatal"><strong>Room state unavailable</strong><p>{error?.response?.data?.detail || 'The collection room could not load its saved state.'}</p><button onClick={() => refetch()}>Retry</button><button onClick={() => navigate('/collection')}>Exit room</button></div></main>
 
-  return <main className={`tcg-room ${proofCardId ? 'tcg-room--proof' : ''}${sceneReady ? '' : ' tcg-room--booting'}`}>
-    <RoomCanvasBoundary><RoomScene version={version} quality={quality} paused={paused} focused={focused} arranging={arranging} parcel={worldParcel} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={setMetrics} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onConfirmPlacement={() => confirmPlacement.current?.()} onSelectPlaced={id => setPlacementInstanceId(id)} /></RoomCanvasBoundary>
-    {!sceneReady && <div className="tcg-room__boot" role="status"><span>COLLECTION ROOM</span><strong>Preparing your room</strong><p>Meshes and materials are still loading. This screen stays up until the space is actually ready.</p></div>}
+  return <main className={`tcg-room ${proofCardId ? 'tcg-room--proof' : ''}${sceneReady ? '' : ' tcg-room--booting'}`} style={{ background: '#12111a' }}>
+    <div style={{ position: 'absolute', inset: 0, visibility: sceneReady ? 'visible' : 'hidden' }}>
+      <RoomCanvasBoundary><RoomScene version={version} quality={quality} paused={paused} focused={focused} arranging={arranging} parcel={worldParcel} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={setMetrics} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onConfirmPlacement={() => confirmPlacement.current?.()} onSelectPlaced={id => setPlacementInstanceId(id)} /></RoomCanvasBoundary>
+    </div>
+    {!sceneReady && <div className="tcg-room__boot" role="status" style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'grid', placeContent: 'center', justifyItems: 'center', gap: 10, background: '#12111a', color: '#fff', textAlign: 'center' }}><span>COLLECTION ROOM</span><strong>Preparing your room</strong><p>Meshes and materials are still loading. This screen stays up until the space is actually ready.</p></div>}
     {sceneReady && !arranging && <div className="tcg-room__reticle" aria-hidden="true" />}
     {sceneReady && <div className="tcg-room__top-hud">
       <button onClick={() => { document.exitPointerLock?.(); setPaused(true); setConfirmExit(true) }}><ArrowLeft size={20} /> Exit room</button>
@@ -176,7 +178,7 @@ export default function TCGRoomRuntime({ version }) {
     </section>}
     {doorTransition && <section className="tcg-room__door-transition"><DoorOpen size={44} /><span>VISIT TRADER</span><strong>Approaching the door…</strong><p>Your room is staying exactly where you left it.</p></section>}
     {traderOpen && <TraderVN onClose={closeTrader} />}
-    {readyParcel && <div className="tcg-room__delivery"><Box size={22} /><span><strong>Parcel delivered</strong>Check the mail slot by the door.</span></div>}
+    {readyParcel && <div className="tcg-room__delivery"><Box size={22} /><span><strong>Delivery arrived</strong>Booster packs dropped in the blue box on the table.</span></div>}
     {carriedCopies.length > 0 && <div className="tcg-room__held tcg-room__held--cards" aria-label={`Carrying ${carriedCopies.length} physical cards`}><span>{carriedCopies.length}</span><strong>physical cards held</strong></div>}
     {diagnostics && <aside className="tcg-room__diagnostics"><button className="tcg-room__diagnostics-close" onClick={() => setDiagnostics(false)}><X size={18} /> Close diagnostics</button><strong><Gauge size={18} /> Room diagnostics</strong><span>Average frame {metrics.frameMs} ms</span><span>Draw calls {metrics.calls}</span><span>Triangles {metrics.triangles.toLocaleString()}</span><span>Textures {metrics.textures}</span><span>Geometry {metrics.geometries}</span><span>Resident scene assets {loadedAssets}</span><span>Visible cards {visibleCardCount}</span><span>Preparing foil {visibleCards.counts?.preparing || 0}</span></aside>}
     {proofCard && <aside className="tcg-room__proof-card"><strong>{proofCard.dev_fixture ? 'DEV-only visual fixture' : 'Persisted physical card proof'}</strong><span>Copy {proofCard.copy.id} · Card {proofCard.preview.card_id}</span><span>{proofCard.preview.card_type} · {proofCard.preview.rarity} · packed mask {proofCard.card?.mask_url ? 'loaded' : 'not required'}</span></aside>}

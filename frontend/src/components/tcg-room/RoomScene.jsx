@@ -1,23 +1,29 @@
 import { Suspense, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
-import { AuthoredBaseRoom, MergedRoomAssets, PlacementGhost, VaultMonitorScreen } from './RoomAsset'
+import { AuthoredBaseRoom, AuthoredFurnitureItems, MergedRoomAssets, PlacementGhost, VaultMonitorScreen } from './RoomAsset'
 import FirstPersonController from './FirstPersonController'
 import PlacementSession from './PlacementSession'
 import RoomCardCollection from './RoomCardCollection'
-import { AUTHORED_ROOM, COMPUTER_SCREEN, FLOOR_Y, PARCEL_SURFACES } from './roomLayout'
+import { AUTHORED_FURNITURE, AUTHORED_ROOM, BLUE_BOXES, COMPUTER_SCREEN } from './roomLayout'
 
 function roomItemsForParcel(parcel) {
-  if (!parcel || !['ready', 'placed'].includes(parcel.status)) return []
-  const ready = parcel.status === 'ready'
-  const position = ready ? [2.45, FLOOR_Y, 4.55] : (PARCEL_SURFACES[parcel.placement?.snap_anchor] || PARCEL_SURFACES.sorting_mat)
-  return [{ key: `parcel-${parcel.id}-${parcel.status}`, assetId: 'shipping_box_small', position, rotation: [0, Math.PI / 2, 0], scale: 1, zone: 'entry', interactive: ready ? 'mail' : 'parcel' }]
+  if (!parcel || !['ready', 'collected', 'placed'].includes(parcel.status)) return []
+  const count = Math.max(1, Math.min(6, parcel.contents?.reduce((sum, line) => sum + (line.quantity || 1), 0) || 1))
+  const origin = BLUE_BOXES.inbox.position
+  return Array.from({ length: count }, (_, index) => ({
+    key: `parcel-${parcel.id}-${index}`,
+    assetId: 'shipping_box_small',
+    position: [origin[0] + (index % 3 - 1) * .08, origin[1] - .04, origin[2] + Math.floor(index / 3) * .08],
+    rotation: [0, index * .35, 0],
+    scale: .28,
+    zone: 'entry',
+    interactive: 'mail',
+  }))
 }
 
 function interactionItemsForParcel(parcel) {
-  const base = AUTHORED_ROOM.filter(item => item.interactive && !['parcel', 'parcel-place'].includes(item.interactive))
-  if (parcel?.status === 'placed') return [...base, { key: `parcel-open-${parcel.id}`, position: PARCEL_SURFACES[parcel.placement?.snap_anchor] || PARCEL_SURFACES.sorting_mat, interactive: 'parcel' }]
-  return base
+  return AUTHORED_ROOM.filter(item => item.interactive && !['parcel', 'parcel-place'].includes(item.interactive))
 }
 
 const interactionForType = type => ({ cabinet_slot: 'cabinet', display_stand: 'display', storage: null, acrylic_case: 'display', toploader: 'display', set_box: 'display' })[type] || null
@@ -55,16 +61,19 @@ function RoomLighting({ quality }) {
 
 export default function RoomScene(props) {
   const items = useMemo(() => [...roomItemsForParcel(props.parcel), ...ownedRoomItems(props.bootstrap, props.placementPreview?.instanceId)], [props.bootstrap, props.parcel, props.placementPreview?.instanceId])
+  const authoredItems = useMemo(() => items.filter(item => AUTHORED_FURNITURE.has(item.assetId)), [items])
+  const moduleItems = useMemo(() => items.filter(item => !AUTHORED_FURNITURE.has(item.assetId)), [items])
   const interactions = useMemo(() => [...interactionItemsForParcel(props.parcel), ...items.filter(item => item.zone === 'owned' && item.interactive)], [items, props.parcel])
   return <Canvas shadows={props.quality === 'high'} dpr={1} camera={{ fov: 66, near: .06, far: 50 }} gl={{ antialias: false, powerPreference: 'high-performance', stencil: false }} onCreated={({ gl }) => { gl.toneMappingExposure = 1.18 }}>
     <RoomLighting quality={props.quality} />
     <Suspense fallback={<Html center><div className="tcg-room__canvas-loader">Preparing your room...</div></Html>}>
       <AuthoredBaseRoom quality={props.quality} onLoaded={props.onLoaded} />
-      {items.length > 0 && <MergedRoomAssets version={props.version} items={items} quality={props.quality} />}
+      {authoredItems.length > 0 && <AuthoredFurnitureItems version={props.version} items={authoredItems} quality={props.quality} />}
+      {moduleItems.length > 0 && <MergedRoomAssets version={props.version} items={moduleItems} quality={props.quality} />}
       <VaultMonitorScreen position={COMPUTER_SCREEN.position} rotation={COMPUTER_SCREEN.rotation} size={COMPUTER_SCREEN.size} />
       {props.placementPreview && <PlacementGhost version={props.version} preview={props.placementPreview} />}
       <PlacementSession arranging={props.arranging} bootstrap={props.bootstrap} preview={props.placementPreview} followMouse={!props.placementPreview?.pinned} onHover={sample => props.onWorldSample?.({ kind: 'hover', ...sample })} onPlace={sample => props.onWorldSample?.({ kind: 'place', ...sample })} onRotate={yaw => props.onWorldSample?.({ kind: 'rotate', yaw, x: props.placementPreview?.transform?.position?.x, y: props.placementPreview?.transform?.position?.y, z: props.placementPreview?.transform?.position?.z })} onConfirm={props.onConfirmPlacement} onSelectInstance={props.onSelectPlaced} />
-      <RoomCardCollection payload={props.visibleCards} onVisibleCards={props.onVisibleCards} />
+      <RoomCardCollection payload={props.visibleCards} bootstrap={props.bootstrap} onVisibleCards={props.onVisibleCards} />
     </Suspense>
     <FirstPersonController {...props} interactionItems={interactions} />
   </Canvas>

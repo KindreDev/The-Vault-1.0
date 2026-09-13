@@ -16,11 +16,21 @@ export const SAFE_SPAWN = Object.freeze({
   pitch: 0,
 })
 
+export const BLUE_BOXES = Object.freeze({
+  inbox: { position: [2.99, 1.04, -.39], offsetZ: 0 },
+  pile: { position: [2.99, 1.04, -1.17], offsetZ: -.78 },
+})
+
 export const PARCEL_SURFACES = Object.freeze({
   desk: [-4.39, .855, -3.6],
   dining_table: [3.02, .932, -.8],
-  sorting_mat: [3.02, .932, -.8],
+  sorting_mat: BLUE_BOXES.inbox.position,
 })
+
+export const AUTHORED_FURNITURE = Object.freeze(new Set([
+  'card_display_stand', 'glass_display_cabinet', 'glass_display_case',
+  'floating_glass_cabinet', 'graded_card_stand',
+]))
 
 export const COMPUTER_SCREEN = Object.freeze({
   // Monitor glass faces +X. PlaneGeometry faces +Z, so yaw +90°.
@@ -37,8 +47,8 @@ const p = (assetId, position, rotation = [0, 0, 0], scale = 1, zone = 'shell', i
 export const AUTHORED_ROOM = [
   p('pc_monitor', [-4.45, 1.25, -3.58], [0, Math.PI / 2, 0], 1, 'computer', 'computer'),
   p('bedroom_door', [3.06, 1.35, 4.89], [0, 0, 0], 1, 'entry', 'door'),
-  p('door_mail_slot', [2.48, .95, 4.86], [0, 0, 0], 1, 'entry', 'mail'),
-  p('dining_table', [3.02, .4, -.8], [0, 0, 0], 1, 'dining', 'parcel-place'),
+  p('plastic_bin_inbox', BLUE_BOXES.inbox.position, [0, 0, 0], 1, 'entry', 'mail'),
+  p('plastic_bin_pile', BLUE_BOXES.pile.position, [0, 0, 0], 1, 'dining', 'pile'),
 ]
 
 export const COLLISION_BOXES = [
@@ -53,10 +63,10 @@ export const COLLISION_BOXES = [
 export const INTERACTION_COPY = {
   computer: ['Use computer', 'Browse your collection and shop from the monitor'],
   door: ['Visit trader', "Step outside to meet this week's visitor"],
-  mail: ['Check mail', 'Collect a delivered parcel'],
-  parcel: ['Pick up parcel', 'Carry it to a surface before opening'],
+  mail: ['Open deliveries', 'Booster packs land in this blue box'],
+  parcel: ['Open delivery', 'Unpack the booster packs in the blue box'],
   'parcel-place': ['Place carried parcel', 'Set it down on a clear surface'],
-  pile: ['Organize cards', 'Inspect and move physical copies from the unorganized pile'],
+  pile: ['Organize cards', 'Physical cards in this box'],
   binder: ['Open binder', 'Manage the same binder used by the 2D collection'],
   cabinet: ['Open cabinet', 'Assign physical copies to cabinet slots'],
   display: ['Manage display', 'Mount a physical card for display'],
@@ -73,9 +83,9 @@ export const SURFACE_ASSETS = Object.freeze(new Set([
 ]))
 
 export const SURFACE_HOST_ASSETS = Object.freeze(new Set([
-  'computer_desk', 'dining_table', 'nightstand',
-  'display_stand_single', 'display_stand_triple', 'card_drawer_unit',
-  'floating_wall_shelf', 'glass_cabinet_wide', 'glass_cabinet_tall',
+  'computer_desk', 'dining_table',
+  'card_display_stand', 'graded_card_stand',
+  'glass_display_cabinet', 'glass_display_case', 'floating_glass_cabinet',
 ]))
 
 export const AUTHORED_SURFACES = Object.freeze([

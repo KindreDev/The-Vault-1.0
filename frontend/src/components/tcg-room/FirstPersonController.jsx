@@ -42,18 +42,11 @@ function safePose(position, yaw, pitch) {
 function focusApproach(item, point) {
   const kind = item.interactive
   if (kind === 'computer') return new THREE.Vector3(point.x + 1.12, EYE_HEIGHT, point.z)
-  if (kind === 'door' || kind === 'mail') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.2)
-  if (kind === 'binder') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.2)
-  if (kind === 'parcel' || kind === 'parcel-place') {
-    if (point.z > 3.5) return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.15)
-    if (point.x < -3) return new THREE.Vector3(point.x + 1.15, EYE_HEIGHT, point.z)
+  if (kind === 'door') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.2)
+  if (kind === 'mail' || kind === 'parcel' || kind === 'parcel-place' || kind === 'pile') {
     return new THREE.Vector3(point.x - 1.15, EYE_HEIGHT, point.z)
   }
-  if (kind === 'pile') {
-    if (point.z > 3.5) return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.2)
-    if (point.x < -3) return new THREE.Vector3(point.x + 1.2, EYE_HEIGHT, point.z)
-    return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.25)
-  }
+  if (kind === 'binder') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.2)
   if (['cabinet', 'display', 'poster'].includes(kind) && point.z > 2.8) return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.18)
   return new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.4)
 }

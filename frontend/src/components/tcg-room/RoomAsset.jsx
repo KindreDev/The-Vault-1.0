@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useGLTF, useTexture } from '@react-three/drei'
+import { AUTHORED_FURNITURE, BLUE_BOXES } from './roomLayout'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 
@@ -99,6 +100,13 @@ export function AuthoredBaseRoom({ quality = 'medium', onLoaded }) {
         node.material.userData.vaultSided = true
       }
     })
+    const inbox = value.getObjectByName('BAKE_AoBox_Material_0')
+    if (inbox?.parent && !value.getObjectByName('BAKE_AoBox_pile')) {
+      const pile = inbox.clone(true)
+      pile.name = 'BAKE_AoBox_pile'
+      pile.position.z += BLUE_BOXES.pile.offsetZ
+      inbox.parent.add(pile)
+    }
     return value
   }, [quality, scene])
   useEffect(() => { onLoaded?.(1) }, [onLoaded])
@@ -268,8 +276,36 @@ export function MergedRoomAssets({ version, items, quality = 'medium', onLoaded 
   </group>
 }
 
+export function furnitureUrl(version, assetId) {
+  if (AUTHORED_FURNITURE.has(assetId)) return `/tcg-room/furniture/${assetId}.glb`
+  return `/api/tcg-room/module/assets/${encodeURIComponent(version)}/assets/${assetId}.glb`
+}
+
+export function AuthoredFurnitureItems({ version, items, quality = 'medium' }) {
+  return <group name="authored-shop-furniture">
+    {items.map(item => <AuthoredFurniturePiece key={item.key} version={version} item={item} quality={quality} />)}
+  </group>
+}
+
+function AuthoredFurniturePiece({ version, item, quality }) {
+  const { scene } = useGLTF(furnitureUrl(version, item.assetId))
+  const clone = useMemo(() => {
+    const value = scene.clone(true)
+    value.traverse(node => {
+      if (!node.isMesh) return
+      const glass = /glass|acrylic/i.test(node.material?.name || '')
+      node.castShadow = quality === 'high' && !glass
+      node.receiveShadow = true
+    })
+    return value
+  }, [quality, scene])
+  const p = item.position
+  const r = item.rotation
+  return <primitive object={clone} position={p} rotation={r} />
+}
+
 export function PlacementGhost({ version, preview }) {
-  const url = `/api/tcg-room/module/assets/${encodeURIComponent(version)}/assets/${preview.assetId}.glb`
+  const url = furnitureUrl(version, preview.assetId)
   const { scene } = useGLTF(url, true)
   const ghost = useMemo(() => {
     const value = scene.clone(true)

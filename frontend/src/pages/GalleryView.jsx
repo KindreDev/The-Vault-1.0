@@ -2379,20 +2379,36 @@ export default function GalleryView() {
           }}
           onDelete={async (mode) => {
             const targets = imgCtx.bulkImages ?? [imgCtx.image]
-            let errs = 0
-            let firstError = null
-            for (const img of targets) {
-              try {
-                await imagesApi.delete(img.id, mode === 'vault')
-                setDeletedIds(s => new Set([...s, img.id]))
-              } catch (e) { errs++; firstError ||= apiErrorMessage(e, 'Could not complete deletion') }
+            const ids = targets.map(img => img.id)
+            const tid = toast.loading(mode === 'vault'
+              ? `Removing ${ids.length} ${ids.length === 1 ? 'file' : 'files'}…`
+              : `Deleting ${ids.length} ${ids.length === 1 ? 'file' : 'files'} from disk…`)
+            try {
+              const { data } = await imagesApi.bulkDelete(ids, mode === 'vault')
+              const removedIds = data?.ids ?? []
+              const failures = data?.failed ?? []
+              if (removedIds.length) {
+                setDeletedIds(current => new Set([...current, ...removedIds]))
+                setSelectedIds(current => {
+                  const next = new Set(current)
+                  removedIds.forEach(imageId => next.delete(imageId))
+                  return next
+                })
+              }
+              toast.dismiss(tid)
+              if (removedIds.length) toast.success(mode === 'vault'
+                ? `${removedIds.length} ${removedIds.length === 1 ? 'file' : 'files'} removed from vault`
+                : `${removedIds.length} ${removedIds.length === 1 ? 'file' : 'files'} deleted from disk`)
+              if (failures.length) {
+                const reason = failures[0]?.message
+                toast.error(`${failures.length} deletion${failures.length === 1 ? '' : 's'} failed${reason ? `: ${reason}` : ''}`)
+              }
+            } catch (error) {
+              toast.dismiss(tid)
+              toast.error(`Deletion failed: ${apiErrorMessage(error, 'Could not complete deletion')}`)
+            } finally {
+              qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
             }
-            const n = targets.length - errs
-            if (n > 0) toast.success(mode === 'vault'
-              ? `${n} ${n === 1 ? 'image' : 'images'} removed from vault`
-              : `${n} ${n === 1 ? 'image' : 'images'} deleted from disk`)
-            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
-            qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
           }}
         />
       )}

@@ -18,6 +18,7 @@ from services import dedup as dedup_svc
 from services import edges as edges_svc
 from services import entity_stats
 from services.file_ops import remove_file
+from services.gallery_deletion import detach_image_references
 from services.tag_filters import apply_image_tag_filters
 
 router = APIRouter()
@@ -618,7 +619,6 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
         if not keep_file:
             try:
                 remove_file(img.file_path)
-                remove_file(img.thumb_path)
             except OSError as e:
                 failures.append({
                     "id": img.id,
@@ -626,9 +626,19 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
                     "message": str(e),
                 })
                 continue
-        db.delete(img)
+            # Thumbnails, previews, and masks are derived cache assets.  A
+            # locked cache file must never resurrect an otherwise successful
+            # media deletion or leave its database row behind.
+            for derived_path in (img.thumb_path, img.preview_path, img.mask_path):
+                try:
+                    remove_file(derived_path)
+                except OSError:
+                    pass
         deleted_ids.append(img.id)
 
+    detach_image_references(db, deleted_ids)
+    if deleted_ids:
+        db.query(Image).filter(Image.id.in_(deleted_ids)).delete(synchronize_session=False)
     db.flush()
 
     # Recount all affected galleries in one pass after all deletes are staged
@@ -654,7 +664,6 @@ def delete_image(image_id: int, keep_file: bool = False, db: Session = Depends(g
     if not keep_file:
         try:
             remove_file(img.file_path)
-            remove_file(img.thumb_path)
         except OSError as e:
             raise HTTPException(500, detail={
                 "code": "disk_delete_failed",
@@ -662,6 +671,13 @@ def delete_image(image_id: int, keep_file: bool = False, db: Session = Depends(g
                 "message": str(e),
             }) from e
 
+        for derived_path in (img.thumb_path, img.preview_path, img.mask_path):
+            try:
+                remove_file(derived_path)
+            except OSError:
+                pass
+
+    detach_image_references(db, [img.id])
     db.delete(img)
     db.flush()
     if gallery_id:

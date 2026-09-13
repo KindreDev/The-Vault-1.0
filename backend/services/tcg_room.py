@@ -43,9 +43,11 @@ SAFETY_ZONES = (
     (-4.85, -3.85, -4.50, -2.70, "computer"),
     (2.50, 3.55, -1.90, 0.30, "dining area"),
 )
-MANUAL_ASSET_IDS = frozenset(REQUIRED_ASSET_IDS) - frozenset(PERMANENT_FIXTURES) - {
-    "shipping_box_small", "padded_mailer", "booster_pack_mesh", "card_stack_mesh", "shop_notebook",
-}
+LIVE_SHOP_ASSETS = frozenset({
+    "card_display_stand", "graded_card_stand", "glass_display_case",
+    "glass_display_cabinet", "floating_glass_cabinet", "poster_frame",
+})
+MANUAL_ASSET_IDS = LIVE_SHOP_ASSETS
 
 
 class RevisionConflict(ValueError):
@@ -311,25 +313,12 @@ def redo_room(db: Session, expected_revision: int) -> dict:
 
 def seed_display_catalog(db: Session) -> None:
     defaults = (
-        ("room-bed", "Bed", "furniture", "bed_frame", "credits", 800, ["light", "dark"], "floor", 2.2, 1.7, .75),
-        ("room-nightstand", "Nightstand", "furniture", "nightstand", "credits", 180, ["light", "dark"], "floor", .65, .55, .65),
-        ("room-wardrobe", "Wardrobe", "furniture", "wardrobe", "credits", 650, ["light", "dark"], "floor", 1.4, .65, 2.1),
-        ("room-office-chair", "Office chair", "furniture", "office_chair", "credits", 240, ["black", "violet"], "floor", .7, .7, 1.1),
-        ("room-dining-chair", "Dining chair", "furniture", "dining_chair", "credits", 120, ["light", "dark"], "floor", .55, .55, .95),
-        ("room-rug", "Area rug", "decor", "area_rug", "credits", 160, ["violet", "rose", "charcoal"], "floor", 2.4, 1.7, .03),
-        ("room-display-stand", "Display stand", "display_stand", "display_stand_single", "credits", 350, ["obsidian", "violet"], "floor", .45, .35, .45),
-        ("room-card-cabinet", "Tall card cabinet", "cabinet_slot", "glass_cabinet_tall", "credits", 900, ["walnut", "obsidian"], "floor", 1.0, .55, 2.1),
-        ("room-wide-cabinet", "Wide card cabinet", "cabinet_slot", "glass_cabinet_wide", "credits", 1250, ["walnut", "obsidian"], "floor", 1.8, .55, 1.4),
-        ("room-bookshelf-wide", "Wide bookshelf", "storage", "bookshelf_wide", "credits", 700, ["light", "dark"], "floor", 1.6, .45, 2.0),
-        ("room-bookshelf-narrow", "Narrow bookshelf", "storage", "bookshelf_narrow", "credits", 420, ["light", "dark"], "floor", .8, .45, 2.0),
-        ("room-binder-insert", "Binder shelf insert", "storage", "binder_shelf_insert", "credits", 280, ["walnut", "obsidian"], "floor", .9, .4, .45),
-        ("room-card-drawers", "Card drawer unit", "storage", "card_drawer_unit", "credits", 480, ["walnut", "obsidian"], "floor", 1.0, .5, 1.0),
-        ("room-acrylic-case", "Acrylic case", "acrylic_case", "acrylic_card_case", "shards", 35, ["clear"], "floor", .3, .18, .35),
-        ("room-toploader", "Toploader", "toploader", "card_toploader", "shards", 15, ["clear"], "floor", .18, .08, .25),
-        ("room-set-box", "Set box", "set_box", "set_storage_box", "credits", 250, ["obsidian"], "floor", .45, .32, .35),
-        ("room-poster-frame", "Poster frame", "display_stand", "poster_frame", "shards", 45, ["black", "chrome"], "wall", .8, .08, 1.1),
-        ("room-wall-shelf", "Floating wall shelf", "storage", "floating_wall_shelf", "credits", 220, ["light", "dark"], "wall", 1.0, .2, .25),
-        ("room-desk-lamp", "Desk lamp", "lighting", "desk_lamp", "shards", 80, ["warm", "violet"], "floor", .3, .3, .55),
+        ("room-card-stand", "Card display stand", "display_stand", "card_display_stand", "credits", 180, ["clear"], "floor", .19, .11, .25),
+        ("room-graded-stand", "Graded card stand", "display_stand", "graded_card_stand", "credits", 320, ["clear"], "floor", .28, .17, .38),
+        ("room-glass-case", "Glass display case", "cabinet_slot", "glass_display_case", "credits", 950, ["clear"], "floor", .66, .66, 2.12),
+        ("room-glass-cabinet", "Glass display cabinet", "cabinet_slot", "glass_display_cabinet", "credits", 1400, ["mahogany"], "floor", .6, .46, 2.41),
+        ("room-floating-cabinet", "Floating glass cabinet", "cabinet_slot", "floating_glass_cabinet", "credits", 720, ["clear"], "wall", .77, .2, 1.83),
+        ("room-poster-frame", "Vault poster", "display_stand", "poster_frame", "shards", 45, ["black"], "wall", .8, .08, 1.1),
     )
     for values in defaults:
         code, name, kind, asset_id, currency, cost, variants, placement_kind, width, depth, *height_values = values
@@ -345,10 +334,17 @@ def seed_display_catalog(db: Session) -> None:
                 placement_kind=placement_kind, footprint_json=_dump(footprint),
             ))
         else:
+            definition.name = name
+            definition.item_type = kind
             definition.asset_id = asset_id
+            definition.currency = currency
+            definition.unit_cost = cost
+            definition.variants_json = _dump(variants)
             definition.placement_kind = placement_kind
             definition.footprint_json = _dump(footprint)
             definition.permanent_fixture = False
+            definition.active = True
+            definition.placeable = True
     # Compatibility bridge: renderable Workshop unlocks map to real module
     # meshes. Non-renderable cosmetics keep their ownership records but stay
     # out of the manual furniture surface.
@@ -380,6 +376,10 @@ def seed_display_catalog(db: Session) -> None:
         if legacy.owned and not db.query(TCGOwnedDisplayItem.id).filter_by(definition_id=definition.id, variant_key="default").first():
             db.add(TCGOwnedDisplayItem(definition_id=definition.id, variant_key="default", quantity=1))
             db.add(TCGDisplayItemInstance(definition_id=definition.id, variant_key="default", source_type="legacy_workshop", source_id=str(legacy.id)))
+    for row in db.query(TCGDisplayItemDefinition).all():
+        live = row.asset_id in LIVE_SHOP_ASSETS
+        row.active = live
+        row.placeable = live
     db.flush()
 
 

@@ -109,10 +109,10 @@ export default function Layout() {
             <ErrorBoundary>
               {/* Suspense catches lazy-loaded page chunks */}
               <Suspense fallback={
-                <div className="flex items-center justify-center h-full">
-                  <div className="flex flex-col gap-3 items-center" style={{ opacity: 0.3 }}>
-                    <div className="skeleton" style={{ width: 160, height: 16, borderRadius: 8 }} />
-                    <div className="skeleton" style={{ width: 100, height: 12, borderRadius: 8 }} />
+                <div className="flex items-center justify-center h-full" style={{ background: '#0e0e0e', minHeight: '100%' }}>
+                  <div className="flex flex-col gap-3 items-center" style={{ opacity: 0.45, color: '#fff' }}>
+                    <span style={{ letterSpacing: '.18em', fontSize: 13 }}>THE VAULT</span>
+                    <strong style={{ fontSize: 18 }}>Loading</strong>
                   </div>
                 </div>
               }>

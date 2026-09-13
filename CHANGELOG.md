@@ -117,7 +117,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
 
 ### Fixed
-- Disk-backed gallery and media deletion now handles transient file locks and clears dependent card/history links, preventing folders from being removed while stale gallery records remain behind.
+- Disk-backed gallery and media deletion now handles transient file locks, clears every dependent history/card/playlist link, and processes bulk video removal as one visible operation instead of silently failing.
 - Bulk tag dropdowns now layer above gallery and media cards, so suggestions remain usable at the edges of dense grids.
 - Gallery, photo, video, and creator sorting now matches the surrounding toolbar controls and follows the active Vault theme.
 - Character import now uses the reliable public AniList character catalogue instead of the repeatedly unavailable Jikan/MAL path.

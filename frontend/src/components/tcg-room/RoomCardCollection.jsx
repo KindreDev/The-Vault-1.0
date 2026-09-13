@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import RoomCardSurface, { RoomCardPreparation } from './RoomCardSurface'
+import RoomCardSurface from './RoomCardSurface'
 import { isPremiumRoomCardReady, selectBoundedRoomCards } from './roomCardMaterial'
+import { BLUE_BOXES } from './roomLayout'
 
 function pileTransform(index) {
-  const fan = index - 3.5
+  const col = index % 3
+  const row = Math.floor(index / 3)
+  const origin = BLUE_BOXES.pile.position
   return {
-    position: [-4.98 + fan * .017, .91 + index * .0035, 2.55 + Math.abs(fan) * .006],
-    rotation: [-Math.PI / 2, 0, Math.PI / 2 + fan * .045],
-    distance: 3.8,
+    position: [origin[0] + (col - 1) * .07, origin[1] - .06 + row * .004, origin[2] + (index % 2) * .04],
+    rotation: [-Math.PI / 2, 0, (col - 1) * .12],
+    distance: 2.2,
   }
-}
-
-function displayTransform(index) {
-  const column = index % 6; const row = Math.floor(index / 6)
-  return { position: [-3.72 + column * .52, 1.1 + row * .48, 3.94], rotation: [0, Math.PI, 0], distance: 2.6 }
 }
 
 function developmentProofTransform(item) {
@@ -23,24 +21,32 @@ function developmentProofTransform(item) {
   if (Number(params.get('roomCardProof') || params.get('roomCardFixture')) !== Number(item.preview?.card_id)) return null
   const yaw = THREE.MathUtils.degToRad(Number(params.get('roomCardYaw') || 0))
   const tilt = THREE.MathUtils.degToRad(Number(params.get('roomCardTilt') || 0))
-  // Keep the DEV evidence card between the camera and room furnishings so a
-  // bedpost or cabinet cannot invalidate the visual regression screenshot.
   return { position: [-1.1, 1.54, -.12], rotation: [tilt, yaw, 0], distance: .26, scale: .9 }
 }
 
-function transformFor(item, index, surfaceIndex) {
+function displayHostTransform(item, bootstrap) {
+  const instanceId = Number(item.copy?.location_ref)
+  if (!instanceId) return null
+  const placement = (bootstrap?.room?.placements || []).find(row => row.instance_id === instanceId)
+  if (!placement) return null
+  const p = placement.transform?.position || {}
+  const r = placement.transform?.rotation || {}
+  return {
+    position: [p.x || 0, (p.y || 0) + .28, p.z || 0],
+    rotation: [0, r.y || 0, 0],
+    distance: 2.4,
+  }
+}
+
+function transformFor(item, index, surfaceIndex, bootstrap) {
   const proof = developmentProofTransform(item)
   if (proof) return proof
   if (item.surface === 'carried') return { position: [0, 0, 0], rotation: [0, 0, 0], distance: .6 }
-  if (item.surface === 'display') return displayTransform(surfaceIndex)
+  if (item.surface === 'display') return displayHostTransform(item, bootstrap)
   return pileTransform(surfaceIndex)
 }
 
 function stablePhysicalOrder(items) {
-  // The room bootstrap is polled while parcel/copy mutations settle. The API
-  // is allowed to return equivalent rows in a different order; using that
-  // order directly makes every pile/display card jump sideways on each poll.
-  // Physical copies have durable ids, so use them as the visual ordering key.
   return [...items].sort((left, right) => {
     const surfaceOrder = { pile: 0, display: 1, carried: 2 }
     const leftSurface = surfaceOrder[left.surface] ?? 0
@@ -50,7 +56,7 @@ function stablePhysicalOrder(items) {
   })
 }
 
-export default function RoomCardCollection({ payload, onVisibleCards }) {
+export default function RoomCardCollection({ payload, bootstrap, onVisibleCards }) {
   const items = useMemo(() => {
     const bounded = selectBoundedRoomCards(stablePhysicalOrder(payload?.items || []))
     if (!import.meta.env.DEV) return bounded
@@ -67,11 +73,11 @@ export default function RoomCardCollection({ payload, onVisibleCards }) {
   const counters = { pile: 0, display: 0, carried: 0 }
   return <group name="authoritative-visible-physical-cards">
     {items.map((item, index) => {
+      if (!isPremiumRoomCardReady(item) && !item.dev_fixture) return null
       const surfaceIndex = counters[item.surface]++
-      const transform = transformFor(item, index, surfaceIndex)
-      return isPremiumRoomCardReady(item)
-        ? <RoomCardSurface key={item.copy.id} item={item} {...transform} onTextureReady={() => markReady(item.copy.id)} />
-        : <RoomCardPreparation key={item.copy.id} item={item} {...transform} />
+      const transform = transformFor(item, index, surfaceIndex, bootstrap)
+      if (!transform) return null
+      return <RoomCardSurface key={item.copy.id} item={item} {...transform} onTextureReady={() => markReady(item.copy.id)} />
     })}
   </group>
 }
