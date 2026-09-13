@@ -15,6 +15,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
+- Character creation now searches both AniList and a no-key game-character catalogue, including titles such as Stellar Blade and Resident Evil.
 - Creators without a profile picture now automatically choose an existing portrait from their linked Vault media without background folder scanning.
 - Missing folders now has a one-click Resolve all action that scans online roots, relinks confidently moved folders, removes genuinely stale records, and protects offline libraries.
 - Collection Room now has a persistent I-key/HUD inventory for placing exact owned furniture instances and opening collected parcels or earned booster tokens through the authoritative pack reveal.

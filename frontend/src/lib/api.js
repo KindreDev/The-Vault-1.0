@@ -191,6 +191,8 @@ export const creatorsApi = {
   topByValue:        (n = 5) => api.get('/creators/top-by-value', { params: { limit: n } }),
   anilistSearch:     (q)     => api.get('/creators/anilist-search', { params: { q, limit: 8 } }),
   anilistCharacter:  (id)     => api.get(`/creators/anilist-character/${id}`),
+  characterSearch:   (q)      => api.get('/creators/character-search', { params: { q, limit: 10 } }),
+  characterDetail:   (provider, externalId) => api.get('/creators/character-detail', { params: { provider, external_id: externalId } }),
   assignFolder:      (id, folderPath) => api.post(`/creators/${id}/assign-folder`, { folder_path: folderPath }),
   syncSourceFolders: ()              => api.post('/creators/sync-source-folders'),
   giftHeart:         (id)            => api.post(`/creators/${id}/gift-heart`),

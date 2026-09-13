@@ -23,6 +23,7 @@ from services import activity
 from services import crowns
 from services import ranking
 from services import anilist
+from services import game_characters
 from services.creator_avatars import assign_if_missing
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
@@ -720,6 +721,51 @@ async def anilist_character_detail(anilist_id: int):
         return await anilist.character_detail(anilist_id)
     except anilist.AniListError as exc:
         raise HTTPException(503, "AniList character import is unavailable right now — try again in a moment.") from exc
+
+
+@router.get("/character-search")
+async def character_search(q: str, limit: int = 10):
+    """Search anime and video-game characters in parallel without API keys."""
+    if not q or len(q.strip()) < 2:
+        return []
+    import asyncio
+
+    anime_result, game_result = await asyncio.gather(
+        anilist.search_characters(q, limit),
+        game_characters.search_characters(q, limit),
+        return_exceptions=True,
+    )
+    anime = [] if isinstance(anime_result, Exception) else anime_result
+    games = [] if isinstance(game_result, Exception) else game_result
+    if not anime and not games and isinstance(anime_result, Exception) and isinstance(game_result, Exception):
+        raise HTTPException(503, "Character search is unavailable right now — try again in a moment.")
+
+    # Keep exact/prefix game matches visible while preserving AniList's relevance.
+    merged = games[:4] + anime[:6] + games[4:] + anime[6:]
+    seen: set[tuple[str, str]] = set()
+    output = []
+    for item in merged:
+        key = (str(item.get("provider")), str(item.get("external_id")))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+        if len(output) >= max(1, min(limit, 20)):
+            break
+    return output
+
+
+@router.get("/character-detail")
+async def character_detail(provider: str, external_id: str):
+    """Return the provider-specific full record in the form's common shape."""
+    try:
+        if provider == "anilist":
+            return await anilist.character_detail(int(external_id))
+        if provider == "game_wiki":
+            return await game_characters.character_detail(external_id)
+    except (ValueError, anilist.AniListError, game_characters.GameCharacterError) as exc:
+        raise HTTPException(502, "Could not load this character's details.") from exc
+    raise HTTPException(400, "Unknown character source")
 
 
 @router.get("/favorites")

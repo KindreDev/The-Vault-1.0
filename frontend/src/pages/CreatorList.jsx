@@ -274,8 +274,8 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
   prev.avatarBust === next.avatarBust &&
   prev.cardSize   === next.cardSize
 )
-// ── AniList character search (public anime character catalogue) ───────────────
-function AniListSearch({ onSelect }) {
+// ── Unified anime + game character search ────────────────────────────────────
+function CharacterSearch({ onSelect }) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState([])
   const [loading, setLoading]   = useState(false)
@@ -291,7 +291,7 @@ function AniListSearch({ onSelect }) {
     setApiError(false)
     debounceRef.current = setTimeout(async () => {
       try {
-        const r = await creatorsApi.anilistSearch(query.trim())
+        const r = await creatorsApi.characterSearch(query.trim())
         setResults(r.data ?? [])
       } catch {
         setResults([])
@@ -312,7 +312,7 @@ function AniListSearch({ onSelect }) {
     if (!picked) return
     setLoading(true)
     try {
-      const r = await creatorsApi.anilistCharacter(picked.anilist_id)
+      const r = await creatorsApi.characterDetail(picked.provider, picked.external_id)
       onSelect({ ...picked, ...r.data })
     } catch {
       onSelect(picked)  // fall back to search result data
@@ -325,7 +325,7 @@ function AniListSearch({ onSelect }) {
   return (
     <div className="mb-5 rounded-[10px] p-4" style={{ background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
       <div className="text-[16px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: 'var(--c-amber-text)' }}>
-        <span className="text-[18px]">⚡</span> {t('Import from AniList')}
+        <span className="text-[18px]">⚡</span> {t('Find a character')}
       </div>
 
       {picked ? (
@@ -340,6 +340,7 @@ function AniListSearch({ onSelect }) {
               <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{picked.series[0]}</div>
             )}
             <div className="flex gap-1.5 mt-1 flex-wrap">
+              {picked.source_label && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.source_label}</span>}
               {picked.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{picked.gender}</span>}
               {picked.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
               {picked.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
@@ -364,7 +365,7 @@ function AniListSearch({ onSelect }) {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder={t('Search anime character name…')}
+              placeholder={t('Search anime or game character…')}
               className="w-full rounded-[8px] px-3.5 py-2.5 text-[18px] text-[rgba(255,255,255,0.85)] placeholder-[rgba(255,255,255,0.25)] outline-none pr-10"
               style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}
             />
@@ -378,14 +379,14 @@ function AniListSearch({ onSelect }) {
           {apiError && (
             <div className="mt-2 text-[16px] px-3 py-2 rounded-[8px]"
                  style={{ background: 'color-mix(in srgb, var(--c-amber) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)' }}>
-              {t('AniList character import is unavailable right now — try again in a moment.')}
+              {t('Character search is unavailable right now — try again in a moment.')}
             </div>
           )}
 
           {results.length > 0 && (
             <div className="mt-2.5 flex flex-col gap-1.5 max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               {results.map(char => (
-                <button key={char.anilist_id} onClick={() => handlePick(char)}
+                <button key={`${char.provider}:${char.external_id}`} onClick={() => handlePick(char)}
                         className="flex items-center gap-3.5 px-3 py-2.5 rounded-[8px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.06)] transition-colors">
                   {char.image_url && (
                     <img src={char.image_url} alt="" className="rounded-[4px] object-cover flex-shrink-0"
@@ -400,6 +401,7 @@ function AniListSearch({ onSelect }) {
                       <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{char.series[0]}</div>
                     )}
                     <div className="flex gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.source_label}</span>
                       {char.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{char.gender}</span>}
                       {char.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
                       {char.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
@@ -467,7 +469,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const fillFromAniList = (char) => {
+  const fillFromCharacterSearch = (char) => {
     pendingAvatarUrl.current = char.image_url || null
     setForm(f => ({
       ...f,
@@ -523,9 +525,9 @@ function AddCreatorModal({ onClose, onSuccess }) {
           </div>
         </div>
 
-        {/* MAL import — character type only */}
+        {/* Unified character import — character type only */}
         {form.creator_type === 'character' && (
-          <AniListSearch onSelect={fillFromAniList} />
+          <CharacterSearch onSelect={fillFromCharacterSearch} />
         )}
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 mt-4">

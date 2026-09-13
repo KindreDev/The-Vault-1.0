@@ -87,6 +87,9 @@ def _normalise(item: dict[str, Any]) -> dict[str, Any]:
     name = item.get("name") or {}
     about = _plain_description(item.get("description"))
     result = {
+        "provider": "anilist",
+        "source_label": "AniList",
+        "external_id": item.get("id"),
         "anilist_id": item.get("id"),
         "name": name.get("full") or "",
         "name_native": name.get("native") or "",
