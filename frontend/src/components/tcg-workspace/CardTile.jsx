@@ -28,7 +28,7 @@ function getMissingIdentity(identity, number) {
   }
 }
 
-export default function CardTile({ card, quantity = 0, number, missing = false, identity, classification, onOpen, selected = false, onSelect, onContextMenu }) {
+export default function CardTile({ card, quantity = 0, number, missing = false, identity, classification, onOpen, selected = false, onSelect, onContextMenu, disableLayoutAnimation = false }) {
   const [mediaReady, setMediaReady] = useState(false)
   useEffect(() => {
     if (!card?.id) return undefined
@@ -48,7 +48,7 @@ export default function CardTile({ card, quantity = 0, number, missing = false, 
   }
   return (
     <article className={`tcgws-card-tile${selected ? ' selected' : ''}`} role="button" aria-selected={selected} tabIndex={0} onClick={event => onSelect ? onSelect(event) : onOpen?.()} onContextMenu={onContextMenu} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') onOpen?.() }}>
-      <motion.div layoutId={`tcg-card-${card.id}`} className="tcgws-card-render" onLoadCapture={() => setMediaReady(true)} aria-busy={!mediaReady}>
+      <motion.div layoutId={disableLayoutAnimation ? undefined : `tcg-card-${card.id}`} className="tcgws-card-render" onLoadCapture={() => setMediaReady(true)} aria-busy={!mediaReady}>
         <div className="tcgws-card-loading-underlay" aria-hidden="true" />
         <TCGV2CardFace card={card} width="100%" showEffects fallback={<ArchivedFace card={card} />} />
         {!mediaReady && <div className="tcgws-card-loading-cover" aria-label="Loading card art" />}

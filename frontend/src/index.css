@@ -59,6 +59,11 @@ body {
   overflow: hidden;
 }
 
+/* The app shell owns the page scroll on its main element rather than body.
+   Modal locks use this state marker so wheel/touch input cannot move the page
+   behind an overlay, while modal-local overflow regions remain scrollable. */
+html[data-vault-scroll-locked] main { overflow: hidden !important; }
+
 /* Scrollbars — ultra-thin, near-invisible */
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -552,4 +557,3 @@ img.img-loaded:not([data-no-fade]) { opacity: 1; }
   box-shadow: 0 30px 90px rgba(0,0,0,0.52),
               inset 0 1px 0 rgba(255,255,255,0.10);
 }
-

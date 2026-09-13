@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { SortAsc, SortDesc, ArrowUpDown } from 'lucide-react'
+import { Check, ChevronDown, SortAsc, SortDesc } from 'lucide-react'
 import { useT } from '../i18n'
 
 export function SortDropdown({ value, onChange, options, sortDir, onSortDirChange }) {
@@ -28,46 +28,45 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
 
   // Determine which icon to show based on sort direction
   const SortIcon = sortDir === 'asc' ? SortAsc : SortDesc
-  const isReversed = sortDir === 'asc'
-
   return (
-    <div ref={ref} className="relative z-20 flex-shrink-0">
-      {/* Two-zone trigger: label opens dropdown, arrow directly toggles asc/desc */}
-      <div className="flex items-center rounded-full overflow-hidden text-[11px]"
-           style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
-        <button type="button" onMouseDown={() => setOpen(o => !o)}
-                className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 cursor-pointer"
-                style={{ color: 'rgba(255,255,255,0.75)' }}>
-          {selected ? t(selected.label) : null}
-          {isReversed && value !== 'random' && (
-            <span className="text-[9px] px-1 py-0 rounded-full"
-                  style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)' }}>
-              ↑
-            </span>
-          )}
-        </button>
-        {onSortDirChange && value !== 'random' && (
-          <button
-            type="button"
-            onMouseDown={(e) => { e.stopPropagation(); onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc') }}
-            className="px-2 py-1.5 cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.08)]"
-            style={{ borderLeft: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)' }}
-            title={`${sortDir === 'asc' ? t('Ascending') : t('Descending')} — ${t('click to flip')}`}>
+    <div ref={ref} className="relative z-30 flex-shrink-0">
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[16px] cursor-pointer"
+        style={{
+          background: 'rgba(255,255,255,0.05)',
+          color: 'rgba(255,255,255,0.45)',
+          border: '0.5px solid rgba(255,255,255,0.08)',
+        }}>
+        {selected ? t(selected.label) : null}
+        {onSortDirChange && value !== 'random' ? (
+          <span
+            onMouseDown={e => {
+              e.preventDefault()
+              e.stopPropagation()
+              onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')
+            }}
+            title={`${sortDir === 'asc' ? t('Ascending') : t('Descending')} — ${t('click to flip')}`}
+            className="cursor-pointer">
             <SortIcon size={11} />
-          </button>
+          </span>
+        ) : (
+          <ChevronDown size={11} />
         )}
-      </div>
+      </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 rounded-[8px] shadow-2xl overflow-hidden animate-menu-pop min-w-[160px]"
-             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+        <div className="absolute top-full left-0 mt-1 rounded-[10px] shadow-2xl overflow-hidden animate-menu-pop min-w-[160px]"
+             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 220, maxHeight: 300 }}>
           {options.map(o => (
             <button key={o.value} type="button" onMouseDown={() => handleSelect(o.value)}
-                    className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-between gap-2"
-                    style={{ color: value === o.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)' }}>
+                    className="w-full text-left px-3 py-2 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
+                    style={{
+                      color: value === o.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)',
+                      background: value === o.value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',
+                    }}>
+              {value === o.value && <Check size={12} style={{ color: 'var(--c-accent)', flexShrink: 0 }} />}
               <span>{t(o.label)}</span>
-              {value === o.value && o.value !== 'random' && (
-                <ArrowUpDown size={10} style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }} />
-              )}
             </button>
           ))}
         </div>

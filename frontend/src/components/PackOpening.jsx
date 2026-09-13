@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
 import VaultCard from './VaultCard'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
+import { useScrollLock } from '../hooks/useScrollLock'
 import './PackOpening.css'
 
 const RARITY_ORDER = Object.freeze({ C: 0, R: 1, SR: 2, UR: 3, SPR: 4 })
@@ -241,13 +242,8 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
     return () => window.clearTimeout(timer)
   }, [phase])
 
-  useEffect(() => {
-    const body = document.body
-    const root = document.documentElement
-    const previous = { bodyOverflow: body.style.overflow, bodyOverscroll: body.style.overscrollBehavior, rootOverflow: root.style.overflow, rootOverscroll: root.style.overscrollBehavior }
-    body.style.overflow = 'hidden'; body.style.overscrollBehavior = 'none'; root.style.overflow = 'hidden'; root.style.overscrollBehavior = 'none'
-    return () => { body.style.overflow = previous.bodyOverflow; body.style.overscrollBehavior = previous.bodyOverscroll; root.style.overflow = previous.rootOverflow; root.style.overscrollBehavior = previous.rootOverscroll }
-  }, [])
+  // Keep the collection page fixed while the portaled opening is active.
+  useScrollLock()
 
   const completeTear = useCallback(() => {
     if (phase !== 'entry') return

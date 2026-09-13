@@ -2712,15 +2712,33 @@ export function Settings() {
                         ? `${missingGalleries.length} galleries are hidden because their folders are unavailable.`
                         : t('No missing gallery folders detected.')}
                     </p>
-                    <button onClick={async () => {
-                              await scannerApi.reconcileGalleries()
-                              qc.invalidateQueries({ queryKey: ['missing-galleries'] })
-                              qc.invalidateQueries({ queryKey: ['galleries'] })
-                            }}
-                            className="px-3 py-2 rounded-lg text-base cursor-pointer"
-                            style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)' }}>
-                      {t('Check now')}
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={async () => {
+                                await scannerApi.reconcileGalleries()
+                                qc.invalidateQueries({ queryKey: ['missing-galleries'] })
+                                qc.invalidateQueries({ queryKey: ['galleries'] })
+                              }}
+                              className="px-3 py-2 rounded-lg text-base cursor-pointer"
+                              style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)' }}>
+                        {t('Check now')}
+                      </button>
+                      <button onClick={async () => {
+                                try {
+                                  await scannerApi.resolveMissingGalleries()
+                                  qc.invalidateQueries({ queryKey: ['scan-status'] })
+                                  qc.invalidateQueries({ queryKey: ['task-queue'] })
+                                  toast.success(t('Missing-folder resolution started'))
+                                } catch (error) {
+                                  toast.error(error?.response?.data?.detail || t('Could not start missing-folder resolution'))
+                                }
+                              }}
+                              disabled={!missingGalleries.length || scanStatus?.running}
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-base cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 16%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
+                        <RefreshCw size={16} />
+                        {t('Resolve all')}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                     {missingGalleries.map(gallery => (

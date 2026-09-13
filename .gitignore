@@ -56,9 +56,28 @@ CLAUDE.md
 *_fix_goon_stacks.bat
 backend/fix_sort_order.py
 
+# ── Agent scratch work / one-off generation helpers ───────────────────────────
+/scripts/**/*.py
+/frontend/scripts/
+/CN/patch_*.py
+
+# ── Visual proofs, placeholders, and generated diagnostics ────────────────────
+/_frames/
+/screenshots/
+/reports/
+/scripts/**/screenshots/
+/scripts/**/material_proofs/
+/frontend/src/assets/**/proofs/
+/frontend/src/assets/**/references/
+/frontend/src/assets/**/test-renders/
+
+# ── Local run logs ─────────────────────────────────────────────────────────────
+*.log
+
 # ── Editor noise ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 

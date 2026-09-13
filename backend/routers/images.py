@@ -17,6 +17,7 @@ from services import activity
 from services import dedup as dedup_svc
 from services import edges as edges_svc
 from services import entity_stats
+from services.file_ops import remove_file
 from services.tag_filters import apply_image_tag_filters
 
 router = APIRouter()
@@ -612,15 +613,19 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
     gallery_ids = {img.gallery_id for img in images if img.gallery_id}
 
     deleted_ids = []
+    failures = []
     for img in images:
         if not keep_file:
             try:
-                if img.file_path and os.path.exists(img.file_path):
-                    os.remove(img.file_path)
-                if img.thumb_path and os.path.exists(img.thumb_path):
-                    os.remove(img.thumb_path)
-            except Exception:
-                pass
+                remove_file(img.file_path)
+                remove_file(img.thumb_path)
+            except OSError as e:
+                failures.append({
+                    "id": img.id,
+                    "path": img.file_path,
+                    "message": str(e),
+                })
+                continue
         db.delete(img)
         deleted_ids.append(img.id)
 
@@ -635,7 +640,7 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
     db.commit()
     # Invalidate the dedup cache so the duplicate-finder page reflects deletions immediately
     dedup_svc.clear_search_cache()
-    return {"deleted": len(deleted_ids), "ids": deleted_ids}
+    return {"deleted": len(deleted_ids), "ids": deleted_ids, "failed": failures}
 
 
 @router.delete("/{image_id}")
@@ -648,12 +653,14 @@ def delete_image(image_id: int, keep_file: bool = False, db: Session = Depends(g
 
     if not keep_file:
         try:
-            if img.file_path and os.path.exists(img.file_path):
-                os.remove(img.file_path)
-            if img.thumb_path and os.path.exists(img.thumb_path):
-                os.remove(img.thumb_path)
-        except Exception:
-            pass
+            remove_file(img.file_path)
+            remove_file(img.thumb_path)
+        except OSError as e:
+            raise HTTPException(500, detail={
+                "code": "disk_delete_failed",
+                "path": img.file_path,
+                "message": str(e),
+            }) from e
 
     db.delete(img)
     db.flush()

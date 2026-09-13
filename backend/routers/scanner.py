@@ -7,7 +7,7 @@ from models import LibraryRoot, Image
 from schemas import LibraryRootCreate, LibraryRootOut, ScanStatus, TaggerStatus, TaggerStartRequest, ModelStatus
 from services.scanner import scan_library, scan_folder_path, get_scan_state, cancel_scan, get_scan_log, set_scan_state, is_scan_cancelled, match_funscript_library
 from services.scanner import make_thumb_path, generate_thumbnail, generate_video_thumbnail
-from services.scanner import audit_gallery_availability, missing_gallery_rows, relink_missing_gallery, remove_missing_gallery
+from services.scanner import audit_gallery_availability, missing_gallery_rows, relink_missing_gallery, remove_missing_gallery, resolve_missing_galleries
 import services.ai_tagger as ai_tagger
 import services.gpu_setup as gpu_setup
 from services import task_queue, video_meta
@@ -36,6 +36,17 @@ def list_missing_galleries(db: Session = Depends(get_db)):
 @router.post("/reconcile-galleries")
 def reconcile_galleries(db: Session = Depends(get_db)):
     return audit_gallery_availability(db)
+
+
+@router.post("/resolve-missing-galleries")
+def resolve_all_missing_galleries():
+    task_queue.submit(
+        'resolve_missing', 'Resolve missing gallery folders',
+        start_fn=lambda: _launch_in_thread(resolve_missing_galleries),
+        poll_fn=get_scan_state,
+        cancel_fn=cancel_scan,
+    )
+    return {"message": "Queued", "queued": True}
 
 
 @router.post("/missing-galleries/{gallery_id}/relink")

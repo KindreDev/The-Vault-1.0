@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, ChevronDown, BookOpen, Map, Zap, Trophy, Star,
-  CreditCard, Cpu, LayoutDashboard, Images, Film,
+  WalletCards, Cpu, LayoutDashboard, Images, Film,
   Video, Users, Columns3, BarChart2, Layers, Tag, GitCompare,
   ListTodo, Terminal, Settings, Flame, Wifi, Droplets, Heart,
   Play, Eye, Shuffle, Maximize2, Package, Radio, Usb,
@@ -106,7 +106,7 @@ const XP_ACTIONS = [
   { action: 'Rate an image',     xp: 3,   note: 'Per rating action' },
   { action: 'Rate a gallery',    xp: 5,   note: 'Per rating action' },
   { action: 'Add a manual tag',  xp: 5,   note: 'Per tag applied' },
-  { action: 'Wiki import',       xp: 25,  note: 'Any wiki/Jikan import' },
+  { action: 'Wiki import',       xp: 25,  note: 'Any wiki/AniList import' },
   { action: 'Open a card pack',  xp: 75,  note: 'Per pack (×quantity)' },
   { action: 'Dismantle a card',  xp: 15,  note: 'Per card' },
   { action: 'Tagging mission',   xp: 300, note: 'Daily AI tagging challenge' },
@@ -134,12 +134,13 @@ const LEVEL_TIERS = [
   { range: 'Lv 91–100', color: '#FFD700', titles: 'Transcendent Hoarder, God Emperor Of The Vault' },
 ]
 
-// 2026-07 rework: 4 tiers, fixed at birth. Rarity never transmutes.
+// TCG V2 rarity ladder: one visible rarity axis, fixed when the card is published.
 const RARITY_DATA = [
-  { label: 'Core',      color: '#9F8FEF', shard: 10,   bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', note: 'Photo & gallery cards — the foundation the collection is built on' },
-  { label: 'Epic',      color: '#ff8800', shard: 75,   bg: 'rgba(255,136,0,0.12)',   note: 'Creator & collab cards' },
-  { label: 'Legendary', color: '#FFD700', shard: 300,  bg: 'rgba(255,215,0,0.12)',   note: 'Bond, variant & Hall of Fame cards' },
-  { label: 'Celestial', color: '#E8E8FF', shard: 2500, bg: 'rgba(200,200,255,0.1)',  note: 'The pinnacle — top goon image, My Queen creators, top-3 HOF' },
+  { label: 'C',         color: '#888780', bg: 'rgba(136,135,128,0.12)', note: 'Common — the foundation of the permanent collection.' },
+  { label: 'R',         color: '#55C2FF', bg: 'rgba(85,194,255,0.12)', note: 'Rare — a less common pull with a brighter treatment.' },
+  { label: 'SR',        color: '#9F8FEF', bg: 'rgba(159,143,239,0.12)', note: 'Super Rare — scarcer artwork and stronger finish.' },
+  { label: 'UR',        color: '#FFD700', bg: 'rgba(255,215,0,0.12)', note: 'Ultra Rare — a high-end chase card with premium effects.' },
+  { label: 'SPR',       color: '#FF8ACB', bg: 'rgba(255,138,203,0.12)', note: 'Special Rare — a linked premium parallel with its own frozen printing.' },
 ]
 
 // ── Tab contents ──────────────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ function NavContent() {
 
       <Section title="Goon" icon={Flame} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <NavRow icon={Columns3} label="Multi-panel"    path="/multi-panel"    color="var(--c-pink)" desc="Open 1–4 content panels side-by-side for an immersive session. Queue images/videos from any gallery. Supports simultaneous playback." />
+          <NavRow icon={Columns3} label="Playlists"      path="/multi-panel"    color="var(--c-pink)" desc="Build and save multi-panel playlists: queue media into 1–4 independent panels, save each arrangement, and resume it later." />
           <NavRow icon={Cpu}      label="Device Control" path="/device-control" color="var(--c-pink)" desc="Connect and control your physical device. Supports Intiface Central (Buttplug), The Handy REST API, and direct USB serial (T-Code)." />
           <NavRow icon={Wifi}     label="Device status"  path=""                color="var(--c-green)"        desc="Quick-connect button in the sidebar. Shows Idle (connected, no motion) or Live (freestyle mode active). Click to connect/disconnect." />
         </SectionBody>
@@ -253,10 +254,11 @@ function NavContent() {
 
       <Section title="Collect" icon={Trophy} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <NavRow icon={BarChart2} label="Stats"          path="/stats"        color="var(--c-amber)" desc="Your session history, viewing time breakdown, orgasm stats, activity calendar, and XP history." />
+          <NavRow icon={BarChart2} label="Stats & analytics" path="/stats"      color="var(--c-amber)" desc="Explore the session overview, Almanac history, and Analytics dashboards for viewing time, activity, orgasms, creators, and XP." />
           <NavRow icon={Trophy}    label="Quests"         path="/quests"       color="var(--c-amber)" desc="Active daily and weekly quests with progress bars. Boss quests show your lifetime milestone progress." />
-          <NavRow icon={Star}      label="Hall of Fame"   path="/hall-of-fame" color="var(--c-amber)" desc="Your top-rated creators, galleries, and images ranked by rating, view count, and orgasm count." />
-          <NavRow icon={Layers}    label="Card Collection" path="/collection"  color="var(--c-amber)" desc="Your TCG card collection. Open packs with Vault Credits, dismantle duplicates for shards, forge variant cards." />
+          <NavRow icon={Star}      label="Hall of Fame"   path="/hall-of-fame" color="var(--c-amber)" desc="Expanded leaderboards for creators, galleries, and media, with period and all-time boards, rank movement, and detailed stats." />
+          <NavRow icon={Activity}  label="Recap"          path="/recap"       color="var(--c-pink)" desc="A visual recap of your collection and session history, with highlights from the selected period." />
+          <NavRow icon={WalletCards} label="Card Collection" path="/collection" color="var(--c-amber)" desc="Browse the published trading-card catalogue, filter by type and C / R / SR / UR / SPR rarity, and inspect each frozen card face." />
         </SectionBody>
       </Section>
 
@@ -593,17 +595,15 @@ function AchievementsContent() {
       ],
     },
     {
-      label: 'Cards & forging', color: '#9F8FEF', items: [
-        { title: 'Card Collector',  desc: '25 cards',                      xp: 300 },
-        { title: 'Card Hoarder',    desc: '50 cards',                      xp: 600 },
-        { title: 'Deck Lord',       desc: '100 cards',                     xp: 1500 },
-        { title: 'Relic Hunter',    desc: 'Own a Relic or higher card',    xp: 750 },
-        { title: 'Legend',          desc: 'Own a Legendary card',          xp: 400 },
-        { title: 'Ascended',        desc: 'Own a Celestial card',          xp: 2000 },
-        { title: 'Pack Junkie',     desc: '10 packs opened',               xp: 400 },
-        { title: 'Pack Addict',     desc: '50 packs opened',               xp: 1200 },
-        { title: 'Card Shredder',   desc: 'Dismantle 25 cards',            xp: 250 },
-        { title: 'Forge Adept',     desc: 'Dismantle 100 cards',           xp: 600 },
+      label: 'Cards & collection', color: '#9F8FEF', items: [
+        { title: 'Card Collector',  desc: 'Own 25 cards',                   xp: 300 },
+        { title: 'Card Hoarder',    desc: 'Own 50 cards',                   xp: 600 },
+        { title: 'Deck Lord',       desc: 'Own 100 cards',                  xp: 1500 },
+        { title: 'Rare Pull',       desc: 'Own an SR card',                 xp: 750 },
+        { title: 'Ultra Pull',      desc: 'Own a UR card',                 xp: 1200 },
+        { title: 'SPR Hunter',      desc: 'Own an SPR card',                xp: 2000 },
+        { title: 'Pack Junkie',     desc: 'Open 10 packs',                  xp: 400 },
+        { title: 'Pack Addict',     desc: 'Open 50 packs',                  xp: 1200 },
       ],
     },
     {
@@ -646,70 +646,68 @@ function AchievementsContent() {
 function CardsContent() {
   return (
     <div className="space-y-3">
-      <Section title="The four tiers" icon={Sparkles} defaultOpen accentColor="#FFD700">
+      <Section title="One rarity ladder — C / R / SR / UR / SPR" icon={Sparkles} defaultOpen accentColor="#FFD700">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            A card's tier is <strong className="text-white/75">fixed at birth</strong> — cards never transmute rarity. The tier sets the frame, colour, and its own visual effect. Progression happens on two other axes instead: the card's <strong className="text-white/75">Class</strong> (see below) and its <strong className="text-white/75">Level</strong> (grown by CXP).
+            Every card has one visible rarity ladder: <strong className="text-white/75">C → R → SR → UR → SPR</strong>. Rarity is assigned before publication and then frozen with the card definition; it never changes because of later ownership or engagement.
           </p>
           <div className="space-y-2">
-            {RARITY_DATA.map(({ label, color, shard, bg, note }) => (
+            {RARITY_DATA.map(({ label, color, bg, note }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-lg"
                    style={{ background: bg, border: `0.5px solid ${color}40` }}>
                 <span className="w-24 text-[17px] font-bold flex-shrink-0" style={{ color }}>{label}</span>
                 <span className="flex-1 text-[16px] text-white/55">{note}</span>
-                <span className="text-[16px] font-mono text-white/40 flex-shrink-0">{shard.toLocaleString()} shards</span>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/30">Shard values are what you receive when dismantling a card of that tier. Prestige cards pay 3× shards.</p>
+          <p className="mt-3 text-[16px] text-white/35">Rarity is not a live score or an upgrade track: once a printing is published, its rarity and collectible identity stay fixed.</p>
         </SectionBody>
       </Section>
 
-      <Section title="True Rarity — C / R / SR / SPR / UR" icon={Diamond} defaultOpen accentColor="#55C2FF">
+      <Section title="What rarity changes" icon={Diamond} defaultOpen={false} accentColor="#55C2FF">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            On top of the tier, every card gets a <strong className="text-white/75">Class</strong> shown as a corner badge — how rare that card is <em>within its own tier</em>. Classes are ranked <strong>per tier</strong>, so every tier has its own chase: a <strong className="text-white/75">Core-UR</strong> is a real, special thing.
+            Rarity changes the material, foil, ornament density, embossing, and signature treatment while preserving the card type's identity. A published card's source, artwork, set, number, and rarity stay together as one immutable collectible.
           </p>
           <div className="grid grid-cols-5 gap-2 mb-4">
             {[
-              { c: 'C',   color: '#7c7b74', pct: 'common' },
-              { c: 'R',   color: '#888780', pct: 'uncommon' },
-              { c: 'SR',  color: '#4682DC', pct: 'scarcer' },
-              { c: 'SPR', color: '#9F8FEF', pct: 'rare' },
-              { c: 'UR',  color: '#FFD700', pct: 'the chase' },
+              { c: 'C',   color: '#888780', pct: 'Common' },
+              { c: 'R',   color: '#55C2FF', pct: 'Rare' },
+              { c: 'SR',  color: '#9F8FEF', pct: 'Super Rare' },
+              { c: 'UR',  color: '#FFD700', pct: 'Ultra Rare' },
+              { c: 'SPR', color: '#FF8ACB', pct: 'Special Rare' },
             ].map(({ c, color, pct }) => (
               <div key={c} className="px-3 py-3 rounded-lg text-center" style={{ background: `${color}12`, border: `0.5px solid ${color}40` }}>
                 <div className="text-[22px] font-extrabold" style={{ color }}>{c}</div>
-                <div className="text-[14px] text-white/40 mt-0.5">{pct}</div>
+                <div className="text-[16px] text-white/40 mt-0.5">{pct}</div>
               </div>
             ))}
           </div>
           <div className="p-3 rounded-lg text-[16px] text-white/50 flex gap-2"
                style={{ background: 'rgba(85,194,255,0.08)', border: '0.5px solid rgba(85,194,255,0.25)' }}>
             <Info size={14} style={{ color: '#55C2FF' }} className="flex-shrink-0 mt-0.5" />
-            <span>The class comes from a <strong className="text-white/70">Collection Rarity Score</strong> that's <strong className="text-white/70">love-gated</strong> — a card only counts as rare if you actually engage with its creator (Os, watch time, ratings, sessions). So a huge but unwatched collection can't mint an undeserved chase card. Sort your collection by <strong className="text-white/70">Rarity</strong> to rank by this score.</span>
+            <span>Rarity is a publication fact, not a live score. Engagement can inform preparation before publication, but it cannot silently rewrite a card that is already in the catalogue.</span>
           </div>
         </SectionBody>
       </Section>
 
-      <Section title="Card types & pack odds" icon={CreditCard} defaultOpen={false} accentColor="var(--c-accent)">
+      <Section title="Card types" icon={WalletCards} defaultOpen={false} accentColor="var(--c-accent)">
         <SectionBody>
           <div className="grid grid-cols-2 gap-2 text-[17px]">
             {[
-              { label: 'Photo card',   rarity: 'Core',      desc: 'From an image in your vault. 58% of drops — biased toward what you actually watch.' },
-              { label: 'Gallery card', rarity: 'Core',      desc: 'A whole gallery as a card. 17% of drops. 9★+ galleries are born Epic.' },
-              { label: 'Creator card', rarity: 'Epic',      desc: 'A creator from your roster. 7% of drops. Up to 5 permanent art versions each.' },
-              { label: 'Bond card',    rarity: 'Legendary', desc: 'Earned when an image reaches 5 Os, then evolves at 15 and 25. Bond cards never appear in ordinary booster pools.' },
-              { label: 'Variant card', rarity: 'Legendary', desc: 'A creator × character (e.g. a cosplayer as a character). 1% of drops, or craft one in the Forge. Cap 3 per pair.' },
-              { label: 'Collab card',  rarity: 'Epic',      desc: 'Multi-creator crossovers. 5% of drops.' },
-              { label: 'HOF card',     rarity: 'Legendary', desc: 'A Hall of Fame memento — minted forever when a creator enters the HOF. 7% of drops; top-3 are Celestial.' },
-            ].map(({ label, rarity, desc }) => {
-              const r = RARITY_DATA.find(x => x.label === rarity)
+              { label: 'Scene',      desc: 'One real media item — photo, video, illustration, or 3D art — with its source identity preserved.' },
+              { label: 'Gallery',    desc: 'One real Vault gallery, represented by a frozen cover and honest gallery metadata.' },
+              { label: 'Creator',    desc: 'A canonical creator entity with a deliberate portrait and creator type.' },
+              { label: 'Character',  desc: 'A fictional character independently of any creator portraying them.' },
+              { label: 'Cosplay',    desc: 'A verified creator × character relationship supported by real Vault gallery metadata.' },
+              { label: 'Collab',     desc: 'Two or more explicitly identified creators participating in the same gallery.' },
+              { label: 'Bond',       desc: 'An earned card tied to a real media item and its persisted milestone history; never an ordinary pack drop.' },
+              { label: 'Hall of Fame', desc: 'A permanent memento of a real Hall of Fame result, with the board period and rank frozen.' },
+            ].map(({ label, desc }) => {
               return (
                 <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-[17px] font-semibold text-white/80">{label}</span>
-                    {r && <Pill color={r.color}>{r.label}</Pill>}
                   </div>
                   <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
                 </div>
@@ -719,15 +717,15 @@ function CardsContent() {
         </SectionBody>
       </Section>
 
-      <Section title="Prestige (crafted premium cards)" icon={Crown} defaultOpen={false} accentColor="#ff5db1">
+      <Section title="Special Rare parallels" icon={Crown} defaultOpen={false} accentColor="#ff5db1">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            Prestige is the premium holo treatment (formerly "Foil"). It is <strong className="text-white/75">crafted, never pulled from packs</strong>. A Prestige card gets a signature look — a breathing rainbow halo, a golden flower field, and a <strong className="text-white/75">PRESTIGE</strong> label — on any tier, and pays <strong className="text-white/75">3× shards</strong> when dismantled.
+            <strong className="text-white/75">SPR</strong> is a linked Special Rare printing, not a live upgrade button. It is published as its own immutable card definition with its own artwork, number, and rarity treatment. The collection keeps the base card and its SPR parallel distinct.
           </p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
-              { label: 'Craft with duplicates', desc: 'Spend spare copies of the card + 1,000 credits: Core 6 · Epic 4 · Legendary 2 · Celestial 1 copies.' },
-              { label: 'Craft with a token',    desc: 'Or spend 1 Catalyst Token to Prestige a card instantly (the rarer path).' },
+              { label: 'Linked printing', desc: 'A parallel points back to its base card and remains tied to the same published source identity.' },
+              { label: 'No silent upgrades', desc: 'Ownership and engagement never rewrite a published card.' },
             ].map(({ label, desc }) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,93,177,0.08)', border: '0.5px solid rgba(255,93,177,0.25)' }}>
                 <div className="font-semibold text-[#ff9dd0] mb-1">{label}</div>
@@ -741,61 +739,57 @@ function CardsContent() {
       <Section title="Card visuals (VFX)" icon={Sparkles} defaultOpen={false} accentColor="#C084FC">
         <SectionBody>
           <div className="space-y-2 text-[16px] text-white/55">
-            <p><strong className="text-white/75">Tier</strong> sets the base effect on every card — Core a soft glare, Epic a sliding rainbow sheen, Legendary floating hearts, Celestial a white flower field + prism.</p>
-            <p><strong className="text-white/75">UR</strong> cards (any tier) upgrade to that tier's premium animated texture — Core starfield, Epic iris/glitter, Legendary gold hearts, Celestial cosmos.</p>
-            <p><strong className="text-white/75">Prestige</strong> cards wear the celestial flower-field + prism + rainbow halo on any tier — and go golden & denser when the card is also a UR.</p>
-            <p><strong className="text-white/75">Video cards</strong> animate: a short looping preview stitched from clips near the start, middle, and end of the video.</p>
+            <p><strong className="text-white/75">Rarity</strong> controls finish intensity — material, foil, embossing, ornament density, and signature treatment — while the card type keeps its own frame architecture.</p>
+            <p><strong className="text-white/75">SPR</strong> uses the linked parallel treatment and is not a boolean foil toggle.</p>
+            <p><strong className="text-white/75">Source art</strong> stays truthful: stills and video artwork come from real Vault media, and missing metadata is left unknown rather than invented.</p>
           </div>
         </SectionBody>
       </Section>
 
-      <Section title="Card Level & CXP" icon={TrendingUp} defaultOpen={false} accentColor="var(--c-green)">
+      <Section title="Published cards and owned copies" icon={TrendingUp} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            Rarity never changes — instead a card grows in <strong className="text-white/75">Level (1→10)</strong> by earning CXP. Level nudges the card's rarity score, so a maxed card ranks higher. CXP comes from two places:
+            A <strong className="text-white/75">card definition</strong> is the published collectible: source, artwork, type, rarity, set, and collector number are frozen. An <strong className="text-white/75">owned copy</strong> only tracks inventory state such as quantity, acquisition date, lock/favorite state, and display assignment.
           </p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-green)] mb-1">Sessions</div>
-              <p className="text-white/45 leading-snug">Logging a session tied to that card's creator/gallery grants CXP.</p>
+              <div className="font-semibold text-[var(--c-green)] mb-1">Frozen identity</div>
+              <p className="text-white/45 leading-snug">The same published printing remains the same card wherever it appears in the collection.</p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-green)] mb-1">Feeding duplicates</div>
-              <p className="text-white/45 leading-snug">Feed a spare copy (or Bond/variant cards) into a card to pour in CXP. Overflow past max level converts to Vault Credits.</p>
+              <div className="font-semibold text-[var(--c-green)] mb-1">Separate ownership</div>
+              <p className="text-white/45 leading-snug">Quantity and display choices belong to your owned copies, never to the printed definition.</p>
             </div>
           </div>
         </SectionBody>
       </Section>
 
-      <Section title="The two packs" icon={Package} defaultOpen={false} accentColor="var(--c-amber)">
+      <Section title="Booster ecosystem" icon={Package} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <div className="grid grid-cols-2 gap-3 text-[16px]">
             <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Booster</span>
-                <Pill color="#9F8FEF">400 cr</Pill>
+                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Vault Booster</span>
               </div>
-              <p className="text-white/50 leading-snug">Your history — pulls lean into what you've actually watched, gooned, and rated. The pack that surfaces your favourites.</p>
+              <p className="text-white/50 leading-snug">The permanent pool: an always-available pack drawing from published Foundation cards.</p>
             </div>
             <div className="p-4 rounded-lg" style={{ background: 'rgba(255,136,0,0.08)', border: '0.5px solid rgba(255,136,0,0.3)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[#ffb347]">Premium</span>
-                <Pill color="#ff8800">800 cr</Pill>
+                <span className="text-[18px] font-bold text-[#ffb347]">Release packs</span>
               </div>
-              <p className="text-white/50 leading-snug">The high table — guaranteed Epic+, with heavy collab and Hall-of-Fame rates. The tier hunter's pack.</p>
+              <p className="text-white/50 leading-snug">Standard and Premium packs draw only from a named release's frozen checklist; reward packs can target a published release.</p>
             </div>
           </div>
         </SectionBody>
       </Section>
 
-      <Section title="Currencies" icon={CreditCard} defaultOpen={false} accentColor="#FFD700">
+      <Section title="Currencies and rewards" icon={WalletCards} defaultOpen={false} accentColor="#FFD700">
         <SectionBody>
           <div className="space-y-2.5 text-[17px]">
             {[
-              { name: 'Vault Credits', color: '#FFD700', desc: 'Primary currency, from actions/quests/achievements. Buys packs (Booster 400 / Premium 800) and Prestige crafts (1,000).' },
-              { name: 'Shards',        color: '#9F8FEF', desc: 'Dismantling currency. Destroy cards for shards (Core 10 · Epic 75 · Legendary 300 · Celestial 2,500; ×3 for Prestige). Spent on catalyst tokens and the Forge.' },
-              { name: 'Catalyst Tokens',color: 'var(--c-amber)', desc: 'Rare crafting material — 400 shards each, plus one every 5 levels you gain. Used to forge Variant cards or to Prestige a card.' },
-              { name: 'Hearts',        color: 'var(--c-pink)', desc: 'Earned by dismantling Epic+ cards (Epic 2 · Legendary 3 · Celestial 5). Gift them to a creator to boost her bond.' },
+              { name: 'Vault Credits', color: '#FFD700', desc: 'The pack currency earned through Vault activity and rewards. Prices and availability are recorded with each published pack product.' },
+              { name: 'Pack tokens',   color: 'var(--c-accent)', desc: 'Quest and event rewards that redeem a specific persisted pack product without inventing new cards.' },
+              { name: 'Bond rewards',  color: 'var(--c-pink)', desc: 'Bond and Hall of Fame cards are earned from real persisted activity and remain protected from ordinary trading.' },
             ].map(({ name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
@@ -807,14 +801,14 @@ function CardsContent() {
         </SectionBody>
       </Section>
 
-      <Section title="The Forge — dismantle, feed, craft" icon={Hammer} defaultOpen={false} accentColor="var(--c-pink)">
+      <Section title="Releases and publication" icon={Hammer} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
           <div className="space-y-3 text-[17px]">
             {[
-              { action: 'Dismantle', color: 'var(--c-pink)',  desc: 'Destroy a card for shards (and Hearts on Epic+). One-click auto-dismantle of all duplicates.' },
-              { action: 'Feed',      color: '#9F8FEF',        desc: 'Sacrifice duplicate copies into a card to pour in CXP and grow its Level.' },
-              { action: 'Craft Variant', color: 'var(--c-amber)', desc: 'Forge a creator × character card for any pair that share a gallery. Costs 500 shards + 1 catalyst token. Cap 3 per pair.' },
-              { action: 'Craft Prestige', color: '#ff5db1',   desc: 'Upgrade a card to Prestige — duplicates (6/4/2/1 by tier) + 1,000 credits, or 1 catalyst token.' },
+              { action: 'Prepare', color: 'var(--c-pink)',  desc: 'The publication pipeline selects real sources, artwork, metadata, and rarity candidates from the Vault.' },
+              { action: 'Validate', color: '#9F8FEF', desc: 'A release fails closed when its checklist, numbering, artwork, or required metadata cannot be supported honestly.' },
+              { action: 'Publish', color: 'var(--c-amber)', desc: 'Once published, a card definition is immutable and becomes eligible for its recorded pack pools.' },
+              { action: 'Reprint', color: '#ff5db1', desc: 'A reprint is a new card definition that explicitly reuses an earlier source; it does not silently alter the original.' },
             ].map(({ action, color, desc }) => (
               <div key={action} className="flex gap-3 items-start px-4 py-3 rounded-lg"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
@@ -1234,7 +1228,7 @@ const TABS = [
   { id: 'gami',      label: 'Gamification', icon: Zap        },
   { id: 'quests',    label: 'Quests',       icon: Trophy     },
   { id: 'achieve',   label: 'Achievements', icon: Star       },
-  { id: 'cards',     label: 'Cards',        icon: CreditCard },
+  { id: 'cards',     label: 'Cards',        icon: WalletCards },
   { id: 'devices',   label: 'Devices',      icon: Cpu        },
   { id: 'hotkeys',   label: 'Hotkeys',      icon: Keyboard   },
   { id: 'erika',     label: 'Erika',        icon: Bot        },

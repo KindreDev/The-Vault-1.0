@@ -5,6 +5,34 @@ import { useVaultStore } from '../store/vault.js'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
+// A preview or viewer can still have an open video handle when its delete
+// action is clicked. Release every browser media pipeline before a destructive
+// disk request; the backend also retries briefly for the handle-close race.
+function releaseMediaBeforeDiskDelete() {
+  if (typeof document === 'undefined') return
+  document.querySelectorAll('video').forEach(video => {
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
+  })
+}
+
+// Keep destructive-action toasts useful without making every caller know the
+// backend's error envelope. Structured disk errors include a short reason;
+// ordinary API errors still fall back to their response detail or message.
+export function apiErrorMessage(error, fallback = 'Request failed') {
+  const detail = error?.response?.data?.detail
+  if (detail && typeof detail === 'object') {
+    if (detail.message) return String(detail.message)
+    if (detail.code) return String(detail.code).replaceAll('_', ' ')
+  }
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (error?.message && !String(error.message).toLowerCase().includes('network error')) {
+    return String(error.message)
+  }
+  return fallback
+}
+
 // Live XP + Credits feedback — fires on every API response that carries XP data.
 // Patterns supported:
 //   d.total_xp + d.level_up  → XPEventOut at top level
@@ -66,7 +94,10 @@ export const galleriesApi = {
   get:           (id)              => api.get(`/galleries/${id}`),
   create:        (d)               => api.post('/galleries/', d),
   update:        (id, d)           => api.patch(`/galleries/${id}`, d),
-  delete:        (id, delete_files)=> api.delete(`/galleries/${id}`, { params: { delete_files } }),
+  delete:        (id, delete_files)=> {
+    if (delete_files) releaseMediaBeforeDiskDelete()
+    return api.delete(`/galleries/${id}`, { params: { delete_files } })
+  },
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
   random:        ()                => api.get('/galleries/random'),
   hof:           (n = 10, offset = 0, period = 'all') => api.get('/galleries/hall-of-fame', { params: { limit: n, offset, period } }),
@@ -158,8 +189,8 @@ export const creatorsApi = {
   randomPicks:       (n = 8) => api.get('/creators/', { params: { sort_by: 'random', limit: n } }),
   byCountry:         ()      => api.get('/creators/by-country'),
   topByValue:        (n = 5) => api.get('/creators/top-by-value', { params: { limit: n } }),
-  jikanSearch:       (q)     => api.get('/creators/jikan-search', { params: { q, limit: 8 } }),
-  jikanCharacter:    (malId) => api.get(`/creators/jikan-character/${malId}`),
+  anilistSearch:     (q)     => api.get('/creators/anilist-search', { params: { q, limit: 8 } }),
+  anilistCharacter:  (id)     => api.get(`/creators/anilist-character/${id}`),
   assignFolder:      (id, folderPath) => api.post(`/creators/${id}/assign-folder`, { folder_path: folderPath }),
   syncSourceFolders: ()              => api.post('/creators/sync-source-folders'),
   giftHeart:         (id)            => api.post(`/creators/${id}/gift-heart`),
@@ -178,8 +209,14 @@ export const imagesApi = {
   periods:       (params)  => api.get('/images/periods', { params }),
   get:           (id)      => api.get(`/images/${id}`),
   update:        (id, d)   => api.patch(`/images/${id}`, d),
-  delete:        (id, keepFile = false) => api.delete(`/images/${id}`, { params: { keep_file: keepFile } }),
-  bulkDelete:    (ids, keepFile = false) => api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } }),
+  delete:        (id, keepFile = false) => {
+    if (!keepFile) releaseMediaBeforeDiskDelete()
+    return api.delete(`/images/${id}`, { params: { keep_file: keepFile } })
+  },
+  bulkDelete:    (ids, keepFile = false) => {
+    if (!keepFile) releaseMediaBeforeDiskDelete()
+    return api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } })
+  },
   view:          (id)      => api.post(`/images/${id}/view`),
   logDuration:   (id, s)  => api.post(`/images/${id}/duration`, { seconds: s }),
   stats:         (id)      => api.get(`/images/${id}/stats`),
@@ -285,6 +322,7 @@ export const scannerApi = {
   durationStatus:      () => api.get('/scanner/video-duration-status'),
   missingGalleries:    () => api.get('/scanner/missing-galleries'),
   reconcileGalleries:  () => api.post('/scanner/reconcile-galleries'),
+  resolveMissingGalleries: () => api.post('/scanner/resolve-missing-galleries'),
   relinkGallery:       (id, folderPath) => api.post(`/scanner/missing-galleries/${id}/relink`, { folder_path: folderPath }),
   removeMissingGallery:(id) => api.delete(`/scanner/missing-galleries/${id}`),
 }

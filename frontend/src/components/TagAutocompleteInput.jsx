@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Tag as TagIcon, Plus, X } from 'lucide-react'
 import { tagsApi } from '../lib/api'
@@ -35,8 +36,10 @@ export default function TagAutocompleteInput({
   const [input, setInput]   = useState('')
   const [open, setOpen]     = useState(false)
   const [cursor, setCursor] = useState(0)
+  const [dropPosition, setDropPosition] = useState(null)
   const inputRef = useRef(null)
   const dropRef  = useRef(null)
+  const wrapperRef = useRef(null)
 
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
@@ -116,10 +119,41 @@ export default function TagAutocompleteInput({
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // The viewer and bulk-selection panels intentionally clip their media grids.
+  // Render the suggestions at document level and track the input's viewport
+  // position so the menu cannot disappear behind a grid or panel boundary.
+  useLayoutEffect(() => {
+    if (!open || rows.length === 0) {
+      setDropPosition(null)
+      return undefined
+    }
+    const updatePosition = () => {
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const menuHeight = Math.min(rows.length * 40 + 2, 360)
+      const roomBelow = window.innerHeight - rect.bottom - 8
+      const placeAbove = roomBelow < Math.min(menuHeight, 220) && rect.top > menuHeight + 8
+      setDropPosition({
+        left: rect.left,
+        top: placeAbove ? Math.max(8, rect.top - menuHeight - 4) : rect.bottom + 4,
+        width: rect.width,
+        maxHeight: Math.max(120, placeAbove ? rect.top - 12 : roomBelow),
+      })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    // Capture nested scrolling containers as well as window scrolling.
+    document.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      document.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, rows.length])
+
   const sm = size === 'sm'
 
   return (
-    <div className="relative w-full">
+    <div ref={wrapperRef} className="relative w-full">
       <div className="flex items-center gap-1 w-full"
            style={{
              background: 'rgba(255,255,255,0.05)',
@@ -152,10 +186,20 @@ export default function TagAutocompleteInput({
         </button>
       </div>
 
-      {open && rows.length > 0 && (
+      {open && rows.length > 0 && dropPosition && createPortal(
         <div ref={dropRef}
-             className="absolute top-full left-0 right-0 mt-1 z-[100] rounded-xl overflow-hidden shadow-2xl"
-             style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', minWidth: 200 }}>
+             className="rounded-xl overflow-y-auto shadow-2xl"
+             style={{
+               position: 'fixed',
+               left: dropPosition.left,
+               top: dropPosition.top,
+               width: dropPosition.width,
+               maxHeight: dropPosition.maxHeight,
+               zIndex: 2000,
+               background: 'var(--c-card)',
+               border: '1px solid color-mix(in srgb, var(--c-accent) 24%, rgba(255,255,255,0.1))',
+               minWidth: 200,
+             }}>
           {rows.map((tag, i) => (
             <button key={tag.__create ? '__create' : tag.id}
                     onMouseDown={() => commit(tag.name)}
@@ -185,7 +229,8 @@ export default function TagAutocompleteInput({
               )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

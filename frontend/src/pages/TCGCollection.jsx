@@ -15,6 +15,7 @@ import ReleaseBrowser from '../components/tcg-workspace/ReleaseBrowser'
 import TCGNavigation, { TCG_VIEWS } from '../components/tcg-workspace/TCGNavigation'
 import TCGSummaryBar from '../components/tcg-workspace/TCGSummaryBar'
 import Workshop from '../components/tcg-workspace/Workshop'
+import { useScrollLock } from '../hooks/useScrollLock'
 import '../components/tcg-workspace/tcg-workspace.css'
 import '../components/tcg-workspace/tcg-workspace-refinements.css'
 import '../components/tcg-workspace/tcg-workspace-premium.css'
@@ -120,12 +121,7 @@ export default function TCGCollection() {
     onError: error => toast.error(error.response?.data?.detail || 'Could not open booster'),
   })
 
-  useEffect(() => {
-    if (!openPack.isPending) return undefined
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previousOverflow }
-  }, [openPack.isPending])
+  useScrollLock(openPack.isPending)
 
   if (isLoading) return <div className="tcgws-loading"><i /><strong>Opening the card vault</strong><span>Loading releases, sets, and your collection...</span></div>
   if (summaryError || !summary) return <div className="tcgws-loading tcgws-load-error"><strong>TCG workspace unavailable</strong><span>{summaryFailure?.response?.data?.detail || 'The collection service did not return a valid workspace summary.'}</span><button onClick={() => retrySummary()}>Retry</button></div>

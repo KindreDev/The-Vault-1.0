@@ -10,7 +10,7 @@ import {
   CheckSquare, Square, UserPlus, UserX, Check, Trash2, LayoutTemplate, GripHorizontal,
   FolderOpen, Zap, FolderOutput, HardDrive, Copy,
 } from 'lucide-react'
-import { imagesApi, creatorsApi, galleriesApi, sessionsApi } from '../lib/api'
+import { imagesApi, creatorsApi, galleriesApi, sessionsApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
 import ImageContextMenu from '../components/ImageContextMenu'
@@ -29,6 +29,7 @@ import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import DeviceControls from '../components/DeviceControls'
 import { SortDropdown } from '../components/SortDropdown'
+import { useScrollLock } from '../hooks/useScrollLock'
 import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useT } from '../i18n'
@@ -230,6 +231,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
 
 // ── Full-screen image viewer ───────────────────────────────────────────────────
 function ImageViewer({ images, startIdx, onClose }) {
+  useScrollLock()
   const navigate = useNavigate()
   const [idx, setIdx] = useState(startIdx)
   const [fullLoaded, setFullLoaded] = useState(false)
@@ -1218,10 +1220,11 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
   const handleDelete = async () => {
     setWorking(true)
     let errs = 0
+    let firstError = null
     for (const img of selectedImages)
-      try { await imagesApi.delete(img.id) } catch { errs++ }
+      try { await imagesApi.delete(img.id) } catch (e) { errs++; firstError ||= apiErrorMessage(e, 'Could not delete from disk') }
     setWorking(false)
-    if (errs) toast.error(`Done with ${errs} errors`)
+    if (errs) toast.error(`Done with ${errs} error${errs > 1 ? 's' : ''}${firstError ? `: ${firstError}` : ''}`)
     else toast.success(`Deleted ${selectedImages.length} files`)
     qc.invalidateQueries({ queryKey: ['images-list'] })
     setConfirmDel(false)
@@ -1875,15 +1878,16 @@ export default function ImageList({ onlyVideos = false }) {
           onDelete={async (mode) => {
             const targets = imageCtxMenu.bulkImages ?? [imageCtxMenu.image]
             let errs = 0
+            let firstError = null
             for (const img of targets) {
               try { await imagesApi.delete(img.id, mode === 'vault') }
-              catch { errs++ }
+              catch (e) { errs++; firstError ||= apiErrorMessage(e, 'Could not complete deletion') }
             }
             const n = targets.length - errs
             if (n > 0) toast.success(mode === 'vault'
               ? `${n} ${n === 1 ? 'image' : 'images'} removed from vault`
               : `${n} ${n === 1 ? 'image' : 'images'} deleted from disk`)
-            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
             queryClient.invalidateQueries({ queryKey: ['images-list'] })
           }}
         />

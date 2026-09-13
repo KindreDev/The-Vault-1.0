@@ -4,6 +4,7 @@ import { X, RotateCcw, Crosshair, TrendingUp } from 'lucide-react'
 import VaultCard, { RARITY_CONFIG } from './VaultCard'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
 import CardFeedPanel from './CardFeedPanel'
+import { useScrollLock } from '../hooks/useScrollLock'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { cardsApi, imagesApi, economyApi } from '../lib/api'
 import toast from 'react-hot-toast'
@@ -71,13 +72,9 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // ── Lock page scroll while the viewer is open (it's portaled to <body>, so
-  // background scroll would otherwise keep moving the page underneath)
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [])
+  // The viewer is portaled to <body>; lock both document roots while it is
+  // open, with reference counting so nested overlays restore state safely.
+  useScrollLock()
 
   const handleClose = useCallback(() => {
     setPhase('closing')

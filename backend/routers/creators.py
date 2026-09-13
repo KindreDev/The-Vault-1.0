@@ -22,6 +22,7 @@ import services.gamification as gami
 from services import activity
 from services import crowns
 from services import ranking
+from services import anilist
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 
@@ -698,6 +699,26 @@ async def jikan_character_detail(mal_id: int):
         "favorites":  item.get("favorites", 0),
         **physical,
     }
+
+
+@router.get("/anilist-search")
+async def anilist_search(q: str, limit: int = 8):
+    """Search AniList characters for the creator form (no auth required)."""
+    if not q or len(q.strip()) < 2:
+        return []
+    try:
+        return await anilist.search_characters(q, limit)
+    except anilist.AniListError as exc:
+        raise HTTPException(503, "AniList character import is unavailable right now — try again in a moment.") from exc
+
+
+@router.get("/anilist-character/{anilist_id}")
+async def anilist_character_detail(anilist_id: int):
+    """Fetch full character data from AniList for the creator form."""
+    try:
+        return await anilist.character_detail(anilist_id)
+    except anilist.AniListError as exc:
+        raise HTTPException(503, "AniList character import is unavailable right now — try again in a moment.") from exc
 
 
 @router.get("/favorites")

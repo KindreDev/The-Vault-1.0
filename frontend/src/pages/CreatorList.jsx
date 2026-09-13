@@ -8,7 +8,7 @@ import CreatorContextMenu from '../components/CreatorContextMenu'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
-import { COUNTRIES } from '../lib/countries'
+import { COUNTRIES, countryIso } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
 import BondHearts from '../components/BondHearts'
 import FranchiseFilter from '../components/FranchiseFilter'
@@ -75,31 +75,6 @@ const RARITY_LABELS = {
 
 const TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
 
-
-// Returns lowercase 2-letter ISO code for flag-icons (fi fi-{code})
-const NAME_TO_ISO = {
-  'Japan': 'jp', 'Korea, South': 'kr', 'China': 'cn', 'United States': 'us',
-  'United Kingdom': 'gb', 'Russia': 'ru', 'Ukraine': 'ua', 'Germany': 'de',
-  'France': 'fr', 'Italy': 'it', 'Spain': 'es', 'Poland': 'pl', 'Brazil': 'br',
-  'Mexico': 'mx', 'Canada': 'ca', 'Australia': 'au', 'Philippines': 'ph',
-  'Thailand': 'th', 'Vietnam': 'vn', 'Indonesia': 'id', 'Malaysia': 'my',
-  'Singapore': 'sg', 'Taiwan': 'tw', 'Sweden': 'se', 'Norway': 'no',
-  'Denmark': 'dk', 'Finland': 'fi', 'Netherlands': 'nl', 'Belgium': 'be',
-  'Switzerland': 'ch', 'Austria': 'at', 'Czechia (Czech Republic)': 'cz',
-  'Hungary': 'hu', 'Romania': 'ro', 'Turkey': 'tr', 'Israel': 'il',
-  'India': 'in', 'Argentina': 'ar', 'Colombia': 'co', 'Chile': 'cl',
-  'Peru': 'pe', 'Portugal': 'pt', 'Greece': 'gr', 'Croatia': 'hr',
-  'Serbia': 'rs', 'New Zealand': 'nz', 'South Africa': 'za', 'Egypt': 'eg',
-  'USA': 'us', 'UK': 'gb',
-}
-
-function countryIso(country) {
-  if (!country) return null
-  const trimmed = country.trim()
-  // Already a 2-letter code (stored as "RU", "JP", etc.)
-  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toLowerCase()
-  return NAME_TO_ISO[trimmed] || null
-}
 
 function calcAge(dob) {
   if (!dob) return null
@@ -299,8 +274,8 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
   prev.avatarBust === next.avatarBust &&
   prev.cardSize   === next.cardSize
 )
-// ── Jikan character search (anime characters via MAL) ─────────────────────────
-function JikanSearch({ onSelect }) {
+// ── AniList character search (public anime character catalogue) ───────────────
+function AniListSearch({ onSelect }) {
   const [query, setQuery]       = useState('')
   const [results, setResults]   = useState([])
   const [loading, setLoading]   = useState(false)
@@ -316,7 +291,7 @@ function JikanSearch({ onSelect }) {
     setApiError(false)
     debounceRef.current = setTimeout(async () => {
       try {
-        const r = await creatorsApi.jikanSearch(query.trim())
+        const r = await creatorsApi.anilistSearch(query.trim())
         setResults(r.data ?? [])
       } catch {
         setResults([])
@@ -337,7 +312,7 @@ function JikanSearch({ onSelect }) {
     if (!picked) return
     setLoading(true)
     try {
-      const r = await creatorsApi.jikanCharacter(picked.mal_id)
+      const r = await creatorsApi.anilistCharacter(picked.anilist_id)
       onSelect({ ...picked, ...r.data })
     } catch {
       onSelect(picked)  // fall back to search result data
@@ -350,7 +325,7 @@ function JikanSearch({ onSelect }) {
   return (
     <div className="mb-5 rounded-[10px] p-4" style={{ background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
       <div className="text-[16px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: 'var(--c-amber-text)' }}>
-        <span className="text-[18px]">⚡</span> {t('Import from MyAnimeList')}
+        <span className="text-[18px]">⚡</span> {t('Import from AniList')}
       </div>
 
       {picked ? (
@@ -365,9 +340,9 @@ function JikanSearch({ onSelect }) {
               <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{picked.series[0]}</div>
             )}
             <div className="flex gap-1.5 mt-1 flex-wrap">
-              {picked.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{picked.gender}</span>}
-              {picked.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
-              {picked.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
+              {picked.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{picked.gender}</span>}
+              {picked.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
+              {picked.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
@@ -401,16 +376,16 @@ function JikanSearch({ onSelect }) {
           </div>
 
           {apiError && (
-            <div className="mt-2 text-[14px] px-3 py-2 rounded-[8px]"
+            <div className="mt-2 text-[16px] px-3 py-2 rounded-[8px]"
                  style={{ background: 'color-mix(in srgb, var(--c-amber) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)' }}>
-              {t('MyAnimeList API is currently unavailable — try again in a moment.')}
+              {t('AniList character import is unavailable right now — try again in a moment.')}
             </div>
           )}
 
           {results.length > 0 && (
             <div className="mt-2.5 flex flex-col gap-1.5 max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               {results.map(char => (
-                <button key={char.mal_id} onClick={() => handlePick(char)}
+                <button key={char.anilist_id} onClick={() => handlePick(char)}
                         className="flex items-center gap-3.5 px-3 py-2.5 rounded-[8px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.06)] transition-colors">
                   {char.image_url && (
                     <img src={char.image_url} alt="" className="rounded-[4px] object-cover flex-shrink-0"
@@ -419,19 +394,19 @@ function JikanSearch({ onSelect }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[18px] font-medium text-white truncate">{char.name}</div>
                     {char.name_kanji && (
-                      <div className="text-[14px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{char.name_kanji}</div>
+                      <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{char.name_kanji}</div>
                     )}
                     {char.series?.[0] && (
                       <div className="text-[16px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{char.series[0]}</div>
                     )}
                     <div className="flex gap-1.5 mt-1 flex-wrap">
-                      {char.gender    && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{char.gender}</span>}
-                      {char.height_cm && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
-                      {char.age       && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
+                      {char.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{char.gender}</span>}
+                      {char.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
+                      {char.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
                     </div>
                   </div>
                   {char.favorites > 0 && (
-                    <div className="text-[14px] flex-shrink-0 font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    <div className="text-[16px] flex-shrink-0 font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
                       ♥ {char.favorites >= 1000 ? `${(char.favorites / 1000).toFixed(1)}k` : char.favorites}
                     </div>
                   )}
@@ -492,7 +467,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const fillFromJikan = (char) => {
+  const fillFromAniList = (char) => {
     pendingAvatarUrl.current = char.image_url || null
     setForm(f => ({
       ...f,
@@ -550,7 +525,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
         {/* MAL import — character type only */}
         {form.creator_type === 'character' && (
-          <JikanSearch onSelect={fillFromJikan} />
+          <AniListSearch onSelect={fillFromAniList} />
         )}
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 mt-4">
@@ -626,7 +601,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
 
             {[
               { label: 'Height (cm)', key: 'height', placeholder: '165' },
-              { label: 'Measurements', key: 'body_measurements', placeholder: '36-24-36' },
+              { label: 'Body measurements', key: 'body_measurements', placeholder: '91-61-91' },
               { label: 'Eye Color', key: 'eye_color', placeholder: 'Blue' },
             ].map(f => (
               <div key={f.key}>

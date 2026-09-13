@@ -1,0 +1,62 @@
+/* Loaded after the shared workspace styles so the computer palette wins in
+   Collection and Binders as well as in the room-specific stores. */
+.tcg-room-device__screen > .tcgws-browser,
+.tcg-room-device__screen > .tcgws-binder-room {
+  color: var(--room-text) !important;
+  background: var(--room-page) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-shelf,
+.tcg-room-device[data-computer-theme="light"] .tcgws-open-binder {
+  color: var(--room-text) !important;
+  background: var(--room-page) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-desk {
+  background-color: #e7e0d5 !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-label,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-shop,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-picker,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-modal {
+  color: var(--room-text) !important;
+  background: var(--room-surface) !important;
+  border-color: var(--room-border) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-modal input,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-modal select,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-picker > input {
+  color: var(--room-text) !important;
+  background: var(--room-control) !important;
+  border-color: var(--room-border) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-label span,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-shop header span,
+.tcg-room-device[data-computer-theme="light"] .tcgws-binder-shop label > span {
+  color: var(--room-muted) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-backdrop {
+  background: rgba(33, 34, 42, .42) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-card,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-panel,
+.tcg-room-device[data-computer-theme="light"] .tcgws-field,
+.tcg-room-device[data-computer-theme="light"] .tcgws-axis,
+.tcg-room-device[data-computer-theme="light"] .tcgws-relationships article {
+  color: var(--room-text) !important;
+  background: var(--room-surface) !important;
+  border-color: var(--room-border) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info > header,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info > nav,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info > nav button {
+  color: var(--room-text) !important;
+  border-color: var(--room-border) !important;
+}
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info header span,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info header p,
+.tcg-room-device[data-computer-theme="light"] .tcgws-inspector-info > nav button:not(.active),
+.tcg-room-device[data-computer-theme="light"] .tcgws-axis p,
+.tcg-room-device[data-computer-theme="light"] .tcgws-note {
+  color: var(--room-muted) !important;
+}

@@ -9,7 +9,7 @@ import {
   Pencil, FolderPlus, Check, LayoutTemplate, Trash2, GitMerge,
   RotateCcw, FolderSymlink, Archive,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi, imagesApi } from '../lib/api'
+import { galleriesApi, creatorsApi, imagesApi, apiErrorMessage } from '../lib/api'
 import TagFilterInput from '../components/TagFilterInput'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -1108,6 +1108,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     setDeleteOp('disk')
     let deleted = 0
     let errs = 0
+    let firstError = null
     const blocked = []
 
     for (const g of selectedGalleries) {
@@ -1120,6 +1121,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           blocked.push({ gallery: g, children: detail.children })
         } else {
           errs++
+          firstError ||= apiErrorMessage(e, 'Could not delete from disk')
         }
       }
     }
@@ -1134,7 +1136,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       const more = children.length > 3 ? ` +${children.length - 3} more` : ''
       toast.error(`"${gallery.name}" has child galleries inside it (${names}${more}) — delete those first`, { duration: 8000 })
     })
-    if (errs > 0) toast.error(`${errs} deletion(s) failed`)
+    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
     if (deleted > 0) onDone()
   }
 
@@ -1561,15 +1563,16 @@ export default function GalleryList() {
     const targets = Array.isArray(galleries) ? galleries : [galleries]
     setCtxDeleteOp(mode)
     let errs = 0
+    let firstError = null
     for (const g of targets) {
       try { await galleriesApi.delete(g.id, mode === 'disk') }
-      catch { errs++ }
+      catch (e) { errs++; firstError ||= apiErrorMessage(e, 'Could not complete deletion') }
     }
     const n = targets.length - errs
     if (n > 0) toast.success(mode === 'disk'
       ? `${n} ${n === 1 ? 'gallery' : 'galleries'} deleted from disk`
       : `${n} ${n === 1 ? 'gallery' : 'galleries'} removed from vault`)
-    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
     qc.invalidateQueries({ queryKey: ['galleries'] })
     setCtxDeletingGalleries(null)
     setCtxDeleteOp(null)

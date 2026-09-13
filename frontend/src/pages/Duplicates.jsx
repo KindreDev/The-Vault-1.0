@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { dedupApi, imagesApi, tasksApi } from '../lib/api'
+import { dedupApi, imagesApi, tasksApi, apiErrorMessage } from '../lib/api'
 import {
   ScanLine, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp,
   AlertTriangle, Info, Clock, ExternalLink, EyeOff, Search,
@@ -221,9 +221,12 @@ function GalleryPairCard({ pair, allDeletedIds, onDelete, onDismiss }) {
     const ids = side === 'a' ? aImgs.map(i => i.id) : bImgs.map(i => i.id)
     setDeleting(true)
     try {
-      await imagesApi.bulkDelete(ids)
-      toast.success(`Deleted ${ids.length} file${ids.length !== 1 ? 's' : ''}`)
-      onDelete(ids)
+      const { data } = await imagesApi.bulkDelete(ids)
+      const deletedIds = data?.ids ?? ids
+      const failed = data?.failed ?? []
+      if (deletedIds.length) toast.success(`Deleted ${deletedIds.length} file${deletedIds.length !== 1 ? 's' : ''}`)
+      if (failed.length) toast.error(`${failed.length} deletion${failed.length !== 1 ? 's' : ''} failed: ${failed[0].message || 'Could not delete from disk'}`)
+      onDelete(deletedIds)
     } catch (e) {
       toast.error('Delete failed — please try again')
     } finally {
@@ -502,9 +505,19 @@ function DuplicateGroup({ group, onDeleteImage, onIgnore, onKeepBoth, onKeepChan
     setDeleted(prev => new Set([...prev, ...idsToDelete]))
     setDeleting(true)
     try {
-      await imagesApi.bulkDelete(idsToDelete)
-      toast.success(`Deleted ${idsToDelete.length} duplicate${idsToDelete.length !== 1 ? 's' : ''}`)
-      onDeleteImage(idsToDelete)
+      const { data } = await imagesApi.bulkDelete(idsToDelete)
+      const deletedIds = data?.ids ?? idsToDelete
+      const failed = data?.failed ?? []
+      if (deletedIds.length) toast.success(`Deleted ${deletedIds.length} duplicate${deletedIds.length !== 1 ? 's' : ''}`)
+      if (failed.length) toast.error(`${failed.length} deletion${failed.length !== 1 ? 's' : ''} failed: ${failed[0].message || 'Could not delete from disk'}`)
+      onDeleteImage(deletedIds)
+      if (failed.length) {
+        setDeleted(prev => {
+          const n = new Set(prev)
+          failed.forEach(item => n.delete(item.id))
+          return n
+        })
+      }
     } catch (e) {
       console.error('Bulk delete failed', e)
       toast.error('Delete failed — please try again')
@@ -909,9 +922,12 @@ export default function Duplicates() {
         })
       }
       if (idsToDelete.length === 0) return
-      await imagesApi.bulkDelete(idsToDelete)
-      toast.success(`Deleted ${idsToDelete.length} images across page`, { duration: 4000 })
-      handleDeleteImage(idsToDelete)
+      const { data } = await imagesApi.bulkDelete(idsToDelete)
+      const deletedIds = data?.ids ?? idsToDelete
+      const failed = data?.failed ?? []
+      if (deletedIds.length) toast.success(`Deleted ${deletedIds.length} images across page`, { duration: 4000 })
+      if (failed.length) toast.error(`${failed.length} deletion${failed.length !== 1 ? 's' : ''} failed: ${failed[0].message || 'Could not delete from disk'}`)
+      handleDeleteImage(deletedIds)
     } catch (e) {
       toast.error('Bulk delete failed')
     } finally {

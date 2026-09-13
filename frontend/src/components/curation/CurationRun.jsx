@@ -5,7 +5,7 @@ import {
   Sparkles, X, ArrowRight, Check, Clock, Trash2, Loader2, Heart,
   Crosshair, FolderInput, Wand2, AlertTriangle, Flame, Scissors,
 } from 'lucide-react'
-import { curationApi, galleriesApi, taggerApi, imagesApi } from '../../lib/api'
+import { curationApi, galleriesApi, taggerApi, imagesApi, apiErrorMessage } from '../../lib/api'
 import { useVaultStore } from '../../store/vault'
 import { useT } from '../../i18n'
 import toast from 'react-hot-toast'
@@ -286,8 +286,11 @@ export default function CurationRun({ onClose }) {
     try {
       // bulkDelete's second arg is keepFile — false means the file really goes
       // from disk, which is what "delete" means here.
-      await imagesApi.bulkDelete([...selected], false)
-      toast.success(t('{n} files deleted').replace('{n}', selected.size))
+      const { data } = await imagesApi.bulkDelete([...selected], false)
+      const deleted = data?.ids?.length ?? selected.size
+      const failed = data?.failed ?? []
+      if (deleted) toast.success(t('{n} files deleted').replace('{n}', deleted))
+      if (failed.length) toast.error(`${failed.length} deletion${failed.length !== 1 ? 's' : ''} failed: ${failed[0].message || apiErrorMessage(null, t('Could not delete those files'))}`)
       setConfirmFileDelete(false)
       invalidate()
       await refreshGallery()

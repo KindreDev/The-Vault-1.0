@@ -36,9 +36,23 @@ function transformFor(item, index, surfaceIndex) {
   return pileTransform(surfaceIndex)
 }
 
+function stablePhysicalOrder(items) {
+  // The room bootstrap is polled while parcel/copy mutations settle. The API
+  // is allowed to return equivalent rows in a different order; using that
+  // order directly makes every pile/display card jump sideways on each poll.
+  // Physical copies have durable ids, so use them as the visual ordering key.
+  return [...items].sort((left, right) => {
+    const surfaceOrder = { pile: 0, display: 1, carried: 2 }
+    const leftSurface = surfaceOrder[left.surface] ?? 0
+    const rightSurface = surfaceOrder[right.surface] ?? 0
+    if (leftSurface !== rightSurface) return leftSurface - rightSurface
+    return String(left.copy?.id ?? '').localeCompare(String(right.copy?.id ?? ''), undefined, { numeric: true })
+  })
+}
+
 export default function RoomCardCollection({ payload, onVisibleCards }) {
   const items = useMemo(() => {
-    const bounded = selectBoundedRoomCards(payload?.items || [])
+    const bounded = selectBoundedRoomCards(stablePhysicalOrder(payload?.items || []))
     if (!import.meta.env.DEV) return bounded
     const params = new URLSearchParams(window.location.search)
     const proofId = Number(params.get('roomCardProof') || params.get('roomCardFixture'))

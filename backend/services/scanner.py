@@ -12,6 +12,7 @@ from PIL import Image as PILImage
 from models import Gallery, Image, LibraryRoot, Tag, TagSource, Creator
 from database import DATA_DIR
 import services.gamification as gami
+from services.gallery_deletion import delete_gallery_record
 
 def _natural_sort_key(s: str):
     """Windows-style natural sort: F1, F2 ... F9, F10, F11."""
@@ -571,9 +572,20 @@ def remove_missing_gallery(db: Session, gallery_id: int) -> bool:
                 os.remove(image.thumb_path)
             except OSError:
                 pass
-    db.delete(gallery)
+    delete_gallery_record(db, gallery)
     db.commit()
     return True
+
+
+def resolve_missing_galleries() -> None:
+    """Scan online roots, relink confident moves, then remove true stale rows."""
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        scan_library(db, resolve_missing=True)
+    finally:
+        db.close()
 
 
 def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[str]):
@@ -628,7 +640,7 @@ def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[st
     return gallery
 
 
-def scan_library(db: Session, root_id: Optional[int] = None):
+def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bool = False):
     """
     Walk all enabled library roots (or a specific one), create Gallery records
     for each folder containing media, and Image records for each file found.
@@ -665,6 +677,10 @@ def scan_library(db: Session, root_id: Optional[int] = None):
             return
 
         audit = audit_gallery_availability(db, roots)
+        missing_before = {
+            gallery_id
+            for (gallery_id,) in db.query(Gallery.id).filter(Gallery.is_missing == True).all()  # noqa: E712
+        } if resolve_missing else set()
         if audit["missing"] or audit["roots_repaired"]:
             _log(
                 f"Availability audit: {audit['missing']} missing, "
@@ -706,7 +722,8 @@ def scan_library(db: Session, root_id: Optional[int] = None):
             _scan_state["message"] = "Reconciling moved & unavailable files…"
             removed_images = _prune_scanned_galleries(db, move_ctx["galleries"])
             _scan_state["removed_images"] = removed_images
-            removed_galleries = 0
+            removed_galleries = _prune_missing_galleries(db, roots) if resolve_missing else 0
+            _scan_state["removed_galleries"] = removed_galleries
 
             moved_images = _scan_state.get("moved_images", 0)
             msg = (
@@ -718,6 +735,14 @@ def scan_library(db: Session, root_id: Optional[int] = None):
                 msg += f" {moved_images} files moved (metadata kept)."
             if removed_images:
                 msg += f" Removed {removed_images} missing files."
+            if resolve_missing:
+                remaining_missing = db.query(Gallery).filter(Gallery.is_missing == True).count()  # noqa: E712
+                relinked = max(0, len(missing_before) - removed_galleries - remaining_missing)
+                msg = (
+                    f"Missing-folder resolution complete. {relinked} relinked, "
+                    f"{removed_galleries} stale records removed, "
+                    f"{remaining_missing} protected because their roots are offline."
+                )
             _scan_state["message"] = msg
             _log(msg)
 
@@ -825,7 +850,7 @@ def _prune_missing_galleries(db: Session, roots) -> int:
                         except OSError:
                             pass
                 _log(f"Removed deleted gallery: {g.folder_path}")
-                db.delete(g)
+                delete_gallery_record(db, g)
                 removed += 1
     if removed:
         db.commit()

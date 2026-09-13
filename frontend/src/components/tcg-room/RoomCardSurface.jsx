@@ -313,6 +313,9 @@ export default function RoomCardSurface({ item, position, rotation, scale = 1, d
   const faceTexture = surfaceTextures?.face || null
   const groupRef = useRef(null)
   const { camera } = useThree()
+  const carriedForward = useMemo(() => new THREE.Vector3(), [])
+  const carriedRight = useMemo(() => new THREE.Vector3(), [])
+  const carriedUp = useMemo(() => new THREE.Vector3(), [])
   const captureKey = useMemo(() => JSON.stringify([
     item.card.id, item.card.rarity_class, item.card.image_url, item.card.mask_url,
     item.card.foil_map_url, item.card.presentation_override,
@@ -327,8 +330,16 @@ export default function RoomCardSurface({ item, position, rotation, scale = 1, d
   useEffect(() => () => Object.values(surfaceTextures || {}).forEach(texture => texture?.dispose()), [surfaceTextures])
   useFrame(() => {
     if (groupRef.current && item.surface === 'carried') {
-      const forward = new THREE.Vector3(); camera.getWorldDirection(forward)
-      groupRef.current.position.copy(camera.position).add(forward.multiplyScalar(.58)).add(new THREE.Vector3(.14, -.34, 0))
+      // Keep the held card offset in camera space. The previous world-space
+      // [.14, -.34, 0] offset made it sweep sideways whenever the player
+      // looked around, which read as violent card motion in the inspector.
+      camera.getWorldDirection(carriedForward)
+      carriedRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+      carriedUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize()
+      groupRef.current.position.copy(camera.position)
+        .addScaledVector(carriedForward, .58)
+        .addScaledVector(carriedRight, .14)
+        .addScaledVector(carriedUp, -.34)
       groupRef.current.quaternion.copy(camera.quaternion)
     }
   })

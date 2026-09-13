@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ExternalLink, Trash2, X } from 'lucide-react'
@@ -5,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { cardMasksApi, tcgV2Api } from '../../lib/api'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
+import { useScrollLock } from '../../hooks/useScrollLock'
 
 const TABS = ['Overview', 'Classification', 'Ownership', 'Engagement', 'Relationships', 'Tags', 'Presentation', 'Audit']
 const CARD_TYPE_LABELS = { image: 'Scene', scene: 'Scene', gallery: 'Gallery', creator: 'Creator', character: 'Character', cosplay: 'Cosplay', collab: 'Collab', bond: 'Bond', hof: 'Hall of Fame' }
@@ -169,13 +171,18 @@ function PresentationEditor({ detail }) {
   </div>
 }
 
-export default function CardInspector({ card, onClose, advanced, classificationValues }) {
+export default function CardInspector({ card, onClose, advanced, classificationValues, disableLayoutAnimation = false }) {
   const [tab, setTab] = useState('Overview')
+  useScrollLock()
   const { data: detail, isLoading } = useQuery({ queryKey: ['tcg-v2-card', card.id], queryFn: () => tcgV2Api.cardDetail(card.id).then(r => r.data) })
-  return <motion.div className="tcgws-inspector-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onMouseDown={event => event.target === event.currentTarget && onClose()}>
+  // The regular collection route lives beneath Layout's transformed Framer
+  // Motion wrapper. Portal that inspector to body so fixed inset:0 is measured
+  // against the usable viewport instead of the route's content box. The room
+  // computer keeps its local mount so its themed screen styles still apply.
+  const inspector = <motion.div className="tcgws-inspector-backdrop" style={!disableLayoutAnimation ? { '--tcg-line': 'rgba(255,255,255,.1)', '--tcg-muted': 'rgba(255,255,255,.52)' } : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onMouseDown={event => event.target === event.currentTarget && onClose()}>
     <motion.section className="tcgws-inspector" initial={{ opacity: 0, scale: 0.96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 12 }} transition={{ type: 'spring', stiffness: 260, damping: 25 }}>
       <button className="tcgws-close" onClick={onClose} title="Close"><X size={22} /></button>
-      <motion.div layoutId={`tcg-card-${card.id}`} className="tcgws-inspector-card"><TCGV2CardFace card={detail ? { ...detail.card, presentation_override: detail.presentation_override } : card} width="min(42vw, 520px)" showEffects fallback={<ArchivedFace card={card} />} /></motion.div>
+      <motion.div layoutId={disableLayoutAnimation ? undefined : `tcg-card-${card.id}`} className="tcgws-inspector-card"><TCGV2CardFace card={detail ? { ...detail.card, presentation_override: detail.presentation_override } : card} width="min(42vw, 520px)" showEffects fallback={<ArchivedFace card={card} />} /></motion.div>
       <div className="tcgws-inspector-info">
         <header><div><span>{card.print_rarity || card.rarity_class} · {cardTypeLabel(card.card_type)}</span><h2>{card.display_name || card.creator_name || card.gallery_name}</h2><p>{card.catalog_code || 'Permanent printing'}</p></div>{detail?.classification.badge && <b>{detail.classification.badge}</b>}</header>
         <nav>{TABS.map(item => <button key={item} onClick={() => setTab(item)} className={tab === item ? 'active' : ''}>{item}</button>)}</nav>
@@ -197,4 +204,5 @@ export default function CardInspector({ card, onClose, advanced, classificationV
       </div>
     </motion.section>
   </motion.div>
+  return disableLayoutAnimation ? inspector : createPortal(inspector, document.body)
 }

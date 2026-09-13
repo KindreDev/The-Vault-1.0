@@ -11,6 +11,8 @@ from models import Gallery, Image, Creator, Tag, gallery_creators, UserProfile, 
 from schemas import GalleryOut, GalleryCreate, GalleryUpdate
 import services.gamification as gami
 from services import activity
+from services.file_ops import remove_file, remove_tree
+from services.gallery_deletion import delete_gallery_record
 from services import recommend as recommend_svc
 from services import ranking
 from services import entity_stats
@@ -1010,7 +1012,6 @@ def extract_images(gallery_id: int, data: dict, db: Session = Depends(get_db)):
 
 @router.delete("/{gallery_id}")
 def delete_gallery(gallery_id: int, delete_files: bool = False, db: Session = Depends(get_db)):
-    import os, shutil
     g = db.query(Gallery).filter(Gallery.id == gallery_id).first()
     if not g:
         raise HTTPException(404, "Gallery not found")
@@ -1035,19 +1036,30 @@ def delete_gallery(gallery_id: int, delete_files: bool = False, db: Session = De
         for img in images:
             if img.thumb_path:
                 try:
-                    os.remove(img.thumb_path)
+                    remove_file(img.thumb_path)
                 except Exception:
                     pass
 
         # Delete the folder from disk
-        if os.path.exists(g.folder_path):
-            try:
-                shutil.rmtree(g.folder_path)
-            except Exception as e:
-                raise HTTPException(500, detail=f"Failed to delete folder: {e}")
+        try:
+            remove_tree(g.folder_path)
+        except OSError as e:
+            raise HTTPException(500, detail={
+                "code": "disk_delete_failed",
+                "path": g.folder_path,
+                "message": str(e),
+            }) from e
 
-    db.delete(g)
-    db.commit()
+    try:
+        delete_gallery_record(db, g)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, detail={
+            "code": "database_delete_failed",
+            "gallery_id": gallery_id,
+            "message": str(e),
+        }) from e
     return {"deleted": gallery_id}
 
 

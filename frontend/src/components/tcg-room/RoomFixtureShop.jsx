@@ -1,22 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Archive, Armchair, BedDouble, BookOpen, Box, CreditCard, Frame, Gem, LampDesk, Layers3, Package, Search, Shield, SlidersHorizontal } from 'lucide-react'
+import { CreditCard, Gem, Search, SlidersHorizontal } from 'lucide-react'
 import { tcgRoomApi } from '../../lib/api'
 
 const ASSET_PRESENTATION = {
-  bed_frame: [BedDouble, 'Bedroom'], nightstand: [Box, 'Bedroom'], wardrobe: [Archive, 'Storage'],
-  office_chair: [Armchair, 'Seating'], dining_chair: [Armchair, 'Seating'], area_rug: [Layers3, 'Decor'],
-  display_stand_single: [Shield, 'Display'], glass_cabinet_tall: [Archive, 'Display'], glass_cabinet_wide: [Archive, 'Display'],
-  bookshelf_wide: [BookOpen, 'Storage'], bookshelf_narrow: [BookOpen, 'Storage'], binder_shelf_insert: [BookOpen, 'Storage'],
-  card_drawer_unit: [Archive, 'Storage'], acrylic_card_case: [Shield, 'Display'], card_toploader: [Shield, 'Display'],
-  set_storage_box: [Package, 'Storage'], poster_frame: [Frame, 'Wall decor'], floating_wall_shelf: [Layers3, 'Wall decor'], desk_lamp: [LampDesk, 'Lighting'],
+  bed_frame: 'Bedroom', nightstand: 'Bedroom', wardrobe: 'Storage', office_chair: 'Seating', dining_chair: 'Seating', area_rug: 'Decor',
+  display_stand_single: 'Display', display_stand_triple: 'Display', glass_cabinet_tall: 'Display', glass_cabinet_wide: 'Display', bookshelf_wide: 'Storage',
+  bookshelf_narrow: 'Storage', binder_shelf_insert: 'Storage', card_drawer_unit: 'Storage', acrylic_card_case: 'Display',
+  card_toploader: 'Display', set_storage_box: 'Storage', poster_frame: 'Wall decor', floating_wall_shelf: 'Wall decor', desk_lamp: 'Lighting',
+  wall_frame_portrait: 'Wall decor', led_strip: 'Lighting',
 }
 
 function ProductVisual({ definition }) {
-  const [Icon, room] = ASSET_PRESENTATION[definition.asset_id] || [Box, 'Furniture']
+  const room = ASSET_PRESENTATION[definition.asset_id] || 'Furniture'
+  const preview = `/tcg-room/shop/${definition.asset_id}.png`
   return <div className={`furniture-store__visual furniture-store__visual--${definition.asset_id}`}>
-    <span>{room}</span><Icon aria-hidden="true" strokeWidth={1.35} /><small>{definition.asset_id.replaceAll('_', ' ')}</small>
+    <span>{room}</span>
+    <img src={preview} alt="" className="furniture-store__photo" onError={event => { event.currentTarget.style.display = 'none' }} />
+    <small>{definition.asset_id.replaceAll('_', ' ')}</small>
   </div>
 }
 
@@ -28,11 +30,11 @@ export default function RoomFixtureShop({ bootstrap, wallet }) {
   const [variantByDefinition, setVariantByDefinition] = useState({})
   const definitions = (bootstrap?.catalog || []).filter(item => item.asset_id && ['floor', 'wall'].includes(item.placement_kind))
   const ownedCounts = useMemo(() => (bootstrap?.owned_instances || []).reduce((counts, item) => ({ ...counts, [item.definition_id]: (counts[item.definition_id] || 0) + 1 }), {}), [bootstrap?.owned_instances])
-  const categories = useMemo(() => [...new Set(definitions.map(item => ASSET_PRESENTATION[item.asset_id]?.[1] || 'Furniture'))], [definitions])
+  const categories = useMemo(() => [...new Set(definitions.map(item => ASSET_PRESENTATION[item.asset_id] || 'Furniture'))], [definitions])
   const products = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = definitions.filter(item => {
-      const room = ASSET_PRESENTATION[item.asset_id]?.[1] || 'Furniture'
+      const room = ASSET_PRESENTATION[item.asset_id] || 'Furniture'
       return (category === 'all' || room === category) && (!needle || `${item.name} ${item.asset_id} ${room}`.toLowerCase().includes(needle))
     })
     if (sort === 'price-low') return [...filtered].sort((a, b) => a.unit_cost - b.unit_cost)

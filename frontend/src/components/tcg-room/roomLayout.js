@@ -1,56 +1,53 @@
-export const ROOM_SIZE = { width: 12, depth: 12, height: 3.2 }
+export const ROOM_SIZE = { width: 9.46, depth: 10.55, height: 3.0 }
+
+// Authored apartment is Z-up in Blender. The GLB is Y-up: Three (x, y, z) = Blender (x, z, -y).
+// Outer walls sit near x[-5, 4], z[-5.2, 5.2], floor top y≈0.17. Not a centred 12×12 box.
+export const FLOOR_Y = .17
+
+export const WALK_BOUNDS = Object.freeze({
+  minX: -4.78, maxX: 3.78, minZ: -4.78, maxZ: 4.78,
+})
+
+export const EYE_HEIGHT = 1.68
+
+export const SAFE_SPAWN = Object.freeze({
+  position: [3.06, EYE_HEIGHT, 4.15],
+  yaw: 0,
+  pitch: 0,
+})
 
 export const PARCEL_SURFACES = Object.freeze({
-  desk: [3.8, .82, -4.8],
-  dining_table: [.15, .82, 3.3],
+  desk: [-4.39, .855, -3.6],
+  dining_table: [3.02, .932, -.8],
+  sorting_mat: [3.02, .932, -.8],
+})
+
+export const COMPUTER_SCREEN = Object.freeze({
+  // Monitor glass faces +X. PlaneGeometry faces +Z, so yaw +90°.
+  position: [-4.45, 1.254, -3.58],
+  rotation: [0, Math.PI / 2, 0],
+  size: [.76, .38],
 })
 
 const p = (assetId, position, rotation = [0, 0, 0], scale = 1, zone = 'shell', interactive = null) => ({
   key: `${assetId}-${position.join('-')}`, assetId, position, rotation, scale, zone, interactive,
 })
 
-// This is the permanent room, not a showroom. Everything collectible or
-// decorative comes from the player's owned-instance layout. The two window
-// assemblies use the exact scaled opening centres from wall_south_windowed.
+// Interaction anchors only. Visuals come from /tcg-room/base_room.glb.
 export const AUTHORED_ROOM = [
-  p('room_floor', [0, 0, 0], [0, 0, 0], [4 / 3, 1, 12 / 7]),
-  p('room_ceiling', [0, 3.2, 0], [0, 0, 0], [4 / 3, 1, 12 / 7]),
-  p('wall_north', [0, 0, -6], [0, 0, 0], [4 / 3, 3.2 / 3, 1]),
-  p('wall_south_windowed', [0, 0, 6], [0, Math.PI, 0], [4 / 3, 3.2 / 3, 1]),
-  p('wall_east', [6, 0, 0], [0, -Math.PI / 2, 0], [12 / 7, 3.2 / 3, 1]),
-  p('wall_west_door', [-6, 0, 0], [0, Math.PI / 2, 0], [12 / 7, 3.2 / 3, 1]),
-  ...[-3.133, 3.133].map(x =>
-    p('window_double', [x, 1.25, 5.92], [0, Math.PI, 0], [4 / 3, 1, 1], 'window')),
-  p('bedroom_door', [-5.91, 0, 0], [0, Math.PI / 2, 0], 1, 'entry', 'door'),
-  p('door_mail_slot', [-5.80, .65, .25], [0, Math.PI / 2, 0], 1, 'entry', 'mail'),
-
-  // Deliberate work zone. The monitor screen faces the room; this is the only
-  // computer access point and there is no duplicate laptop/notebook.
-  p('computer_desk', [3.8, 0, -5.18], [0, 0, 0], 1, 'computer'),
-  p('pc_tower', [4.85, .78, -5.22], [0, 0, 0], 1, 'computer'),
-  p('pc_monitor', [3.8, .78, -5.38], [0, 0, 0], 1, 'computer', 'computer'),
-  p('pc_keyboard', [3.7, .79, -4.82], [0, 0, 0], 1, 'computer'),
-  p('pc_mouse', [4.48, .79, -4.79], [0, 0, 0], 1, 'computer'),
-
-  // A real kitchen zone occupies the full south-east corner. The divider is
-  // 3.7 m from the east wall, leaving a usable kitchen instead of a narrow gap.
-  p('kitchen_partition', [2.3, 0, 3.85], [0, Math.PI / 2, 0], 1, 'kitchen'),
-  p('kitchen_counter', [5.18, 0, 3.0], [0, -Math.PI / 2, 0], 1, 'kitchen'),
-  p('upper_kitchen_cabinet', [5.72, 1.48, 3.0], [0, -Math.PI / 2, 0], 1, 'kitchen'),
-  p('refrigerator', [5.2, 0, 4.75], [0, Math.PI, 0], 1, 'kitchen'),
-  p('microwave', [5.18, 1.03, 2.5], [0, -Math.PI / 2, 0], 1, 'kitchen'),
-  p('kitchen_sink', [5.18, .86, 3.35], [0, -Math.PI / 2, 0], 1, 'kitchen'),
-  p('dining_table', [-.15, 0, 3.35], [0, 0, 0], 1, 'dining', 'parcel-place'),
-  p('ceiling_light', [0, 3.02, 0], [0, 0, 0], 1, 'lighting'),
+  p('pc_monitor', [-4.45, 1.25, -3.58], [0, Math.PI / 2, 0], 1, 'computer', 'computer'),
+  p('bedroom_door', [3.06, 1.35, 4.89], [0, 0, 0], 1, 'entry', 'door'),
+  p('door_mail_slot', [2.48, .95, 4.86], [0, 0, 0], 1, 'entry', 'mail'),
+  p('dining_table', [3.02, .4, -.8], [0, 0, 0], 1, 'dining', 'parcel-place'),
 ]
 
-// Only permanent furniture blocks walking. Owned placements add their own
-// footprints at runtime; the entrance lane and the central route stay open.
 export const COLLISION_BOXES = [
-  { min: [2.25, -5.72], max: [5.45, -3.55] },
-  { min: [4.55, 1.55], max: [5.72, 5.4] },
-  { min: [-1.65, 2.55], max: [1.35, 4.15] },
-  { min: [2.05, 2.15], max: [2.58, 5.55] },
+  { min: [-4.73, -4.4], max: [-4.07, -2.81] },
+  { min: [2.63, -1.77], max: [3.42, .18] },
+  { min: [-5.05, -2.22], max: [-1.95, -1.98] },
+  { min: [1.95, -2.22], max: [4.05, -1.98] },
+  { min: [-5.05, 1.92], max: [2.05, 2.08] },
+  { min: [1.92, 2], max: [2.08, 5.05] },
 ]
 
 export const INTERACTION_COPY = {
@@ -67,6 +64,21 @@ export const INTERACTION_COPY = {
 }
 
 export const PLACEMENT_BOUNDS = Object.freeze({
-  floor: { minX: -5.55, maxX: 5.55, minZ: -5.55, maxZ: 5.55 },
+  floor: { minX: -4.85, maxX: 3.85, minZ: -4.85, maxZ: 4.85 },
   wallY: { min: .35, max: 2.75 },
 })
+
+export const SURFACE_ASSETS = Object.freeze(new Set([
+  'acrylic_card_case', 'card_toploader', 'desk_lamp', 'set_storage_box',
+]))
+
+export const SURFACE_HOST_ASSETS = Object.freeze(new Set([
+  'computer_desk', 'dining_table', 'nightstand',
+  'display_stand_single', 'display_stand_triple', 'card_drawer_unit',
+  'floating_wall_shelf', 'glass_cabinet_wide', 'glass_cabinet_tall',
+]))
+
+export const AUTHORED_SURFACES = Object.freeze([
+  { id: 'desk', minX: -4.73, maxX: -4.07, minZ: -4.4, maxZ: -2.81, top: .855 },
+  { id: 'dining', minX: 2.63, maxX: 3.42, minZ: -1.77, maxZ: .18, top: .932 },
+])

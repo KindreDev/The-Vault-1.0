@@ -30,7 +30,7 @@ VISIBLE_PILE_LIMIT = 8
 VISIBLE_PLACED_LIMIT = 12
 VISIBLE_CARRIED_LIMIT = 4
 FURNITURE_MIGRATION_VERSION = 1
-ROOM_BOUNDS = {"min_x": -5.55, "max_x": 5.55, "min_z": -5.55, "max_z": 5.55, "max_y": 3.2}
+ROOM_BOUNDS = {"min_x": -4.85, "max_x": 3.85, "min_z": -4.85, "max_z": 4.85, "max_y": 3.0}
 PERMANENT_FIXTURES = (
     "room_floor", "room_ceiling", "wall_north", "wall_south_windowed", "wall_east",
     "wall_west_door", "window_double", "bedroom_door", "baseboard_trim",
@@ -39,12 +39,9 @@ PERMANENT_FIXTURES = (
     "kitchen_sink", "dining_table", "ceiling_light", "door_mail_slot",
 )
 SAFETY_ZONES = (
-    # These match the authored 12x12 shell's permanent collision rectangles.
-    (-5.55, -4.45, -1.5, 1.5, "door"),
-    (2.25, 5.45, -5.55, -3.55, "computer"),
-    (4.55, 5.55, 1.55, 5.4, "kitchen"),
-    (-1.65, 1.35, 2.55, 4.15, "dining area"),
-    (2.05, 2.58, 2.15, 5.55, "kitchen divider"),
+    (2.15, 3.95, 3.85, 4.85, "door"),
+    (-4.85, -3.85, -4.50, -2.70, "computer"),
+    (2.50, 3.55, -1.90, 0.30, "dining area"),
 )
 MANUAL_ASSET_IDS = frozenset(REQUIRED_ASSET_IDS) - frozenset(PERMANENT_FIXTURES) - {
     "shipping_box_small", "padded_mailer", "booster_pack_mesh", "card_stack_mesh", "shop_notebook",
@@ -107,7 +104,11 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if not (ROOM_BOUNDS["min_x"] <= px <= ROOM_BOUNDS["max_x"] and
             ROOM_BOUNDS["min_z"] <= pz <= ROOM_BOUNDS["max_z"] and 0 <= py <= ROOM_BOUNDS["max_y"]):
         raise ValueError("Furniture must remain inside the room")
-    if definition.placement_kind == "floor" and abs(py) > .02:
+    support = _load(definition.footprint_json, {}).get("support")
+    if definition.placement_kind == "floor" and support == "surface":
+        if py < .28 or py > 1.45:
+            raise ValueError("This item must sit on a table, desk, stand, or counter — not the floor")
+    elif definition.placement_kind == "floor" and (py < -.02 or py > .22):
         raise ValueError("Floor furniture must sit on the floor")
     if definition.placement_kind == "wall":
         near_wall = min(abs(px - ROOM_BOUNDS["min_x"]), abs(px - ROOM_BOUNDS["max_x"]),
@@ -169,13 +170,15 @@ def _validate_placements(db: Session, placements: list[dict]) -> list[dict]:
             min_z, max_z = pz - extent_z / 2, pz + extent_z / 2
             if min_x < ROOM_BOUNDS["min_x"] or max_x > ROOM_BOUNDS["max_x"] or min_z < ROOM_BOUNDS["min_z"] or max_z > ROOM_BOUNDS["max_z"]:
                 raise ValueError("Furniture footprint must remain inside the room")
-            for zone_min_x, zone_max_x, zone_min_z, zone_max_z, label in SAFETY_ZONES:
-                if min_x < zone_max_x and max_x > zone_min_x and min_z < zone_max_z and max_z > zone_min_z:
-                    raise ValueError(f"Furniture cannot obstruct the {label} safety area")
-            for other_min_x, other_max_x, other_min_z, other_max_z in floor_boxes:
-                if min_x < other_max_x and max_x > other_min_x and min_z < other_max_z and max_z > other_min_z:
-                    raise ValueError("Furniture cannot overlap another placed item")
-            floor_boxes.append((min_x, max_x, min_z, max_z))
+            support = _load(definition.footprint_json, {}).get("support")
+            if support != "surface":
+                for zone_min_x, zone_max_x, zone_min_z, zone_max_z, label in SAFETY_ZONES:
+                    if min_x < zone_max_x and max_x > zone_min_x and min_z < zone_max_z and max_z > zone_min_z:
+                        raise ValueError(f"Furniture cannot obstruct the {label} safety area")
+                for other_min_x, other_max_x, other_min_z, other_max_z in floor_boxes:
+                    if min_x < other_max_x and max_x > other_min_x and min_z < other_max_z and max_z > other_min_z:
+                        raise ValueError("Furniture cannot overlap another placed item")
+                floor_boxes.append((min_x, max_x, min_z, max_z))
         else:
             plane = _wall_plane(px, pz)
             vertical_min, vertical_max = transform["position"]["y"] - height / 2, transform["position"]["y"] + height / 2
@@ -331,17 +334,20 @@ def seed_display_catalog(db: Session) -> None:
     for values in defaults:
         code, name, kind, asset_id, currency, cost, variants, placement_kind, width, depth, *height_values = values
         height = height_values[0] if height_values else .5
+        footprint = {"width": width, "depth": depth, "height": height}
+        if asset_id in {"acrylic_card_case", "card_toploader", "desk_lamp", "set_storage_box"}:
+            footprint["support"] = "surface"
         definition = db.query(TCGDisplayItemDefinition).filter_by(code=code).first()
         if not definition:
             db.add(TCGDisplayItemDefinition(
                 code=code, name=name, item_type=kind, currency=currency,
                 asset_id=asset_id, unit_cost=cost, variants_json=_dump(variants),
-                placement_kind=placement_kind, footprint_json=_dump({"width": width, "depth": depth, "height": height}),
+                placement_kind=placement_kind, footprint_json=_dump(footprint),
             ))
         else:
             definition.asset_id = asset_id
             definition.placement_kind = placement_kind
-            definition.footprint_json = _dump({"width": width, "depth": depth, "height": height})
+            definition.footprint_json = _dump(footprint)
             definition.permanent_fixture = False
     # Compatibility bridge: renderable Workshop unlocks map to real module
     # meshes. Non-renderable cosmetics keep their ownership records but stay

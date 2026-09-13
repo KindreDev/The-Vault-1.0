@@ -9,7 +9,7 @@ import {
   FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy,
   Waves,
 } from 'lucide-react'
-import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi } from '../lib/api'
+import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
@@ -34,6 +34,7 @@ import { useAllCreators } from '../hooks/useAllCreators'
 import DeviceControls from '../components/DeviceControls'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import { SortDropdown } from '../components/SortDropdown'
+import { useScrollLock } from '../hooks/useScrollLock'
 
 const SORTS = [
   { value: 'filename',   label: 'Filename' },
@@ -196,7 +197,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
       onDeleted(image.id)
       qc.invalidateQueries({ queryKey: ['gallery'] })
     },
-    onError: () => toast.error(t('Delete failed')),
+    onError: (e) => toast.error(`${t('Delete failed')}: ${apiErrorMessage(e, t('Could not delete from disk'))}`),
   })
 
   const handleMouseEnter = useCallback(() => {
@@ -387,6 +388,7 @@ function fmtVideoTime(s) {
 }
 
 function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, galleryCreators, onClose }) {
+  useScrollLock()
   // A slideshow can hand the viewer a different run of photos (more from this
   // creator, your favourites, …) without leaving the page. While a queue is
   // loaded it stands in for the gallery's own images everywhere below.
@@ -2378,17 +2380,18 @@ export default function GalleryView() {
           onDelete={async (mode) => {
             const targets = imgCtx.bulkImages ?? [imgCtx.image]
             let errs = 0
+            let firstError = null
             for (const img of targets) {
               try {
                 await imagesApi.delete(img.id, mode === 'vault')
                 setDeletedIds(s => new Set([...s, img.id]))
-              } catch { errs++ }
+              } catch (e) { errs++; firstError ||= apiErrorMessage(e, 'Could not complete deletion') }
             }
             const n = targets.length - errs
             if (n > 0) toast.success(mode === 'vault'
               ? `${n} ${n === 1 ? 'image' : 'images'} removed from vault`
               : `${n} ${n === 1 ? 'image' : 'images'} deleted from disk`)
-            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed`)
+            if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
             qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
           }}
         />

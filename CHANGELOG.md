@@ -15,6 +15,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
+- Missing folders now has a one-click Resolve all action that scans online roots, relinks confidently moved folders, removes genuinely stale records, and protects offline libraries.
+- Collection Room now has a persistent I-key/HUD inventory for placing exact owned furniture instances and opening collected parcels or earned booster tokens through the authoritative pack reveal.
 - Analytics trend graphics now fill their allocated compact chart space without changing the surrounding layout.
 - Analytics now has a page-wide range control with in-place loading, undistorted labeled charts, clear new-versus-rewatched history, distinct personal bests, a balanced timing-and-edges row, and all session summary metrics removed from Overview.
 - Long AI-tagging runs can now be paused, survive a Vault restart, and resume from their last committed checkpoint.
@@ -61,6 +63,10 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Help now documents the current C/R/SR/UR/SPR card system, expanded Hall of Fame, Recap, Stats and Analytics views, and the Playlists experience, with a proper trading-cards icon for Cards.
+- Collection Room computer hardware now rests on the authored desk surface, shows a lightweight Vault OS screen, and keeps physical cards stable while room state refreshes.
+- Collection Room computer tabs now share a persisted dark/light theme, and the furniture shop presents a distinct recognizable preview for every real catalogue asset.
+- Collection Room furniture shop controls now keep wallet, filters, summaries, and finish selection aligned and readable across desktop and narrow layouts.
 - Analytics chart axis titles now stay clear of the vertical tick labels, including longer metric names.
 - Analytics compact trend charts are now taller so percentage axis labels have comfortable separation.
 - AI tagging now streams media in bounded chunks, prefetches original-file decoding, batches GPU inference, and extracts video samples in one FFmpeg process.
@@ -107,6 +113,13 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
 
 ### Fixed
+- Disk-backed gallery and media deletion now handles transient file locks and clears dependent card/history links, preventing folders from being removed while stale gallery records remain behind.
+- Bulk tag dropdowns now layer above gallery and media cards, so suggestions remain usable at the edges of dense grids.
+- Gallery, photo, video, and creator sorting now matches the surrounding toolbar controls and follows the active Vault theme.
+- Character import now uses the reliable public AniList character catalogue instead of the repeatedly unavailable Jikan/MAL path.
+- Creator body measurements now use the simple `91-61-91` example without extra explanatory wording.
+- Country flags now cover every selectable country, including Latvia.
+- Creator and other modal overlays now lock background scrolling and restore it cleanly when they close; card inspectors now cover the full viewport.
 - Emergency Stop now halts each Intiface device's outputs without dropping its connection, so playback can restart immediately.
 - Deleted folders no longer leave browsable broken galleries, while manually renamed folders are relinked without losing gallery or image metadata.
 - Collection Room now opens with clean interior framing, safe streamed-asset disposal across quality changes, authoritative physical-copy binder filing, PC-only purchases, and visible carried and placed parcel states.

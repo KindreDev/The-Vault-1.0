@@ -13,12 +13,14 @@ import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import CreatorShowcase from '../components/CreatorShowcase'
-import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi } from '../lib/api'
+import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi, apiErrorMessage } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { FormDropdown } from '../components/FormDropdown'
+import { SortDropdown } from '../components/SortDropdown'
 import { COUNTRIES } from '../lib/countries'
 import { useT } from '../i18n'
+import { useScrollLock } from '../hooks/useScrollLock'
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
@@ -467,22 +469,7 @@ const SORT_OPTS = [
 ]
 
 function SortPills({ sort, onChange }) {
-  const t = useT()
-  return (
-    <div className="flex items-center gap-1.5">
-      {SORT_OPTS.map(s => (
-        <button key={s.value} onClick={() => onChange(s.value)}
-                className="text-[11px] px-2.5 py-1 rounded-full cursor-pointer transition-all"
-                style={{
-                  background: sort === s.value ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
-                  color: sort === s.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)',
-                  border: `0.5px solid ${sort === s.value ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-                }}>
-          {t(s.label)}
-        </button>
-      ))}
-    </div>
-  )
+  return <SortDropdown value={sort} onChange={onChange} options={SORT_OPTS} />
 }
 
 function applySort(items, sort, favKey = 'is_favorite') {
@@ -762,6 +749,7 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
   const fileRef = useRef(null)
   const qc = useQueryClient()
   const bumpAvatarBust = useVaultStore(s => s.bumpAvatarBust)
+  useScrollLock()
 
   const randomMutation = useMutation({
     mutationFn: () => creatorsApi.setAvatarRandom(creatorId, currentAvatarPath),
@@ -837,6 +825,7 @@ function extractApiError(e, fallback = 'Something went wrong') {
 
 function EditCreatorModal({ creator, onClose }) {
   const t = useT()
+  useScrollLock()
   let initialLinks = ''
   try {
     const pl = JSON.parse(creator.platform_links || '{}')
@@ -983,7 +972,7 @@ function EditCreatorModal({ creator, onClose }) {
 
             {[
               { label: 'Height (cm)', key: 'height', placeholder: '165' },
-              { label: 'Measurements', key: 'body_measurements', placeholder: '36-24-36' },
+              { label: 'Body measurements', key: 'body_measurements', placeholder: '91-61-91' },
               { label: 'Eye Color', key: 'eye_color', placeholder: 'Blue' },
             ].map(f => (
               <div key={f.key}>
@@ -1092,6 +1081,7 @@ export default function CreatorProfile() {
   const [aiTagging, setAiTagging]             = useState(false)  // quick-tag this creator
   const [showEditModal, setShowEditModal]     = useState(false)
   const [confirmDelete, setConfirmDelete]     = useState(false)
+  useScrollLock(showAvatarZoom || confirmDelete)
   const [valueRevealed, setValueRevealed] = useState(false)
   const [bannerImageId, setBannerImageId] = useState(null)
   const [bannerLocalUrl, setBannerLocalUrl] = useState(null)
@@ -1294,7 +1284,7 @@ export default function CreatorProfile() {
       await galleriesApi.delete(g.id, mode === 'disk')
       toast.success(mode === 'disk' ? t('Gallery deleted from disk') : t('Gallery removed from vault'))
       invalidateContent()
-    } catch { toast.error(t('Deletion failed')) }
+    } catch (e) { toast.error(`${t('Deletion failed')}: ${apiErrorMessage(e, t('Could not complete deletion'))}`) }
   }
   const ctxMediaSendToPanel = (img) => {
     const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
@@ -1330,7 +1320,7 @@ export default function CreatorProfile() {
       await imagesApi.delete(img.id, mode === 'vault')
       toast.success(mode === 'vault' ? t('Removed from vault') : t('Deleted from disk'))
       invalidateContent()
-    } catch { toast.error(t('Deletion failed')) }
+    } catch (e) { toast.error(`${t('Deletion failed')}: ${apiErrorMessage(e, t('Could not complete deletion'))}`) }
   }
 
   const ctxItems = ctxMenu?.type === 'gallery'
@@ -1687,7 +1677,7 @@ export default function CreatorProfile() {
                 ['Gender', creator.gender],
                 [isCharacter ? 'Age' : 'Date of Birth', dobDisplay],
                 ['Height', creator.height ? `${creator.height} cm` : null],
-                ['Measurements', creator.body_measurements],
+                ['Body measurements', creator.body_measurements],
                 ['Eye Color', creator.eye_color],
                 ['Fake Boobs', creator.fake_boobs === true ? t('Yes') : creator.fake_boobs === false ? t('No') : null],
                 ['Fake Ass', creator.fake_ass === true ? t('Yes') : creator.fake_ass === false ? t('No') : null],
