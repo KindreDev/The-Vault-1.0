@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, ArrowRight, FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
+import { FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
 import VaultCard from './VaultCard'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
 import { useScrollLock } from '../hooks/useScrollLock'
@@ -171,21 +171,31 @@ function PackPile({ count, phase, firstCard, onTurn }) {
 function RevealStack({ cards, currentIndex, onAdvance }) {
   const throwTop = useCallback(direction => onAdvance(direction), [onAdvance])
   const remaining = cards.slice(currentIndex)
-  return <>
+  return (
     <div className="pack-opening__reveal-stack" style={{ '--stack-count': remaining.length }}>
       {remaining.map((card, offset) => {
         const isTop = offset === 0
         const className = `pack-opening__stack-card${isTop ? ' is-top' : ''}`
         if (!isTop) return <div className={className} key={`under-${currentIndex + offset}`} style={{ '--stack-offset': Math.min(offset, 4), '--stack-y': `${Math.min(offset, 4) * 8}px`, '--stack-scale': 1 - Math.min(offset, 4) * .018, zIndex: 100 - offset }}>{cardFace(card)}</div>
-        return <motion.div className={className} key={`top-${currentIndex}`} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.82} animate={{ x: 0, rotate: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) > 72 || Math.abs(info.velocity.x) > 450) throwTop(info.offset.x < 0 ? -1 : 1) }} style={{ touchAction: 'pan-y' }}>{cardFace(card)}</motion.div>
+        return <motion.div
+          className={className}
+          key={`top-${currentIndex}`}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.9}
+          whileDrag={{ scale: 1.015 }}
+          animate={{ x: 0, rotate: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          onDragEnd={(_, info) => {
+            if (Math.abs(info.offset.x) > 72 || Math.abs(info.velocity.x) > 450) {
+              throwTop(info.offset.x < 0 ? -1 : 1)
+            }
+          }}
+          style={{ touchAction: 'none' }}
+        >{cardFace(card)}</motion.div>
       })}
     </div>
-    <div className="pack-opening__reveal-controls">
-      <button type="button" onClick={() => throwTop(-1)} disabled={!remaining.length}><ArrowLeft size={20} /> Slide left</button>
-      <span>{printedRarity(remaining[0])}</span>
-      <button type="button" onClick={() => throwTop(1)} disabled={!remaining.length}>Slide right <ArrowRight size={20} /></button>
-    </div>
-  </>
+  )
 }
 
 function GridCard({ card }) {

@@ -1168,6 +1168,15 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
     gallery.scanned_at = datetime.utcnow()
     db.flush()
 
+    # Only react to newly available media. A normal unchanged scan does no avatar
+    # work, and selection uses indexed DB rows rather than walking the vault.
+    if new_image_count or is_new_gallery:
+        from services.creator_avatars import backfill_missing
+        creator_ids = {creator.id for creator in gallery.creators}
+        if gallery.creator_id:
+            creator_ids.add(gallery.creator_id)
+        backfill_missing(db, creator_ids, commit=False)
+
     # Fire gamification after images are flushed so image-count milestones are accurate.
     if is_new_gallery:
         gami.notify_action(db, "gallery_imported")

@@ -17,6 +17,7 @@ from services import recommend as recommend_svc
 from services import ranking
 from services import entity_stats
 from services.tag_filters import apply_gallery_tag_filters
+from services.creator_avatars import assign_if_missing
 from sqlalchemy import text
 
 router = APIRouter()
@@ -1219,6 +1220,8 @@ def add_creator(gallery_id: int, creator_id: int, db: Session = Depends(get_db))
         # Keep legacy creator_id in sync with the first assigned creator
         if g.creator_id is None:
             g.creator_id = creator_id
+        db.flush()
+        assign_if_missing(db, creator_id)
         db.commit()
         image_count = max(1, g.image_count or 0)
         gami.notify_action(db, "gallery_assigned", override_amount=image_count)
@@ -1298,6 +1301,7 @@ def bulk_assign(
             updated += 1
     db.commit()
     if updated > 0:
+        assign_if_missing(db, creator_id)
         gami.notify_action(db, "gallery_assigned", override_amount=total_images)
         db.commit()
     return {"updated": updated}

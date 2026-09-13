@@ -36,7 +36,7 @@ export default function FranchiseFilter({ value, onChange }) {
   if (!franchises.length) return null
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}

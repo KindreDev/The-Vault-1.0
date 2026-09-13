@@ -15,6 +15,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
+- Creators without a profile picture now automatically choose an existing portrait from their linked Vault media without background folder scanning.
 - Missing folders now has a one-click Resolve all action that scans online roots, relinks confidently moved folders, removes genuinely stale records, and protects offline libraries.
 - Collection Room now has a persistent I-key/HUD inventory for placing exact owned furniture instances and opening collected parcels or earned booster tokens through the authoritative pack reveal.
 - Analytics trend graphics now fill their allocated compact chart space without changing the surrounding layout.
@@ -63,6 +64,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Creator, gallery, photo, video, and gallery-detail toolbars now keep controls in the same row at a consistent height.
+- Booster reveals now advance only by physically dragging the top card left or right, with no substitute direction buttons.
 - Help now documents the current C/R/SR/UR/SPR card system, expanded Hall of Fame, Recap, Stats and Analytics views, and the Playlists experience, with a proper trading-cards icon for Cards.
 - Collection Room computer hardware now rests on the authored desk surface, shows a lightweight Vault OS screen, and keeps physical cards stable while room state refreshes.
 - Collection Room computer tabs now share a persisted dark/light theme, and the furniture shop presents a distinct recognizable preview for every real catalogue asset.

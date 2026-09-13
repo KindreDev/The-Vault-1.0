@@ -1908,7 +1908,7 @@ export default function GalleryView() {
             </div>
           )}
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="vault-control-row flex gap-2 flex-shrink-0">
           <button onClick={() => favMutation.mutate()}
                   className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{
@@ -1924,14 +1924,14 @@ export default function GalleryView() {
             <Droplets size={12} /> {gallery?.cum_count ?? 0}
           </button>
           {gallery?.edge_count > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full"
+            <div className="vault-row-control flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full"
                  title={t('Edges — logged automatically by Edge Mode')}
                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <Waves size={12} /> {gallery.edge_count}
             </div>
           )}
           {/* Gallery rating */}
-          <div className="flex items-center gap-0.5 px-2 py-1.5 rounded-full"
+          <div className="vault-row-control flex items-center gap-0.5 px-2 py-1.5 rounded-full"
                style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}
                onMouseLeave={() => setRatingHover(0)}>
             {[1,2,3,4,5,6,7,8,9,10].map(n => {
@@ -1959,7 +1959,7 @@ export default function GalleryView() {
           </div>
           <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
           {/* Size slider */}
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-full"
+          <div className="vault-row-control flex items-center gap-1.5 px-2 py-1.5 rounded-full"
                style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
             <Images size={11} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
             <input

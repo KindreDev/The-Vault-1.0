@@ -177,7 +177,7 @@ export default function TagFilterInput({
   const active = includeTags.length + excludeTags.length > 0
 
   return (
-    <div ref={panelRef} className="relative flex-shrink-0">
+    <div ref={panelRef} className="relative flex-shrink-0 vault-row-control">
       <button type="button" onMouseDown={() => setPanelOpen(v => !v)}
         className="flex items-center gap-2 px-3 py-1.5 cursor-pointer"
         style={{

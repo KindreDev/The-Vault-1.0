@@ -1,6 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Controls sharing a toolbar row share one physical height. Width remains
+   content-driven, so labels stay readable without making every row identical. */
+.vault-control-row > button,
+.vault-control-row > .vault-row-control,
+.vault-control-row > .vault-row-control > button {
+  min-height: 36px;
+  height: 36px;
+  box-sizing: border-box;
+}
+.vault-control-row > button,
+.vault-control-row > .vault-row-control > button {
+  display: inline-flex;
+  align-items: center;
+}
 html { zoom: 1.0; }
 :root {
   /* Legacy accent — kept for back-compat */

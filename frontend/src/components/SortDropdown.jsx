@@ -29,7 +29,7 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
   // Determine which icon to show based on sort direction
   const SortIcon = sortDir === 'asc' ? SortAsc : SortDesc
   return (
-    <div ref={ref} className="relative z-30 flex-shrink-0">
+    <div ref={ref} className="relative z-30 flex-shrink-0 vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}

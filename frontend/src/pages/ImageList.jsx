@@ -901,7 +901,7 @@ function CreatorTypeDropdown({ value, onChange }) {
   }, [])
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
@@ -964,7 +964,7 @@ function CreatorFilter({ value, onChange, placeholder = 'All creators' }) {
   }, [])
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative vault-row-control">
       <button type="button" onMouseDown={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[13px] cursor-pointer"
         style={{
@@ -1627,8 +1627,8 @@ export default function ImageList({ onlyVideos = false }) {
       </div>
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="relative flex-1 min-w-[200px] max-w-[320px]">
+      <div className="vault-control-row flex flex-wrap items-center gap-2 mb-5">
+        <div className="vault-row-control relative flex-1 min-w-[200px] max-w-[320px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)]" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder={t('Search by filename…')}

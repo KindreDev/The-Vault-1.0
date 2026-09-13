@@ -806,11 +806,11 @@ export default function CreatorList() {
   return (
     <div className="p-5 pb-16">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="vault-control-row flex items-center gap-3 mb-4 flex-wrap">
         <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
 
         {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+        <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full"
              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
           <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
           <input value={search} onChange={e => setSearch(e.target.value)}

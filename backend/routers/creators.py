@@ -23,6 +23,7 @@ from services import activity
 from services import crowns
 from services import ranking
 from services import anilist
+from services.creator_avatars import assign_if_missing
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 
@@ -811,6 +812,9 @@ def sync_source_folders(db: Session = Depends(get_db)):
                 if g.creator_id is None:
                     g.creator_id = c.id
 
+    db.flush()
+    for creator in creators:
+        assign_if_missing(db, creator.id)
     db.commit()
     return {"synced_creators": len(creators), "newly_assigned": newly_assigned}
 
@@ -840,6 +844,8 @@ def assign_folder(creator_id: int, data: _FolderAssignRequest, db: Session = Dep
                     g.creator_id = creator_id
                 assigned_count += 1
 
+    db.flush()
+    assign_if_missing(db, creator_id)
     db.commit()
     if total_images > 0:
         gami.notify_action(db, "gallery_assigned", override_amount=total_images)

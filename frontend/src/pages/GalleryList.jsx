@@ -540,7 +540,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
   }, [onChange, isMulti])
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
@@ -642,7 +642,7 @@ function CreatorTypeDropdown({ value, onChange }) {
   }, [])
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
@@ -1629,10 +1629,10 @@ export default function GalleryList() {
   return (
     <div className="p-5 flex flex-col gap-4 w-full">
       {/* Header + controls */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="vault-control-row flex items-center gap-2 flex-wrap">
         <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Galleries')}</div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full flex-1 min-w-[160px] max-w-xs"
+        <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full flex-1 min-w-[160px] max-w-xs"
              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
           <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
           <input value={search} onChange={e => setSearch(e.target.value)}

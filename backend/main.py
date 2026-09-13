@@ -565,6 +565,22 @@ def _backfill_creator_card_art():
 _backfill_creator_card_art()
 
 
+def _backfill_missing_creator_avatars():
+    """Fill legacy blank PFPs from indexed Vault media; never scans the disk."""
+    try:
+        from database import SessionLocal as _SL
+        from services.creator_avatars import backfill_missing
+        _db = _SL()
+        try:
+            filled = backfill_missing(_db)
+            if filled:
+                print(f"[migration] assigned automatic avatars to {filled} creators")
+        finally:
+            _db.close()
+    except Exception as e:
+        print(f"[migration] creator avatar backfill failed: {e}")
+
+
 def _backfill_creator_card_visuals():
     """Freeze the accepted editorial-rail recipe onto existing Creator cards."""
     try:
@@ -811,6 +827,7 @@ def _migrate_add_indexes():
         "CREATE INDEX IF NOT EXISTS idx_image_tags_tag_id         ON image_tags(tag_id)",
         "CREATE INDEX IF NOT EXISTS idx_gallery_tags_tag_id        ON gallery_tags(tag_id)",
         "CREATE INDEX IF NOT EXISTS idx_gallery_creators_creator   ON gallery_creators(creator_id)",
+        "CREATE INDEX IF NOT EXISTS idx_image_creators_creator     ON image_creators(creator_id)",
         "CREATE INDEX IF NOT EXISTS idx_playlist_images_image_id   ON playlist_images(image_id)",
         # cards — FK lookups when enriching card data
         "CREATE INDEX IF NOT EXISTS idx_cards_source_image   ON cards(source_image_id)",
@@ -853,6 +870,10 @@ def _migrate_creator_id_to_m2m():
         db.close()
 
 _migrate_creator_id_to_m2m()
+
+# Run after FK indexes and the legacy creator-link migration, so even a very
+# large library stays on the indexed path and every relationship is available.
+_backfill_missing_creator_avatars()
 
 
 def _migrate_creator_rarity():

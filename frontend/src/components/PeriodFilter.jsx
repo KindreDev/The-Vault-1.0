@@ -25,7 +25,7 @@ export default function PeriodFilter({ value, periods = [], onChange }) {
   const selected = periods.find(p => p.value === value)
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative vault-row-control">
       <button
         type="button"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
