@@ -1,4 +1,4 @@
-export const ROOM_CARD_LIMITS = Object.freeze({ pile: 8, display: 12, carried: 4 })
+export const ROOM_CARD_LIMITS = Object.freeze({ pile: 8, display: 36, carried: 4 })
 
 export function isPremiumRoomCardReady(item) {
   if (!item?.material_ready || !item.card) return false

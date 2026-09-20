@@ -105,8 +105,27 @@ function availabilityMessage(pack, now) {
   return null
 }
 
-function BoosterEnvelope({ pack, images }) {
-  const slots = useMemo(() => Array.from({ length: 3 }, (_, index) => images[(pack.id * 3 + index) % Math.max(1, images.length)]), [pack.id, images])
+function stablePackSeed(value) {
+  return [...String(value ?? '')].reduce((hash, character) => ((hash * 31) + character.codePointAt(0)) >>> 0, 7)
+}
+
+function frozenPackArt(pack = {}) {
+  const urls = Array.isArray(pack.snapshot_art_urls) ? pack.snapshot_art_urls.filter(Boolean) : []
+  if (urls.length) return urls
+  if (pack.snapshot_art_url) return [pack.snapshot_art_url]
+  if (pack.snapshot_art_image_id) return [`/api/images/${Number(pack.snapshot_art_image_id)}/file`]
+  return []
+}
+
+export function BoosterEnvelope({ pack, images }) {
+  const frozenArt = useMemo(() => frozenPackArt(pack), [pack])
+  const art = frozenArt.length ? frozenArt : images
+  const slots = useMemo(() => {
+    const source = art || []
+    const size = Math.max(1, source.length)
+    const seed = stablePackSeed(pack.id ?? pack.code ?? pack.name)
+    return Array.from({ length: 3 }, (_, index) => source[(seed + index) % size])
+  }, [pack.id, pack.code, pack.name, art])
   return <div className={`tcgws-booster tcgws-booster--${pack.product_kind}`}>
     <div className="tcgws-booster-crimp top" />
     <div className="tcgws-booster-collage">{slots.map((image, index) => image && <img key={`${image}-${index}`} src={image} style={{ '--slot': index }} />)}</div>

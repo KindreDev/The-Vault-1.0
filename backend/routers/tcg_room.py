@@ -50,10 +50,17 @@ class Vector3(BaseModel):
     z: float
 
 
+class FurnitureContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    image_id: int | None = None
+    landscape: bool | None = None
+
+
 class FurnitureTransform(BaseModel):
     model_config = ConfigDict(extra="forbid")
     position: Vector3
     rotation: Vector3
+    content: FurnitureContent | None = None
 
 
 class Placement(BaseModel):

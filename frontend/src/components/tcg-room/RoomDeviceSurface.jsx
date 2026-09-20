@@ -38,7 +38,7 @@ export default function RoomDeviceSurface({ initialTab = 'packs', roomBootstrap 
   const wallet = useMemo(() => resolveRoomWallet({ profile, materials, fallback: summary }), [materials, profile, summary])
   const order = useMutation({
     mutationFn: ({ pack, selectedReleaseId }) => tcgRoomApi.order([{ product_id: pack.id, quantity: 1, selected_release_id: selectedReleaseId }]),
-    onSuccess: response => { toast.success(`Order placed. Parcel ${response.data.id} is on its way.`); qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-summary'] }) },
+    onSuccess: response => { toast.success(`Order placed. Booster packs are on their way.`); qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-summary'] }) },
     onError: error => toast.error(error.response?.data?.detail || 'Could not place the online order'),
   })
 

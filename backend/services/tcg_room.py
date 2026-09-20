@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from models import (
     CardInventory, CraftingMaterials, TCGDisplayAssignment, TCGDisplayItemDefinition,
     TCGDisplayItemInstance, TCGOnlineOrder, TCGOnlineOrderLine, TCGOwnedDisplayItem,
+    TCGChecklistEntry,
     TCGPackProduct, TCGPackToken, TCGParcel, TCGParcelPack, TCGPhysicalCardCopy, TCGRoomLayout,
     TCGRoomPlacement, TCGWorkshopUnlock, UserProfile,
     TCGRoomFurnitureMigration,
@@ -27,10 +28,16 @@ MAX_PLACEMENTS = 250
 MAX_HISTORY = 50
 DEFAULT_DELAY_SECONDS = 5
 VISIBLE_PILE_LIMIT = 8
-VISIBLE_PLACED_LIMIT = 12
+VISIBLE_PLACED_LIMIT = 64
 VISIBLE_CARRIED_LIMIT = 4
 FURNITURE_MIGRATION_VERSION = 1
 ROOM_BOUNDS = {"min_x": -4.85, "max_x": 3.85, "min_z": -4.85, "max_z": 4.85, "max_y": 3.0}
+# The floor bounds describe the walkable floor, but the authored wall meshes
+# sit outside that rectangle.  Keep a separate envelope for wall-mounted
+# items so a ray hit on the inside face (notably the PC wall) is not rejected
+# as being outside the room.
+WALL_BOUNDS = {"min_x": -5.15, "max_x": 4.15, "min_z": -5.25, "max_z": 5.25}
+WALL_ATTACH_TOLERANCE = .55
 PERMANENT_FIXTURES = (
     "room_floor", "room_ceiling", "wall_north", "wall_south_windowed", "wall_east",
     "wall_west_door", "window_double", "bedroom_door", "baseboard_trim",
@@ -44,8 +51,9 @@ SAFETY_ZONES = (
     (2.50, 3.55, -1.90, 0.30, "dining area"),
 )
 LIVE_SHOP_ASSETS = frozenset({
-    "card_display_stand", "graded_card_stand", "glass_display_case",
-    "glass_display_cabinet", "floating_glass_cabinet", "poster_frame",
+    "card_display_stand_white", "card_display_stand_black",
+    "graded_card_stand_white", "graded_card_stand_black",
+    "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet", "poster_frame",
 })
 MANUAL_ASSET_IDS = LIVE_SHOP_ASSETS
 
@@ -91,9 +99,9 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if set(raw).issubset({"x", "y", "z"}) and set(raw):
         raw = {"position": {"x": raw.get("x", 0), "y": raw.get("y", 0), "z": raw.get("z", 0)},
                "rotation": {"x": 0, "y": 0, "z": 0}}
-    allowed = {"position", "rotation"}
+    allowed = {"position", "rotation", "content"}
     if not set(raw).issubset(allowed):
-        raise ValueError("Furniture transform accepts only position and rotation")
+        raise ValueError("Furniture transform accepts only position, rotation, and content")
     position, rotation = raw.get("position"), raw.get("rotation")
     if not isinstance(position, dict) or not isinstance(rotation, dict):
         raise ValueError("Furniture transform requires position and rotation")
@@ -103,22 +111,34 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in values):
         raise ValueError("Furniture transform values must be finite numbers")
     px, py, pz = (float(position[k]) for k in ("x", "y", "z"))
-    if not (ROOM_BOUNDS["min_x"] <= px <= ROOM_BOUNDS["max_x"] and
-            ROOM_BOUNDS["min_z"] <= pz <= ROOM_BOUNDS["max_z"] and 0 <= py <= ROOM_BOUNDS["max_y"]):
+    bounds = WALL_BOUNDS if definition.placement_kind == "wall" else ROOM_BOUNDS
+    if not (bounds["min_x"] <= px <= bounds["max_x"] and
+            bounds["min_z"] <= pz <= bounds["max_z"] and 0 <= py <= ROOM_BOUNDS["max_y"]):
         raise ValueError("Furniture must remain inside the room")
+    if definition.placement_kind == "wall":
+        distance_to_wall = min(abs(px - WALL_BOUNDS["min_x"]), abs(px - WALL_BOUNDS["max_x"]),
+                               abs(pz - WALL_BOUNDS["min_z"]), abs(pz - WALL_BOUNDS["max_z"]))
+        if distance_to_wall > WALL_ATTACH_TOLERANCE:
+            raise ValueError("Wall furniture must be attached to a wall")
     support = _load(definition.footprint_json, {}).get("support")
     if definition.placement_kind == "floor" and support == "surface":
-        if py < .28 or py > 1.45:
+        if py < .2 or py > 2.7:
             raise ValueError("This item must sit on a table, desk, stand, or counter — not the floor")
     elif definition.placement_kind == "floor" and (py < -.02 or py > .22):
         raise ValueError("Floor furniture must sit on the floor")
-    if definition.placement_kind == "wall":
-        near_wall = min(abs(px - ROOM_BOUNDS["min_x"]), abs(px - ROOM_BOUNDS["max_x"]),
-                        abs(pz - ROOM_BOUNDS["min_z"]), abs(pz - ROOM_BOUNDS["max_z"])) <= .18
-        if not near_wall or py < .35:
-            raise ValueError("Wall furniture must be attached to a wall")
-    return {"position": {"x": px, "y": py, "z": pz},
-            "rotation": {key: float(rotation[key]) for key in ("x", "y", "z")}}
+    if definition.placement_kind == "wall" and py < .12:
+        raise ValueError("Wall furniture must be attached to a wall")
+    content = raw.get("content") if isinstance(raw.get("content"), dict) else {}
+    clean_content = {}
+    if content.get("image_id") is not None:
+        clean_content["image_id"] = int(content["image_id"])
+    if "landscape" in content:
+        clean_content["landscape"] = bool(content.get("landscape"))
+    result = {"position": {"x": px, "y": py, "z": pz},
+              "rotation": {key: float(rotation[key]) for key in ("x", "y", "z")}}
+    if clean_content:
+        result["content"] = clean_content
+    return result
 
 
 def _dimensions(definition: TCGDisplayItemDefinition) -> tuple[float, float, float]:
@@ -134,8 +154,8 @@ def _rotated_footprint(width: float, depth: float, yaw: float) -> tuple[float, f
 
 def _wall_plane(px: float, pz: float) -> str:
     distances = {
-        "west": abs(px - ROOM_BOUNDS["min_x"]), "east": abs(px - ROOM_BOUNDS["max_x"]),
-        "north": abs(pz - ROOM_BOUNDS["min_z"]), "south": abs(pz - ROOM_BOUNDS["max_z"]),
+        "west": abs(px - WALL_BOUNDS["min_x"]), "east": abs(px - WALL_BOUNDS["max_x"]),
+        "north": abs(pz - WALL_BOUNDS["min_z"]), "south": abs(pz - WALL_BOUNDS["max_z"]),
     }
     return min(distances, key=distances.get)
 
@@ -162,7 +182,7 @@ def _validate_placements(db: Session, placements: list[dict]) -> list[dict]:
         instance = instances[int(item["instance_id"])]
         definition = definitions.get(instance.definition_id)
         if not _is_manual_furniture(definition):
-            raise ValueError("Furniture is not eligible for manual placement")
+            continue
         transform = _canonical_transform(item.get("transform"), definition)
         px, pz = transform["position"]["x"], transform["position"]["z"]
         width, depth, height = _dimensions(definition)
@@ -188,11 +208,11 @@ def _validate_placements(db: Session, placements: list[dict]) -> list[dict]:
                 raise ValueError("Wall furniture must remain fully within the wall height")
             if plane in {"north", "south"}:
                 tangent_min, tangent_max = px - extent_x / 2, px + extent_x / 2
-                if tangent_min < ROOM_BOUNDS["min_x"] or tangent_max > ROOM_BOUNDS["max_x"]:
+                if tangent_min < WALL_BOUNDS["min_x"] or tangent_max > WALL_BOUNDS["max_x"]:
                     raise ValueError("Wall furniture must remain fully within the wall")
             else:
                 tangent_min, tangent_max = pz - extent_z / 2, pz + extent_z / 2
-                if tangent_min < ROOM_BOUNDS["min_z"] or tangent_max > ROOM_BOUNDS["max_z"]:
+                if tangent_min < WALL_BOUNDS["min_z"] or tangent_max > WALL_BOUNDS["max_z"]:
                     raise ValueError("Wall furniture must remain fully within the wall")
             if plane == "south" and vertical_min < 2.55 and vertical_max > .35:
                 for opening_min, opening_max in ((-4.55, -1.72), (1.72, 4.55)):
@@ -313,19 +333,22 @@ def redo_room(db: Session, expected_revision: int) -> dict:
 
 def seed_display_catalog(db: Session) -> None:
     defaults = (
-        ("room-card-stand", "Card display stand", "display_stand", "card_display_stand", "credits", 180, ["clear"], "floor", .19, .11, .25),
-        ("room-graded-stand", "Graded card stand", "display_stand", "graded_card_stand", "credits", 320, ["clear"], "floor", .28, .17, .38),
+        ("room-card-stand-white", "White card stand", "display_stand", "card_display_stand_white", "credits", 180, ["white"], "floor", .10, .06, .13),
+        ("room-card-stand-black", "Black card stand", "display_stand", "card_display_stand_black", "credits", 180, ["black"], "floor", .10, .06, .13),
+        ("room-graded-stand-white", "White graded stand", "display_stand", "graded_card_stand_white", "credits", 360, ["white"], "floor", .28, .17, .38),
+        ("room-graded-stand-black", "Black graded stand", "display_stand", "graded_card_stand_black", "credits", 360, ["black"], "floor", .28, .17, .38),
         ("room-glass-case", "Glass display case", "cabinet_slot", "glass_display_case", "credits", 950, ["clear"], "floor", .66, .66, 2.12),
         ("room-glass-cabinet", "Glass display cabinet", "cabinet_slot", "glass_display_cabinet", "credits", 1400, ["mahogany"], "floor", .6, .46, 2.41),
-        ("room-floating-cabinet", "Floating glass cabinet", "cabinet_slot", "floating_glass_cabinet", "credits", 720, ["clear"], "wall", .77, .2, 1.83),
+        ("room-floating-cabinet", "Floating glass cabinet", "cabinet_slot", "floating_glass_cabinet", "credits", 720, ["clear"], "wall", .77, .38, 1.83),
         ("room-poster-frame", "Vault poster", "display_stand", "poster_frame", "shards", 45, ["black"], "wall", .8, .08, 1.1),
     )
     for values in defaults:
         code, name, kind, asset_id, currency, cost, variants, placement_kind, width, depth, *height_values = values
         height = height_values[0] if height_values else .5
         footprint = {"width": width, "depth": depth, "height": height}
-        if asset_id in {"acrylic_card_case", "card_toploader", "desk_lamp", "set_storage_box"}:
+        if asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand"):
             footprint["support"] = "surface"
+            footprint["slots"] = 9 if asset_id.startswith("graded_card_stand") else 1
         definition = db.query(TCGDisplayItemDefinition).filter_by(code=code).first()
         if not definition:
             db.add(TCGDisplayItemDefinition(
@@ -376,7 +399,13 @@ def seed_display_catalog(db: Session) -> None:
         if legacy.owned and not db.query(TCGOwnedDisplayItem.id).filter_by(definition_id=definition.id, variant_key="default").first():
             db.add(TCGOwnedDisplayItem(definition_id=definition.id, variant_key="default", quantity=1))
             db.add(TCGDisplayItemInstance(definition_id=definition.id, variant_key="default", source_type="legacy_workshop", source_id=str(legacy.id)))
+    aliases = {
+        "card_display_stand": "card_display_stand_white",
+        "graded_card_stand": "graded_card_stand_black",
+    }
     for row in db.query(TCGDisplayItemDefinition).all():
+        if row.asset_id in aliases:
+            row.asset_id = aliases[row.asset_id]
         live = row.asset_id in LIVE_SHOP_ASSETS
         row.active = live
         row.placeable = live
@@ -568,7 +597,12 @@ def _mutate_furniture(db: Session, instance_id: int, expected_revision: int, act
             raise ValueError("Furniture must be placed first")
         current = state["placements"][index]
         if action == "move":
-            current["transform"] = transform
+            incoming = dict(transform or {})
+            if "content" not in incoming:
+                old = current.get("transform") or {}
+                if isinstance(old, dict) and old.get("content"):
+                    incoming["content"] = old["content"]
+            current["transform"] = incoming
             current["snap_anchor"] = snap_anchor
         else:
             if not isinstance(transform, dict) or set(transform) != {"x", "y", "z"}:
@@ -608,10 +642,8 @@ def return_furniture(db: Session, instance_id: int, expected_revision: int) -> d
 def assign_display_copy(db: Session, instance_id: int, copy_id: int | None, slot_key: str = "primary") -> dict:
     instance = db.get(TCGDisplayItemInstance, instance_id)
     definition = db.get(TCGDisplayItemDefinition, instance.definition_id) if instance else None
-    if not instance or not definition or definition.item_type not in {
-        "display_stand", "cabinet_slot", "acrylic_case", "toploader", "set_box",
-    }:
-        raise ValueError("This owned item cannot hold a card")
+    if not instance or not definition or definition.item_type != "display_stand" or definition.asset_id == "poster_frame":
+        raise ValueError("Only card stands can hold cards")
     assignment = db.query(TCGDisplayAssignment).filter_by(display_instance_id=instance_id, slot_key=slot_key).first()
     if assignment:
         old = db.get(TCGPhysicalCardCopy, assignment.physical_copy_id)
@@ -641,7 +673,7 @@ def place_order(db: Session, lines: list[dict], *, delivery_delay_seconds: int =
     seed_pack_products(db)
     delay = int(delivery_delay_seconds)
     if delay < 3 or delay > 8:
-        raise ValueError("Parcel delivery delay must be between 3 and 8 seconds")
+        raise ValueError("Booster pack delivery delay must be between 3 and 8 seconds")
     if not lines or len(lines) > 10:
         raise ValueError("An order requires 1 to 10 product lines")
     snapshots, total = [], 0
@@ -657,6 +689,24 @@ def place_order(db: Session, lines: list[dict], *, delivery_delay_seconds: int =
         eligible = _eligible_pack_entries(db, product, values.get("selected_release_id"))
         if not eligible:
             raise ValueError("The pack's persisted eligible pool is empty")
+        # Freeze a representative face image with the purchase.  The release
+        # artwork can be a dynamic collage, but the sealed physical pack needs
+        # one durable, real Vault image to carry into the room.
+        # Freeze a stable, product-specific set of real source images.  A
+        # single representative image made every physical pack in an order
+        # look identical; retaining the eligible pool's distinct source art
+        # lets each sealed pack carry its own deterministic face.
+        preview_ids = []
+        for entry in eligible:
+            image_id = getattr(entry.card, "source_image_id", None)
+            if image_id and image_id not in preview_ids:
+                preview_ids.append(int(image_id))
+        preview_image_id = preview_ids[0] if preview_ids else None
+        if preview_image_id:
+            snapshot["snapshot_art_url"] = f"/api/images/{int(preview_image_id)}/file"
+            snapshot["snapshot_art_image_id"] = int(preview_image_id)
+            snapshot["snapshot_art_urls"] = [f"/api/images/{image_id}/file" for image_id in preview_ids]
+            snapshot["snapshot_art_image_ids"] = preview_ids
         snapshot["eligible_entry_ids"] = [entry.id for entry in eligible]
         snapshot["owned_card_ids"] = [row[0] for row in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).order_by(CardInventory.card_id).all()]
         unit_price = int(snapshot.get("price") or 0)
@@ -702,17 +752,51 @@ def _refresh_ready(db: Session, parcel: TCGParcel) -> None:
 def parcel_status(db: Session, parcel_id: int) -> dict:
     parcel = db.get(TCGParcel, parcel_id)
     if not parcel:
-        raise ValueError("Parcel not found")
+        raise ValueError("Booster pack delivery not found")
     _refresh_ready(db, parcel)
     db.commit()
     order = db.get(TCGOnlineOrder, parcel.order_id)
+    contents = _load(order.contents_json, [])
+    # Older pending orders predate the per-product snapshot list.  Backfill
+    # their response from the frozen eligible entry ids (without changing the
+    # order row) so each product still gets real, stable face art.
+    lines = db.query(TCGOnlineOrderLine).filter_by(order_id=order.id).all()
+    line_by_product = {line.product_id: line for line in lines}
+    for item in contents:
+        product = item.get("product") or {}
+        if product.get("snapshot_art_urls"):
+            continue
+        line = line_by_product.get(item.get("product_id"))
+        if not line:
+            continue
+        # Use only the immutable entry ids captured at purchase time.  Do not
+        # rebuild the current eligible pool here: bootstrap may call this for
+        # many historical deliveries and must remain cheap and deterministic.
+        frozen_ids = product.get("eligible_entry_ids") or []
+        if not frozen_ids:
+            continue
+        try:
+            frozen_ids = [int(value) for value in frozen_ids[:256]]
+        except (TypeError, ValueError):
+            continue
+        entries = db.query(TCGChecklistEntry).filter(TCGChecklistEntry.id.in_(frozen_ids)).all()
+        image_ids = []
+        for entry in entries:
+            image_id = getattr(entry.card, "source_image_id", None)
+            if image_id and image_id not in image_ids:
+                image_ids.append(int(image_id))
+        if image_ids:
+            product["snapshot_art_urls"] = [f"/api/images/{image_id}/file" for image_id in image_ids]
+            product["snapshot_art_image_ids"] = image_ids
+            product["snapshot_art_url"] = product["snapshot_art_urls"][0]
+        item["product"] = product
     return {
         "id": parcel.id, "order_id": parcel.order_id, "status": parcel.status,
         "ready_at": parcel.ready_at, "collected_at": parcel.collected_at,
         "opened_at": parcel.opened_at, "total_price": order.total_price,
         "delivery_delay_seconds": order.delivery_delay_seconds,
         "placement": _load(parcel.placement_json, {}),
-        "contents": _load(order.contents_json, []), "results": _load(parcel.result_json, []),
+        "contents": contents, "results": _load(parcel.result_json, []),
     }
 
 
@@ -781,10 +865,10 @@ def room_inventory(db: Session) -> dict:
 def collect_parcel(db: Session, parcel_id: int) -> dict:
     parcel = db.get(TCGParcel, parcel_id)
     if not parcel:
-        raise ValueError("Parcel not found")
+        raise ValueError("Booster pack delivery not found")
     _refresh_ready(db, parcel)
     if parcel.status != "ready":
-        raise ValueError("Parcel has not arrived yet")
+        raise ValueError("Booster packs have not arrived yet")
     now = datetime.utcnow()
     parcel.status, parcel.collected_at = "collected", now
     order = db.get(TCGOnlineOrder, parcel.order_id)
@@ -796,7 +880,7 @@ def collect_parcel(db: Session, parcel_id: int) -> dict:
 def place_parcel(db: Session, parcel_id: int, placement: dict) -> dict:
     parcel = db.get(TCGParcel, parcel_id)
     if not parcel or parcel.status not in {"collected", "placed"}:
-        raise ValueError("Parcel must be collected before it can be placed")
+        raise ValueError("Booster packs must be collected before they can be placed")
     parcel.status = "placed"
     parcel.placement_json = _dump(placement or {})
     order = db.get(TCGOnlineOrder, parcel.order_id)
@@ -809,13 +893,13 @@ def open_parcel(db: Session, parcel_id: int) -> dict:
     from services.tcg_v2 import open_pack_product
     parcel = db.get(TCGParcel, parcel_id)
     if not parcel or parcel.status not in {"collected", "placed"}:
-        raise ValueError("Parcel must be collected before it can be opened")
+        raise ValueError("Booster packs must be collected before they can be opened")
     results = []
     try:
         packs = db.query(TCGParcelPack).filter_by(parcel_id=parcel.id).order_by(TCGParcelPack.line_id, TCGParcelPack.pack_index).all()
         for pack in packs:
             if not pack.contents_seed:
-                raise ValueError("Parcel pack is missing its sealed contents seed")
+                raise ValueError("Booster pack is missing its sealed contents seed")
             line = db.get(TCGOnlineOrderLine, pack.line_id)
             result = open_pack_product(
                 db, line.product_id, selected_release_id=line.selected_release_id,
@@ -907,12 +991,23 @@ def visible_room_cards(db: Session) -> dict:
     selected: list[tuple[TCGPhysicalCardCopy, str, int | None, str | None]] = []
     selected.extend((copy, "pile", None, None) for copy in pile)
     selected.extend((copy, "carried", None, None) for copy in carried)
+    stand_instance_ids = set()
+    if assignments:
+        stand_instances = db.query(TCGDisplayItemInstance).filter(
+            TCGDisplayItemInstance.id.in_({row.display_instance_id for row in assignments})
+        ).all()
+        stand_defs = {row.id: row for row in db.query(TCGDisplayItemDefinition).filter(
+            TCGDisplayItemDefinition.id.in_({item.definition_id for item in stand_instances})
+        ).all()} if stand_instances else {}
+        for item in stand_instances:
+            asset_id = (stand_defs.get(item.definition_id).asset_id if stand_defs.get(item.definition_id) else "") or ""
+            if asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand"):
+                stand_instance_ids.add(item.id)
     selected.extend((assigned[row.physical_copy_id], "display", row.display_instance_id, row.slot_key)
                     for row in assignments
                     if row.physical_copy_id in assigned
-                    and assigned[row.physical_copy_id].location_kind in {
-                        "cabinet_slot", "display_stand", "acrylic_case", "toploader", "set_box",
-                    }
+                    and row.display_instance_id in stand_instance_ids
+                    and assigned[row.physical_copy_id].location_kind == "display_stand"
                     and assigned[row.physical_copy_id].location_ref == str(row.display_instance_id))
     result = []
     seen = set()
@@ -930,7 +1025,7 @@ def visible_room_cards(db: Session) -> dict:
             },
             "surface": surface, "display_instance_id": instance_id, "slot_key": slot_key,
             "material_ready": ready, "preparation_reason": reason,
-            "card": card if ready else None,
+            "card": card,
             "preview": {
                 "card_id": card.get("id"), "rarity": card.get("rarity_class"),
                 "card_type": card.get("card_type"), "title": card.get("display_name") or card.get("gallery_name") or card.get("creator_name"),

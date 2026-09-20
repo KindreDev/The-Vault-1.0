@@ -63,15 +63,11 @@ function surfaceHosts(placed, definitions, instances) {
 function validate(definition, value, placed, definitions, instances, selectedId) {
   const { position } = value
   if (definition?.placement_kind === 'wall') {
-    const nearNorth = Math.abs(position.z - PLACEMENT_BOUNDS.floor.maxZ) < .08
-    const nearSouth = Math.abs(position.z - PLACEMENT_BOUNDS.floor.minZ) < .08
-    const nearEast = Math.abs(position.x - PLACEMENT_BOUNDS.floor.maxX) < .08
-    const nearWest = Math.abs(position.x - PLACEMENT_BOUNDS.floor.minX) < .08
-    if (!(nearNorth || nearSouth || nearEast || nearWest)) return 'Wall items must touch a wall'
+    const bounds = PLACEMENT_BOUNDS.wall
+    if (position.y < PLACEMENT_BOUNDS.wallY.min || position.y > PLACEMENT_BOUNDS.wallY.max) return 'Keep it on the wall'
+    if (position.x < bounds.minX || position.x > bounds.maxX || position.z < bounds.minZ || position.z > bounds.maxZ) return 'Keep the item inside the room'
     const box = wallBox(definition, value)
-    const tangentLimit = box.plane === 'north' || box.plane === 'south' ? [PLACEMENT_BOUNDS.floor.minX, PLACEMENT_BOUNDS.floor.maxX] : [PLACEMENT_BOUNDS.floor.minZ, PLACEMENT_BOUNDS.floor.maxZ]
     if (box.verticalMin < 0 || box.verticalMax > ROOM_SIZE.height) return 'Keep the whole item within the wall height'
-    if (box.tangentMin < tangentLimit[0] || box.tangentMax > tangentLimit[1]) return 'Keep the whole item within the wall edges'
     if (box.plane === 'north' && box.verticalMin < 2.55 && box.verticalMax > .35 && box.tangentMin < 1.25 && box.tangentMax > -1.25) return 'This would cover a window'
     if (box.plane === 'west' && box.verticalMin < 2.55 && box.verticalMax > .35 && box.tangentMin < 1.25 && box.tangentMax > -1.25) return 'This would cover a window'
     if (box.plane === 'south' && box.verticalMin < 2.7 && box.verticalMax > 0 && box.tangentMin < 3.95 && box.tangentMax > 2.15) return 'This would cover the door'
@@ -129,21 +125,21 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
   }, [definitions, placed])
   useEffect(() => {
     if (!worldSample || !selectedId || !definition) return
-    if (worldSample.kind === 'hover' && pinned) return
-    if (worldSample.kind === 'place') setPinned(true)
     if (worldSample.kind === 'rotate') {
       setDraft(current => current && transform(current.position, point(0, round(worldSample.yaw), 0)))
       return
     }
-    const y = definition.placement_kind === 'wall' ? worldSample.y : (SURFACE_ASSETS.has(definition.asset_id) ? worldSample.y : 0)
+    const y = definition.placement_kind === 'wall' || SURFACE_ASSETS.has(definition.asset_id) ? worldSample.y : FLOOR_Y
     setDraft(transform(point(round(worldSample.x), round(y), round(worldSample.z)), point(0, round(worldSample.yaw || 0), 0)))
-  }, [definition, pinned, selectedId, worldSample])
+    setPinned(false)
+  }, [definition, selectedId, worldSample])
   useEffect(() => {
     if (initialInstanceId == null || lastInitialId.current === initialInstanceId) return
+    if (selectedId) return
     lastInitialId.current = initialInstanceId
     const instance = instances.find(item => item.id === initialInstanceId)
     if (instance) select(instance)
-  }, [initialInstanceId, instances, select])
+  }, [initialInstanceId, instances, select, selectedId])
   const finish = () => { setSelectedId(null); setDraft(null); setPinned(false); onPreview?.(null) }
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }), qc.invalidateQueries({ queryKey: ['tcg-room-furniture'] })])
   const handleError = error => { if (error.response?.status === 409) { finish(); refresh(); toast.error('The room changed elsewhere. Latest layout loaded; choose the item again.') } else toast.error(error.response?.data?.detail || 'Could not update the room') }
@@ -163,11 +159,11 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
   const history = useMutation({ mutationFn: kind => kind === 'undo' ? tcgRoomApi.undoLayout(room.revision) : tcgRoomApi.redoLayout(room.revision), onSuccess: () => { finish(); refresh(); toast.success('Layout updated') }, onError: handleError })
 
   return <div className="placement-mode placement-mode--live">
-    <header><div><span>PLACEMENT MODE</span><strong>{definition?.name || 'Walk the room, then click to place'}</strong><small>WASD to move · hold right mouse to look · click to drop · drag the green ring to rotate · checkmark to lock it</small></div><button disabled={history.isPending} onClick={() => history.mutate('undo')}><Undo2 size={18} /> Undo</button><button disabled={history.isPending} onClick={() => history.mutate('redo')}><Redo2 size={18} /> Redo</button><button onClick={onExit}><X size={18} /> Done</button></header>
+    <header><div><span>PLACEMENT MODE</span><strong>{definition?.name || 'Look where it should go'}</strong><small>WASD to move · hold right mouse to look · item follows the cursor · Q/E or wheel to rotate · left click to place</small></div><button disabled={history.isPending} onClick={() => history.mutate('undo')}><Undo2 size={18} /> Undo</button><button disabled={history.isPending} onClick={() => history.mutate('redo')}><Redo2 size={18} /> Redo</button><button onClick={onExit}><X size={18} /> Done</button></header>
     <div className="placement-mode__strip">{instances.map(instance => {
       const itemDefinition = definitions.get(instance.definition_id)
       return <button key={instance.id} className={`${instance.id === selectedId ? 'selected' : ''} ${instance.status === 'placed' ? 'placed' : ''}`} onClick={() => select(instance)}><span>{itemDefinition?.name || `Room item ${instance.id}`}</span><b>{instance.status === 'placed' ? 'Placed' : 'Ready'}</b></button>
     })}</div>
-    {draft && <div className={`placement-mode__status ${invalid ? 'invalid' : 'valid'}`}><strong>{pinned ? (invalid || 'Click the checkmark to lock it in') : 'Click a valid surface to drop it'}</strong>{existing && <button className="danger" disabled={storeItem.isPending} onClick={() => storeItem.mutate(selectedId)}>Return to inventory</button>}<button onClick={finish}><X /> Cancel</button></div>}
+    {draft && <div className={`placement-mode__status ${invalid ? 'invalid' : 'valid'}`}><strong>{invalid || 'Left click to place it'}</strong>{existing && <button className="danger" disabled={storeItem.isPending} onClick={() => storeItem.mutate(selectedId)}>Return to inventory</button>}<button onClick={finish}><X /> Cancel</button></div>}
   </div>
 }

@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Furniture preview renderer</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#12131a}canvas{display:block;width:100vw;height:100vh}#preview-status{position:absolute;inset:auto 12px 12px;padding:8px 10px;border-radius:8px;color:#dce5ff;background:rgba(12,14,22,.8);font:16px system-ui,sans-serif}#preview-status:empty{display:none}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<canvas id="preview"></canvas>
+<div id="preview-status" role="status" aria-live="polite">Loading furniture preview…</div>
+<script type="module">
+import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+
+const asset = new URLSearchParams(location.search).get('asset') || 'glass_display_cabinet'
+const canvas = document.querySelector('#preview')
+const status = document.querySelector('#preview-status')
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.15
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#171820')
+const environmentGenerator = new THREE.PMREMGenerator(renderer)
+const environmentScene = new RoomEnvironment()
+scene.environment = environmentGenerator.fromScene(environmentScene, .04).texture
+environmentScene.dispose()
+environmentGenerator.dispose()
+scene.add(new THREE.HemisphereLight('#fff8ef', '#5e6679', 2.1))
+const key = new THREE.DirectionalLight('#fff2dc', 3.4)
+key.position.set(2.8, 4.8, 4.2); key.castShadow = true
+key.shadow.mapSize.set(1024, 1024); key.shadow.camera.near = .1; key.shadow.camera.far = 12
+key.shadow.camera.left = -3; key.shadow.camera.right = 3; key.shadow.camera.top = 3; key.shadow.camera.bottom = -3
+scene.add(key)
+const fill = new THREE.DirectionalLight('#d9e5ff', 1.4); fill.position.set(-3, 2.2, -2.5); scene.add(fill)
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ color:'#000000', opacity:.2, transparent:true }))
+floor.rotation.x = -Math.PI / 2; floor.position.y = 0; floor.receiveShadow = true; scene.add(floor)
+
+const camera = new THREE.PerspectiveCamera(30, 1, .01, 30)
+new GLTFLoader().load(`/tcg-room/furniture/${asset}.glb`, ({ scene: model }) => {
+  model.traverse(node => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true } })
+  const bounds = new THREE.Box3().setFromObject(model)
+  const center = bounds.getCenter(new THREE.Vector3())
+  const size = bounds.getSize(new THREE.Vector3())
+  model.position.sub(center)
+  model.position.y += size.y / 2
+  scene.add(model)
+  const maxSize = Math.max(size.x, size.y, size.z)
+  const distance = maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.5
+  const isGradedStand = asset.startsWith('graded_card_stand')
+  const direction = new THREE.Vector3(.95, .72, isGradedStand ? -1.35 : 1.35).normalize()
+  const target = new THREE.Vector3(0, size.y / 2, 0)
+  camera.position.copy(target).add(direction.multiplyScalar(distance))
+  camera.lookAt(target)
+  key.target = model; scene.add(key.target)
+  requestAnimationFrame(() => {
+    document.body.dataset.ready = 'true'
+    canvas.dataset.ready = 'true'
+    status.textContent = ''
+  })
+}, undefined, error => {
+  document.body.dataset.error = 'true'
+  status.setAttribute('role', 'alert')
+  status.textContent = `Furniture preview unavailable: ${error?.message || 'could not load this item.'}`
+})
+
+function frame() {
+  const width = innerWidth, height = innerHeight
+  renderer.setSize(width, height, false)
+  camera.aspect = width / height; camera.updateProjectionMatrix()
+  renderer.render(scene, camera); requestAnimationFrame(frame)
+}
+frame()
+</script>

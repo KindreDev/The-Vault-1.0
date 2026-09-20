@@ -15,6 +15,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
+- ComfyUI images are now identified from embedded workflow metadata during import and automatically receive an `AI generated` provenance tag without running an AI tagger.
 - Character creation now searches both AniList and a no-key game-character catalogue, including titles such as Stellar Blade and Resident Evil.
 - Creators without a profile picture now automatically choose an existing portrait from their linked Vault media without background folder scanning.
 - Missing folders now has a one-click Resolve all action that scans online roots, relinks confidently moved folders, removes genuinely stale records, and protects offline libraries.
@@ -65,6 +66,29 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Collection Room now offers explicit High, Medium, and Low graphics budgets for card texture resolution, anisotropy, shadows, and render resolution.
+- Collection Room card snapshots now use quality-tier resolutions and release distant foil masks to reduce GPU memory and upload work.
+- Purchased booster packs now retain a deterministic set of product-specific artwork snapshots so separate packs do not all display the same face.
+- Collection Room now shows every active booster delivery and includes mailed or ready packs in the unopened-pack summary.
+- Collection Room poster prints now fill the measured 0.66 × 0.96 m inner frame aperture, preserving source aspect ratio with only the required pure-black matte.
+- Collection Room compact stands now render card artwork on the correct display face while preserving the holder's established lean and placement.
+- Collection Room crouch control now uses the C key.
+- Collection Room compact-stand card artwork now flips on its local horizontal axis while preserving its established placement.
+- Collection Room booster piles now use thin flat wrapper geometry resting inside the blue box, with later packs stacked at varied angles.
+- Collection Room posters now remove the authored glass pane, preserve source colour, and use matte-black aspect-ratio fill only where needed inside the frame.
+- Collection Room booster packs now preserve a purchased artwork snapshot on the physical sealed pack.
+- Collection Room compact stands now render the card face reliably in the authored holder.
+- Collection Room targeting now uses the visible mesh reticle, with recessed posters, correctly positioned card stands, and reliable card interaction prompts.
+- Collection Room booster deliveries now display the real Vault wrapper artwork in the blue box and use booster-pack language throughout the player-facing UI.
+- Collection Room card inventory details now expose richer card metadata and inspection information.
+- Collection Room movement now supports vertical lift and crouch controls, with card inspection locking movement while allowing hover-effect rotation.
+- Collection Room card stands now keep card bottoms visible and correctly face their displayed cards, while posters stay inside their frames with preserved aspect ratios and premium black letterboxing.
+- Collection Room deliveries and the blue box are now booster-pack-only; furniture purchases go directly to Furniture Inventory for placement.
+- Collection Room inventory and furniture shop cleanup removes the summary tagline, collapses duplicate furniture products, and gives furniture previews more room.
+- Collection Room furniture previews now use a seamless dark studio background with subtle grounding shadows and accessible loading failures.
+- Collection Room Booster Packs now show each delivered product's real wrapper artwork and remove the furniture strip from the pack browser.
+- Collection Room display previews now keep cards framed cleanly on their authored stands.
+- Collection Room inventory now uses a consistent dark-glass cards, packs, and furniture workspace with clearer owned-item previews and inspection actions.
 - Creator, gallery, photo, video, and gallery-detail toolbars now keep controls in the same row at a consistent height.
 - Booster reveals now advance only by physically dragging the top card left or right, with no substitute direction buttons.
 - Help now documents the current C/R/SR/UR/SPR card system, expanded Hall of Fame, Recap, Stats and Analytics views, and the Playlists experience, with a proper trading-cards icon for Cards.
@@ -117,6 +141,9 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
 
 ### Fixed
+- Collection Room wall-mounted posters and furniture now accept ray hits on the authored interior wall envelope, including the PC area, while retaining wall-attachment and footprint checks.
+- Booster Packs inventory previews now honor each sealed pack's frozen purchase-time artwork instead of reusing one shared collage.
+- The gallery zip-export (and Relocate custom-destination) folder picker now opens on top of other windows instead of appearing behind them.
 - Disk-backed gallery and media deletion now handles transient file locks, clears every dependent history/card/playlist link, and processes bulk video removal as one visible operation instead of silently failing.
 - Bulk tag dropdowns now layer above gallery and media cards, so suggestions remain usable at the edges of dense grids.
 - Gallery, photo, video, and creator sorting now matches the surrounding toolbar controls and follows the active Vault theme.

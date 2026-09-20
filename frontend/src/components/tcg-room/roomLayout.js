@@ -28,9 +28,15 @@ export const PARCEL_SURFACES = Object.freeze({
 })
 
 export const AUTHORED_FURNITURE = Object.freeze(new Set([
-  'card_display_stand', 'glass_display_cabinet', 'glass_display_case',
-  'floating_glass_cabinet', 'graded_card_stand',
+  'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
+  'graded_card_stand', 'graded_card_stand_white', 'graded_card_stand_black',
+  'glass_display_cabinet', 'glass_display_case', 'floating_glass_cabinet',
 ]))
+
+export const FURNITURE_FILE = Object.freeze({
+  card_display_stand: 'card_display_stand_white',
+  graded_card_stand: 'graded_card_stand_black',
+})
 
 export const COMPUTER_SCREEN = Object.freeze({
   // Monitor glass faces +X. PlaneGeometry faces +Z, so yaw +90°.
@@ -48,7 +54,6 @@ export const AUTHORED_ROOM = [
   p('pc_monitor', [-4.45, 1.25, -3.58], [0, Math.PI / 2, 0], 1, 'computer', 'computer'),
   p('bedroom_door', [3.06, 1.35, 4.89], [0, 0, 0], 1, 'entry', 'door'),
   p('plastic_bin_inbox', BLUE_BOXES.inbox.position, [0, 0, 0], 1, 'entry', 'mail'),
-  p('plastic_bin_pile', BLUE_BOXES.pile.position, [0, 0, 0], 1, 'dining', 'pile'),
 ]
 
 export const COLLISION_BOXES = [
@@ -63,28 +68,80 @@ export const COLLISION_BOXES = [
 export const INTERACTION_COPY = {
   computer: ['Use computer', 'Browse your collection and shop from the monitor'],
   door: ['Visit trader', "Step outside to meet this week's visitor"],
-  mail: ['Open deliveries', 'Booster packs land in this blue box'],
-  parcel: ['Open delivery', 'Unpack the booster packs in the blue box'],
-  'parcel-place': ['Place carried parcel', 'Set it down on a clear surface'],
+  mail: ['Open deliveries', 'Collect booster packs that arrived on the table'],
+  parcel: ['Open booster packs', 'Unpack the delivered booster packs'],
+  'parcel-place': ['Place booster packs', 'Set them down on a clear surface'],
   pile: ['Organize cards', 'Physical cards in this box'],
   binder: ['Open binder', 'Manage the same binder used by the 2D collection'],
   cabinet: ['Open cabinet', 'Assign physical copies to cabinet slots'],
-  display: ['Manage display', 'Mount a physical card for display'],
+  display: ['Manage cards', 'Put cards in this stand, or hold one to inspect foil'],
   poster: ['Manage poster', 'Change this wall display assignment'],
 }
 
 export const PLACEMENT_BOUNDS = Object.freeze({
   floor: { minX: -4.85, maxX: 3.85, minZ: -4.85, maxZ: 4.85 },
-  wallY: { min: .35, max: 2.75 },
+  // Wall meshes extend beyond the walkable floor rectangle.  Placement mode
+  // must use the authored wall envelope for ray-hit positions.
+  wall: { minX: -5.15, maxX: 4.15, minZ: -5.25, maxZ: 5.25 },
+  wallY: { min: .12, max: 2.75 },
 })
 
 export const SURFACE_ASSETS = Object.freeze(new Set([
-  'acrylic_card_case', 'card_toploader', 'desk_lamp', 'set_storage_box',
+  'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
+  'graded_card_stand', 'graded_card_stand_white', 'graded_card_stand_black',
 ]))
 
+// Mesh-local slots. Positive tilt leans the card back into the plate/riser.
+// Wide-stand shelves/lips are measured from the exported mesh at
+// y≈.003/.018, .123/.138, and .242/.258. The wide mesh faces -Z; the compact
+// stand faces +Z, so each family carries its own local facing yaw.
+// Single-stand offsets are authored on the native GLB, then scaled with the mesh.
+// The compact holder's inner groove is around native z≈.01.  The holder opens
+// toward local +Z, so keep the card just forward of that groove; the previous
+// negative-Z offset put it inside/behind the rear plate and made it disappear
+// on the real compact stand.
+// The card sits just above the holder's front lip.  Keep this as a local
+// stand-space lift (rather than a world-Y move) so the existing lean/angle is
+// untouched when the furniture is rotated around the room.
+const singleSlot = [{ x: -.004, y: .142, z: -.0173, tilt: .227, yaw: -.13313, scale: .76 }]
+const wideSlots = Array.from({ length: 9 }, (_, index) => {
+  const col = index % 3
+  const row = Math.floor(index / 3)
+  // Lift each card clear of the shelf lip while preserving its authored tilt.
+  const y = [.06747, .18715, .30684][row]
+  const z = [-.055, -.002, .051][row]
+  return { x: (col - 1) * .088, y, z, tilt: -.30, yaw: Math.PI }
+})
+
+export const DISPLAY_SLOTS = Object.freeze({
+  card_display_stand: singleSlot,
+  card_display_stand_white: singleSlot,
+  card_display_stand_black: singleSlot,
+  graded_card_stand: wideSlots,
+  graded_card_stand_white: wideSlots,
+  graded_card_stand_black: wideSlots,
+})
+
+const SINGLE_STANDS = new Set([
+  'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
+])
+
+export function standMeshScale(assetId) {
+  return SINGLE_STANDS.has(assetId) ? .42 : 1
+}
+
+export function displaySlotsFor(assetId) {
+  const slots = DISPLAY_SLOTS[assetId] || DISPLAY_SLOTS.card_display_stand_white
+  const scale = standMeshScale(assetId)
+  if (scale === 1) return slots
+  return slots.map(slot => ({ ...slot, x: slot.x * scale, y: slot.y * scale, z: slot.z * scale }))
+}
+
+export function displaySlotCount(assetId) {
+  return (DISPLAY_SLOTS[assetId] || []).length
+}
+
 export const SURFACE_HOST_ASSETS = Object.freeze(new Set([
-  'computer_desk', 'dining_table',
-  'card_display_stand', 'graded_card_stand',
   'glass_display_cabinet', 'glass_display_case', 'floating_glass_cabinet',
 ]))
 

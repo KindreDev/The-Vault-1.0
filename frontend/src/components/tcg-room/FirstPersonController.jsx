@@ -1,13 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { COLLISION_BOXES, EYE_HEIGHT, INTERACTION_COPY, SAFE_SPAWN, WALK_BOUNDS } from './roomLayout'
+import { COLLISION_BOXES, EYE_HEIGHT, FLOOR_Y, INTERACTION_COPY, SAFE_SPAWN, WALK_BOUNDS } from './roomLayout'
 
 const SPEED = 2.65
+const CROUCH_EYE_HEIGHT = 1.05
+const CEILING_EYE_HEIGHT = 2.62
 const PLAYER_RADIUS = .28
 const origin = new THREE.Vector3()
 const heading = new THREE.Vector3()
 const caster = new THREE.Raycaster()
+const reticle = new THREE.Vector2(0, 0)
 
 const inWalk = (x, z) => x >= WALK_BOUNDS.minX && x <= WALK_BOUNDS.maxX && z >= WALK_BOUNDS.minZ && z <= WALK_BOUNDS.maxZ
 const inBoxes = (x, z) => COLLISION_BOXES.some(box => x > box.min[0] && x < box.max[0] && z > box.min[1] && z < box.max[1])
@@ -30,6 +33,28 @@ function rayBlocked(from, toX, toZ, meshes) {
   return false
 }
 
+function reticleCardKey(camera, scene) {
+  // Interaction prompts for cards are driven by the rendered card geometry,
+  // not the card's world-space anchor.  A small five-ray cross gives the
+  // reticle a forgiving edge while still requiring a real, visible card hit.
+  const rays = [[0, 0], [.045, 0], [-.045, 0], [0, .045], [0, -.045]]
+  let nearest = null
+  for (const [x, y] of rays) {
+    reticle.set(x, y)
+    caster.setFromCamera(reticle, camera)
+    caster.near = camera.near
+    caster.far = 2.8
+    // Intersections are depth-sorted. Only the first visible geometry counts;
+    // searching past a wall or another prop would make a hidden card prompt.
+    const hit = caster.intersectObjects(scene.children, true)[0]
+    if (!hit) continue
+    let node = hit.object
+    while (node && !node.userData?.interactionKey) node = node.parent
+    if (node && (!nearest || hit.distance < nearest.distance)) nearest = { key: node.userData.interactionKey, distance: hit.distance }
+  }
+  return nearest
+}
+
 function safePose(position, yaw, pitch) {
   const next = position.clone()
   next.x = THREE.MathUtils.clamp(next.x, WALK_BOUNDS.minX, WALK_BOUNDS.maxX)
@@ -39,16 +64,35 @@ function safePose(position, yaw, pitch) {
   return { position: next, yaw, pitch: THREE.MathUtils.clamp(pitch, -1.1, 1.1) }
 }
 
-function focusApproach(item, point) {
-  const kind = item.interactive
-  if (kind === 'computer') return new THREE.Vector3(point.x + 1.12, EYE_HEIGHT, point.z)
-  if (kind === 'door') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.2)
-  if (kind === 'mail' || kind === 'parcel' || kind === 'parcel-place' || kind === 'pile') {
-    return new THREE.Vector3(point.x - 1.15, EYE_HEIGHT, point.z)
+function walkableInFront(point, from) {
+  const dx = from.x - point.x
+  const dz = from.z - point.z
+  const length = Math.hypot(dx, dz) || 1
+  const toward = [dx / length, dz / length]
+  const sides = [
+    toward,
+    [-toward[1], toward[0]],
+    [toward[1], -toward[0]],
+    [-toward[0], -toward[1]],
+  ]
+  for (const dist of [1.2, .95, 1.45, .7]) {
+    for (const [nx, nz] of sides) {
+      const x = point.x + nx * dist
+      const z = point.z + nz * dist
+      if (!isBlocked(x, z)) return new THREE.Vector3(x, EYE_HEIGHT, z)
+    }
   }
-  if (kind === 'binder') return new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.2)
-  if (['cabinet', 'display', 'poster'].includes(kind) && point.z > 2.8) return new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.18)
-  return new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.4)
+  return new THREE.Vector3(SAFE_SPAWN.position[0], EYE_HEIGHT, SAFE_SPAWN.position[2])
+}
+
+function focusApproach(item, point, from) {
+  const kind = item.interactive
+  if (kind === 'computer') return walkableInFront(point, from || new THREE.Vector3(point.x + 1.2, EYE_HEIGHT, point.z))
+  if (kind === 'door') return walkableInFront(point, from || new THREE.Vector3(point.x, EYE_HEIGHT, point.z - 1.2))
+  if (kind === 'mail' || kind === 'parcel' || kind === 'parcel-place' || kind === 'pile') {
+    return walkableInFront(point, from || new THREE.Vector3(point.x - 1.2, EYE_HEIGHT, point.z))
+  }
+  return walkableInFront(point, from || new THREE.Vector3(point.x, EYE_HEIGHT, point.z + 1.2))
 }
 
 export default function FirstPersonController({ paused, focused, arranging, interactionItems, onNearby, onInteract, onMetrics }) {
@@ -138,7 +182,7 @@ export default function FirstPersonController({ paused, focused, arranging, inte
     }
     const point = new THREE.Vector3(...focused.position)
     point.y = Math.max(1.05, Math.min(1.65, point.y || 1.25))
-    const approach = safePose(focusApproach(focused, point), yaw.current, pitch.current).position
+    const approach = safePose(focusApproach(focused, point, camera.position), yaw.current, pitch.current).position
     focusTween.current = { start: camera.position.clone(), end: approach, look: point, elapsed: 0 }
   }, [camera, focused])
 
@@ -166,7 +210,13 @@ export default function FirstPersonController({ paused, focused, arranging, inte
     }
     const canWalk = (!paused && !focused) || arranging
     if (canWalk) {
-      camera.position.y = EYE_HEIGHT
+      const crouching = keys.current.has('KeyC')
+      const rising = keys.current.has('Space')
+      // Space raises the camera within the room; C lowers it into a crouch.
+      // Both are bounded so the player cannot clip through the floor or roof.
+      if (rising) camera.position.y = Math.min(CEILING_EYE_HEIGHT, camera.position.y + SPEED * delta)
+      else if (crouching) camera.position.y = Math.max(FLOOR_Y + CROUCH_EYE_HEIGHT, camera.position.y - SPEED * delta)
+      else if (camera.position.y < EYE_HEIGHT) camera.position.y = Math.min(EYE_HEIGHT, camera.position.y + SPEED * delta)
       const forward = Number(keys.current.has('KeyW')) - Number(keys.current.has('KeyS'))
       const side = Number(keys.current.has('KeyD')) - Number(keys.current.has('KeyA'))
       if (forward || side) {
@@ -182,7 +232,12 @@ export default function FirstPersonController({ paused, focused, arranging, inte
     if (!arranging) {
       camera.getWorldDirection(target.current)
       interactionItems.forEach(item => {
-        const point = new THREE.Vector3(...item.position); point.y = Math.max(point.y, 1.15)
+        if (item.interactive === 'card-inspect') {
+          const hit = reticleCardKey(camera, scene)
+          if (!hit || hit.key !== item.key) return
+        }
+        const point = new THREE.Vector3(...item.position)
+        if (item.interactive !== 'card-inspect') point.y = Math.max(point.y, 1.15)
         const offset = point.sub(camera.position); const distance = offset.length()
         const facing = distance ? target.current.dot(offset.normalize()) : 0
         if (distance < 2.8 && facing > .42 && (!best || facing / distance > best.score)) best = { ...item, score: facing / distance }
@@ -191,7 +246,7 @@ export default function FirstPersonController({ paused, focused, arranging, inte
     const nearbyKey = best?.key || null
     if (nearbyKey !== lastNearby.current) {
       lastNearby.current = nearbyKey
-      onNearby(best ? { ...best, copy: INTERACTION_COPY[best.interactive] } : null)
+      onNearby(best ? { ...best, copy: best.copy || INTERACTION_COPY[best.interactive] } : null)
     }
     if (delta < .25) frameAverage.current = frameAverage.current * .92 + delta * 1000 * .08
     if (state.clock.elapsedTime - lastMetric.current > .5) {

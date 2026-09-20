@@ -31,7 +31,7 @@ export default function TCGRoomModule() {
   const progress = data?.bytes_total ? Math.min(100, Math.round(data.bytes_done / data.bytes_total * 100)) : 0
   const ready = installed.find(item => item.verified)
 
-  if (ready) return <Suspense fallback={<main className="tcg-room tcg-room--booting" style={{ background: '#12111a', color: '#fff' }}><div className="tcg-room__boot" style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center', justifyItems: 'center', gap: 10, textAlign: 'center' }}><span>COLLECTION ROOM</span><strong>Preparing your room</strong><p>Loading the room runtime.</p></div></main>}><TCGRoomRuntime version={ready.version} /></Suspense>
+  if (ready) return <Suspense fallback={<main className="tcg-room tcg-room--booting" style={{ background: '#12111a' }}><div className="tcg-room__boot" style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center' }}><i className="tcg-room__boot-mark" /></div></main>}><TCGRoomRuntime version={ready.version} /></Suspense>
 
   return <main className="tcg-room-module">
     <header>

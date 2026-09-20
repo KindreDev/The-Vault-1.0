@@ -204,9 +204,22 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         </div>
       )}
       {image.creators?.length > 0 && (
-        <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded-full truncate max-w-[80%]"
-          style={{ background: 'rgba(0,0,0,0.75)', color: TYPE_COLORS[image.creators[0].creator_type] || '#D3D1C7', zIndex: 3 }}>
-          {image.creators[0].name}
+        <div
+          className="absolute bottom-1 left-1 right-8 flex flex-wrap gap-0.5 pointer-events-none"
+          style={{ zIndex: 3 }}
+        >
+          {image.creators.map(c => (
+            <span
+              key={c.id}
+              className="text-[10px] px-1.5 py-0.5 rounded-full truncate max-w-full"
+              style={{
+                background: 'rgba(0,0,0,0.75)',
+                color: TYPE_COLORS[c.creator_type] || '#D3D1C7',
+              }}
+            >
+              {c.name}
+            </span>
+          ))}
         </div>
       )}
 

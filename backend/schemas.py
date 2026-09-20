@@ -397,6 +397,7 @@ class ScanStatus(BaseModel):
     current_path: Optional[str]
     new_galleries: int
     new_images: int
+    provenance_tagged: int = 0
     message: str
 
 

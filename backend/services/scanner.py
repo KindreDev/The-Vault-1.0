@@ -13,6 +13,7 @@ from models import Gallery, Image, LibraryRoot, Tag, TagSource, Creator
 from database import DATA_DIR
 import services.gamification as gami
 from services.gallery_deletion import delete_gallery_record
+from services.media_provenance import apply_generation_provenance_tag
 
 def _natural_sort_key(s: str):
     """Windows-style natural sort: F1, F2 ... F9, F10, F11."""
@@ -54,6 +55,7 @@ _scan_state = {
     "current_path": None,
     "new_galleries": 0,
     "new_images": 0,
+    "provenance_tagged": 0,
     "message": "Idle",
     "cancelled": False,
 }
@@ -657,6 +659,7 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
         "total": 0,
         "new_galleries": 0,
         "new_images": 0,
+        "provenance_tagged": 0,
         "moved_images": 0,
         "removed_galleries": 0,
         "removed_images": 0,
@@ -711,7 +714,10 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
             _scan_state["progress"] = idx + 1
             _scan_state["current_path"] = dirpath
             _log(f"Scanning: {dirpath}")
-            _process_folder(db, root, dirpath, filenames, move_ctx)
+            _process_folder(
+                db, root, dirpath, filenames, move_ctx,
+                scan_existing_provenance=bool(root_id),
+            )
             root.last_scan = datetime.utcnow()
             db.commit()
 
@@ -731,6 +737,8 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
                 f"{_scan_state['new_galleries']} new galleries, "
                 f"{_scan_state['new_images']} new images."
             )
+            if _scan_state.get("provenance_tagged"):
+                msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             if removed_images:
@@ -767,6 +775,7 @@ def scan_folder_path(db: Session, folder_path: str):
         "total": 0,
         "new_galleries": 0,
         "new_images": 0,
+        "provenance_tagged": 0,
         "moved_images": 0,
         "removed_images": 0,
         "message": f"Scanning {folder_path}...",
@@ -795,7 +804,10 @@ def scan_folder_path(db: Session, folder_path: str):
             _scan_state["progress"] = idx + 1
             _scan_state["current_path"] = dirpath
             _log(f"Scanning: {dirpath}")
-            _process_folder(db, None, dirpath, filenames, move_ctx)
+            # A targeted folder scan is the explicit, bounded backfill path for
+            # provenance metadata.  Full-library scans still inspect every new
+            # file, but do not reopen hundreds of thousands of old images.
+            _process_folder(db, None, dirpath, filenames, move_ctx, scan_existing_provenance=True)
             db.commit()
 
         if not _scan_state["cancelled"]:
@@ -807,6 +819,8 @@ def scan_folder_path(db: Session, folder_path: str):
                 f"{_scan_state['new_galleries']} new galleries, "
                 f"{_scan_state['new_images']} new images."
             )
+            if _scan_state.get("provenance_tagged"):
+                msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             _scan_state["message"] = msg
@@ -978,7 +992,14 @@ def _prune_scanned_galleries(db: Session, scanned: dict) -> int:
     return removed
 
 
-def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: Optional[dict] = None):
+def _process_folder(
+    db: Session,
+    root,
+    dirpath: str,
+    filenames: list,
+    move_ctx: Optional[dict] = None,
+    scan_existing_provenance: bool = False,
+):
     global _scan_state
 
     gallery = db.query(Gallery).filter(Gallery.folder_path == dirpath).first()
@@ -1068,6 +1089,9 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
                     if fs_tag not in existing.tags:
                         existing.tags.append(fs_tag)
                         fs_tag.use_count += 1
+            elif scan_existing_provenance:
+                if apply_generation_provenance_tag(db, existing, file_path):
+                    _scan_state["provenance_tagged"] = _scan_state.get("provenance_tagged", 0) + 1
             continue
 
         file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
@@ -1129,6 +1153,10 @@ def _process_folder(db: Session, root, dirpath: str, filenames: list, move_ctx: 
         )
         db.add(img)
         db.flush()  # get img.id
+
+        if not is_video:
+            if apply_generation_provenance_tag(db, img, file_path):
+                _scan_state["provenance_tagged"] = _scan_state.get("provenance_tagged", 0) + 1
 
         # Auto-tag videos
         if is_video:

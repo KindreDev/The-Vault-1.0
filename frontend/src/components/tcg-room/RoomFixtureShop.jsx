@@ -5,8 +5,10 @@ import { CreditCard, Gem, Search, SlidersHorizontal } from 'lucide-react'
 import { imagesApi, tcgRoomApi } from '../../lib/api'
 
 const ASSET_PRESENTATION = {
-  card_display_stand: 'Display',
-  graded_card_stand: 'Display',
+  card_display_stand_white: 'Stands',
+  card_display_stand_black: 'Stands',
+  graded_card_stand_white: 'Stands',
+  graded_card_stand_black: 'Stands',
   glass_display_case: 'Cabinets',
   glass_display_cabinet: 'Cabinets',
   floating_glass_cabinet: 'Cabinets',
@@ -21,7 +23,6 @@ function vaultThumb(img) {
 }
 
 function ProductVisual({ definition }) {
-  const room = ASSET_PRESENTATION[definition.asset_id] || 'Furniture'
   const preview = `/tcg-room/shop/${definition.asset_id}.png`
   const { data: photos = [] } = useQuery({
     queryKey: ['room-poster-preview-photos'],
@@ -47,9 +48,7 @@ function ProductVisual({ definition }) {
     </div>
   }
   return <div className={`furniture-store__visual furniture-store__visual--${definition.asset_id}`}>
-    <span>{room}</span>
-    <img src={preview} alt="" className="furniture-store__photo" onError={event => { event.currentTarget.style.display = 'none' }} />
-    <small>{definition.asset_id.replaceAll('_', ' ')}</small>
+    <img src={preview} alt={definition.name} className="furniture-store__photo" />
   </div>
 }
 
@@ -59,8 +58,20 @@ export default function RoomFixtureShop({ bootstrap, wallet }) {
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState('featured')
   const [variantByDefinition, setVariantByDefinition] = useState({})
-  const definitions = (bootstrap?.catalog || []).filter(item => item.asset_id && ['floor', 'wall'].includes(item.placement_kind) && ASSET_PRESENTATION[item.asset_id])
-  const ownedCounts = useMemo(() => (bootstrap?.owned_instances || []).reduce((counts, item) => ({ ...counts, [item.definition_id]: (counts[item.definition_id] || 0) + 1 }), {}), [bootstrap?.owned_instances])
+  const definitions = useMemo(() => {
+    const seen = new Set()
+    return (bootstrap?.catalog || []).filter(item => {
+      if (!item.asset_id || !['floor', 'wall'].includes(item.placement_kind) || !ASSET_PRESENTATION[item.asset_id] || seen.has(item.asset_id)) return false
+      seen.add(item.asset_id)
+      return true
+    })
+  }, [bootstrap?.catalog])
+  const definitionAsset = useMemo(() => new Map((bootstrap?.catalog || []).map(item => [item.id, item.asset_id])), [bootstrap?.catalog])
+  const ownedCounts = useMemo(() => (bootstrap?.owned_instances || []).reduce((counts, item) => {
+    const assetId = definitionAsset.get(item.definition_id)
+    if (!assetId) return counts
+    return { ...counts, [assetId]: (counts[assetId] || 0) + 1 }
+  }, {}), [bootstrap?.owned_instances, definitionAsset])
   const categories = useMemo(() => [...new Set(definitions.map(item => ASSET_PRESENTATION[item.asset_id] || 'Furniture'))], [definitions])
   const products = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -85,7 +96,7 @@ export default function RoomFixtureShop({ bootstrap, wallet }) {
     <div className="furniture-store__results"><strong>{products.length} products</strong><span>Purchased pieces stay in your Inventory until placed.</span></div>
     <div className="furniture-store__grid">{products.map(definition => <article key={definition.id}>
       <ProductVisual definition={definition} />
-      <div className="furniture-store__body"><div className="furniture-store__owned">{ownedCounts[definition.id] ? `${ownedCounts[definition.id]} owned` : 'Not owned'}</div><h3>{definition.name}</h3><p>{definition.asset_id === 'poster_frame' ? 'A framed print of a photo from your Vault.' : definition.placement_kind === 'wall' ? 'Mounts on a room wall.' : 'Place it on the floor once you own it.'}</p>{definition.variants?.length > 1 ? <label>Finish<select value={variantByDefinition[definition.id] || definition.variants[0]} onChange={event => setVariantByDefinition(current => ({ ...current, [definition.id]: event.target.value }))}>{definition.variants.map(variant => <option key={variant} value={variant}>{variant}</option>)}</select></label> : <span>{definition.variants?.[0] || 'Standard finish'}</span>}</div>
+      <div className="furniture-store__body"><div className="furniture-store__owned">{ownedCounts[definition.asset_id] ? `${ownedCounts[definition.asset_id]} owned` : 'Not owned'}</div><h3>{definition.name}</h3><p>{definition.asset_id === 'poster_frame' ? 'A framed print of a photo from your Vault.' : definition.asset_id?.includes('graded_card_stand') ? 'Holds 9 cards, 3 per row. Sits on a table or shelf.' : definition.asset_id?.includes('card_display_stand') ? 'Holds 1 card. Sits on a table or shelf.' : definition.placement_kind === 'wall' ? 'Mounts on a room wall.' : 'Furniture only — cards go in stands, not in the cabinet.'}</p></div>
       <footer><div><span>Price</span><strong>{definition.unit_cost.toLocaleString()} {definition.currency === 'credits' ? 'Credits' : 'Shards'}</strong></div><button disabled={purchase.isPending} onClick={() => purchase.mutate({ definition, requestKey: crypto.randomUUID() })}>{definition.currency === 'credits' ? <CreditCard size={18} /> : <Gem size={18} />} {purchase.isPending && purchase.variables?.definition.id === definition.id ? 'Adding…' : 'Add to inventory'}</button></footer>
     </article>)}</div>
     {!products.length && <div className="furniture-store__empty">No furniture matches those filters.</div>}

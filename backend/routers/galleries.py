@@ -1321,20 +1321,34 @@ class MergeRequest(_BaseModel):
 def pick_folder():
     """Open a native Windows folder-picker dialog and return the chosen path."""
     import subprocess
+    # Same pattern as scanner.browse_folder: own the dialog with a hidden
+    # TopMost form so Windows places it above other windows (including Vault).
+    # Without an owner, ShowDialog() has no HWND and the picker is created
+    # behind every already-open window. -STA is required so WinForms does not
+    # deadlock when launched from a uvicorn worker / frozen exe.
     ps_script = (
         "Add-Type -AssemblyName System.Windows.Forms;"
         "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
         "$d.Description = 'Choose export folder';"
         "$d.ShowNewFolderButton = $true;"
-        "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
-        "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }"
+        "$w = New-Object System.Windows.Forms.Form;"
+        "$w.TopMost = $true;"
+        "$w.ShowInTaskbar = $false;"
+        "$w.Show();"
+        "$w.Activate();"
+        "$r = $d.ShowDialog($w);"
+        "$w.Dispose();"
+        "if ($r -eq 'OK') { $d.SelectedPath } else { '' }"
     )
     try:
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-            capture_output=True, text=True, timeout=60
+            ["powershell", "-STA", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True, text=True, timeout=120,
+            creationflags=0x08000000,  # CREATE_NO_WINDOW — suppress console flash
         )
         folder = result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "Folder picker timed out")
     except Exception as e:
         raise HTTPException(500, f"Could not open folder picker: {e}")
     if not folder:
