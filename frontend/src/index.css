@@ -20,6 +20,10 @@
 /* Filter toolbars use the Tags/Franchise control as their typography and
    shape baseline. Keep the normalization scoped so card and modal controls
    retain their existing sizing. */
+.vault-filter-toolbar {
+  position: relative;
+  z-index: 220;
+}
 .vault-filter-toolbar > button,
 .vault-filter-toolbar > .vault-row-control,
 .vault-filter-toolbar > .vault-row-control > button {

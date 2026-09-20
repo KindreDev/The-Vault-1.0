@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ExternalLink, Pencil, FolderSymlink, HardDrive,
-  Star, StarOff, GitMerge, Trash2, Archive, LayoutTemplate, MousePointer2, CheckSquare,
+  Star, StarOff, GitMerge, Trash2, Archive, LayoutTemplate, MousePointer2,
 } from 'lucide-react'
 
 const DIVIDER = '---'
@@ -29,7 +29,7 @@ export default function GalleryContextMenu({
   gallery, position, onClose, bulkCount,
   onOpen, onRename, onRenameFolder,
   onToggleFav, onMerge, onRelocate, onExportZip, onSendToPanel, onDelete,
-  onSelectMode, onOpenSelect,
+  onSelectMode,
 }) {
   const menuRef = useRef(null)
 
@@ -57,7 +57,6 @@ export default function GalleryContextMenu({
 
   const items = [
     ...(onSelectMode   ? [{ icon: MousePointer2, label: 'Select',        action: onSelectMode,  style: 'normal' }] : []),
-    ...(onOpenSelect   ? [{ icon: CheckSquare,   label: 'Select images', action: onOpenSelect,  style: 'normal' }] : []),
     { icon: ExternalLink, label: 'Open',               action: onOpen,         style: 'normal' },
     DIVIDER,
     { icon: Pencil,        label: 'Rename',             action: onRename,       style: 'normal' },

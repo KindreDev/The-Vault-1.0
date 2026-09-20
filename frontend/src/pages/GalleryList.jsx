@@ -1702,7 +1702,7 @@ export default function GalleryList() {
             <RotateCcw size={11} /> {t('Reset')}
           </button>
         )}
-        <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
+        <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()); lastSelectedIdRef.current = null }}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer ml-auto"
                 style={{
                   background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
@@ -1871,9 +1871,9 @@ export default function GalleryList() {
           onSelectMode={() => {
             setBulkMode(true)
             setSelected(new Set([contextMenu.gallery.id]))
+            lastSelectedIdRef.current = contextMenu.gallery.id
           }}
           onOpen={() => navigate(`/galleries/${contextMenu.gallery.id}`)}
-          onOpenSelect={() => navigate(`/galleries/${contextMenu.gallery.id}?select=true`)}
           onRename={() => { setRenamingGallery(contextMenu.gallery) }}
           onRenameFolder={() => { setRenamingFolder(contextMenu.gallery) }}
           onToggleFav={() => {

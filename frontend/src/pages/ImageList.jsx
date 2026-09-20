@@ -1618,7 +1618,7 @@ export default function ImageList({ onlyVideos = false }) {
   const selectAll = () => {
     setSelected(selected.size === images?.length ? new Set() : new Set(images?.map(g => g.id) ?? []))
   }
-  const exitBulk = () => { setBulkMode(false); setSelected(new Set()) }
+  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
 
   return (
     <div className="p-5">
@@ -1705,7 +1705,7 @@ export default function ImageList({ onlyVideos = false }) {
           </button>
         )}
 
-        <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
+        <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()); lastSelectedIdRef.current = null }}
           className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-[8px] cursor-pointer ml-auto"
           style={{
             background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
@@ -1832,6 +1832,7 @@ export default function ImageList({ onlyVideos = false }) {
           onSelectMode={() => {
             setBulkMode(true)
             setSelected(new Set([imageCtxMenu.image.id]))
+            lastSelectedIdRef.current = imageCtxMenu.image.id
           }}
           onView={() => {
             const idx = images?.findIndex(i => i.id === imageCtxMenu.image.id) ?? -1
