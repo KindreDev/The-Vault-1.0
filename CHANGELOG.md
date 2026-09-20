@@ -66,6 +66,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Creator edit dialogs now render in a viewport-level portal so the profile page cannot scroll underneath or carry the dialog away during page transitions.
 - Gallery, image, and video selection menus now stay above the bulk-action bar, remove the redundant gallery context-menu selection entry, and preserve Shift-click range selection when bulk mode starts from a context menu.
 - Gallery, image, video, and creator filter toolbars now use consistent 16px text and rounded controls, including search fields.
 - Collection Room now offers explicit High, Medium, and Low graphics budgets for card texture resolution, anisotropy, shadows, and render resolution.

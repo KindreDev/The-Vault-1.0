@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -874,7 +875,7 @@ function EditCreatorModal({ creator, onClose }) {
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="rounded-[14px] p-6 w-[880px] max-h-[85vh] overflow-y-auto animate-modal-pop shadow-2xl" style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="flex items-center justify-between mb-5">
@@ -1060,7 +1061,7 @@ function EditCreatorModal({ creator, onClose }) {
         </div>
       </div>
     </div>
-  )
+  ), document.body)
 }
 // ── Main profile page ─────────────────────────────────────────────────────────
 export default function CreatorProfile() {
