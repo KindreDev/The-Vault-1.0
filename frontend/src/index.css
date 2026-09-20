@@ -16,6 +16,22 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* Filter toolbars use the Tags/Franchise control as their typography and
+   shape baseline. Keep the normalization scoped so card and modal controls
+   retain their existing sizing. */
+.vault-filter-toolbar > button,
+.vault-filter-toolbar > .vault-row-control,
+.vault-filter-toolbar > .vault-row-control > button {
+  font-size: 16px;
+  border-radius: 999px;
+}
+.vault-filter-toolbar > .vault-row-control > input,
+.vault-filter-toolbar > .vault-row-control input,
+.vault-filter-toolbar > .vault-row-control select {
+  font-size: 16px;
+  border-radius: 999px;
+}
 html { zoom: 1.0; }
 :root {
   /* Legacy accent — kept for back-compat */

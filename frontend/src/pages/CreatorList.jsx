@@ -808,7 +808,7 @@ export default function CreatorList() {
   return (
     <div className="p-5 pb-16">
       {/* Header */}
-      <div className="vault-control-row flex items-center gap-3 mb-4 flex-wrap">
+      <div className="vault-control-row vault-filter-toolbar flex items-center gap-3 mb-4 flex-wrap">
         <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
 
         {/* Search */}

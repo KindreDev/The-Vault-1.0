@@ -1640,7 +1640,7 @@ export default function ImageList({ onlyVideos = false }) {
       </div>
 
       {/* Controls */}
-      <div className="vault-control-row flex flex-wrap items-center gap-2 mb-5">
+      <div className="vault-control-row vault-filter-toolbar flex flex-wrap items-center gap-2 mb-5">
         <div className="vault-row-control relative flex-1 min-w-[200px] max-w-[320px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)]" />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -1682,7 +1682,7 @@ export default function ImageList({ onlyVideos = false }) {
           onAddExclude={token => setExcludedTags(prev => prev.includes(token) ? prev : [...prev, token])}
           onRemoveExclude={token => setExcludedTags(prev => prev.filter(t => t !== token))}
           onClearExclude={() => setExcludedTags([])}
-          rounded="lg"
+          rounded="full"
         />
 
         {toggleBtn(favOnly, () => setFavOnly(f => !f), t('★ Favorites'))}

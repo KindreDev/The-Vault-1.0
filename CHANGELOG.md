@@ -66,6 +66,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Gallery, image, video, and creator filter toolbars now use consistent 16px text and rounded controls, including search fields.
 - Collection Room now offers explicit High, Medium, and Low graphics budgets for card texture resolution, anisotropy, shadows, and render resolution.
 - Collection Room card snapshots now use quality-tier resolutions and release distant foil masks to reduce GPU memory and upload work.
 - Purchased booster packs now retain a deterministic set of product-specific artwork snapshots so separate packs do not all display the same face.

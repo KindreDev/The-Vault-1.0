@@ -1629,7 +1629,7 @@ export default function GalleryList() {
   return (
     <div className="p-5 flex flex-col gap-4 w-full">
       {/* Header + controls */}
-      <div className="vault-control-row flex items-center gap-2 flex-wrap">
+      <div className="vault-control-row vault-filter-toolbar flex items-center gap-2 flex-wrap">
         <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Galleries')}</div>
 
         <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full flex-1 min-w-[160px] max-w-xs"
