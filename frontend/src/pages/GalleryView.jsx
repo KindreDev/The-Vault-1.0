@@ -1246,8 +1246,10 @@ function MergeModal({ gallery, onClose, onMerged }) {
       const parts = []
       const totalMoved = (d.moved ?? 0) + (d.renamed ?? 0) + (d.replaced ?? 0) + (d.db_only ?? 0)
       if (totalMoved > 0) parts.push(`${totalMoved} images merged`)
+      if (d.reconciled > 0) parts.push(`${d.reconciled} already-present files reconciled`)
       if (d.skipped > 0)  parts.push(`${d.skipped} skipped`)
-      toast.success(parts.join(', ') || t('Merged'))
+      if (d.errors?.length > 0) parts.push(`${d.errors.length} could not be moved`)
+      toast[d.errors?.length > 0 ? 'error' : 'success'](parts.join(', ') || t('Merged'))
       qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
       qc.invalidateQueries({ queryKey: ['gallery', String(targetId)] })
       qc.invalidateQueries({ queryKey: ['galleries'] })

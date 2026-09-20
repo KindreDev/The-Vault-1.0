@@ -14,10 +14,15 @@ be boring and inspectable:
 """
 import os
 import shutil
+import logging
 
 from sqlalchemy.orm import Session
 
 from models import Gallery, Image, Creator
+from services.gallery_merge import GalleryMergeError, merge_gallery_records, move_file
+
+
+log = logging.getLogger(__name__)
 
 
 def _norm(p):
@@ -212,34 +217,50 @@ def _merge_into(db: Session, gallery: Gallery, src: str, target: str):
           .filter(Gallery.folder_path.ilike(target))
           .first()
     )
+    if dest_gallery:
+        # Keep the folder-merge route on the same collision/database path as
+        # the GalleryList and GalleryView merge buttons.  The old local copy of
+        # this logic moved files first and then rewrote paths by basename,
+        # which could leave duplicate files and stale Image rows behind.
+        try:
+            merge_gallery_records(
+                db,
+                gallery.id,
+                dest_gallery.id,
+                move_files=True,
+                collision_strategy="rename",
+            )
+        except GalleryMergeError:
+            raise
+        return
+
+    # No gallery row owns the destination folder yet.  In that case the
+    # moving gallery becomes the owner, but every file path is still updated
+    # from its exact old path rather than guessed from a basename.
+    images = db.query(Image).filter(Image.gallery_id == gallery.id).all()
+    by_media_path = {_norm(img.file_path).lower(): img for img in images if img.file_path}
+    by_sidecar_path = {_norm(img.funscript_path).lower(): img for img in images if img.funscript_path}
+
     for name in os.listdir(src):
-        s, d = os.path.join(src, name), os.path.join(target, name)
-        if os.path.exists(d):
+        source_path = os.path.join(src, name)
+        destination = os.path.join(target, name)
+        if os.path.lexists(destination):
             base, ext = os.path.splitext(name)
             n = 2
-            while os.path.exists(os.path.join(target, f"{base} ({n}){ext}")):
+            while os.path.lexists(os.path.join(target, f"{base} ({n}){ext}")):
                 n += 1
-            d = os.path.join(target, f"{base} ({n}){ext}")
-        shutil.move(s, d)
+            destination = os.path.join(target, f"{base} ({n}){ext}")
+        move_file(source_path, destination)
 
-    imgs = db.query(Image).filter(Image.gallery_id == gallery.id).all()
-    for img in imgs:
-        if img.file_path:
-            img.file_path = os.path.join(target, os.path.basename(img.file_path))
-        if img.funscript_path:
-            img.funscript_path = os.path.join(target, os.path.basename(img.funscript_path))
-        if dest_gallery:
-            img.gallery_id = dest_gallery.id
+        media = by_media_path.get(_norm(source_path).lower())
+        if media:
+            media.file_path = destination
+            media.filename = os.path.basename(destination)
+        sidecar = by_sidecar_path.get(_norm(source_path).lower())
+        if sidecar:
+            sidecar.funscript_path = destination
 
-    if dest_gallery:
-        db.flush()
-        dest_gallery.image_count = db.query(Image).filter(
-            Image.gallery_id == dest_gallery.id).count()
-        db.delete(gallery)
-    else:
-        # No gallery row for the destination yet — just repoint this one at it.
-        gallery.folder_path = target
-
+    gallery.folder_path = target
     try:
         os.rmdir(src)
     except OSError:
@@ -300,25 +321,48 @@ def move_images(db: Session, image_ids: list, target_gallery_id: int) -> dict:
         try:
             name = os.path.basename(img.file_path)
             d = os.path.join(dest_dir, name)
-            if os.path.exists(d):
+            if os.path.lexists(d):
                 base, ext = os.path.splitext(name)
                 n = 2
-                while os.path.exists(os.path.join(dest_dir, f"{base} ({n}){ext}")):
+                while os.path.lexists(os.path.join(dest_dir, f"{base} ({n}){ext}")):
                     n += 1
                 d = os.path.join(dest_dir, f"{base} ({n}){ext}")
-            shutil.move(img.file_path, d)
+
+            original_file = img.file_path
+            original_funscript = img.funscript_path
+            media_moved = False
+            funscript_moved = False
+            move_file(original_file, d)
+            media_moved = True
 
             # A funscript belongs beside its video — move it too or the link breaks.
-            if img.funscript_path and os.path.isfile(img.funscript_path):
+            if original_funscript and os.path.isfile(original_funscript):
                 fs_target = os.path.splitext(d)[0] + ".funscript"
-                shutil.move(img.funscript_path, fs_target)
+                if os.path.lexists(fs_target) and not _norm(fs_target).lower() == _norm(original_funscript).lower():
+                    base, ext = os.path.splitext(os.path.basename(fs_target))
+                    n = 2
+                    while os.path.lexists(os.path.join(dest_dir, f"{base} ({n}){ext}")):
+                        n += 1
+                    fs_target = os.path.join(dest_dir, f"{base} ({n}){ext}")
+                move_file(original_funscript, fs_target)
+                funscript_moved = True
                 img.funscript_path = fs_target
+            elif original_funscript:
+                img.funscript_path = None
 
             img.file_path = d
             img.filename = os.path.basename(d)
             img.gallery_id = dest.id
             moved += 1
         except Exception as e:      # noqa: BLE001
+            if 'original_file' in locals():
+                try:
+                    if funscript_moved and img.funscript_path and os.path.lexists(img.funscript_path):
+                        move_file(img.funscript_path, original_funscript)
+                    if media_moved and os.path.lexists(d):
+                        move_file(d, original_file)
+                except Exception:
+                    log.exception("Could not roll back loose-file move for image %s", img.id)
             errors.append({"id": img.id, "name": img.filename, "error": str(e)})
 
     # The re-parented rows are already flushed into this count — don't add

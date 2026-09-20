@@ -18,6 +18,7 @@ from services import ranking
 from services import entity_stats
 from services.tag_filters import apply_gallery_tag_filters
 from services.creator_avatars import assign_if_missing
+from services.gallery_merge import GalleryMergeError, merge_gallery_records
 from sqlalchemy import text
 
 router = APIRouter()
@@ -1432,125 +1433,13 @@ def export_zip(data: dict, db: Session = Depends(get_db)):
 
 @router.post("/{target_id}/merge")
 def merge_gallery(target_id: int, req: MergeRequest, db: Session = Depends(get_db)):
-    """
-    Merge source gallery INTO target gallery.
-    - If move_files=True: physically moves each file into target's folder.
-      Collisions resolved per collision_strategy (replace/rename/skip).
-      Skipped images stay in source gallery; source is deleted only if empty.
-    - If move_files=False: only DB records are updated; no files touched.
-    """
-    import os, shutil
-
-    if target_id == req.source_id:
-        raise HTTPException(400, "Source and target gallery must be different")
-
-    target = db.query(Gallery).options(
-        selectinload(Gallery.creators)
-    ).filter(Gallery.id == target_id).first()
-    if not target:
-        raise HTTPException(404, "Target gallery not found")
-
-    source = db.query(Gallery).options(
-        selectinload(Gallery.creators)
-    ).filter(Gallery.id == req.source_id).first()
-    if not source:
-        raise HTTPException(404, "Source gallery not found")
-
-    images = db.query(Image).filter(Image.gallery_id == req.source_id).all()
-
-    moved = renamed = replaced = skipped = db_only = 0
-
-    for img in images:
-        if not req.move_files:
-            img.gallery_id = target_id
-            db_only += 1
-            continue
-
-        # Determine destination
-        target_folder = target.folder_path
-        if not target_folder or not os.path.isdir(target_folder):
-            # Target folder doesn't exist — fall back to DB-only for this image
-            img.gallery_id = target_id
-            db_only += 1
-            continue
-
-        src_path = img.file_path
-        if not src_path or not os.path.isfile(src_path):
-            # Source file missing — just reassign DB record
-            img.gallery_id = target_id
-            db_only += 1
-            continue
-
-        filename = os.path.basename(src_path)
-        dst_path = os.path.join(target_folder, filename)
-        new_filename = filename
-
-        if os.path.exists(dst_path) and dst_path != src_path:
-            if req.collision_strategy == "skip":
-                skipped += 1
-                continue   # leave image in source gallery
-            elif req.collision_strategy == "replace":
-                # Overwrite — remove existing file first so shutil.move works cleanly
-                try:
-                    os.remove(dst_path)
-                except OSError:
-                    pass
-                replaced += 1
-            else:  # rename
-                base, ext = os.path.splitext(filename)
-                counter = 1
-                while os.path.exists(dst_path):
-                    new_filename = f"{base}_{counter}{ext}"
-                    dst_path = os.path.join(target_folder, new_filename)
-                    counter += 1
-                renamed += 1
-
-        try:
-            shutil.move(src_path, dst_path)
-            img.file_path = dst_path
-            img.filename  = new_filename
-            img.gallery_id = target_id
-            moved += 1
-        except Exception as exc:
-            import logging
-            logging.warning("merge: failed to move %s → %s: %s", src_path, dst_path, exc)
-            skipped += 1
-            continue
-
-    # Merge creator assignments — add any source creators not already on target
-    target_creator_ids = {c.id for c in target.creators}
-    for c in source.creators:
-        if c.id not in target_creator_ids:
-            target.creators.append(c)
-            target.is_tagged = True
-            if target.creator_id is None:
-                target.creator_id = c.id
-
-    # Commit all image reassignments and creator merges first
-    db.commit()
-
-    # Recalculate image counts POST-commit (autoflush=False means pre-commit
-    # queries would read stale data — counts must come after the commit)
-    remaining_in_source = db.query(Image).filter(Image.gallery_id == req.source_id).count()
-    target.image_count  = db.query(Image).filter(Image.gallery_id == target_id).count()
-
-    # Delete source gallery only if it's now empty, otherwise fix its count
-    source_deleted = False
-    if remaining_in_source == 0:
-        db.delete(source)
-        source_deleted = True
-    else:
-        source.image_count = remaining_in_source
-
-    db.commit()
-
-    return {
-        "moved":          moved,
-        "renamed":        renamed,
-        "replaced":       replaced,
-        "skipped":        skipped,
-        "db_only":        db_only,
-        "source_deleted": source_deleted,
-        "source_id":      req.source_id,
-        "target_id":      target_id,
-    }
+    try:
+        return merge_gallery_records(
+            db,
+            req.source_id,
+            target_id,
+            move_files=req.move_files,
+            collision_strategy=req.collision_strategy,
+        )
+    except GalleryMergeError as exc:
+        raise HTTPException(400, str(exc)) from exc

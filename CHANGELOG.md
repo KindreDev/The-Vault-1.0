@@ -144,6 +144,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
 
 ### Fixed
+- Gallery merges now reconcile files already present in the target folder, retire the stale source gallery, and report the reconciliation instead of leaving the database incomplete.
+- Gallery merges now move each file exactly once, retire replaced database rows, preserve video funscript links, and keep skipped or missing files in their source gallery instead of creating filesystem/database mismatches.
 - Collection Room wall-mounted posters and furniture now accept ray hits on the authored interior wall envelope, including the PC area, while retaining wall-attachment and footprint checks.
 - Booster Packs inventory previews now honor each sealed pack's frozen purchase-time artwork instead of reusing one shared collage.
 - The gallery zip-export (and Relocate custom-destination) folder picker now opens on top of other windows instead of appearing behind them.

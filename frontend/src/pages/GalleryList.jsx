@@ -705,7 +705,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
     if (!targetId || sources.length === 0) return
     setMerging(true)
     setProgress({ done: 0, total: sources.length, errors: 0 })
-    let totalMoved = 0, totalSkipped = 0, errors = 0
+    let totalMoved = 0, totalReconciled = 0, totalSkipped = 0, errors = 0
 
     for (const src of sources) {
       try {
@@ -716,7 +716,9 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
         })
         const d = res.data
         totalMoved   += (d.moved ?? 0) + (d.renamed ?? 0) + (d.replaced ?? 0) + (d.db_only ?? 0)
+        totalReconciled += d.reconciled ?? 0
         totalSkipped += d.skipped ?? 0
+        errors       += d.errors?.length ?? 0
         setProgress(p => ({ ...p, done: p.done + 1 }))
       } catch {
         errors++
@@ -726,6 +728,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
 
     const parts = []
     if (totalMoved   > 0) parts.push(`${totalMoved} images merged`)
+    if (totalReconciled > 0) parts.push(`${totalReconciled} already-present files reconciled`)
     if (totalSkipped > 0) parts.push(`${totalSkipped} skipped`)
     if (errors       > 0) parts.push(`${errors} failed`)
     toast[errors > 0 ? 'error' : 'success'](parts.join(', ') || t('Merged'))
