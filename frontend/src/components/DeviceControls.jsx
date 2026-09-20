@@ -4,7 +4,7 @@
  * Compact device control panel designed to be embedded in:
  *   - Image viewer right panel
  *   - Video viewer right panel
- *   - Multi-Panel bottom bar
+ *   - Playlist bottom bar
  *
  * Shows nothing when no device is connected.
  * Contains: pattern picker · intensity · glans · stroke limiter · 💦 Cum · ⏹ Stop

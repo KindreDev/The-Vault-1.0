@@ -6,7 +6,7 @@ import {
   ArrowLeft, Star, Droplets, Shuffle, Heart, ChevronLeft, ChevronRight,
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
-  FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy,
+  FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy, ListMusic,
   Waves,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
@@ -1688,6 +1688,10 @@ export default function GalleryView() {
     gcTime: 5 * 60 * 1000,  // cache for 5 min — returning to a gallery is instant
   })
 
+  const galleryFolderName = gallery?.folder_path
+    ? gallery.folder_path.split(/[\\/]/).filter(Boolean).pop()
+    : gallery?.name || ''
+
   // Auto-open image from ?openImage= query param (e.g. from HOF / creator profile click)
   const openImageHandled = useRef(false)
   useEffect(() => {
@@ -1708,11 +1712,12 @@ export default function GalleryView() {
   })
 
   const renameMutation = useMutation({
-    mutationFn: (newName) => galleriesApi.update(id, { name: newName }),
+    mutationFn: (newName) => galleriesApi.renameFolder(id, newName),
     onSuccess: () => {
-      toast.success(t('Gallery renamed'))
+      toast.success(t('Folder renamed on disk'))
       qc.invalidateQueries({ queryKey: ['gallery', id] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
+      qc.invalidateQueries({ queryKey: ['gallery-images', id] })
       setIsRenaming(false)
     },
     onError: () => {
@@ -1722,20 +1727,12 @@ export default function GalleryView() {
   })
 
   const submitRename = () => {
-    if (editName.trim() && editName.trim() !== gallery?.name) {
+    if (editName.trim() && editName.trim() !== galleryFolderName) {
       renameMutation.mutate(editName.trim())
     } else {
       setIsRenaming(false)
     }
   }
-
-  const cumMutation = useMutation({
-    mutationFn: () => galleriesApi.cum(id),
-    onSuccess: (r) => {
-      addXpToast('+5 XP')
-      qc.invalidateQueries({ queryKey: ['gallery', id] })
-    }
-  })
 
   const [galleryRating, setGalleryRating] = useState(0)
   const [ratingHover, setRatingHover]     = useState(0)
@@ -1803,6 +1800,23 @@ export default function GalleryView() {
     }
   }
 
+  const handleSendToPlaylist = async () => {
+    if (!gallery || !images?.length) return
+    try {
+      const { data: galleryImages } = await galleriesApi.bulkImages([gallery.id])
+      const ok = addToMultiViewer({
+        id: `gal-${gallery.id}`,
+        type: 'gallery',
+        media: gallery,
+        images: galleryImages[String(gallery.id)] || images,
+      })
+      if (ok) toast.success(t('Gallery added to Playlists'))
+      else toast(t('Already in Playlists or queue is full'), { icon: 'ℹ️' })
+    } catch {
+      toast.error(t('Could not add gallery to Playlists'))
+    }
+  }
+
   return (
     <div className="p-5 relative">
       {/* Header */}
@@ -1825,9 +1839,9 @@ export default function GalleryView() {
               style={{ borderBottom: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)', paddingBottom: '1px' }}
             />
           ) : (
-            <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={() => { setEditName(gallery?.name || ''); setIsRenaming(true) }}>
+            <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={() => { setEditName(galleryFolderName); setIsRenaming(true) }}>
               <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] truncate">{gallery?.name ?? '...'}</div>
-              <button className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title={t('Rename gallery')}><Pencil size={13} /></button>
+              <button className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title={t('Rename folder on disk')}><Pencil size={13} /></button>
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap">
@@ -1912,24 +1926,26 @@ export default function GalleryView() {
         </div>
         <div className="vault-control-row flex gap-2 flex-shrink-0">
           <button onClick={() => favMutation.mutate()}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{
                     background: gallery?.is_favorite ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
                     color: gallery?.is_favorite ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.4)',
                     border: '0.5px solid rgba(255,255,255,0.1)',
                   }}>
-            <Star size={12} />
+            <Star size={15} />
           </button>
-          <button onClick={() => cumMutation.mutate()}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
-            <Droplets size={12} /> {gallery?.cum_count ?? 0}
+          <button onClick={handleSendToPlaylist}
+                  disabled={!gallery || !images?.length}
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-40"
+                  title={t('Send this gallery to Playlists')}
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+            <ListMusic size={15} /> {t('Playlists')}
           </button>
           {gallery?.edge_count > 0 && (
-            <div className="vault-row-control flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full"
+            <div className="vault-row-control flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full"
                  title={t('Edges — logged automatically by Edge Mode')}
                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-              <Waves size={12} /> {gallery.edge_count}
+              <Waves size={15} /> {gallery.edge_count}
             </div>
           )}
           {/* Gallery rating */}
@@ -1974,31 +1990,31 @@ export default function GalleryView() {
           </div>
           <button onClick={handleRetag} disabled={retagging}
                   title={t('AI-tag all images in this gallery')}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50 transition-all"
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50 transition-all"
                   style={{
                     background: retagging ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 10%, transparent)',
                     color: retagging ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
                     border: `0.5px solid ${retagging ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
-            <Sparkles size={12} className={retagging ? 'animate-pulse' : ''} />
+            <Sparkles size={15} className={retagging ? 'animate-pulse' : ''} />
             {retagging ? t('Tagging…') : t('AI Tag')}
           </button>
           <button onClick={() => setShowMergeModal(true)}
                   title={t('Merge this gallery into another')}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            <GitMerge size={12} />
+            <GitMerge size={15} />
             {t('Merge')}
           </button>
           <button onClick={() => { setBulkMode(b => !b); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
                   title={t('Select images to extract or delete')}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{
                     background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
                     color: bulkMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
                     border: `0.5px solid ${bulkMode ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.1)'}`,
                   }}>
-            <CheckSquare size={12} />
+            <CheckSquare size={15} />
             {bulkMode ? `${selectedIds.size} selected` : t('Select')}
           </button>
         </div>
@@ -2336,7 +2352,7 @@ export default function GalleryView() {
               const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
               if (ok) added++; else skipped++
             }
-            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
+            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Playlists`)
             if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
           }}
           onCopyTo={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}

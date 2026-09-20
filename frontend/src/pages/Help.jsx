@@ -246,7 +246,7 @@ function NavContent() {
 
       <Section title="Goon" icon={Flame} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <NavRow icon={Columns3} label="Playlists"      path="/multi-panel"    color="var(--c-pink)" desc="Build and save multi-panel playlists: queue media into 1–4 independent panels, save each arrangement, and resume it later." />
+          <NavRow icon={Columns3} label="Playlists"      path="/playlists"       color="var(--c-pink)" desc="Build and save playlists: queue media into 1–4 independent panels, save each arrangement, and resume it later." />
           <NavRow icon={Cpu}      label="Device Control" path="/device-control" color="var(--c-pink)" desc="Connect and control your physical device. Supports Intiface Central (Buttplug), The Handy REST API, and direct USB serial (T-Code)." />
           <NavRow icon={Wifi}     label="Device status"  path=""                color="var(--c-green)"        desc="Quick-connect button in the sidebar. Shows Idle (connected, no motion) or Live (freestyle mode active). Click to connect/disconnect." />
         </SectionBody>

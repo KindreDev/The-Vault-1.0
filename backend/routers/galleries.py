@@ -7,11 +7,11 @@ from sqlalchemy import func, or_
 from typing import List, Optional, Literal
 
 from database import get_db
-from models import Gallery, Image, Creator, Tag, gallery_creators, UserProfile, SessionLog, image_tags, mix_images
+from models import Gallery, Image, Creator, Tag, TagSource, gallery_creators, UserProfile, SessionLog, image_tags, mix_images
 from schemas import GalleryOut, GalleryCreate, GalleryUpdate
 import services.gamification as gami
 from services import activity
-from services.file_ops import remove_file, remove_tree
+from services.file_ops import remove_file, remove_tree, rename_path
 from services.gallery_deletion import delete_gallery_record
 from services import recommend as recommend_svc
 from services import ranking
@@ -898,15 +898,17 @@ def rename_folder_on_disk(gallery_id: int, data: dict, db: Session = Depends(get
         raise HTTPException(409, f"A folder named '{new_name}' already exists in the same directory")
 
     try:
-        os.rename(old_path, new_path)
+        rename_path(old_path, new_path)
     except Exception as e:
         raise HTTPException(500, f"Could not rename folder: {e}")
 
-    # Update every image's file_path (prefix swap)
+    # Update every media path (prefix swap), including sidecar funscripts.
     images = db.query(Image).filter(Image.gallery_id == gallery_id).all()
     for img in images:
-        if img.file_path and img.file_path.startswith(old_path):
+        if img.file_path and (img.file_path == old_path or img.file_path.startswith(old_path + os.sep) or img.file_path.startswith(old_path + '/')):
             img.file_path = new_path + img.file_path[len(old_path):]
+        if img.funscript_path and (img.funscript_path == old_path or img.funscript_path.startswith(old_path + os.sep) or img.funscript_path.startswith(old_path + '/')):
+            img.funscript_path = new_path + img.funscript_path[len(old_path):]
 
     # Sync display name only when it matches the old folder basename
     old_folder_name = os.path.basename(old_path)
@@ -1245,6 +1247,50 @@ def remove_creator(gallery_id: int, creator_id: int, db: Session = Depends(get_d
             g.creator_id = g.creators[0].id
         db.commit()
     return _enrich(g)
+
+
+@router.post("/bulk-tags")
+def bulk_add_tags(body: dict, db: Session = Depends(get_db)):
+    """Add one or more gallery-level tags to every selected gallery."""
+    gallery_ids = [int(g) for g in (body.get("gallery_ids") or []) if g]
+    tag_names = []
+    seen = set()
+    for raw_name in (body.get("tags") or []):
+        name = str(raw_name or "").strip().lower()
+        if name and name not in seen:
+            seen.add(name)
+            tag_names.append(name)
+
+    if not gallery_ids or not tag_names:
+        return {"updated": 0, "added": 0, "tags": []}
+
+    galleries = db.query(Gallery).filter(Gallery.id.in_(gallery_ids)).all()
+    tag_by_name = {}
+    for name in tag_names:
+        tag = db.query(Tag).filter(Tag.name == name).first()
+        if not tag:
+            tag = Tag(name=name, source=TagSource.manual)
+            db.add(tag)
+            db.flush()
+        tag_by_name[name] = tag
+
+    updated = added = 0
+    for gallery in galleries:
+        gallery_added = 0
+        existing = {tag.name for tag in (gallery.tags or [])}
+        for name, tag in tag_by_name.items():
+            if name in existing:
+                continue
+            gallery.tags.append(tag)
+            tag.use_count = (tag.use_count or 0) + 1
+            added += 1
+            gallery_added += 1
+        if gallery_added:
+            gallery.is_tagged = True
+            updated += 1
+
+    db.commit()
+    return {"updated": updated, "added": added, "tags": tag_names}
 
 
 @router.post("/bulk-clear-creators")

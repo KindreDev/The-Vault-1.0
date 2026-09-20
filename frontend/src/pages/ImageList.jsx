@@ -69,10 +69,10 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
 
   const handleSendToViewer = (e) => {
     e.stopPropagation()
-    if (queue.length >= MAX) { toast.error(`Multi-viewer full (${MAX}/${MAX})`); return }
+    if (queue.length >= MAX) { toast.error(`Playlists full (${MAX}/${MAX})`); return }
     const ok = addToMultiViewer({ id: `img-${image.id}`, type: 'image', media: image })
-    if (ok) toast.success(t('Sent to multi-viewer'))
-    else toast(t('Already in multi-viewer'), { icon: '✓' })
+    if (ok) toast.success(t('Sent to Playlists'))
+    else toast(t('Already in Playlists'), { icon: '✓' })
   }
 
   const handleMouseEnter = useCallback(() => {
@@ -223,10 +223,10 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         </div>
       )}
 
-      {/* Send to multi-viewer */}
+      {/* Send to Playlists */}
       <button
         onMouseDown={handleSendToViewer}
-        title={t('Send to multi-viewer')}
+        title={t('Send to Playlists')}
         className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
         style={inQueue
           ? { background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)', opacity: 1 }
@@ -1251,11 +1251,11 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
         {selectedImages.length} {t('selected')}
       </span>
 
-      {/* Send to viewer */}
+      {/* Send to Playlists */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={working}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] disabled:opacity-40"
         style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-        <LayoutGrid size={12} /> {t('Send to viewer')}
+        <LayoutGrid size={12} /> {t('Send to Playlists')}
       </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
@@ -1867,7 +1867,7 @@ export default function ImageList({ onlyVideos = false }) {
               const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
               if (ok) added++; else skipped++
             }
-            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Multi-panel`)
+            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Playlists`)
             if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
           }}
           creators={imageCtxMenu.image.creators ?? []}

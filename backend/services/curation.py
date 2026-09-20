@@ -35,6 +35,7 @@ from models import (
     gallery_creators, gallery_tags, image_tags,
 )
 import services.gamification as gami
+from services.file_ops import rename_path
 
 
 # ── Tunables ──────────────────────────────────────────────────────────────────
@@ -458,12 +459,12 @@ def _rename_folder(db: Session, g: Gallery, new_name: str):
     if os.path.exists(new_path):
         raise ValueError(f"A folder named '{new_name}' already exists alongside it")
 
-    os.rename(old_path, new_path)
+    rename_path(old_path, new_path)
 
     for img in db.query(Image).filter(Image.gallery_id == g.id).all():
-        if img.file_path and img.file_path.startswith(old_path):
+        if img.file_path and (img.file_path == old_path or img.file_path.startswith(old_path + os.sep) or img.file_path.startswith(old_path + '/')):
             img.file_path = new_path + img.file_path[len(old_path):]
-        if img.funscript_path and img.funscript_path.startswith(old_path):
+        if img.funscript_path and (img.funscript_path == old_path or img.funscript_path.startswith(old_path + os.sep) or img.funscript_path.startswith(old_path + '/')):
             img.funscript_path = new_path + img.funscript_path[len(old_path):]
 
     if g.name == os.path.basename(old_path):

@@ -172,7 +172,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   onToggleShuffle = null,
   // Whether this player is allowed to drive the connected device. Defaults to
   // true so single-video contexts (gallery/image viewers) behave as before; the
-  // multi-panel viewer sets it false on every panel except the one the user
+  // playlist viewer sets it false on every panel except the one the user
   // has synced, since the device can only follow one video at a time.
   deviceSync   = true,
 }, ref) {

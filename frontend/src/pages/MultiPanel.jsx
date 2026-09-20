@@ -299,7 +299,7 @@ function ResizableGrid({
 
 // ── Playlists Modal ───────────────────────────────────────────────────────────
 //
-// The multi-panel queue IS the playlist — this just persists and restores it,
+// The playlist queue IS the playlist — this just persists and restores it,
 // along with the viewer setup (panel count + playback mode) so a saved session
 // comes back exactly as it was left.
 function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manualAssignments = {}, targetPanel = null }) {
@@ -590,7 +590,7 @@ function AddMediaModal({ onClose }) {
     if (atMax) { toast.error(`Max ${MAX} items reached`); return }
     const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
     if (!ok) toast.error('Already in queue or queue full')
-    else toast.success('Added to multi-viewer')
+    else toast.success('Added to Playlists')
   }
 
   const handleAddGallery = async (e, g) => {
@@ -602,7 +602,7 @@ function AddMediaModal({ onClose }) {
       const res = await galleriesApi.images(g.id)
       const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
       if (!ok) toast.error('Already in queue or queue full')
-      else toast.success('Added gallery to multi-viewer')
+      else toast.success('Added gallery to Playlists')
     } catch (err) {
       toast.error('Failed to load gallery images')
     } finally {
@@ -992,7 +992,7 @@ export default function MultiPanel() {
     if (typeof data.layout_idx === 'number' && LAYOUTS[data.layout_idx]) setLayoutIdx(data.layout_idx)
     if (data.gallery_mode) setGalleryMode(data.gallery_mode)
 
-    // A saved multi-panel arrangement restores each entry to its own panel.
+    // A saved playlist arrangement restores each entry to its own panel.
     const pinned = {}
     entries.forEach((e, i) => {
       if (e.panel_idx !== null && e.panel_idx !== undefined) pinned[items[i].id] = e.panel_idx
@@ -1248,7 +1248,7 @@ export default function MultiPanel() {
       <div className="flex items-center gap-2 px-3"
            style={{ height: 44, borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#111', flexShrink: 0 }}>
 
-        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Playlists / Multi panel</span>
+        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Playlists</span>
 
         {/* Layout picker */}
         <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-[8px]"
@@ -1431,7 +1431,7 @@ export default function MultiPanel() {
           <div className="text-center">
             <div className="text-[15px] font-medium text-[rgba(255,255,255,0.6)] mb-1">No media queued</div>
             <div className="text-[12px] text-[rgba(255,255,255,0.25)] mb-4">
-              Add media here, or use the <span style={{ color: 'var(--c-accent-text)' }}>⊞ Send to viewer</span> button<br/>
+              Add media here, or use the <span style={{ color: 'var(--c-accent-text)' }}>⊞ Send to Playlists</span> button<br/>
               while browsing Images and Videos.
             </div>
             <div className="flex items-center gap-2 justify-center">

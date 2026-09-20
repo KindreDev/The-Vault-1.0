@@ -4,13 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Search, Droplets, Star, Images, Filter, SortAsc, X,
+  Search, Droplets, Star, Images, Filter, SortAsc, X, Tag,
   CheckSquare, Square, UserPlus, UserMinus, UserX, ChevronDown, AlertCircle,
   Pencil, FolderPlus, Check, LayoutTemplate, Trash2, GitMerge,
   RotateCcw, FolderSymlink, Archive,
 } from 'lucide-react'
 import { galleriesApi, creatorsApi, imagesApi, apiErrorMessage } from '../lib/api'
 import TagFilterInput from '../components/TagFilterInput'
+import TagAutocompleteInput from '../components/TagAutocompleteInput'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { SortDropdown } from '../components/SortDropdown'
@@ -148,57 +149,6 @@ function RenameFolderModal({ gallery, onClose }) {
 }
 
 
-// ── Rename gallery modal ───────────────────────────────────────────────────────
-function RenameModal({ gallery, onClose }) {
-  const t = useT()
-  const [name, setName] = useState(gallery.name)
-  const qc = useQueryClient()
-
-  const renameMutation = useMutation({
-    mutationFn: () => galleriesApi.update(gallery.id, { name: name.trim() }),
-    onSuccess: () => {
-      toast.success(t('Gallery renamed'))
-      qc.invalidateQueries({ queryKey: ['galleries'] })
-      qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
-      onClose()
-    },
-    onError: () => toast.error(t('Rename failed')),
-  })
-
-  const submit = () => { if (name.trim() && name.trim() !== gallery.name) renameMutation.mutate() }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
-         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
-        <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
-          <Pencil size={13} style={{ color: 'var(--c-accent)' }} /> {t('Rename gallery')}
-        </div>
-        <input
-          autoFocus value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
-          className="w-full px-3 py-2 rounded-[8px] text-[14px] outline-none mb-4"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.15)' }}
-        />
-        <div className="flex gap-2 justify-end">
-          <button type="button" onMouseDown={onClose}
-                  className="px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            {t('Cancel')}
-          </button>
-          <button type="button" onMouseDown={submit}
-                  disabled={!name.trim() || name.trim() === gallery.name || renameMutation.isPending}
-                  className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
-                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
-            {renameMutation.isPending ? t('Saving…') : t('Rename')}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
 // ── Star rating ───────────────────────────────────────────────────────────────
 function StarRating({ value = 0, onRate, className = '' }) {
   const [hovered, setHovered] = useState(0)
@@ -240,7 +190,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
 // ── Gallery card ──────────────────────────────────────────────────────────────
 // React.memo: grid of 100 cards won't re-render when parent state changes
 // (search input, sort, modal open, bulk selection of other cards, etc.)
-const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRename, onContextMenu }) {
+const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRenameFolder, onContextMenu }) {
   const t = useT()
   const [isHovered, setIsHovered]     = useState(false)
   const [fanImgs, setFanImgs]         = useState([])
@@ -380,9 +330,9 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         <div className="flex items-center gap-1 group/name">
           <div className="text-[14px] font-medium text-[rgba(255,255,255,0.85)] truncate flex-1">{gallery.name}</div>
           <button type="button"
-                  onMouseDown={e => { e.stopPropagation(); onRename?.(gallery) }}
+                  onMouseDown={e => { e.stopPropagation(); onRenameFolder?.(gallery) }}
                   className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-[rgba(255,255,255,0.8)] p-0.5 z-20 relative"
-                  title={t('Rename gallery')}>
+                  title={t('Rename folder on disk')}>
             <Pencil size={10} />
           </button>
         </div>
@@ -1010,6 +960,9 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
   const [removing, setRemoving]               = useState(false)
   const [zipping, setZipping]                 = useState(false)
   const [showMergeModal, setShowMergeModal]   = useState(false)
+  const [bulkTagOpen, setBulkTagOpen]         = useState(false)
+  const [bulkPendingTags, setBulkPendingTags] = useState([])
+  const [bulkTagging, setBulkTagging]         = useState(false)
   const qc = useQueryClient()
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
@@ -1088,9 +1041,27 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       }
     } catch (e) { skipped += batch.length }
     toast.dismiss('bulk-add')
-    if (added > 0) toast.success(`Sent ${added} galleries to viewer`)
+    if (added > 0) toast.success(`Sent ${added} galleries to Playlists`)
     if (skipped > 0) toast(t('Some were already queued or queue is full'), { icon: 'ℹ️' })
     onDone()
+  }
+
+  const handleBulkTags = async () => {
+    if (!bulkPendingTags.length || bulkTagging) return
+    setBulkTagging(true)
+    try {
+      const { data } = await galleriesApi.bulkAddTags(selectedIds, bulkPendingTags)
+      toast.success(`Added ${data.added} tag${data.added === 1 ? '' : 's'} to ${data.updated} ${data.updated === 1 ? 'gallery' : 'galleries'}`)
+      qc.invalidateQueries({ queryKey: ['galleries'] })
+      qc.invalidateQueries({ queryKey: ['tags'] })
+      setBulkPendingTags([])
+      setBulkTagOpen(false)
+      onDone()
+    } catch (e) {
+      toast.error(apiErrorMessage(e, t('Could not add gallery tags')))
+    } finally {
+      setBulkTagging(false)
+    }
   }
 
   const handleVaultDelete = async () => {
@@ -1167,11 +1138,11 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
         {selectedIds.length} {t('selected')}
       </span>
 
-      {/* Action: Send to viewer */}
+      {/* Action: Send to Playlists */}
       <button type="button" onMouseDown={handleSendToViewer} disabled={assigning || zipping}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] disabled:opacity-40"
               style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-        <LayoutTemplate size={12} /> {t('Send to viewer')}
+        <LayoutTemplate size={12} /> {t('Send to Playlists')}
       </button>
 
       {/* Action: Export as zip */}
@@ -1191,6 +1162,14 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           </button>
         </>
       )}
+
+      {/* Action: Add gallery-level tags */}
+      <button type="button" onMouseDown={() => setBulkTagOpen(open => !open)}
+              disabled={assigning || removing || bulkTagging}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+              style={{ background: bulkTagOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+        <Tag size={12} /> {t('Add tags')}
+      </button>
 
       <div className="w-[1px] h-4 bg-[rgba(255,255,255,0.1)] mx-1" />
 
@@ -1255,6 +1234,31 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           />
         )}
       </AnimatePresence>
+
+      {bulkTagOpen && (
+        <div className="basis-full flex items-center gap-2 pt-1 pl-1" style={{ position: 'relative', zIndex: 90 }}>
+          <div className="w-64">
+            <TagAutocompleteInput
+              onAdd={name => setBulkPendingTags(tags => tags.includes(name) ? tags : [...tags, name])}
+              exclude={bulkPendingTags}
+              placeholder={t('Add gallery tag…')}
+              size="md"
+            />
+          </div>
+          {bulkPendingTags.map(name => (
+            <button key={name} type="button" onMouseDown={() => setBulkPendingTags(tags => tags.filter(tag => tag !== name))}
+                    className="px-2.5 py-1 rounded-full text-[13px] cursor-pointer"
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
+              {name} ×
+            </button>
+          ))}
+          <button type="button" onMouseDown={handleBulkTags} disabled={!bulkPendingTags.length || bulkTagging}
+                  className="px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)' }}>
+            {bulkTagging ? t('Applying…') : t('Apply tags')}
+          </button>
+        </div>
+      )}
 
       <button type="button" onMouseDown={onCancel}
               className="text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer ml-auto">
@@ -1336,7 +1340,6 @@ export default function GalleryList() {
   // Transient UI state (not persisted in URL)
   const [bulkMode, setBulkMode]       = useState(false)
   const [selected, setSelected]       = useState(new Set())
-  const [renamingGallery, setRenamingGallery]   = useState(null)
   const [renamingFolder, setRenamingFolder]     = useState(null)
   const [contextMenu, setContextMenu]           = useState(null) // { gallery, x, y }
   const [showCreate, setShowCreate]             = useState(false)
@@ -1534,7 +1537,7 @@ export default function GalleryList() {
 
   const handleCtxSendToPanel = useCallback(async (galleries) => {
     const targets = Array.isArray(galleries) ? galleries : [galleries]
-    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : t('Adding to Multi-panel…'))
+    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : t('Adding to Playlists…'))
     let added = 0, skipped = 0
     // One request for the whole selection. This used to be a sequential fetch
     // per gallery, so sending a few hundred meant a few hundred round trips.
@@ -1551,7 +1554,7 @@ export default function GalleryList() {
       }
     } catch { skipped += batch.length }
     toast.dismiss(tid)
-    if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Multi-panel`)
+    if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Playlists`)
     if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
     if (added === 0 && skipped === 0) toast.error(t('Could not load gallery images'))
   }, [addToMultiViewer, multiViewerQueue, MULTIVIEWER_MAX])
@@ -1823,7 +1826,7 @@ export default function GalleryList() {
                 onClick={() => navigate(`/galleries/${g.id}`)}
                 bulkMode={bulkMode}
                 thumbSize={thumbSize}
-                onRename={setRenamingGallery}
+                onRenameFolder={setRenamingFolder}
                 onContextMenu={handleContextMenu}
               />
             ))}
@@ -1837,7 +1840,6 @@ export default function GalleryList() {
 
       {/* Modals */}
       {showCreate && <CreateGalleryModal onClose={() => setShowCreate(false)} />}
-      {renamingGallery && <RenameModal gallery={renamingGallery} onClose={() => setRenamingGallery(null)} />}
       {renamingFolder  && <RenameFolderModal gallery={renamingFolder} onClose={() => setRenamingFolder(null)} />}
       {ctxMergingGalleries && (
         <BulkMergeModal
@@ -1877,7 +1879,6 @@ export default function GalleryList() {
             lastSelectedIdRef.current = contextMenu.gallery.id
           }}
           onOpen={() => navigate(`/galleries/${contextMenu.gallery.id}`)}
-          onRename={() => { setRenamingGallery(contextMenu.gallery) }}
           onRenameFolder={() => { setRenamingFolder(contextMenu.gallery) }}
           onToggleFav={() => {
             const targets = contextMenu.bulkGalleries ?? [contextMenu.gallery]
@@ -1886,7 +1887,7 @@ export default function GalleryList() {
           onMerge={() => setCtxMergingGalleries(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onRelocate={() => setRelocating(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onExportZip={() => handleCtxExportZip(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
-          onSendToPanel={() => handleCtxSendToPanel(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
+          onSendToPlaylist={() => handleCtxSendToPanel(contextMenu.bulkGalleries ?? [contextMenu.gallery])}
           onDelete={(mode) => {
             const targets = contextMenu.bulkGalleries ?? [contextMenu.gallery]
             if (mode === 'vault') doCtxDelete(targets, 'vault')

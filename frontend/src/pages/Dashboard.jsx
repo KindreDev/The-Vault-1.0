@@ -884,14 +884,14 @@ function DashboardContextMenu({ item, itemType, position, onClose }) {
       try {
         const res = await galleriesApi.images(item.id)
         const added = addToMultiViewer({ id: `gal-${item.id}`, type: 'gallery', media: item, images: res.data })
-        if (added) toast.success(t('Gallery added to multi-viewer'))
+        if (added) toast.success(t('Gallery added to Playlists'))
         else toast(t('Already in viewer or viewer is full'), { icon: '⚠️' })
       } catch {
         toast.error(t('Failed to load gallery images'))
       }
     } else {
       const added = addToMultiViewer({ id: `img-${item.id}`, type: 'image', media: item })
-      if (added) toast.success(t('Added to multi-viewer'))
+      if (added) toast.success(t('Added to Playlists'))
       else toast(t('Already in viewer or viewer is full'), { icon: '⚠️' })
     }
   }
@@ -907,7 +907,7 @@ function DashboardContextMenu({ item, itemType, position, onClose }) {
         {item.name || item.filename || t('Item')}
       </div>
       <DashMenuButton icon={Eye}           label={t('Open')}                   onMouseDown={(e) => { e.stopPropagation(); handleOpen() }} />
-      <DashMenuButton icon={LayoutTemplate} label={t('Send to multi-viewer')}  onMouseDown={(e) => { e.stopPropagation(); handleSendToViewer() }} />
+      <DashMenuButton icon={LayoutTemplate} label={t('Send to Playlists')}  onMouseDown={(e) => { e.stopPropagation(); handleSendToViewer() }} />
     </div>,
     document.body
   )

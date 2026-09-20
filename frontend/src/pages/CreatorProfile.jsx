@@ -1273,11 +1273,11 @@ export default function CreatorProfile() {
       .catch(() => toast.error(t('Could not update favourite')))
   }
   const ctxGallerySendToPanel = async (g) => {
-    if (multiViewerQueue.length >= MULTIVIEWER_MAX) { toast(t('Multi-panel queue is full'), { icon: 'ℹ️' }); return }
+    if (multiViewerQueue.length >= MULTIVIEWER_MAX) { toast(t('Playlists queue is full'), { icon: 'ℹ️' }); return }
     try {
       const res = await galleriesApi.images(g.id)
       const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
-      ok ? toast.success(t('Added to Multi-panel')) : toast(t('Already queued'), { icon: 'ℹ️' })
+      ok ? toast.success(t('Added to Playlists')) : toast(t('Already queued'), { icon: 'ℹ️' })
     } catch { toast.error(t('Could not load gallery images')) }
   }
   const ctxGalleryDelete = async (g, mode) => {
@@ -1289,7 +1289,7 @@ export default function CreatorProfile() {
   }
   const ctxMediaSendToPanel = (img) => {
     const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
-    ok ? toast.success(t('Sent to Multi-panel')) : toast(t('Already queued or queue full'), { icon: 'ℹ️' })
+    ok ? toast.success(t('Sent to Playlists')) : toast(t('Already queued or queue full'), { icon: 'ℹ️' })
   }
   const ctxSetAvatar = (img, creatorId = parseInt(id)) => {
     if (img.is_video) { setFramePicker({ image: img, creatorId, mode: 'avatar' }); return }
@@ -1331,7 +1331,7 @@ export default function CreatorProfile() {
           label: ctxMenu.item.is_favorite ? t('Unfavorite') : t('Favorite'),
           action: () => ctxGalleryFav(ctxMenu.item),
           style: ctxMenu.item.is_favorite ? 'normal' : 'amber' },
-        { icon: LayoutTemplate, label: t('Send to Multi-panel'),  action: () => ctxGallerySendToPanel(ctxMenu.item), style: 'accent' },
+        { icon: LayoutTemplate, label: t('Send to Playlists'),  action: () => ctxGallerySendToPanel(ctxMenu.item), style: 'accent' },
         DIVIDER,
         { icon: FolderMinus,    label: t('Remove from vault'),    action: () => ctxGalleryDelete(ctxMenu.item, 'vault') },
         { icon: Trash2,         label: t('Delete from disk'),     action: () => ctxGalleryDelete(ctxMenu.item, 'disk'), style: 'danger' },
@@ -1346,7 +1346,7 @@ export default function CreatorProfile() {
         const bannerLabel = img.is_video ? t('Set banner from video…') : t('Set as banner')
         return [
           { icon: Eye,            label: t('View'),                 action: () => img.gallery_id && navigate(`/galleries/${img.gallery_id}?openImage=${img.id}`) },
-          { icon: LayoutTemplate, label: t('Send to Multi-panel'),  action: () => ctxMediaSendToPanel(img), style: 'accent' },
+          { icon: LayoutTemplate, label: t('Send to Playlists'),  action: () => ctxMediaSendToPanel(img), style: 'accent' },
           DIVIDER,
           multi
             ? { icon: UserCircle, label: avatarLabel, children: imgCreators.map(c => ({ label: c.name, action: () => ctxSetAvatar(img, c.id) })) }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ExternalLink, Pencil, FolderSymlink, HardDrive,
+  ExternalLink, FolderSymlink, HardDrive,
   Star, StarOff, GitMerge, Trash2, Archive, LayoutTemplate, MousePointer2,
 } from 'lucide-react'
 
@@ -16,19 +16,18 @@ const DIVIDER = '---'
  *   position    – { x, y } cursor coords
  *   onClose     – close without action
  *   onOpen      – navigate into gallery
- *   onRename    – rename display name
  *   onRenameFolder – rename folder on disk
  *   onToggleFav – toggle favourite
  *   onMerge       – open merge modal
  *   onRelocate    – move the folder elsewhere on the drive
  *   onExportZip   – export gallery as a zip archive
- *   onSendToPanel – add to multi-panel viewer queue and navigate there
+ *   onSendToPlaylist – add to the Playlists queue
  *   onDelete      – open delete modal
  */
 export default function GalleryContextMenu({
   gallery, position, onClose, bulkCount,
-  onOpen, onRename, onRenameFolder,
-  onToggleFav, onMerge, onRelocate, onExportZip, onSendToPanel, onDelete,
+  onOpen, onRenameFolder,
+  onToggleFav, onMerge, onRelocate, onExportZip, onSendToPlaylist, onDelete,
   onSelectMode,
 }) {
   const menuRef = useRef(null)
@@ -59,16 +58,15 @@ export default function GalleryContextMenu({
     ...(onSelectMode   ? [{ icon: MousePointer2, label: 'Select',        action: onSelectMode,  style: 'normal' }] : []),
     { icon: ExternalLink, label: 'Open',               action: onOpen,         style: 'normal' },
     DIVIDER,
-    { icon: Pencil,        label: 'Rename',             action: onRename,       style: 'normal' },
     { icon: FolderSymlink, label: 'Rename folder',      action: onRenameFolder, style: 'normal' },
     DIVIDER,
     { icon: isFav ? StarOff : Star,
                            label: isFav ? 'Unfavorite' : 'Favorite',
                                                         action: onToggleFav,    style: isFav ? 'normal' : 'amber' },
-    { icon: GitMerge,      label: 'Merge into…',        action: onMerge,        style: 'normal' },
+    ...(onMerge && bulkCount > 1 ? [{ icon: GitMerge, label: 'Merge into…', action: onMerge, style: 'normal' }] : []),
     ...(onRelocate ? [{ icon: HardDrive, label: 'Relocate…', action: onRelocate, style: 'normal' }] : []),
     { icon: Archive,       label: 'Export as zip…',     action: onExportZip,    style: 'normal' },
-    { icon: LayoutTemplate, label: 'Send to Multi-panel', action: onSendToPanel, style: 'accent' },
+    { icon: LayoutTemplate, label: 'Send to Playlists', action: onSendToPlaylist, style: 'accent' },
     DIVIDER,
     { icon: Trash2,        label: 'Remove from vault',  action: () => onDelete('vault'), style: 'normal' },
     { icon: Trash2,        label: 'Delete from disk',   action: () => onDelete('disk'),  style: 'danger' },

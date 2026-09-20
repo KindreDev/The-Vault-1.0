@@ -237,7 +237,7 @@ img.img-loaded:not([data-no-fade]) { opacity: 1; }
   border-radius: 6px;
 }
 
-/* Multi-panel slideshow progress bar */
+/* Playlist slideshow progress bar */
 @keyframes panel-progress {
   from { width: 0%; }
   to   { width: 100%; }

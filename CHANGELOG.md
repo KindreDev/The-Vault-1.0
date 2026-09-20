@@ -66,6 +66,10 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Gallery editing now uses the real folder rename flow, keeps media handles from blocking Windows renames, and updates image and funscript paths immediately.
+- GalleryView toolbar controls now share the Filename control's 16px baseline, replaces the gallery cum control with a Send to Playlists action, and keeps folder metadata synchronized after renames.
+- The former multi-panel wording is now presented as Playlists throughout the Vault while retaining the legacy route for existing links.
+- Gallery selection mode can now add gallery-level tags to every selected gallery.
 - Creator edit dialogs now render in a viewport-level portal so the profile page cannot scroll underneath or carry the dialog away during page transitions.
 - Gallery, image, and video selection menus now stay above the bulk-action bar, remove the redundant gallery context-menu selection entry, and preserve Shift-click range selection when bulk mode starts from a context menu.
 - Gallery, image, video, and creator filter toolbars now use consistent 16px text and rounded controls, including search fields.
@@ -185,6 +189,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay now repairs legacy duplicate evidence instead of showing `None/64`, always loads the original Vault thumbnail in comparisons, keeps the matched original visible in regular previews, and gives video previews an explicit Back to Loading Bay control.
 
 ### Removed
+- The redundant display-name rename action was removed; gallery renaming now consistently means renaming the folder on disk.
 - Obsolete Legacy cards and their owned copies were removed while current Vault TCG cards remain intact.
 
 ## [1.8.0] - 2026-08-13

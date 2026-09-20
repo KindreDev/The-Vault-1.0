@@ -323,7 +323,7 @@ export const useVaultStore = create((set, get) => ({
   openViewer: (galleryId, idx = 0) => set({ viewerGalleryId: galleryId, viewerImageIdx: idx }),
   closeViewer: () => set({ viewerGalleryId: null, viewerImageIdx: 0 }),
 
-  // Multi-panel state
+  // Playlist panel state
   panels: [
     { id: 1, sourceType: 'gallery', sourceId: null, name: 'Panel 1', interval: 8, playing: true },
     { id: 2, sourceType: 'gallery', sourceId: null, name: 'Panel 2', interval: 5, playing: true },
@@ -337,7 +337,7 @@ export const useVaultStore = create((set, get) => ({
 
   // ── Visible media registry ──────────────────────────────────────────────────
   // Which image is on screen right now, per surface. Keys are stable strings:
-  // 'viewer' for the gallery image viewer, 'panel-<id>' for each multi-panel
+  // 'viewer' for the gallery image viewer, 'panel-<id>' for each playlist panel
   // cell. Surfaces register on image change and unregister on unmount.
   //
   // Edge Mode reads this to credit every visible image when an edge fires, and
@@ -444,7 +444,7 @@ export const useVaultStore = create((set, get) => ({
            ?? Object.values(s.visibleMedia).map(e => e?.current).find(Boolean) ?? null
   },
 
-  // Multi-viewer queue — files or galleries queued for the multi-panel viewer
+  // Playlist queue — files or galleries queued for the panel viewer
   // Item format: { id: string (e.g. 'img-1' or 'gal-1'), type: 'image'|'gallery', media: Object, images?: Array }
   // Was 999, which put ~95% of a 21k-gallery library out of reach of "Send to
   // viewer". Entries are lightweight references plus their image list; the
@@ -581,7 +581,7 @@ export const useVaultStore = create((set, get) => ({
   avatarBust: 1,
   bumpAvatarBust: () => set(s => ({ avatarBust: s.avatarBust + 1 })),
 
-  // Multi-panel fullscreen — hides the sidebar in Layout
+  // Playlist fullscreen — hides the sidebar in Layout
   multiPanelFullscreen: false,
   setMultiPanelFullscreen: (v) => set({ multiPanelFullscreen: v }),
 
@@ -614,7 +614,7 @@ export const useVaultStore = create((set, get) => ({
 
   // ── End-of-session behaviour ────────────────────────────────────────────────
   // Ending a session counts a climax against everything on screen. That is the
-  // right default — it's why the button exists, and on a multi-panel wall it
+  // right default — it's why the button exists, and on a playlist wall it
   // saves marking every file by hand — but not every session ends that way, and
   // a counter that can only ever be too high is a counter you stop trusting.
   //   always → count it, no questions (previous behaviour, still the default)

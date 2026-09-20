@@ -25,6 +25,27 @@ def _make_writable(path: str) -> None:
         return
 
 
+def rename_path(source: str, destination: str) -> None:
+    """Rename a file or directory, retrying transient Windows sharing locks."""
+    last_error = None
+    for attempt, delay in enumerate((0, *_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            os.rename(source, destination)
+            return
+        except FileNotFoundError:
+            raise
+        except FileExistsError:
+            raise
+        except OSError as exc:
+            last_error = exc
+            if attempt == len(_RETRY_DELAYS):
+                break
+
+    raise last_error  # type: ignore[misc]
+
+
 def remove_file(path: str | None, *, on_error: Callable[[str, Exception], None] | None = None) -> None:
     """Remove one file, treating an already-missing path as success.
 

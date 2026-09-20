@@ -5,10 +5,10 @@ import { useVaultStore } from '../store/vault.js'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
-// A preview or viewer can still have an open video handle when its delete
-// action is clicked. Release every browser media pipeline before a destructive
-// disk request; the backend also retries briefly for the handle-close race.
-function releaseMediaBeforeDiskDelete() {
+// A preview or viewer can still have an open media handle when a disk
+// mutation is clicked. Release every browser media pipeline before the
+// request; the backend also retries briefly for the handle-close race.
+function releaseMediaBeforeDiskMutation() {
   if (typeof document === 'undefined') return
   document.querySelectorAll('video').forEach(video => {
     video.pause()
@@ -95,7 +95,7 @@ export const galleriesApi = {
   create:        (d)               => api.post('/galleries/', d),
   update:        (id, d)           => api.patch(`/galleries/${id}`, d),
   delete:        (id, delete_files)=> {
-    if (delete_files) releaseMediaBeforeDiskDelete()
+    if (delete_files) releaseMediaBeforeDiskMutation()
     return api.delete(`/galleries/${id}`, { params: { delete_files } })
   },
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
@@ -105,7 +105,7 @@ export const galleriesApi = {
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
-  // Many galleries in one round trip — used when queueing into multi-panel.
+  // Many galleries in one round trip — used when queueing into Playlists.
   bulkImages:    (galleryIds)      => api.post('/galleries/bulk-images', { gallery_ids: galleryIds }),
   cum:           (id)              => api.post(`/galleries/${id}/cum`),
   addCreator:    (id, creatorId)   => api.post(`/galleries/${id}/creators/${creatorId}`),
@@ -124,7 +124,11 @@ export const galleriesApi = {
   // Direct children only — the panel expands one level at a time.
   subgalleries:  (id)             => api.get(`/galleries/${id}/subgalleries`),
   merge:         (targetId, body) => api.post(`/galleries/${targetId}/merge`, body),
-  renameFolder:  (id, folderName) => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }),
+  renameFolder:  (id, folderName) => {
+    releaseMediaBeforeDiskMutation()
+    return api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName })
+  },
+  bulkAddTags:    (galleryIds, tags) => api.post('/galleries/bulk-tags', { gallery_ids: galleryIds, tags }),
   extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
   randomMix:     (d)              => api.post('/galleries/random-mix', d),
   createMix:     (d)              => api.post('/galleries/mix', d),
@@ -261,7 +265,7 @@ export const sessionsApi = {
   // leaves rows only the user can put right.
   update:     (id, d) => api.patch(`/sessions/${id}`, d),
   delete:     (id)    => api.delete(`/sessions/${id}`),
-  // A multi-panel session writes one row per creator — deleting what looks like
+  // A playlist session writes one row per creator — deleting what looks like
   // one entry has to take the whole group.
   bulkDelete: (ids)   => api.post('/sessions/bulk-delete', { ids }),
   // Long-range analysis: the six-year collecting story + the computed read.
@@ -364,7 +368,7 @@ export const playlistsApi = {
   randomMix:   (d)      => api.post('/playlists/random-mix', d),
 }
 
-// ── Panel playlists (multi-panel viewer setups) ───────────────────────────────
+// ── Panel playlists ──────────────────────────────────────────────────────────
 // Separate from playlistsApi above, which serves the mobile app.
 export const panelPlaylistsApi = {
   list:     ()        => api.get('/panel-playlists/'),

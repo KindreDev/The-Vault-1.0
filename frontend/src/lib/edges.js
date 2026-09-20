@@ -6,7 +6,7 @@
  * with a counter they can never move. This is the same event the device
  * reporter fires, just triggered deliberately.
  *
- * Credits every file on screen (a multi-panel wall genuinely was all being
+ * Credits every file on screen (a playlist wall genuinely was all being
  * looked at) and falls back to whatever single file has focus.
  */
 import toast from 'react-hot-toast'

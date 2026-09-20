@@ -134,6 +134,7 @@ export default function App() {
           <Route path="videos"       element={<ImageList key="videos" onlyVideos />} />
           <Route path="creators"     element={<CreatorList />} />
           <Route path="creators/:id" element={<CreatorProfile />} />
+          <Route path="playlists"      element={<MultiPanel />} />
           <Route path="multi-panel"     element={<MultiPanel />} />
           <Route path="device-control"  element={<DeviceControl />} />
           <Route path="quests"       element={<Quests />} />

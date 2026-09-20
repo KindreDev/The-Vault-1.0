@@ -123,8 +123,8 @@ export default function ImageContextMenu({
           <MenuItem icon={ImagePlus} label="Set as cover" onMouseDown={(e) => { e.stopPropagation(); onSetCover?.(); onClose() }} />
         )}
 
-        {/* Send to Multi-panel */}
-        <MenuItem icon={LayoutTemplate} label="Send to Multi-panel" accent onMouseDown={(e) => { e.stopPropagation(); onSendToViewer?.(); onClose() }} />
+        {/* Send to Playlists */}
+        <MenuItem icon={LayoutTemplate} label="Send to Playlists" accent onMouseDown={(e) => { e.stopPropagation(); onSendToViewer?.(); onClose() }} />
 
         {/* Relocate / Copy to gallery — gated on their handlers so a caller that
             forgets to pass one doesn't render a menu item that does nothing. */}

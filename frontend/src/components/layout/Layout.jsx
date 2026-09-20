@@ -88,14 +88,14 @@ export default function Layout() {
   // Use the primary path segment to trigger animations when switching pages
   const pageKey = location.pathname.split('/')[1] || '/'
 
-  // Multi-panel viewer must not have a scrollable main — scroll events
+  // Playlists must not have a scrollable main — scroll events
   // need to reach the panels uninterrupted so wheel zoom works.
-  const isMultiPanel = location.pathname.startsWith('/multi-panel')
+  const isPlaylistsPage = location.pathname.startsWith('/playlists') || location.pathname.startsWith('/multi-panel')
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-bg)' }}>
       {!multiPanelFullscreen && <Sidebar />}
-      <main className={`flex-1 min-w-0 bg-[var(--c-bg)] ${isMultiPanel ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <main className={`flex-1 min-w-0 bg-[var(--c-bg)] ${isPlaylistsPage ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={pageKey}

@@ -750,7 +750,7 @@ function SessionsModal({ onClose }) {
   // Sessions are recorded automatically, so a crash, a forgotten stop or a
   // mis-attributed creator leaves a row only the user can put right. Editing
   // targets the group's first row (the one carrying the duration); deleting
-  // takes every row in the group, since one multi-panel session writes several.
+  // takes every row in the group, since one playlist session writes several.
   const [editing,  setEditing]  = React.useState(null)   // group object
   const [adding,   setAdding]   = React.useState(false)
   const [busyIds,  setBusyIds]  = React.useState(new Set())
@@ -1029,7 +1029,7 @@ function RowAction({ icon: Icon, label, danger, onClick }) {
  *
  * `session` null = adding one the app never recorded. Otherwise it is a group
  * from the history list, and the patch goes to the row that actually carries
- * the duration — in a multi-panel session that is not necessarily the first.
+ * the duration — in a playlist session that is not necessarily the first.
  *
  * Manual adds are logged with skip_xp: XP is for gooning, not for typing, and
  * an editable XP source would make the whole progression meaningless. Editing
@@ -1064,7 +1064,7 @@ function SessionEditor({ session, onClose, onSaved }) {
           duration_sec: mins * 60,
           logged_at: loggedAt,
         })
-        // Sibling rows of a multi-panel session share the timestamp — moving
+        // Sibling rows of a playlist session share the timestamp — moving
         // only one would split the group into two entries in the history.
         for (const id of session.ids) {
           if (id === (session.durationId ?? session.ids[0])) continue
@@ -3754,7 +3754,7 @@ export function MultiPanel() {
   return (
     <div className="p-5 flex items-center justify-center h-full">
       <div className="text-center">
-        <div className="text-[rgba(255,255,255,0.3)] text-[14px] mb-2">{t('Multi-panel viewer')}</div>
+        <div className="text-[rgba(255,255,255,0.3)] text-[14px] mb-2">{t('Playlists')}</div>
         <div className="text-[rgba(255,255,255,0.15)] text-[12px]">{t('Coming in Phase 2 — the UI mockup is ready to implement!')}</div>
       </div>
     </div>
