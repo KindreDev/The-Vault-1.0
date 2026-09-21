@@ -20,6 +20,7 @@ from services import entity_stats
 from services.file_ops import remove_file
 from services.gallery_deletion import detach_image_references
 from services.tag_filters import apply_image_tag_filters
+from services.video_playback import VideoPlaybackError, ensure_browser_playback
 
 router = APIRouter()
 
@@ -196,7 +197,7 @@ def list_images(
     favorite: Optional[bool] = None,
     has_funscript: Optional[bool] = None,   # only videos that have a funscript
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
-    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | view_count | date_modified | random
+    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | duration | view_count | date_modified | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
     _seed: float = 0,  # stable shuffle seed for sort_by=random. float, because the
                        # client seeds with Math.random(); scaled to an int below.
@@ -240,6 +241,9 @@ def list_images(
         q = q.order_by(Image.cum_count.asc() if (use_asc if use_asc is not None else False) else Image.cum_count.desc())
     elif sort_by == "file_size":
         q = q.order_by(Image.file_size.asc() if (use_asc if use_asc is not None else False) else Image.file_size.desc())
+    elif sort_by == "duration":
+        asc = (use_asc if use_asc is not None else False)
+        q = q.order_by(nullslast(Image.duration.asc() if asc else Image.duration.desc()))
     elif sort_by == "view_count":
         q = q.order_by(Image.view_count.asc() if (use_asc if use_asc is not None else False) else Image.view_count.desc())
     elif sort_by == "date_modified":
@@ -371,6 +375,8 @@ def update_image(image_id: int, data: ImageUpdate, db: Session = Depends(get_db)
     if data.rating is not None:
         img.rating = data.rating
         xp_event = gami.notify_action(db, "image_rated")
+    if data.notes is not None:
+        img.notes = data.notes
     if data.is_favorite is not None:
         img.is_favorite = data.is_favorite
     if data.gallery_id is not None and data.gallery_id != img.gallery_id:
@@ -981,7 +987,7 @@ def unlink_funscript(image_id: int, delete_file: bool = False, db: Session = Dep
 
 
 @router.get("/{image_id}/file")
-def serve_image_file(image_id: int, request: Request, db: Session = Depends(get_db)):
+def serve_image_file(image_id: int, request: Request, transcode: bool = Query(False), db: Session = Depends(get_db)):
     # IMPORTANT: keep as sync def — FastAPI runs sync handlers in a thread pool,
     # so db.query() never blocks the event loop. Making this async def would run
     # the synchronous db.query() on the event loop and stall all other requests.
@@ -994,7 +1000,11 @@ def serve_image_file(image_id: int, request: Request, db: Session = Depends(get_
     if not os.path.exists(img.file_path):
         raise HTTPException(404, f"File not found on disk: {img.file_path}")
     if ext in _VIDEO_EXTS:
-        return _video_response(img.file_path, request.headers.get("range"), request)
+        try:
+            playback_path, _ = ensure_browser_playback(img.file_path, image_id, force=transcode)
+        except VideoPlaybackError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        return _video_response(playback_path, request.headers.get("range"), request)
     return FileResponse(img.file_path)
 
 _PREVIEW_WIDTHS = {720, 1080, 1440}   # allowed sizes so the cache can't be spammed

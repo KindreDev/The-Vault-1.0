@@ -1144,6 +1144,7 @@ def gallery_images(
     q = db.query(Image).options(
         selectinload(Image.tags),
         selectinload(Image.gallery).selectinload(Gallery.creators),
+        selectinload(Image.image_creators),
     )
 
     if gallery.is_mix:
@@ -1202,7 +1203,16 @@ def _enrich_image(img: Image) -> dict:
     creators = []
     if img.gallery:
         creators = [{"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in img.gallery.creators]
+    file_creators = getattr(img, "image_creators", []) or []
+    gallery_ids = {c["id"] for c in creators}
+    creators.extend(
+        {"id": c.id, "name": c.name, "creator_type": c.creator_type}
+        for c in file_creators
+        if c.id not in gallery_ids
+    )
     d["creators"] = creators
+    d["has_image_creators"] = bool(file_creators)
+    d["file_creator_ids"] = [c.id for c in file_creators]
     d["gallery_name"] = img.gallery.name if img.gallery else None
     return d
 

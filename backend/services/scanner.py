@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import json
+import stat
 import hashlib
 import subprocess
 from datetime import datetime
@@ -10,7 +12,7 @@ from sqlalchemy.orm import Session
 from PIL import Image as PILImage
 
 from models import Gallery, Image, LibraryRoot, Tag, TagSource, Creator
-from database import DATA_DIR
+from database import CONFIG_FILE, DATA_DIR
 import services.gamification as gami
 from services.gallery_deletion import delete_gallery_record
 from services.media_provenance import apply_generation_provenance_tag
@@ -21,6 +23,58 @@ def _natural_sort_key(s: str):
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv"}
+
+_HOUSEKEEPING_DIRS = {"@eadir", "$recycle.bin", "system volume information"}
+
+
+def ignore_hidden_media_enabled() -> bool:
+    """Hidden/system media is excluded by default, but collectors may opt in."""
+    try:
+        if os.path.isfile(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as handle:
+                return json.load(handle).get("ignore_hidden_media", True) is not False
+    except Exception:
+        pass
+    return True
+
+
+def should_ignore_scan_path(path: str) -> bool:
+    """Return whether a file/folder is hidden metadata rather than library media.
+
+    Dot-prefixed paths cover macOS/Linux and many cross-platform tools. Windows
+    Hidden/System attributes catch cache folders whose names look ordinary.
+    """
+    name = os.path.basename(os.path.normpath(path))
+    if name.startswith(".") or name.casefold() in _HOUSEKEEPING_DIRS:
+        return True
+    try:
+        attrs = getattr(os.stat(path, follow_symlinks=False), "st_file_attributes", 0)
+        hidden = getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2)
+        system = getattr(stat, "FILE_ATTRIBUTE_SYSTEM", 0x4)
+        return bool(attrs & (hidden | system))
+    except OSError:
+        return False
+
+
+def filter_hidden_walk_entries(
+    dirpath: str,
+    dirnames: list[str],
+    filenames: list[str],
+    *,
+    enabled: bool,
+) -> tuple[list[str], int]:
+    """Prune ignored directories in-place and return visible files + skip count."""
+    if not enabled:
+        return filenames, 0
+    kept_dirs = [name for name in dirnames if not should_ignore_scan_path(os.path.join(dirpath, name))]
+    ignored = len(dirnames) - len(kept_dirs)
+    dirnames[:] = kept_dirs
+    visible_files = [
+        name for name in filenames
+        if not should_ignore_scan_path(os.path.join(dirpath, name))
+    ]
+    ignored += len(filenames) - len(visible_files)
+    return visible_files, ignored
 
 # DETACHED_PROCESS (0x8) — no console allocated at all, so no conhost.exe is created.
 # CREATE_NO_WINDOW (0x8000000) still allocates an invisible console and spawns conhost.
@@ -56,6 +110,7 @@ _scan_state = {
     "new_galleries": 0,
     "new_images": 0,
     "provenance_tagged": 0,
+    "ignored_paths": 0,
     "message": "Idle",
     "cancelled": False,
 }
@@ -660,6 +715,7 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
         "new_galleries": 0,
         "new_images": 0,
         "provenance_tagged": 0,
+        "ignored_paths": 0,
         "moved_images": 0,
         "removed_galleries": 0,
         "removed_images": 0,
@@ -691,10 +747,15 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
             )
 
         folders_to_scan = []
+        ignore_hidden = ignore_hidden_media_enabled()
         for root in roots:
             if not os.path.exists(root.path):
                 continue
             for dirpath, dirnames, filenames in os.walk(root.path):
+                filenames, ignored = filter_hidden_walk_entries(
+                    dirpath, dirnames, filenames, enabled=ignore_hidden,
+                )
+                _scan_state["ignored_paths"] += ignored
                 has_media = any(
                     Path(f).suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
                     for f in filenames
@@ -739,6 +800,8 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
             )
             if _scan_state.get("provenance_tagged"):
                 msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
+            if _scan_state.get("ignored_paths"):
+                msg += f" {_scan_state['ignored_paths']} hidden/system paths ignored."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             if removed_images:
@@ -776,6 +839,7 @@ def scan_folder_path(db: Session, folder_path: str):
         "new_galleries": 0,
         "new_images": 0,
         "provenance_tagged": 0,
+        "ignored_paths": 0,
         "moved_images": 0,
         "removed_images": 0,
         "message": f"Scanning {folder_path}...",
@@ -785,7 +849,12 @@ def scan_folder_path(db: Session, folder_path: str):
 
     try:
         folders_to_scan = []
+        ignore_hidden = ignore_hidden_media_enabled()
         for dirpath, dirnames, filenames in os.walk(folder_path):
+            filenames, ignored = filter_hidden_walk_entries(
+                dirpath, dirnames, filenames, enabled=ignore_hidden,
+            )
+            _scan_state["ignored_paths"] += ignored
             has_media = any(
                 Path(f).suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
                 for f in filenames
@@ -821,6 +890,8 @@ def scan_folder_path(db: Session, folder_path: str):
             )
             if _scan_state.get("provenance_tagged"):
                 msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
+            if _scan_state.get("ignored_paths"):
+                msg += f" {_scan_state['ignored_paths']} hidden/system paths ignored."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             _scan_state["message"] = msg

@@ -33,7 +33,8 @@ from database import CONFIG_FILE, SessionLocal
 from services.scanner import (
     IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
     make_thumb_path, generate_thumbnail, generate_video_thumbnail,
-    scan_folder_path, get_image_dimensions,
+    scan_folder_path, get_image_dimensions, ignore_hidden_media_enabled,
+    should_ignore_scan_path, filter_hidden_walk_entries,
 )
 
 ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z"}
@@ -208,7 +209,11 @@ def _tree_signature(path: str) -> tuple[int, int, float]:
     """Return (supported file count, total bytes, newest mtime) for a tree."""
     count = total = 0
     newest = 0.0
-    for dirpath, _dirs, files in os.walk(path):
+    ignore_hidden = ignore_hidden_media_enabled()
+    for dirpath, dirs, files in os.walk(path):
+        files, _ = filter_hidden_walk_entries(
+            dirpath, dirs, files, enabled=ignore_hidden,
+        )
         for name in files:
             full = os.path.join(dirpath, name)
             try:
@@ -722,6 +727,7 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
         # Files directly under a root stay loose. Each top-level child directory
         # becomes one movable gallery package and owns every candidate below it.
         candidates = []  # (root, full_path, intake_folder_or_none)
+        ignore_hidden = ignore_hidden_media_enabled()
         for root in roots:
             if not os.path.isdir(root.path):
                 continue
@@ -731,6 +737,8 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                 continue
 
             for entry in root_entries:
+                if ignore_hidden and should_ignore_scan_path(entry.path):
+                    continue
                 if entry.is_file():
                     if _classify(os.path.splitext(entry.name)[1]) and not _is_partial(entry.name, entry.path):
                         candidates.append((root, entry.path, None))
@@ -741,7 +749,10 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                 folder_files = []
                 videos = total_size = 0
                 newest = 0.0
-                for dirpath, _dirs, files in os.walk(entry.path):
+                for dirpath, dirs, files in os.walk(entry.path):
+                    files, _ = filter_hidden_walk_entries(
+                        dirpath, dirs, files, enabled=ignore_hidden,
+                    )
                     for filename in files:
                         if _classify(os.path.splitext(filename)[1]) is None:
                             continue

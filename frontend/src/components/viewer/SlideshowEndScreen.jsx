@@ -39,7 +39,7 @@ function Tile({ index, icon: Icon, label, sublabel, onClick, busy, highlighted }
       <span
         className="absolute top-3 left-3 flex items-center justify-center rounded-lg font-mono"
         style={{
-          width: 26, height: 26, fontSize: 16,
+          width: 26, height: 26, fontSize: 18,
           background: highlighted ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)',
           color: highlighted ? '#fff' : 'rgba(255,255,255,0.5)',
         }}>
@@ -50,7 +50,7 @@ function Tile({ index, icon: Icon, label, sublabel, onClick, busy, highlighted }
       <div className="text-center">
         <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.88)', fontWeight: 600 }}>{label}</div>
         {sublabel && (
-          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{sublabel}</div>
+          <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{sublabel}</div>
         )}
       </div>
     </motion.button>
@@ -203,7 +203,7 @@ export default function SlideshowEndScreen({
       style={{ background: 'rgba(6,6,6,0.975)' }}>
 
       <div className="text-center mb-8">
-        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           {t('End of')} {galleryName}
         </div>
         <div style={{ fontSize: 30, fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginTop: 6 }}>
@@ -237,7 +237,7 @@ export default function SlideshowEndScreen({
         <button
           onClick={() => setAutoPick(a => !a)}
           className="cursor-pointer transition-colors hover:text-white"
-          style={{ fontSize: 16, color: autoPick ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)' }}>
+          style={{ fontSize: 18, color: autoPick ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.3)' }}>
           {autoPick
             ? `${t('More like this in')} ${countdown}s · ${t('click to cancel')}`
             : t('Auto-pick off')}
@@ -246,7 +246,7 @@ export default function SlideshowEndScreen({
         <button
           onClick={onDismiss}
           className="cursor-pointer transition-colors hover:text-white"
-          style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
+          style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }}>
           {t('Back to the gallery')}
         </button>
       </div>

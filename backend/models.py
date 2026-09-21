@@ -321,6 +321,7 @@ class Image(Base):
     preview_path  = Column(String, nullable=True)      # animated preview
 
     rating        = Column(Float, default=0.0)
+    notes         = Column(Text, default="")
     cum_count     = Column(Integer, default=0)
     edge_count    = Column(Integer, default=0)   # lifetime, never resets
     view_count    = Column(Integer, default=0)
@@ -392,6 +393,9 @@ class TagVocabEntry(Base):
     category            = Column(String, default="general")
     enabled             = Column(Boolean, default=False)
     is_builtin_default  = Column(Boolean, default=False)   # shipped in WD14_TAG_MAP/JOYTAG_TAG_MAP
+    # Optional per-raw-tag confidence floor. NULL means use the run's global
+    # threshold (and the tagger's safety floor for color tags).
+    confidence_threshold = Column(Float, nullable=True)
 
     __table_args__ = (UniqueConstraint("model", "raw_tag", name="uq_tag_vocab_model_raw"),)
 

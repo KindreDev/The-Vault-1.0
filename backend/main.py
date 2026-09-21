@@ -16,6 +16,32 @@ import collections
 import io
 
 
+def _wait_for_restart_handoff():
+    """A replacement process waits for the previous server to release port 8000."""
+    marker = os.environ.pop("VAULT_RESTART_HANDOFF", None)
+    if not marker:
+        return
+    import socket
+    import time
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            if sock.connect_ex(("127.0.0.1", 8000)) != 0:
+                return
+        time.sleep(0.1)
+
+
+_wait_for_restart_handoff()
+
+_restart_action = os.environ.pop("VAULT_RESTART_ACTION", None)
+if _restart_action == "reset_collection":
+    # This runs in the replacement process after the old process and all of its
+    # SQLite handles are gone, so Windows cannot leave the reset half-finished.
+    from services.process_restart import wipe_collection_database
+    wipe_collection_database()
+
+
 def _register_nvidia_dll_dirs():
     """Windows: inject pip-installed nvidia DLL directories into PATH and os.add_dll_directory.
 
@@ -233,6 +259,7 @@ def _migrate_add_columns():
         "ALTER TABLE images ADD COLUMN mime_type VARCHAR",
         "ALTER TABLE images ADD COLUMN duration FLOAT",
         "ALTER TABLE images ADD COLUMN funscript_path VARCHAR",
+        "ALTER TABLE images ADD COLUMN notes TEXT DEFAULT ''",
         # creators — banner persistence columns
         "ALTER TABLE creators ADD COLUMN banner_image_id INTEGER",
         "ALTER TABLE creators ADD COLUMN banner_y FLOAT DEFAULT 20.0",
@@ -319,6 +346,7 @@ def _migrate_add_columns():
         # AI tagging — confidence + model on the image_tags junction
         "ALTER TABLE image_tags ADD COLUMN confidence FLOAT",
         "ALTER TABLE image_tags ADD COLUMN tagger_model VARCHAR",
+        "ALTER TABLE tag_vocab_entries ADD COLUMN confidence_threshold FLOAT",
         # Creator status & retirement year
         "ALTER TABLE creators ADD COLUMN status VARCHAR DEFAULT 'Active'",
         "ALTER TABLE creators ADD COLUMN retirement_year INTEGER",
@@ -1160,7 +1188,8 @@ app.mount("/foil-maps", StaticFiles(directory=FOIL_MAPS_DIR), name="foil-maps")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "The Vault"}
+    from services.process_restart import INSTANCE_ID
+    return {"status": "ok", "app": "The Vault", "instance_id": INSTANCE_ID}
 
 
 @app.post("/api/debug/seed-credits")

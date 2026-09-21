@@ -105,7 +105,7 @@ function CompactPatternSelect({ value, onChange, options }) {
         ref={btnRef}
         type="button"
         onClick={handleOpen}
-        className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[rgba(255,255,255,0.8)] hover:text-white transition-colors"
+        className="flex items-center gap-1 px-2 py-1 rounded text-[16px] text-[rgba(255,255,255,0.8)] hover:text-white transition-colors"
         style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
         {selected?.label ?? '—'}
         <ChevronDown size={10} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
@@ -131,7 +131,7 @@ function CompactPatternSelect({ value, onChange, options }) {
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false) }}
-              className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
+              className={`w-full text-left px-3 py-1.5 text-[16px] transition-colors ${
                 opt.value === value
                   ? 'bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] text-[var(--c-accent)]'
                   : 'text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.06)]'
@@ -152,8 +152,8 @@ function StrokeLimiter({ floor, ceiling, onFloorChange, onCeilChange }) {
     <div className="w-full">
       <style>{DUAL_RANGE_CSS}</style>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-[10px] text-[rgba(255,255,255,0.4)]">Stroke range</span>
-        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.55)]">{floor}% – {ceiling}%</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)]">Stroke range</span>
+        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.55)]">{floor}% – {ceiling}%</span>
       </div>
       <div className="relative h-5 flex items-center">
         {/* Background track */}
@@ -209,7 +209,7 @@ function EdgeModeRow() {
       <button
         onClick={() => deviceService.setEdgeMode(!enabled)}
         title={enabled ? 'Disarm Edge Mode' : 'Arm Edge Mode'}
-        className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+        className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
         style={{
           background: active ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : enabled ? 'color-mix(in srgb, var(--c-accent) 22%, transparent)' : 'rgba(255,255,255,0.06)',
           color:      active ? 'var(--c-pink-text)' : enabled ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
@@ -220,7 +220,7 @@ function EdgeModeRow() {
       </button>
 
       {enabled && (
-        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.4)]">
+        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.4)]">
           {active
             ? 'holding…'
             : secsLeft != null ? `next in ${secsLeft}s` : '—'}
@@ -280,7 +280,7 @@ export default function DeviceControls({ className = '' }) {
           <button
             onClick={() => deviceService.triggerCumPattern(30)}
             title="Cum pattern for 30s"
-            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+        className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
             style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             <Droplets size={11} />
             Cum
@@ -291,7 +291,7 @@ export default function DeviceControls({ className = '' }) {
           <button
             onClick={() => deviceService.toggleFinisher(finisherPattern)}
             title={`Finisher: ${finisherPattern}`}
-            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+        className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
             style={{ background: finisherActive ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
                      color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             🏁 {finisherActive ? 'Stop' : 'Finish'}
@@ -301,7 +301,7 @@ export default function DeviceControls({ className = '' }) {
         <button
           onClick={() => deviceService.stop()}
           title="Emergency stop"
-          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all"
+          className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
           style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
           <Square size={10} />
           Stop
@@ -313,42 +313,42 @@ export default function DeviceControls({ className = '' }) {
 
       {/* Row 2: intensity */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Speed</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Speed</span>
         <input
           type="range" min={10} max={500} step={5}
           value={Math.round(intensity * 100)}
           onChange={e => setIntensity(Number(e.target.value) / 100)}
           className="flex-1 h-1 cursor-pointer accent-[var(--c-accent)]"
         />
-        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
+        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
           {Math.round(intensity * 100)}%
         </span>
       </div>
 
       {/* Row 3: glans */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Glans</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Glans</span>
         <input
           type="range" min={0} max={100} step={5}
           value={Math.round(glansShift * 100)}
           onChange={e => setGlansShift(Number(e.target.value) / 100)}
           className="flex-1 h-1 cursor-pointer accent-[var(--c-accent)]"
         />
-        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
+        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
           {Math.round(glansShift * 100)}%
         </span>
       </div>
 
       {/* Row 4: stroke variance */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Vary</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Vary</span>
         <input
           type="range" min={0} max={100} step={5}
           value={variance}
           onChange={e => setVariance(Number(e.target.value))}
           className="flex-1 h-1 cursor-pointer accent-[var(--c-accent)]"
         />
-        <span className="text-[10px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
+        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.5)] w-8 text-right">
           {variance}%
         </span>
       </div>

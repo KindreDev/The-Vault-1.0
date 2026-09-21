@@ -7,7 +7,7 @@ import {
   X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
   FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy, ListMusic,
-  Waves,
+  Waves, Search,
 } from 'lucide-react'
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
@@ -52,14 +52,60 @@ const TYPE_COLORS = {
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
 }
 
-function CreatorAssignPanel({ galleryId, assignedCreators }) {
+function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], totalItems = 0 }) {
   const t = useT()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const wrapperRef = useRef(null)
   const qc = useQueryClient()
 
   const { data: allCreators } = useAllCreators()
+  const creatorById = useMemo(
+    () => new Map((allCreators ?? []).map(c => [c.id, c])),
+    [allCreators]
+  )
+
+  // A gallery-level creator is inherited by every file, while file-level
+  // assignments can add a creator to only part of the gallery. Build the
+  // cards from the effective creator lists returned with each image so the
+  // percentage is an honest share of files, not just a count of assignments.
+  const creatorEntries = useMemo(() => {
+    const assignedIds = new Set(assignedCreators.map(c => c.id))
+    const creators = new Map()
+    const addCreator = (creator) => {
+      if (!creator?.id || creators.has(creator.id)) return
+      creators.set(creator.id, { ...(creatorById.get(creator.id) ?? {}), ...creator })
+    }
+
+    assignedCreators.forEach(addCreator)
+    galleryImages.forEach(image => (image.creators ?? []).forEach(addCreator))
+
+    const total = galleryImages.length || Number(totalItems) || 0
+    const counts = new Map([...creators.keys()].map(id => [id, 0]))
+    if (galleryImages.length) {
+      galleryImages.forEach(image => {
+        const ids = image.creators?.length
+          ? new Set(image.creators.map(c => c.id))
+          : assignedIds
+        ids.forEach(id => { if (counts.has(id)) counts.set(id, counts.get(id) + 1) })
+      })
+    } else {
+      assignedIds.forEach(id => counts.set(id, total))
+    }
+
+    return [...creators.values()]
+      .map(creator => {
+        const count = counts.get(creator.id) ?? 0
+        return {
+          creator,
+          count,
+          percentage: total ? Math.round((count / total) * 100) : 0,
+          galleryAssigned: assignedIds.has(creator.id),
+        }
+      })
+      .sort((a, b) => b.count - a.count || a.creator.name.localeCompare(b.creator.name))
+  }, [allCreators, assignedCreators, creatorById, galleryImages, totalItems])
 
   const filtered = useMemo(() => {
     if (!allCreators) return []
@@ -100,36 +146,92 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
 
   return (
     <div ref={wrapperRef} className="rounded-[10px] p-3.5"
-         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-      <div className="flex items-center justify-between mb-2.5">
-        <div className="text-[11px] font-medium text-[rgba(255,255,255,0.5)] uppercase tracking-wider">{t('Creators')}</div>
-        <button type="button" onMouseDown={() => setOpen(o => !o)}
-                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full cursor-pointer"
-                style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-          <UserPlus size={10} /> {t('Add')}
-        </button>
+         style={{ background: 'color-mix(in srgb, var(--c-card, #1e1e1e) 80%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 16%, rgba(255,255,255,0.08))' }}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="text-[16px] font-semibold text-[rgba(255,255,255,0.9)] uppercase tracking-wide">{t('Creators')}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.45)] mt-0.5">
+            {creatorEntries.length} {creatorEntries.length === 1 ? t('creator') : t('creators')} {t('in this gallery')}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {creatorEntries.length > 0 && (
+            <button type="button" onMouseDown={() => navigate('/creators')}
+                    className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
+                    style={{ background: 'color-mix(in srgb, var(--c-card, #1e1e1e) 75%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 28%, transparent)' }}>
+              {t('View all creators')} <ChevronRight size={16} />
+            </button>
+          )}
+          <button type="button" onMouseDown={() => setOpen(o => !o)}
+                  className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+            <UserPlus size={16} /> {t('Add creator')}
+          </button>
+        </div>
       </div>
 
-      {/* Assigned creators */}
-      {assignedCreators.length === 0 ? (
-        <div className="text-[11px] text-[rgba(255,255,255,0.2)] py-1">{t('No creator assigned')}</div>
+      {creatorEntries.length === 0 ? (
+        <div className="text-[16px] text-[rgba(255,255,255,0.35)] py-2">{t('No creator assigned')}</div>
       ) : (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {assignedCreators.map(c => (
+        <div className="grid gap-2.5" style={{
+          gridTemplateColumns: creatorEntries.length === 1
+            ? 'minmax(min(100%, 520px), max-content)'
+            : 'repeat(auto-fill, minmax(220px, 1fr))',
+          maxHeight: creatorEntries.length > 8 ? 420 : undefined,
+          overflowY: creatorEntries.length > 8 ? 'auto' : undefined,
+          paddingRight: creatorEntries.length > 8 ? 4 : undefined,
+        }}>
+          {creatorEntries.map(({ creator: c, count, percentage, galleryAssigned }) => {
+            const color = TYPE_COLORS[c.creator_type] || '#D3D1C7'
+            const singleCreator = creatorEntries.length === 1
+            return (
             <div key={c.id}
-                 className="flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full text-[11px] group/chip"
-                 style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-              <span style={{ color: TYPE_COLORS[c.creator_type] || '#D3D1C7', fontWeight: 500 }}>{c.name}</span>
-              <button type="button" onMouseDown={e => { e.stopPropagation(); removeMutation.mutate(c.id) }}
-                      title={t('Remove creator')}
-                      className="cursor-pointer rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 transition-colors"
-                      style={{ color: 'rgba(255,255,255,0.3)', background: 'transparent' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#F4C0D1'; e.currentTarget.style.background = 'color-mix(in srgb, var(--c-pink) 20%, transparent)' }}
-                      onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent' }}>
-                <X size={10} />
-              </button>
+                 onMouseDown={() => navigate(`/creators/${c.id}`)}
+                 className="relative rounded-[12px] p-3.5 cursor-pointer transition-transform hover:-translate-y-0.5"
+                 style={{
+                   width: singleCreator ? 'fit-content' : undefined,
+                   maxWidth: '100%',
+                   background: `color-mix(in srgb, ${color} 8%, var(--c-card, #1e1e1e))`,
+                   border: `0.5px solid color-mix(in srgb, ${color} 35%, rgba(255,255,255,0.1))`,
+                 }}>
+              <div className="flex items-start gap-3">
+                <div className="w-16 h-16 rounded-[12px] overflow-hidden flex items-center justify-center flex-shrink-0"
+                     style={{ background: `color-mix(in srgb, ${color} 18%, var(--c-surface, #161616))`, border: `1px solid color-mix(in srgb, ${color} 45%, transparent)` }}>
+                  {c.avatar_path ? (
+                    <img src={`/api/creators/${c.id}/avatar-thumb?size=160`} alt="" className="w-full h-full object-cover"
+                         onError={e => { e.currentTarget.style.display = 'none' }} />
+                  ) : (
+                    <span className="text-[24px] font-semibold" style={{ color }}>{(c.name || '?').charAt(0).toUpperCase()}</span>
+                  )}
+                </div>
+                <div className={singleCreator ? 'flex-none' : 'min-w-0 flex-1'}>
+                  <div className={`text-[18px] font-semibold text-[rgba(255,255,255,0.92)] ${singleCreator ? 'whitespace-nowrap' : 'truncate'}`}
+                       style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {c.name}
+                  </div>
+                  <div className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-[16px]"
+                       style={{ color, background: `color-mix(in srgb, ${color} 13%, transparent)`, border: `0.5px solid color-mix(in srgb, ${color} 42%, transparent)` }}>
+                    {t(c.creator_type || 'custom')}
+                  </div>
+                </div>
+                {galleryAssigned && (
+                  <button type="button" onMouseDown={e => { e.stopPropagation(); removeMutation.mutate(c.id) }}
+                          title={t('Remove creator')}
+                          className="cursor-pointer rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0"
+                          style={{ color: 'rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.05)' }}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-3 text-[16px]">
+                <span style={{ color: `color-mix(in srgb, ${color} 85%, white)` }}>{count} {t('photos')}</span>
+                <span className="font-semibold" style={{ color }}>{percentage}%</span>
+              </div>
+              <div className="h-2 rounded-full mt-2 overflow-hidden" style={{ background: 'rgba(255,255,255,0.11)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${percentage}%`, background: color }} />
+              </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
@@ -141,25 +243,25 @@ function CreatorAssignPanel({ galleryId, assignedCreators }) {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={t('Search creators...')}
-            className="w-full px-2.5 py-1.5 rounded-[7px] text-[11px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] outline-none mb-1"
+            className="w-full px-3 py-2 rounded-[9px] text-[16px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] outline-none mb-1"
             style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.12)' }}
           />
           <div className="rounded-[8px] overflow-hidden"
-               style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)', maxHeight: 180, overflowY: 'auto' }}>
+               style={{ background: 'var(--c-card, #1e1e1e)', border: '0.5px solid rgba(255,255,255,0.12)', maxHeight: 220, overflowY: 'auto' }}>
             {filtered.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-[rgba(255,255,255,0.25)] text-center">
+              <div className="px-3 py-2 text-[16px] text-[rgba(255,255,255,0.25)] text-center">
                 {search ? t('No creators found') : t('All creators already assigned')}
               </div>
             ) : filtered.map(c => (
               <button key={c.id}
                       type="button"
                       onMouseDown={() => addMutation.mutate(c.id)}
-                      className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
+                      className="w-full text-left px-3 py-2.5 text-[16px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
                       style={{ color: 'rgba(255,255,255,0.75)' }}>
                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                       style={{ background: TYPE_COLORS[c.creator_type] || '#D3D1C7' }} />
                 <span>{c.name}</span>
-                <span className="text-[9px] ml-auto" style={{ color: 'rgba(255,255,255,0.25)' }}>{c.creator_type}</span>
+                <span className="text-[16px] ml-auto" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(c.creator_type || 'custom')}</span>
               </button>
             ))}
           </div>
@@ -403,6 +505,9 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const [idx, setIdx] = useState(startIdx)
   const [fullLoaded, setFullLoaded] = useState(false)
   const [rating, setRating] = useState(0)
+  const [ratingHover, setRatingHover] = useState(0)
+  const [notes, setNotes] = useState('')
+  const [notesSaveState, setNotesSaveState] = useState('idle')
   const [isFavorite, setIsFavorite] = useState(false)
   const [cumCount, setCumCount] = useState(null)
   const [liveViewCount, setLiveViewCount] = useState(null)
@@ -428,6 +533,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const isFullscreenRef    = useRef(false)
   const videoPlayerRef     = useRef(null)
   const funscriptInputRef  = useRef(null)
+  const notesSaveTimerRef  = useRef(null)
   const { sessionActive, startSession, finishSession } = useSession()
   const addXpToast      = useVaultStore(s => s.addXpToast)
   const registerVisible   = useVaultStore(s => s.registerVisible)
@@ -470,6 +576,9 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
     setHasImageCreators(image?.has_image_creators ?? false)
     setFileCreatorIds(image?.file_creator_ids ?? [])
     setRating(image?.rating || 0)
+    setRatingHover(0)
+    setNotes(image?.notes || '')
+    setNotesSaveState('idle')
     setIsFavorite(image?.is_favorite ?? false)
     setCumCount(image?.cum_count ?? 0)
     setLiveViewCount(image.view_count)
@@ -708,6 +817,28 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
     onSuccess: () => qc.invalidateQueries({ queryKey: ['gallery-images', String(galleryId)] })
   })
 
+  const notesMutation = useMutation({
+    mutationFn: ({ imageId, value }) => imagesApi.update(imageId, { notes: value }),
+    onSuccess: (_response, variables) => {
+      qc.setQueriesData({ queryKey: ['gallery-images'] }, old => Array.isArray(old)
+        ? old.map(item => item.id === variables.imageId ? { ...item, notes: variables.value } : item)
+        : old)
+      if (image?.id === variables.imageId) setNotesSaveState('saved')
+    },
+    onError: (_error, variables) => {
+      if (image?.id === variables.imageId) setNotesSaveState('error')
+    },
+  })
+
+  const queueNotesSave = (value, immediate = false) => {
+    const imageId = image.id
+    clearTimeout(notesSaveTimerRef.current)
+    setNotesSaveState('saving')
+    const save = () => notesMutation.mutate({ imageId, value })
+    if (immediate) save()
+    else notesSaveTimerRef.current = setTimeout(save, 700)
+  }
+
   const favMutation = useMutation({
     mutationFn: (val) => imagesApi.update(image.id, { is_favorite: val }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['gallery-images', String(galleryId)] })
@@ -727,7 +858,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   return createPortal((
     <div
       ref={viewerRef}
-      className="fixed inset-0 z-50 flex"
+      className="vault-image-viewer fixed inset-0 z-50 flex"
       style={{
         background: '#090909',
         cursor: isFullscreen && !showFilmstrip ? 'none' : 'default',
@@ -749,8 +880,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white">
             <X size={16} />
           </button>
-          <span className="text-[13px] text-[rgba(255,255,255,0.4)]">{idx + 1} / {images.length}</span>
-          <span className="text-[13px] text-[rgba(255,255,255,0.55)] truncate">{image.filename}</span>
+          <span className="text-[16px] text-[rgba(255,255,255,0.4)]">{idx + 1} / {images.length}</span>
+          <span className="text-[16px] text-[rgba(255,255,255,0.55)] truncate">{image.filename}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {/* Quick favorite star */}
             <button
@@ -772,12 +903,12 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               type="button"
               onMouseDown={() => { setSlideshowActive(false); setShowEndScreen(true) }}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer"
-              style={{ fontSize: 16, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}
+              style={{ fontSize: 18, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}
               title={t('Open continuation choices (K)')}>
               <Sparkles size={15} /> {t('Keep going')}
             </button>
             {isZoomed && (
-              <span className="text-[12px] px-2 py-0.5 rounded-full"
+              <span className="text-[16px] px-2 py-0.5 rounded-full"
                     style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
                 {Math.round(zoom * 100)}%
               </span>
@@ -811,7 +942,6 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           onMouseDown={handleStageMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onDoubleClick={image.is_video ? undefined : (isZoomed ? resetZoom : () => setZoom(2.5))}
         >
           {image.is_video ? (
             <InlineVideoPlayer
@@ -886,7 +1016,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             </>
           )}
           {!isZoomed && idx > 0 && (
-            <button onMouseDown={() => { setSlideshowActive(false); setIdx(i => i - 1) }}
+            <button onMouseDown={(e) => { e.stopPropagation(); setSlideshowActive(false); setIdx(i => i - 1) }}
+                    onDoubleClick={e => e.stopPropagation()}
                     className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
@@ -898,7 +1029,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             </button>
           )}
           {!isZoomed && idx < images.length - 1 && (
-            <button onMouseDown={() => { setSlideshowActive(false); setIdx(i => i + 1) }}
+            <button onMouseDown={(e) => { e.stopPropagation(); setSlideshowActive(false); setIdx(i => i + 1) }}
+                    onDoubleClick={e => e.stopPropagation()}
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
@@ -910,7 +1042,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             </button>
           )}
           {isZoomed && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1.5 rounded-full pointer-events-none z-20"
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[16px] px-3 py-1.5 rounded-full pointer-events-none z-20"
                  style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.4)' }}>
               {t('Double-click or Esc to reset · Drag to pan')}
             </div>
@@ -931,7 +1063,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           {slideshowActive && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
                  style={{
-                   fontSize: 16,
+                   fontSize: 18,
                    background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)',
                    color: 'var(--c-accent-text)',
                    border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
@@ -969,7 +1101,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       </div>
 
       {/* Right panel — hidden in fullscreen */}
-      {!isFullscreen && showSidebar && <div className="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
+      {!isFullscreen && showSidebar && <div className="w-72 flex-shrink-0 flex flex-col overflow-y-auto"
            style={{ background: '#141414', borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
 
         {/* Creators */}
@@ -988,15 +1120,15 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
         {/* Gallery name + set cover */}
         {galleryName && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">{t('Gallery')}</div>
-            <div className="flex items-center gap-1 text-[11px] text-[rgba(255,255,255,0.65)] truncate mb-2">
+            <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-1">{t('Gallery')}</div>
+            <div className="flex items-center gap-1 text-[16px] text-[rgba(255,255,255,0.65)] truncate mb-2">
               <span className="truncate">{galleryName}</span>
               <ExternalLink size={9} className="flex-shrink-0 opacity-40" />
             </div>
             {!image?.is_video && (
               <button
                 onClick={() => galleriesApi.setCover(galleryId, image.id).then(() => toast.success(t('Set as gallery cover!'))).catch(() => toast.error(t('Failed')))}
-                className="flex items-center gap-1.5 w-full px-2.5 py-1.5 rounded-[6px] text-[11px] cursor-pointer"
+                className="flex items-center gap-1.5 w-full px-2.5 py-1.5 rounded-[6px] text-[16px] cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
                 <ImagePlus size={11} /> {t('Set as cover')}
               </button>
@@ -1007,7 +1139,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
         {/* Funscript loader — videos only */}
         {image.is_video && (
           <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Funscript')}</div>
+            <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Funscript')}</div>
             <input ref={funscriptInputRef} type="file" accept=".funscript" className="hidden"
               onChange={e => {
                 const file = e.target.files?.[0]
@@ -1017,11 +1149,11 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               }} />
             <div className="flex flex-col gap-1.5">
               {image.funscript_path
-                ? <div className="text-[10px] flex items-center gap-1" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}><Zap size={10} /> {t('Script attached')}</div>
-                : <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
+                ? <div className="text-[16px] flex items-center gap-1" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}><Zap size={16} /> {t('Script attached')}</div>
+                : <div className="text-[16px] text-[rgba(255,255,255,0.25)]">{t('No script attached')}</div>
               }
               <button onClick={() => funscriptInputRef.current?.click()}
-                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[10px] cursor-pointer"
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-[6px] text-[16px] cursor-pointer"
                 style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                 <FolderOpen size={10} /> {t('Load .funscript')}
               </button>
@@ -1036,7 +1168,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                         toast.error(err?.response?.data?.detail || t('Could not unlink funscript'))
                       }
                     }}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[6px] text-[16px] cursor-pointer"
                     style={{ background: 'color-mix(in srgb, var(--c-pink) 14%, transparent)', color: 'var(--c-pink)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
                     <X size={10} /> {t('Unlink script')}
                   </button>
@@ -1051,7 +1183,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                       }
                     }}
                     title={t('Unlink & delete file')}
-                    className="flex items-center justify-center px-2 py-1.5 rounded-[6px] text-[10px] cursor-pointer"
+                    className="flex items-center justify-center px-2 py-1.5 rounded-[6px] text-[16px] cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                     <Trash2 size={10} />
                   </button>
@@ -1063,26 +1195,26 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
         {/* Cum counter */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Cum counter')}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Cum counter')}</div>
           <div className="flex items-center gap-2">
             <button onMouseDown={() => cumMutation.mutate()}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[12px] font-medium cursor-pointer active:scale-95 transition-transform"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer active:scale-95 transition-transform"
                     style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 40%, transparent)' }}>
               <Droplets size={13} /> {t('Count it')}
             </button>
             <div className="text-center min-w-[36px]">
               <div className="text-[22px] font-medium leading-none" style={{ color: 'var(--c-pink-text)' }}>{cumCount ?? 0}</div>
-              <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
+              <div className="text-[16px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('all time')}</div>
             </div>
             <div className="text-center min-w-[36px]">
               <div className="text-[22px] font-medium leading-none" style={{ color: '#A89FE8' }}>{image?.edge_count ?? 0}</div>
-              <div className="text-[9px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('edges')}</div>
+              <div className="text-[16px] text-[rgba(255,255,255,0.25)] mt-0.5">{t('edges')}</div>
             </div>
           </div>
           {/* Edges used to come only from Edge Mode, so anyone without a device
               had a counter they could never move. This logs one by hand. */}
           <button onMouseDown={() => logEdgeNow()}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-[12px] font-medium cursor-pointer active:scale-95 transition-transform mt-2"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-[16px] font-medium cursor-pointer active:scale-95 transition-transform mt-2"
                   style={{ background: 'color-mix(in srgb, var(--c-accent) 16%, transparent)',
                            color: 'color-mix(in srgb, var(--c-accent) 82%, white)',
                            border: '0.5px solid color-mix(in srgb, var(--c-accent) 38%, transparent)' }}>
@@ -1092,17 +1224,64 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
         {/* Rating */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Rating')}</div>
-          <div className="flex gap-0.5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest">{t('Rating')}</div>
+            <div className="text-[16px]" style={{ color: (ratingHover || rating) ? 'var(--c-amber)' : 'rgba(255,255,255,0.25)' }}>
+              {(ratingHover || rating) ? `${ratingHover || rating}/10` : t('Not rated')}
+            </div>
+          </div>
+          <div className="flex items-center justify-between" onMouseLeave={() => setRatingHover(0)}>
             {[1,2,3,4,5,6,7,8,9,10].map(s => (
               <button key={s}
+                      type="button"
+                      onMouseEnter={() => setRatingHover(s)}
                       onMouseDown={() => { setRating(s); rateMutation.mutate(s) }}
-                      className="text-[18px] cursor-pointer leading-none"
-                      style={{ color: s <= rating ? '#EF9F27' : 'rgba(255,255,255,0.1)' }}>
-                ★
+                      className="p-0.5 cursor-pointer transition-transform hover:scale-125"
+                      aria-label={`${t('Rate')} ${s}/10`}
+                      title={`${t('Rate')} ${s}/10`}
+                      style={{ lineHeight: 0 }}>
+                <Star
+                  size={20}
+                  fill={s <= (ratingHover || rating) ? 'var(--c-amber)' : 'none'}
+                  stroke={s <= (ratingHover || rating) ? 'var(--c-amber)' : 'rgba(255,255,255,0.28)'}
+                  strokeWidth={1.8}
+                />
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Notes — per-file, shared by images and videos */}
+        <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest">{t('Notes')}</div>
+            <div className="text-[16px]" style={{
+              color: notesSaveState === 'error' ? 'var(--c-pink)' : notesSaveState === 'saved' ? 'var(--c-green)' : 'rgba(255,255,255,0.3)',
+            }}>
+              {notesSaveState === 'saving' ? t('Saving…') : notesSaveState === 'saved' ? t('Saved') : notesSaveState === 'error' ? t('Save failed') : ''}
+            </div>
+          </div>
+          <textarea
+            value={notes}
+            rows={4}
+            placeholder={t('Add notes about this file…')}
+            onChange={event => {
+              const value = event.target.value
+              setNotes(value)
+              queueNotesSave(value)
+            }}
+            onBlur={() => {
+              clearTimeout(notesSaveTimerRef.current)
+              if (notes !== (image.notes || '')) queueNotesSave(notes, true)
+            }}
+            className="w-full resize-y rounded-[8px] p-2.5 text-[16px] outline-none"
+            style={{
+              minHeight: 96,
+              background: 'rgba(255,255,255,0.045)',
+              color: 'rgba(255,255,255,0.82)',
+              border: '0.5px solid rgba(255,255,255,0.1)',
+            }}
+          />
         </div>
 
         {/* Tags */}
@@ -1110,22 +1289,22 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
         {/* Info */}
         <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Info')}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Info')}</div>
           {image.width && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
-              <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{image.width}×{image.height}</span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{image.width}×{image.height}</span>
             </div>
           )}
           {image.file_size && (
             <div className="flex justify-between py-0.5">
-              <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
-              <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)} MB</span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)} MB</span>
             </div>
           )}
           <div className="flex justify-between py-0.5">
-            <span className="text-[10px] text-[rgba(255,255,255,0.3)]">{t('Views')}</span>
-            <span className="text-[10px] text-[rgba(255,255,255,0.6)]">{liveViewCount ?? image.view_count}</span>
+            <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('Views')}</span>
+            <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{liveViewCount ?? image.view_count}</span>
           </div>
         </div>
 
@@ -1135,7 +1314,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             if (sessionActive) finishSession({ imageId: image.id, galleryId })
             else               startSession()
           }}
-                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[11px] font-medium cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <Heart size={12} /> {sessionActive ? t('Stop Session') : t('Start Session')}
           </button>
@@ -1612,9 +1791,11 @@ export default function GalleryView() {
   const addXpToast = useVaultStore(s => s.addXpToast)
   const [viewerIdx, setViewerIdx] = useState(null)
   const [sortBy, setSortBy] = useState('filename')
+  const [mediaSearch, setMediaSearch] = useState('')
   const [randomSeed, setRandomSeed] = useState(0)
   const [isRenaming, setIsRenaming] = useState(false)
   const [editName, setEditName] = useState('')
+  const renameSubmittedRef = useRef(false)
   const [retagging, setRetagging]           = useState(false)
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showPeriodPicker, setShowPeriodPicker] = useState(false)
@@ -1661,11 +1842,12 @@ export default function GalleryView() {
 
   const handleSortChange = (val) => {
     if (val === 'random') {
-      const newSeed = Math.random()
-      setRandomSeed(newSeed)
+      setRandomSeed(Math.random())
     }
     setSortBy(val)
   }
+
+  const reshuffle = () => setRandomSeed(Math.random())
 
   // Track gallery visit — fires once per gallery navigation
   useEffect(() => {
@@ -1687,6 +1869,18 @@ export default function GalleryView() {
     },
     gcTime: 5 * 60 * 1000,  // cache for 5 min — returning to a gallery is instant
   })
+
+  const searchedImages = useMemo(() => {
+    if (!images) return []
+    const query = mediaSearch.trim().toLocaleLowerCase()
+    if (!query) return images
+    return images.filter(image => (image.filename || '').toLocaleLowerCase().includes(query))
+  }, [images, mediaSearch])
+
+  const displayedImages = useMemo(
+    () => searchedImages.filter(image => !deletedIds.has(image.id)),
+    [searchedImages, deletedIds],
+  )
 
   const galleryFolderName = gallery?.folder_path
     ? gallery.folder_path.split(/[\\/]/).filter(Boolean).pop()
@@ -1721,14 +1915,26 @@ export default function GalleryView() {
       setIsRenaming(false)
     },
     onError: () => {
+      renameSubmittedRef.current = false
       toast.error(t('Rename failed'))
       setIsRenaming(false)
     }
   })
 
+  const startRename = () => {
+    renameSubmittedRef.current = false
+    setEditName(galleryFolderName)
+    setIsRenaming(true)
+  }
+
   const submitRename = () => {
-    if (editName.trim() && editName.trim() !== galleryFolderName) {
-      renameMutation.mutate(editName.trim())
+    // Enter blurs the input immediately afterwards. Ignore that second event
+    // so a successful rename cannot be followed by a false error toast.
+    if (renameSubmittedRef.current || renameMutation.isPending) return
+    const nextName = editName.trim()
+    if (nextName && nextName !== galleryFolderName) {
+      renameSubmittedRef.current = true
+      renameMutation.mutate(nextName)
     } else {
       setIsRenaming(false)
     }
@@ -1839,9 +2045,9 @@ export default function GalleryView() {
               style={{ borderBottom: '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)', paddingBottom: '1px' }}
             />
           ) : (
-            <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={() => { setEditName(galleryFolderName); setIsRenaming(true) }}>
+            <div className="flex items-center gap-2 group/title cursor-pointer w-max" onClick={startRename}>
               <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] truncate">{gallery?.name ?? '...'}</div>
-              <button className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title={t('Rename folder on disk')}><Pencil size={13} /></button>
+              <button onClick={startRename} className="opacity-0 group-hover/title:opacity-100 transition-opacity text-[rgba(255,255,255,0.35)] hover:text-white flex-shrink-0" title={t('Rename folder on disk')}><Pencil size={13} /></button>
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap">
@@ -1925,6 +2131,29 @@ export default function GalleryView() {
           )}
         </div>
         <div className="vault-control-row flex gap-2 flex-shrink-0">
+          <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full"
+               style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            <Search size={16} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+            <input
+              value={mediaSearch}
+              onChange={event => setMediaSearch(event.target.value)}
+              placeholder={t('Search filenames…')}
+              aria-label={t('Search filenames in this gallery')}
+              className="w-44 bg-transparent outline-none text-[16px]"
+              style={{ color: 'rgba(255,255,255,0.8)' }}
+            />
+            {mediaSearch && (
+              <>
+                <span className="text-[16px] whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                  {searchedImages.length}/{images?.length ?? 0}
+                </span>
+                <button type="button" onClick={() => setMediaSearch('')}
+                        className="cursor-pointer" title={t('Clear filename search')}>
+                  <X size={16} style={{ color: 'rgba(255,255,255,0.45)' }} />
+                </button>
+              </>
+            )}
+          </div>
           <button onClick={() => favMutation.mutate()}
                   className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{
@@ -1976,6 +2205,14 @@ export default function GalleryView() {
             )}
           </div>
           <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
+          {sortBy === 'random' && (
+            <button type="button" onMouseDown={reshuffle}
+                    className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
+                    title={t('Shuffle the gallery again')}
+                    style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+              <Shuffle size={15} /> {t('Reshuffle')}
+            </button>
+          )}
           {/* Size slider */}
           <div className="vault-row-control flex items-center gap-1.5 px-2 py-1.5 rounded-full"
                style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
@@ -2023,10 +2260,12 @@ export default function GalleryView() {
       {/* Creator assignment */}
       {gallery && (
         <div className="mb-4 relative z-10">
-          <CreatorAssignPanel
-            galleryId={parseInt(id)}
-            assignedCreators={gallery.creators ?? []}
-          />
+            <CreatorAssignPanel
+              galleryId={parseInt(id)}
+              assignedCreators={gallery.creators ?? []}
+              galleryImages={images ?? []}
+              totalItems={gallery.image_count ?? 0}
+            />
         </div>
       )}
 
@@ -2044,10 +2283,10 @@ export default function GalleryView() {
              style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>{selectedIds.size} {t('selected')}</span>
           <button type="button"
-                  onMouseDown={() => setSelectedIds(s => s.size === images?.filter(i => !deletedIds.has(i.id)).length ? new Set() : new Set(images?.filter(i => !deletedIds.has(i.id)).map(i => i.id) ?? []))}
+                  onMouseDown={() => setSelectedIds(s => displayedImages.length > 0 && displayedImages.every(i => s.has(i.id)) ? new Set() : new Set(displayedImages.map(i => i.id)))}
                   className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {selectedIds.size === images?.filter(i => !deletedIds.has(i.id)).length ? t('Deselect all') : t('Select all')}
+            {displayedImages.length > 0 && displayedImages.every(i => selectedIds.has(i.id)) ? t('Deselect all') : t('Select all')}
           </button>
           <button type="button" onMouseDown={() => setShowExtract(true)}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
@@ -2206,16 +2445,18 @@ export default function GalleryView() {
       {!images
         ? <div className="text-center py-12 text-[rgba(255,255,255,0.3)] text-[13px]">{t('Loading...')}</div>
         : images.length === 0
-          ? <div className="text-center py-16 text-[rgba(255,255,255,0.25)] text-[13px]">{t('No images in this gallery')}</div>
+          ? <div className="text-center py-16 text-[rgba(255,255,255,0.25)] text-[16px]">{t('No images in this gallery')}</div>
+        : displayedImages.length === 0
+          ? <div className="text-center py-16 text-[rgba(255,255,255,0.35)] text-[16px]">{t('No filenames match this search')}</div>
           : <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${THUMB_SIZES[thumbSizeIdx]}px, 1fr))` }}>
-              {images.filter(img => !deletedIds.has(img.id)).map((img, i) => (
+              {displayedImages.map((img, i) => (
                 <ImageThumb key={img.id} image={img} idx={i} onClick={setViewerIdx}
                             galleryId={parseInt(id)}
                             onDeleted={(imgId) => setDeletedIds(s => new Set([...s, imgId]))}
                             bulkMode={bulkMode}
                             selected={selectedIds.has(img.id)}
                             onSelect={(imgId, imgIdx, shiftKey) => {
-                              const visibleImgs = images.filter(i => !deletedIds.has(i.id))
+                              const visibleImgs = displayedImages
                               setSelectedIds(s => {
                                 // Anchor for a range. The ref is the explicit one, but it can be
                                 // unset when the selection came from somewhere that doesn't set it
@@ -2250,7 +2491,7 @@ export default function GalleryView() {
                               // Windows behaviour: right-click on selected image → apply to whole selection
                               const inSel = bulkMode && selectedIds.has(im.id)
                               const bulkImages = inSel
-                                ? images.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id))
+                                ? displayedImages.filter(i => selectedIds.has(i.id))
                                 : null
                               setImgCtx({ image: im, x: e.clientX, y: e.clientY, bulkImages })
                             }} />
@@ -2262,9 +2503,9 @@ export default function GalleryView() {
       <SimilarGalleriesStrip galleryId={parseInt(id)} />
 
       {/* Viewer */}
-      {viewerIdx !== null && images?.length > 0 && (
+      {viewerIdx !== null && displayedImages.length > 0 && (
         <ImageViewer
-          images={images}
+          images={displayedImages}
           startIdx={viewerIdx}
           galleryId={parseInt(id)}
           galleryName={gallery?.name}
@@ -2331,13 +2572,13 @@ export default function GalleryView() {
             // Seed the range anchor too — entering select mode this way used to
             // leave it unset, so the next shift-click toggled a single file
             // instead of extending a range.
-            const visibleImgs = images?.filter(i => !deletedIds.has(i.id)) ?? []
+            const visibleImgs = displayedImages
             const seedIdx = visibleImgs.findIndex(i => i.id === imgCtx.image.id)
             lastSelectIdxRef.current = seedIdx >= 0 ? seedIdx : null
             setImgCtx(null)
           } : undefined}
           onView={() => {
-            const idx2 = images?.filter(i => !deletedIds.has(i.id)).findIndex(i => i.id === imgCtx.image.id) ?? -1
+            const idx2 = displayedImages.findIndex(i => i.id === imgCtx.image.id)
             if (idx2 >= 0) setViewerIdx(idx2)
           }}
           onSetCover={() => galleriesApi.setCover(parseInt(id), imgCtx.image.id)

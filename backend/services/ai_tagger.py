@@ -527,9 +527,9 @@ JOYTAG_PERSON_COUNT: dict[str, int] = {
 JOYTAG_CREATOR_TYPES = {"cosplayer", "ethot", "actress", "custom"}
 WD14_CREATOR_TYPES   = {"artist", "character"}
 
-# Per-tag threshold overrides — these tags use a lower confidence bar than the
-# global threshold.  Keeps global noise down while rescuing tags that are
-# systematically under-scored on real-photo / 3D-render content.
+# Built-in per-tag threshold overrides — these tags use a lower confidence bar
+# than the global threshold. User-configured TagVocabEntry overrides take
+# precedence over these defaults.
 # Keys are the NORMALISED tag names (as they appear in WD14_TAG_MAP values /
 # after the raw→normalised mapping step).
 TAG_THRESHOLD_OVERRIDES: dict[str, float] = {
@@ -538,6 +538,24 @@ TAG_THRESHOLD_OVERRIDES: dict[str, float] = {
     "backboob":  0.05,
     "cleavage":  0.15,
 }
+
+# Color tags need a higher default floor because the models often emit several
+# plausible colors at once (especially with warm lighting and colored
+# backgrounds). A collab can legitimately contain more than one color, so the
+# post-processing pass uses the detected person count instead of forcing one
+# winner for the entire file.
+COLOR_TAG_MIN_CONFIDENCE = 0.70
+COLOR_MAX_SUBJECTS = 5
+HAIR_COLOR_TAGS = frozenset({
+    "blonde hair", "black hair", "brown hair", "red hair", "white hair",
+    "silver hair", "pink hair", "blue hair", "green hair", "purple hair",
+    "orange hair", "multicolor hair",
+})
+EYE_COLOR_TAGS = frozenset({
+    "blue eyes", "green eyes", "brown eyes", "red eyes", "purple eyes",
+    "yellow eyes", "pink eyes", "aqua eyes", "orange eyes",
+})
+COLOR_TAGS = HAIR_COLOR_TAGS | EYE_COLOR_TAGS
 
 
 # ── Tagger state (mirrors scanner._state pattern) ─────────────────────────────
@@ -682,6 +700,7 @@ def download_joytag():
 # via the in-memory cache below, not from these dicts directly.
 
 _tag_vocab_cache: dict[str, dict[str, tuple[str, str]]] = {}
+_tag_threshold_cache: dict[str, dict[str, Optional[float]]] = {}
 _tag_vocab_lock = threading.Lock()
 
 def invalidate_tag_vocab_cache(model: Optional[str] = None):
@@ -690,8 +709,10 @@ def invalidate_tag_vocab_cache(model: Optional[str] = None):
     with _tag_vocab_lock:
         if model is None:
             _tag_vocab_cache = {}
+            _tag_threshold_cache.clear()
         else:
             _tag_vocab_cache.pop(model, None)
+            _tag_threshold_cache.pop(model, None)
 
 def _get_tag_vocab(model: str) -> dict[str, tuple[str, str]]:
     """Lazily-loaded, cached {raw_tag: (normalized_name, category)} for enabled
@@ -718,6 +739,48 @@ def _get_tag_vocab(model: str) -> dict[str, tuple[str, str]]:
     with _tag_vocab_lock:
         _tag_vocab_cache[model] = mapping
     return mapping
+
+
+def _get_tag_thresholds(model: str) -> dict[str, Optional[float]]:
+    """Return enabled raw-tag confidence overrides for a model.
+
+    The value is nullable on purpose: a row with NULL is the explicit UI state
+    meaning "use the global threshold". Keeping this separate from the
+    existing two-item vocabulary map avoids changing callers that only need
+    name/category resolution.
+    """
+    with _tag_vocab_lock:
+        cached = _tag_threshold_cache.get(model)
+    if cached is not None:
+        return cached
+
+    from database import SessionLocal
+    from models import TagVocabEntry
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(TagVocabEntry.raw_tag, TagVocabEntry.confidence_threshold)
+              .filter(TagVocabEntry.model == model, TagVocabEntry.enabled == True)  # noqa: E712
+              .all()
+        )
+    finally:
+        db.close()
+
+    thresholds = {raw: value for raw, value in rows}
+    with _tag_vocab_lock:
+        _tag_threshold_cache[model] = thresholds
+    return thresholds
+
+
+def _effective_tag_threshold(normalized_name: Optional[str], global_threshold: float,
+                             tag_override: Optional[float] = None) -> float:
+    """Resolve one tag threshold, with explicit UI overrides winning."""
+    if tag_override is not None:
+        return float(tag_override)
+    effective = TAG_THRESHOLD_OVERRIDES.get(normalized_name, global_threshold) if normalized_name else global_threshold
+    if normalized_name in COLOR_TAGS:
+        effective = max(effective, COLOR_TAG_MIN_CONFIDENCE)
+    return effective
 
 def seed_tag_vocab(db, model: str):
     """One-time (idempotent) seed of the full raw model vocabulary into
@@ -906,6 +969,7 @@ class WD14Tagger:
 
     def _parse_probs(self, probs, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
         vocab = _get_tag_vocab("wd14")   # user-editable allowlist, DB-backed & cached
+        thresholds = _get_tag_thresholds("wd14")
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
 
@@ -916,17 +980,20 @@ class WD14Tagger:
             # Per-tag threshold overrides (e.g. underboob, sideboob score lower on
             # real-photo / 3D content but are still meaningful at reduced confidence).
             mapped_norm = vocab.get(raw_lower, (None,))[0]
-            effective_threshold = TAG_THRESHOLD_OVERRIDES.get(mapped_norm, threshold) if mapped_norm else threshold
+            effective_threshold = _effective_tag_threshold(mapped_norm, threshold, thresholds.get(raw_lower))
 
-            # Always evaluate rating tags; others need to clear threshold
-            if conf < effective_threshold and wd14_cat != 9:
-                continue
-
-            # Derive person_count from subject-count tags
+            # Detect collabs before the confidence filter. Person-count tags
+            # are routing metadata for color normalization, not user-facing
+            # tags, and should still guide the post-processing pass when their
+            # own score is below the global threshold.
             if raw_lower in WD14_PERSON_COUNT:
                 pc = WD14_PERSON_COUNT[raw_lower]
                 if person_count is None or pc > person_count:
                     person_count = pc
+
+            # Always evaluate rating tags; others need to clear threshold
+            if conf < effective_threshold and wd14_cat != 9:
+                continue
 
             if raw_lower in WD14_SKIP_TAGS:
                 continue   # noise / meta tag — never pass through
@@ -976,6 +1043,8 @@ class JoyTagTagger:
     def _parse_probs(self, probs, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
         jt_vocab = _get_tag_vocab("joytag")   # keyed by space form, matches raw_lower below
         wd_vocab = _get_tag_vocab("wd14")     # keyed by underscore form, matches raw_under below
+        jt_thresholds = _get_tag_thresholds("joytag")
+        wd_thresholds = _get_tag_thresholds("wd14")
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
 
@@ -990,7 +1059,19 @@ class JoyTagTagger:
             _jt_norm  = jt_vocab.get(raw_lower_pre, (None,))[0]
             _wd_norm  = wd_vocab.get(raw_under_pre, (None,))[0] if _jt_norm is None else None
             _norm_key = _jt_norm or _wd_norm
-            effective_threshold = TAG_THRESHOLD_OVERRIDES.get(_norm_key, threshold) if _norm_key else threshold
+            raw_override = jt_thresholds.get(raw_lower_pre) if _jt_norm is not None else wd_thresholds.get(raw_under_pre)
+            effective_threshold = _effective_tag_threshold(_norm_key, threshold, raw_override)
+
+            # As with WD14, person-count tags are metadata for the collab
+            # color pass and must be read before the confidence filter.
+            if raw_lower_pre in JOYTAG_PERSON_COUNT:
+                pc = JOYTAG_PERSON_COUNT[raw_lower_pre]
+                if person_count is None or pc > person_count:
+                    person_count = pc
+            elif raw_under_pre in JOYTAG_PERSON_COUNT:
+                pc = JOYTAG_PERSON_COUNT[raw_under_pre]
+                if person_count is None or pc > person_count:
+                    person_count = pc
 
             if conf < effective_threshold:
                 continue
@@ -999,16 +1080,6 @@ class JoyTagTagger:
             # Normalise to spaces so our maps (built with spaces) match correctly.
             raw_lower  = raw_name.lower().replace("_", " ")
             raw_under  = raw_name.lower()   # original underscore form for WD14 fallback
-
-            # Person count (check both forms)
-            if raw_lower in JOYTAG_PERSON_COUNT:
-                pc = JOYTAG_PERSON_COUNT[raw_lower]
-                if person_count is None or pc > person_count:
-                    person_count = pc
-            elif raw_under in JOYTAG_PERSON_COUNT:
-                pc = JOYTAG_PERSON_COUNT[raw_under]
-                if person_count is None or pc > person_count:
-                    person_count = pc
 
             if raw_lower in WD14_SKIP_TAGS or raw_under in WD14_SKIP_TAGS:
                 continue   # skip noise tags shared with WD14
@@ -1218,6 +1289,37 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
     return frames, tmpdir
 
 
+def _apply_color_heuristic(best: dict[str, tuple[str, float]],
+                           person_count: Optional[int] = None) -> dict[str, tuple[str, float]]:
+    """Keep strong colors per visible subject, while supporting collabs.
+
+    WD14/JoyTag scores are independent sigmoid predictions, not a single
+    color choice. For a solo image we retain only the strongest color in each
+    family, which prevents warm lighting from creating contradictory labels.
+    When the model identifies multiple people, we retain up to one strong
+    candidate per detected subject so two different hair/eye colors in a
+    collab survive normalization.
+    """
+    try:
+        subject_limit = max(1, min(int(person_count or 1), COLOR_MAX_SUBJECTS))
+    except (TypeError, ValueError):
+        subject_limit = 1
+    for family in (HAIR_COLOR_TAGS, EYE_COLOR_TAGS):
+        candidates = [(name, value) for name, value in best.items() if name in family]
+        if len(candidates) <= subject_limit:
+            continue
+        keep = {
+            name for name, (_, confidence) in sorted(
+                candidates, key=lambda item: item[1][1], reverse=True
+            )[:subject_limit]
+            if confidence >= COLOR_TAG_MIN_CONFIDENCE
+        }
+        for name, _ in candidates:
+            if name not in keep:
+                best.pop(name, None)
+    return best
+
+
 def _apply_nudity_heuristic(best: dict[str, tuple[str, float]]) -> dict[str, tuple[str, float]]:
     """Post-process: if 'nude' fires but explicit body parts don't, downgrade to 'implied nudity'."""
     EXPLICIT_BODY = {"nipples", "pussy", "penis", "vagina"}
@@ -1259,6 +1361,98 @@ def _clear_ai_tags(db, image_id: int):
             tag.use_count -= 1
 
 
+def repair_existing_color_tags(db, min_confidence: float = COLOR_TAG_MIN_CONFIDENCE) -> dict:
+    """Normalize existing AI color links without touching manual links.
+
+    This is a one-time data repair for libraries tagged before the color
+    safeguards existed.  Manual color links are treated as authoritative; for
+    AI-only images, links below the color floor are removed and up to one
+    color per detected subject is retained in each family. Existing links that
+    were removed by an older one-winner repair cannot be reconstructed here;
+    those files need a retag run to recover their second subject's color.
+    """
+    from sqlalchemy import text
+
+    names = sorted(COLOR_TAGS)
+    binds = {f"name_{i}": name for i, name in enumerate(names)}
+    placeholders = ", ".join(f":name_{i}" for i in range(len(names)))
+    rows = db.execute(text(f"""
+        SELECT it.image_id, i.person_count, it.tag_id, t.name, it.confidence, it.tagger_model
+        FROM image_tags it
+        JOIN tags t ON t.id = it.tag_id
+        JOIN images i ON i.id = it.image_id
+        WHERE lower(t.name) IN ({placeholders})
+    """), binds).mappings().all()
+
+    grouped: dict[tuple[int, str], list[dict]] = {}
+    tag_ids: set[int] = set()
+    manual_families: set[tuple[int, str]] = set()
+    for row in rows:
+        name = row["name"].lower()
+        family = "hair" if name in HAIR_COLOR_TAGS else "eyes"
+        key = (row["image_id"], family)
+        grouped.setdefault(key, []).append(row)
+        tag_ids.add(row["tag_id"])
+        if row["tagger_model"] is None:
+            manual_families.add(key)
+
+    winners: list[dict] = []
+    for key, candidates in grouped.items():
+        if key in manual_families:
+            continue
+        eligible = [
+            row for row in candidates
+            if row["tagger_model"] is not None
+            and float(row["confidence"] or 0.0) >= min_confidence
+        ]
+        if eligible:
+            try:
+                subject_limit = max(1, min(int(candidates[0]["person_count"] or 1), COLOR_MAX_SUBJECTS))
+            except (TypeError, ValueError):
+                subject_limit = 1
+            for winner in sorted(
+                eligible, key=lambda row: float(row["confidence"] or 0.0), reverse=True
+            )[:subject_limit]:
+                winners.append({
+                    "image_id": winner["image_id"],
+                    "tag_id": winner["tag_id"],
+                    "confidence": winner["confidence"],
+                    "tagger_model": winner["tagger_model"],
+                })
+
+    ai_color_ids = [
+        row["tag_id"] for row in rows if row["tagger_model"] is not None
+    ]
+    if ai_color_ids:
+        db.execute(text(f"""
+            DELETE FROM image_tags
+            WHERE tagger_model IS NOT NULL
+              AND tag_id IN ({", ".join(str(tag_id) for tag_id in sorted(set(ai_color_ids)))})
+        """))
+        if winners:
+            db.execute(text("""
+                INSERT INTO image_tags (image_id, tag_id, confidence, tagger_model)
+                VALUES (:image_id, :tag_id, :confidence, :tagger_model)
+            """), winners)
+
+    if tag_ids:
+        db.execute(text(f"""
+            UPDATE tags
+            SET use_count = (
+                SELECT COUNT(*) FROM image_tags WHERE image_tags.tag_id = tags.id
+            )
+            WHERE id IN ({", ".join(str(tag_id) for tag_id in sorted(tag_ids))})
+        """))
+
+    removed = len(ai_color_ids) - len(winners)
+    return {
+        "examined": len(rows),
+        "removed": removed,
+        "kept": len(winners),
+        "manual_families": len(manual_families),
+    }
+
+
 def _apply_tag_results(img, db, raw_results, person_count, model_name: str,
                        clear_existing: bool = False, tag_cache: Optional[dict] = None) -> bool:
     """Apply already-inferred results to one image without another model call."""
@@ -1273,6 +1467,7 @@ def _apply_tag_results(img, db, raw_results, person_count, model_name: str,
     for name, cat, conf in raw_results:
         if name not in best or conf > best[name][1]:
             best[name] = (cat, conf)
+    best = _apply_color_heuristic(best, person_count)
     best = _apply_nudity_heuristic(best)
     for name, (cat, conf) in best.items():
         tag = _get_or_create_tag(db, name, cat, tag_cache)
@@ -1317,6 +1512,7 @@ def tag_single_image(
             best[name] = (cat, conf)
 
     # Post-processing heuristics
+    best = _apply_color_heuristic(best, person_count)
     best = _apply_nudity_heuristic(best)
 
     for name, (cat, conf) in best.items():
@@ -1374,6 +1570,7 @@ def tag_single_video(
         if not best:
             return False
 
+        best = _apply_color_heuristic(best, person_count)
         best = _apply_nudity_heuristic(best)
 
         for name, (cat, conf) in best.items():

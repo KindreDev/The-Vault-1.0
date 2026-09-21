@@ -102,7 +102,7 @@ function FunscriptStatsPill({ actions, duration }) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full flex-shrink-0 flex-wrap"
           style={{
-            fontSize: 12, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
+            fontSize: 16, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
             background: 'color-mix(in srgb, var(--accent) 16%, transparent)',
             border: '0.5px solid color-mix(in srgb, var(--accent) 35%, transparent)',
           }}>
@@ -121,7 +121,7 @@ function FunscriptOffsetControl({ offsetMs, onChange }) {
   return (
     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full flex-shrink-0"
          style={{
-           fontSize: 12, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
+           fontSize: 16, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)',
            background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
            border: '0.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
          }}>
@@ -193,6 +193,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const [funscript,    setFunscript]    = useState(null)
   const [scriptSynced, setScriptSynced] = useState(false)
   const [videoError,   setVideoError]   = useState(null)
+  const [transcodeFallback, setTranscodeFallback] = useState(false)
   const [scriptDrag,   setScriptDrag]   = useState(false)  // .funscript being dragged over
   const [droppedScript, setDroppedScript] = useState(null) // { name, content, parsed } awaiting confirm
   const [linking,      setLinking]      = useState(false)
@@ -449,10 +450,22 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
   const pct = duration ? (time / duration) * 100 : 0
 
+  const playbackSrc = transcodeFallback && imageId
+    ? `/api/images/${imageId}/file?transcode=1`
+    : src
+
   // Human-readable error from the browser's MediaError code
   const handleVideoError = useCallback(() => {
     const v = videoRef.current
     const code = v?.error?.code
+    // MP4/WebM can still contain a browser-incompatible codec such as HEVC.
+    // Give the server one chance to convert it before showing an error.  WMV,
+    // MKV, AVI, MOV and M4V are converted automatically by the file endpoint.
+    if (imageId && !transcodeFallback) {
+      setVideoError('Preparing browser-compatible playback…')
+      setTranscodeFallback(true)
+      return
+    }
     const msgs = {
       1: 'Playback aborted.',
       2: 'Network error while loading video.',
@@ -460,7 +473,12 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       4: 'Video format or codec not supported by this browser.\nTry H.264 MP4 — it plays everywhere. VLC can re-encode it.',
     }
     setVideoError(msgs[code] ?? 'Unknown video error.')
-  }, [])
+  }, [imageId, transcodeFallback])
+
+  useEffect(() => {
+    setTranscodeFallback(false)
+    setVideoError(null)
+  }, [src, imageId])
 
   // ── Funscript drag-and-drop: drop a .funscript onto the video to link it ──
   const isFileDrag = (e) => e.dataTransfer?.types?.includes('Files')
@@ -529,7 +547,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none animate-fade-in"
              style={{ background: 'rgba(0,0,0,0.7)', border: '2px dashed color-mix(in srgb, var(--accent) 70%, transparent)', borderRadius: 12 }}>
           <Link2 size={34} style={{ color: 'color-mix(in srgb, var(--accent) 85%, white)' }} />
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)' }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: 'color-mix(in srgb, var(--accent) 85%, white)' }}>
             Drop .funscript to link it to this video
           </div>
         </div>
@@ -545,28 +563,28 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
                style={{ width: 'min(400px, 90%)', background: 'var(--c-card, #1a1a1a)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
             <div className="flex items-center gap-2">
               <Zap size={17} style={{ color: 'var(--c-pink)' }} />
-              <span className="truncate" style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              <span className="truncate" style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
                 {droppedScript.name}
               </span>
             </div>
-            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
               Link this script to the video permanently? It will be saved next to the video
               {funscriptPath ? ' and replace the current script.' : '.'}
             </div>
             <button onMouseDown={linkDroppedScript} disabled={linking}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[10px] cursor-pointer disabled:opacity-50"
-                    style={{ background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+                    style={{ background: 'var(--accent)', color: '#fff', fontSize: 16, fontWeight: 600 }}>
               {linking ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
               Link permanently
             </button>
             <button onMouseDown={() => { applyScriptLocally(droppedScript.parsed); setDroppedScript(null) }}
                     className="w-full py-2.5 rounded-[10px] cursor-pointer"
-                    style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.75)', fontSize: 14 }}>
+                    style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.75)', fontSize: 16 }}>
               Just play once (don't save)
             </button>
             <button onMouseDown={() => setDroppedScript(null)}
                     className="w-full py-1.5 cursor-pointer"
-                    style={{ background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                    style={{ background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 16 }}>
               Cancel
             </button>
           </div>
@@ -578,13 +596,13 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 px-8 text-center"
              style={{ background: 'rgba(0,0,0,0.85)' }}>
           <div style={{ fontSize: 36, lineHeight: 1 }}>🎬</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-line' }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-line' }}>
             {videoError}
           </div>
           <button
             onClick={() => { setVideoError(null); videoRef.current?.load() }}
             style={{
-              marginTop: 4, padding: '6px 18px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              marginTop: 4, padding: '6px 18px', borderRadius: 8, fontSize: 16, cursor: 'pointer',
               background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)',
               border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
             }}>
@@ -595,7 +613,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
       <video
         ref={videoRef}
-        src={src}
+        src={playbackSrc}
         autoPlay loop={onEnded ? false : loopVideo}
         onEnded={onEnded}
         style={{
@@ -674,7 +692,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
                           onMouseDown={e => { e.stopPropagation(); setAxisEnabled(id, !on) }}
                           title={on ? `${AXIS_LABELS[id] || id} active — click to mute this axis`
                                     : `${AXIS_LABELS[id] || id} muted — click to enable`}
-                          className="px-2 py-0.5 rounded-full text-[12px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                          className="px-2 py-0.5 rounded-full text-[16px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
                           style={on
                             ? { background: 'color-mix(in srgb, var(--c-accent) 28%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
                             : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
@@ -724,7 +742,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
               {deviceConnected && funscript && (
                 <button onMouseDown={e => { e.stopPropagation(); toggleScriptSync() }}
                         title={scriptSynced ? 'Device synced to script — click to disable' : 'Sync device to funscript'}
-                        className="cursor-pointer flex-shrink-0 ml-1 px-2 py-0.5 rounded text-[12px] font-semibold flex items-center gap-1 transition-all"
+                        className="cursor-pointer flex-shrink-0 ml-1 px-2 py-0.5 rounded text-[16px] font-semibold flex items-center gap-1 transition-all"
                         style={scriptSynced
                           ? { background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
                           : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
@@ -736,7 +754,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
 
             <div className="flex items-center gap-2 flex-shrink-0">
               <button onMouseDown={e => { e.stopPropagation(); seek(-3) }}
-                      className="text-[13px] px-3 py-1.5 rounded-[6px] cursor-pointer font-mono"
+                      className="text-[16px] px-3 py-1.5 rounded-[6px] cursor-pointer font-mono"
                       style={{ color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.1)' }}>
                 −3s
               </button>
@@ -746,13 +764,13 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
                 {playing ? <Pause size={14} color="#fff" /> : <Play size={14} color="#fff" />}
               </button>
               <button onMouseDown={e => { e.stopPropagation(); seek(3) }}
-                      className="text-[13px] px-3 py-1.5 rounded-[6px] cursor-pointer font-mono"
+                      className="text-[16px] px-3 py-1.5 rounded-[6px] cursor-pointer font-mono"
                       style={{ color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.1)' }}>
                 +3s
               </button>
             </div>
 
-            <div className="flex-1 flex justify-end text-[13px] font-mono tabular-nums"
+            <div className="flex-1 flex justify-end text-[16px] font-mono tabular-nums"
                  style={{ color: 'rgba(255,255,255,0.5)' }}>
               {fmtTime(time)} / {fmtTime(duration)}
             </div>

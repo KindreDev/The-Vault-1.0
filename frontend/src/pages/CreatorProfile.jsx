@@ -2018,10 +2018,13 @@ export default function CreatorProfile() {
       {showEditModal && <EditCreatorModal creator={creator} onClose={() => setShowEditModal(false)} />}
 
       {/* Avatar zoom lightbox */}
-      {showAvatarZoom && (
+      {showAvatarZoom && createPortal((
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)', animation: 'fadeIn 0.18s ease' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={creator.name}
+          style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)', animation: 'fadeIn 0.18s ease', overscrollBehavior: 'contain' }}
           onClick={() => setShowAvatarZoom(false)}
         >
           <div
@@ -2043,7 +2046,7 @@ export default function CreatorProfile() {
             @keyframes zoomIn { from { transform: scale(0.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
           `}</style>
         </div>
-      )}
+      ), document.body)}
 
       {/* Delete confirmation modal */}
       {confirmDelete && (

@@ -171,7 +171,7 @@ export default function TagAutocompleteInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="bg-transparent border-none outline-none flex-1 min-w-0 placeholder-[rgba(255,255,255,0.25)]"
-          style={{ color: 'rgba(255,255,255,0.8)', fontSize: sm ? 11 : 13 }}
+          style={{ color: 'rgba(255,255,255,0.8)', fontSize: 16 }}
         />
         {input && (
           <button type="button" onMouseDown={() => { setInput(''); setOpen(false) }}
@@ -212,17 +212,17 @@ export default function TagAutocompleteInput({
               {tag.__create ? (
                 <>
                   <Plus size={12} style={{ color: 'var(--c-green)', flexShrink: 0 }} />
-                  <span style={{ fontSize: 16 }} className="flex-1 truncate">
+                  <span style={{ fontSize: 18 }} className="flex-1 truncate">
                     Create <strong>{tag.name}</strong>
                   </span>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0">new</span>
+                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0">new</span>
                 </>
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full flex-shrink-0"
                         style={{ background: CAT_COLORS[tag.category] ?? '#888' }} />
-                  <span style={{ fontSize: 16 }} className="flex-1 truncate">{tag.name}</span>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0">
+                  <span style={{ fontSize: 18 }} className="flex-1 truncate">{tag.name}</span>
+                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0">
                     {tag.use_count}
                   </span>
                 </>

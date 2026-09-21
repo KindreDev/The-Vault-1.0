@@ -1031,6 +1031,20 @@ function ErikaContent() {
           </code>
           <p className="text-[16px] text-white/40 mb-4">This is ~15 GB. It will take a few minutes depending on your connection. Ollama shows download progress in the terminal.</p>
 
+          <div className="mb-4 p-3 rounded-lg flex gap-2"
+               style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+            <AlertTriangle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-[16px] font-semibold text-white/75 mb-1">Troubleshooting a Hugging Face redirect error</div>
+              <p className="text-[16px] text-white/50 leading-snug mb-2">If Ollama reports a redirect or download error while fetching this model, update Ollama and retry the normal command above first. As a temporary workaround, run:</p>
+              <code className="block px-3 py-2 rounded-lg text-[16px] font-mono leading-relaxed break-all"
+                    style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-amber)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+                ollama pull --insecure hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
+              </code>
+              <p className="text-[16px] text-white/40 mt-2 leading-snug">This flag relaxes download security checks to work around the redirect. Use it only with the trusted <span className="font-mono text-[16px] text-white/60">hf.co</span> model address above, then prefer the normal command again after Ollama is updated.</p>
+            </div>
+          </div>
+
           <div className="text-[17px] font-semibold text-white/60 mb-2">Lighter alternatives (lower VRAM)</div>
           <div className="space-y-2">
             {[

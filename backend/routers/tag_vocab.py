@@ -92,9 +92,23 @@ def update_vocab_entry(entry_id: int, data: TagVocabEntryUpdate, db: Session = D
         entry.normalized_name = data.normalized_name.strip()
     if data.category is not None:
         entry.category = data.category
+    # A null value intentionally clears the override and falls back to the
+    # global run threshold. Pydantic validates non-null values in [0, 1].
+    models_touched = {entry.model}
+    if "confidence_threshold" in data.model_fields_set:
+        # The UI exposes the normalized tag name, so keep the override
+        # consistent when the same semantic tag exists in both model
+        # vocabularies (for example WD14 and JoyTag's blue hair entry).
+        siblings = db.query(TagVocabEntry).filter(
+            TagVocabEntry.normalized_name == entry.normalized_name
+        ).all()
+        for sibling in siblings:
+            sibling.confidence_threshold = data.confidence_threshold
+            models_touched.add(sibling.model)
     db.commit()
     db.refresh(entry)
-    ai_tagger.invalidate_tag_vocab_cache(entry.model)
+    for model in models_touched:
+        ai_tagger.invalidate_tag_vocab_cache(model)
     return entry
 
 

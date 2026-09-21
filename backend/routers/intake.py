@@ -3,7 +3,7 @@ import mimetypes
 import threading
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response, FileResponse
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from database import get_db, SessionLocal
 from models import IntakeRoot, IntakeFolder, IntakeItem
 from services import intake as intake_svc
 from services import task_queue
+from services.video_playback import VideoPlaybackError, ensure_browser_playback
 
 router = APIRouter()
 
@@ -133,7 +134,7 @@ def commit_folders(body: dict):
 
 
 @router.get("/items/{item_id}/file")
-def item_file(item_id: int, request: Request, db: Session = Depends(get_db)):
+def item_file(item_id: int, request: Request, transcode: bool = Query(False), db: Session = Depends(get_db)):
     item = db.query(IntakeItem).filter(IntakeItem.id == item_id).first()
     if not item or not os.path.isfile(item.source_path):
         raise HTTPException(404, "Loading Bay file not found")
@@ -141,7 +142,13 @@ def item_file(item_id: int, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(403, "File is outside its Loading Bay root")
     if item.is_video:
         from routers.images import _video_response
-        return _video_response(item.source_path, request.headers.get("range"), request)
+        try:
+            playback_path, _ = ensure_browser_playback(
+                item.source_path, f"intake-{item_id}", force=transcode,
+            )
+        except VideoPlaybackError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        return _video_response(playback_path, request.headers.get("range"), request)
     if item.is_archive:
         raise HTTPException(400, "Archives cannot be played directly")
     return FileResponse(item.source_path)

@@ -190,6 +190,50 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
 
 // ── AI Tagging Settings modal — browse & toggle the raw model vocabulary ───────
 const PAGE_SIZE = 100
+const GLOBAL_THRESHOLD_PREVIEW = 0.35
+
+function VocabThresholdControl({ entry, onSave }) {
+  const [draft, setDraft] = useState(entry.confidence_threshold)
+  const effective = draft ?? GLOBAL_THRESHOLD_PREVIEW
+
+  useEffect(() => {
+    setDraft(entry.confidence_threshold)
+  }, [entry.confidence_threshold])
+
+  const commit = () => {
+    if (draft !== entry.confidence_threshold) onSave(draft)
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-shrink-0" title="This tag overrides the global AI confidence threshold">
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={Math.round(effective * 100)}
+        onChange={e => setDraft(Number(e.target.value) / 100)}
+        onMouseUp={commit}
+        onTouchEnd={commit}
+        onBlur={commit}
+        className="w-[112px] accent-[var(--c-accent)] cursor-pointer"
+        aria-label={entry.normalized_name + ' confidence threshold'}
+      />
+      <span className="w-[42px] text-right text-[16px] font-mono"
+            style={{ color: draft == null ? 'rgba(255,255,255,0.35)' : 'var(--c-accent-text)' }}>
+        {Math.round(effective * 100)}%
+      </span>
+      {draft == null ? (
+        <span className="w-[48px] text-[16px] text-white/25">Global</span>
+      ) : (
+        <button type="button" onClick={() => { setDraft(null); onSave(null) }}
+                className="w-[48px] text-[16px] text-white/40 hover:text-white transition-colors cursor-pointer">
+          Reset
+        </button>
+      )}
+    </div>
+  )
+}
 
 function AiTaggingSettingsModal({ onClose }) {
   const qc = useQueryClient()
@@ -243,6 +287,10 @@ function AiTaggingSettingsModal({ onClose }) {
   const editMut = useMutation({
     mutationFn: ({ id, normalized_name, category }) => tagVocabApi.update(id, { normalized_name, category }),
     onSuccess: () => { invalidate(); setEditRow(null) },
+  })
+  const thresholdMut = useMutation({
+    mutationFn: ({ id, confidence_threshold }) => tagVocabApi.update(id, { confidence_threshold }),
+    onSuccess: invalidate,
   })
 
   const items      = list?.items ?? []
@@ -377,6 +425,9 @@ function AiTaggingSettingsModal({ onClose }) {
                     className="flex items-center justify-center h-32 text-[rgba(255,255,255,0.2)] text-[17px]">No tags found</motion.div>
                 ) : (
                   <div className="flex flex-col gap-1">
+                    <div className="text-[16px] text-white/35 px-3 pb-2">
+                      Per-tag sliders override the global threshold from Settings → AI Tagging. Reset a tag to use the global value again.
+                    </div>
                     <button onClick={selectAllOnPage} className="self-start text-[15px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors mb-1">
                       Select all on page
                     </button>
@@ -397,6 +448,10 @@ function AiTaggingSettingsModal({ onClose }) {
                             <span className="flex-1 min-w-0 text-[16px] text-[rgba(255,255,255,0.4)] truncate font-mono">{entry.raw_tag}</span>
                             <ChevronRight size={12} className="text-[rgba(255,255,255,0.2)] flex-shrink-0" />
                             <span className="flex-1 min-w-0 text-[17px] text-white truncate">{entry.normalized_name}</span>
+                            <VocabThresholdControl
+                              entry={entry}
+                              onSave={confidence_threshold => thresholdMut.mutate({ id: entry.id, confidence_threshold })}
+                            />
                             {entry.is_builtin_default && (
                               <span className="text-[13px] px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: accentTint(15), color: ACCENT_TEXT }}>default</span>
                             )}

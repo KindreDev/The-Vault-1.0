@@ -14,7 +14,14 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed WMV and other VLC/FFmpeg-compatible videos not playing in Chromium by adding cached browser-compatible playback.
+
 ### Added
+- Videos now have their own page module and can be sorted by length, with unknown durations kept at the end.
+- Gallery detail now searches filenames in place, and image/video viewers persist readable per-file notes alongside ten cumulative-hover rating stars.
+- Help now documents a temporary `ollama pull --insecure` workaround for Hugging Face redirect errors while keeping the normal model download command as the recommended path.
 - ComfyUI images are now identified from embedded workflow metadata during import and automatically receive an `AI generated` provenance tag without running an AI tagger.
 - Character creation now searches both AniList and a no-key game-character catalogue, including titles such as Stellar Blade and Resident Evil.
 - Creators without a profile picture now automatically choose an existing portrait from their linked Vault media without background folder scanning.
@@ -66,6 +73,15 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- GalleryView now keeps rapid viewer arrow navigation from triggering image zoom and adds a one-click Reshuffle control for Random sorting.
+- Library scans and Loading Bay now ignore hidden/system files and metadata folders by default, with an explicit Scanner setting to include them.
+- File-level creator assignment now stays attached to the selected image or video, refreshes GalleryView coverage immediately, and keeps many-creator summaries contained in a scrollable card grid.
+- Viewer creator controls now use compact theme-aware labels: `+file` is removed, the action reads `Assign creator`, and clearing uses a compact `Clear` control.
+- AI hair and eye colors now require stronger confidence, preserve multiple strong colors for detected collabs, and support per-tag confidence overrides in Tag Manager with the global threshold as fallback.
+- Single-creator GalleryView cards now grow to show the creator name before falling back to constrained truncation when space is genuinely limited.
+- Dashboard Random Mix, Stats, and Daily Spin overlays now lock the underlying viewport; Daily Spin appears under Tools and becomes unavailable after that day's spin is consumed.
+- GalleryView creator summaries now use visual creator cards with real file-coverage counts and percentages, without tag chips or overflow menus.
+- Image and video viewers now use 16px minimum readable controls, with existing 16px viewer text promoted to 18px.
 - Gallery editing now uses the real folder rename flow, keeps media handles from blocking Windows renames, and updates image and funscript paths immediately.
 - GalleryView toolbar controls now share the Filename control's 16px baseline, replaces the gallery cum control with a Send to Playlists action, and keeps folder metadata synchronized after renames.
 - The former multi-panel wording is now presented as Playlists throughout the Vault while retaining the legacy route for existing links.
@@ -148,6 +164,9 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
 
 ### Fixed
+- Creator profile avatar lightboxes now portal to the viewport and keep the underlying page locked while open.
+- Factory reset now removes the complete collection database and thumbnail cache, waits for the old process to release the server port, and reconnects only after a genuinely new backend instance is online.
+- Gallery title renaming no longer fires a false failure after a successful Enter-and-blur submission.
 - Gallery merges now reconcile files already present in the target folder, retire the stale source gallery, and report the reconciliation instead of leaving the database incomplete.
 - Gallery merges now move each file exactly once, retire replaced database rows, preserve video funscript links, and keep skipped or missing files in their source gallery instead of creating filesystem/database mismatches.
 - Collection Room wall-mounted posters and furniture now accept ray hits on the authored interior wall envelope, including the PC area, while retaining wall-attachment and footprint checks.

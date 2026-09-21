@@ -54,7 +54,7 @@ export default function SlideshowControls({
     <div ref={wrapRef} className="relative flex items-center gap-1.5">
       <button
         onMouseDown={onToggle}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-[7px] text-[16px] font-medium cursor-pointer"
         style={active
           ? { background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }
           : { background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.15)' }}
@@ -67,7 +67,7 @@ export default function SlideshowControls({
         <>
           <button
             onMouseDown={() => setMenuOpen(o => !o)}
-            className="px-2.5 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer"
+            className="px-2.5 py-1.5 rounded-[7px] text-[16px] font-medium cursor-pointer"
             style={{ background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.55)',
                      border: '0.5px solid rgba(255,255,255,0.15)' }}
             title={t('Slideshow speed')}>
@@ -79,7 +79,7 @@ export default function SlideshowControls({
               {SLIDESHOW_SPEEDS.map(s => (
                 <button key={s}
                         onMouseDown={() => { onSpeedChange(s); setMenuOpen(false) }}
-                        className="w-full text-left px-4 py-1.5 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
+                        className="w-full text-left px-4 py-1.5 text-[16px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                         style={{ color: s === speed ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)' }}>
                   {s}s
                 </button>

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from models import CreatorType, QuestType, QuestStatus
@@ -51,6 +51,7 @@ class TagVocabEntryOut(BaseModel):
     category: str
     enabled: bool
     is_builtin_default: bool
+    confidence_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     class Config:
         from_attributes = True
 
@@ -58,6 +59,7 @@ class TagVocabEntryUpdate(BaseModel):
     enabled: Optional[bool] = None
     normalized_name: Optional[str] = None
     category: Optional[str] = None
+    confidence_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 class TagVocabBulkUpdate(BaseModel):
     ids: List[int]
@@ -227,6 +229,7 @@ class ImageOut(BaseModel):
     duration: Optional[float]
     funscript_path: Optional[str]
     rating: float
+    notes: Optional[str] = ""
     cum_count: int
     edge_count: Optional[int] = 0
     view_count: int
@@ -245,6 +248,7 @@ class ImageOut(BaseModel):
 
 class ImageUpdate(BaseModel):
     rating: Optional[float] = None
+    notes: Optional[str] = None
     is_favorite: Optional[bool] = None
     gallery_id: Optional[int] = None
 

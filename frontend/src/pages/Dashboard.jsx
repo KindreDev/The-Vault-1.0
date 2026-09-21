@@ -18,6 +18,7 @@ import CurationRun from '../components/curation/CurationRun'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
+import { useScrollLock } from '../hooks/useScrollLock'
 import { useT } from '../i18n'
 import toast from 'react-hot-toast'
 
@@ -304,7 +305,7 @@ function HofSection({ title, icon: Icon, iconColor, items, emptyMsg, renderCard,
 }
 
 // ── Daily Spin Modal (slot machine) ──────────────────────────────────────────
-function SpinModal({ onClose }) {
+function SpinModal({ onClose, onSpent }) {
   const t = useT()
   const [phase, setPhase]       = useState('spinning') // spinning | result
   const [displayNum, setDisplayNum] = useState(Math.floor(Math.random() * 100) + 1)
@@ -326,11 +327,14 @@ function SpinModal({ onClose }) {
         clearInterval(intervalRef.current)
         setResult(data)
         setPhase('result')
-        if (!data.already_spun && data.xp_event) {
-          addXpToast(`+${data.xp_event.amount} XP`)
-          qc.invalidateQueries({ queryKey: ['profile'] })
-          qc.invalidateQueries({ queryKey: ['economy-balance'] })
-          qc.invalidateQueries({ queryKey: ['vault-stats'] })
+        if (!data.already_spun) {
+          onSpent?.()
+          if (data.xp_event) {
+            addXpToast(`+${data.xp_event.amount} XP`)
+            qc.invalidateQueries({ queryKey: ['profile'] })
+            qc.invalidateQueries({ queryKey: ['economy-balance'] })
+            qc.invalidateQueries({ queryKey: ['vault-stats'] })
+          }
         }
         setTimeout(onClose, 2800)
       }, remaining)
@@ -1130,9 +1134,21 @@ export default function Dashboard() {
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [showSpinModal, setShowSpinModal] = useState(false)
   const [showMixModal, setShowMixModal] = useState(false)
+  const [dailySpinAvailable, setDailySpinAvailable] = useState(true)
   const [ctxMenu, setCtxMenu] = useState(null) // { item, itemType, x, y }
   const mainContentRef = useRef(null)
   const [dashboardCardLimit, setDashboardCardLimit] = useState(6)
+
+  useEffect(() => {
+    if (typeof profile?.spin_available === 'boolean') {
+      setDailySpinAvailable(profile.spin_available)
+    }
+  }, [profile?.spin_available])
+
+  useScrollLock(
+    showCuration || showMoreStats || showScanModal || showIntake ||
+    showSpinModal || showMixModal
+  )
 
   // Keep the three media rows to exactly the width of the main column. Wider
   // displays gain cards; narrower ones lose cards before they can cross into
@@ -1582,6 +1598,12 @@ export default function Dashboard() {
               <Zap size={14} style={{ color: 'var(--c-accent)' }} /> {t('Tools')}
             </div>
             <div className="flex flex-col gap-2">
+              <button onClick={() => setShowSpinModal(true)}
+                      disabled={!dailySpinAvailable || profile?.spin_available === false}
+                      className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all disabled:opacity-45 disabled:cursor-not-allowed"
+                      style={{ background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)', fontSize: 16, fontWeight: 500 }}>
+                <Dice6 size={16} /> {dailySpinAvailable && profile?.spin_available !== false ? t('Daily Spin') : t('Daily Spin used')}
+              </button>
               <button onClick={() => setShowScanModal(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
                       style={{ background: 'color-mix(in srgb, var(--c-green) 12%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
@@ -1826,7 +1848,7 @@ export default function Dashboard() {
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
       {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}
       {showIntake && <IntakeModal onClose={() => setShowIntake(false)} />}
-      {showSpinModal && <SpinModal onClose={() => setShowSpinModal(false)} />}
+      {showSpinModal && <SpinModal onClose={() => setShowSpinModal(false)} onSpent={() => setDailySpinAvailable(false)} />}
       {showMixModal && <RandomMixModal onClose={() => setShowMixModal(false)} />}
       {ctxMenu && (
         <DashboardContextMenu

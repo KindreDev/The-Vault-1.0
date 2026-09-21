@@ -2305,13 +2305,24 @@ export function Settings() {
 
   const handleReset = async () => {
     setResetState('resetting')
+    let previousInstanceId = null
     try {
-      await systemApi.reset()
-    } catch { /* server dies — expected */ }
+      const health = await systemApi.health()
+      previousInstanceId = health?.data?.instance_id ?? null
+    } catch { /* the reset request below will surface a real failure */ }
+    try {
+      const response = await systemApi.reset()
+      previousInstanceId = response?.data?.instance_id ?? previousInstanceId
+    } catch { /* server dies after accepting the request — expected */ }
     if (resetPollRef.current) clearInterval(resetPollRef.current)
     resetPollRef.current = setInterval(async () => {
       try {
-        await systemApi.health()
+        const health = await systemApi.health()
+        const instanceId = health?.data?.instance_id ?? null
+        // The old process deliberately stays alive long enough to deliver the
+        // reset response. A plain HTTP 200 here used to be mistaken for a
+        // successful restart, immediately before that old process exited.
+        if (previousInstanceId && instanceId === previousInstanceId) return
         if (resetPollRef.current) {
           clearInterval(resetPollRef.current)
           resetPollRef.current = null
@@ -2319,7 +2330,7 @@ export function Settings() {
         setResetState('done')
         setShowResetModal(false)
         qc.clear()
-        setTimeout(() => setResetState('idle'), 3000)
+        window.location.reload()
       } catch { /* still restarting */ }
     }, 800)
     setTimeout(() => {
@@ -2796,6 +2807,34 @@ export function Settings() {
             {settingsTab === 'scanner' && (
               <div className="space-y-3">
                 <SettingsSection title={t('Library scan')} icon={ScanLine} accentColor="var(--c-green)">
+                  <div className="flex items-center justify-between gap-4 p-3 rounded-[9px] mb-5"
+                       style={{ background: 'rgba(255,255,255,0.035)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+                    <div>
+                      <div className="text-[17px] font-semibold text-white/75">{t('Ignore hidden and system content')}</div>
+                      <div className="text-[16px] text-white/40 mt-1">
+                        {t('Prevents thumbnail caches and app metadata folders from becoming galleries. Also applies to Loading Bay.')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={configData?.ignore_hidden_media !== false}
+                      onClick={async () => {
+                        const enabled = configData?.ignore_hidden_media === false
+                        try {
+                          await systemApi.setIgnoreHiddenMedia(enabled)
+                          qc.setQueryData(['system-config'], old => old ? { ...old, ignore_hidden_media: enabled } : old)
+                          toast.success(enabled ? t('Hidden content will be ignored') : t('Hidden content will be included'))
+                        } catch {
+                          toast.error(t('Could not save scanner setting'))
+                        }
+                      }}
+                      className="relative flex-shrink-0 w-14 h-8 rounded-full cursor-pointer transition-colors"
+                      style={{ background: configData?.ignore_hidden_media !== false ? 'var(--c-green)' : 'rgba(255,255,255,0.12)' }}>
+                      <span className="absolute top-1 w-6 h-6 rounded-full bg-white transition-all"
+                            style={{ left: configData?.ignore_hidden_media !== false ? 28 : 4 }} />
+                    </button>
+                  </div>
                   {scanStatus?.running ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">

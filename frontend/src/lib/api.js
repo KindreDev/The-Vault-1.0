@@ -553,6 +553,7 @@ export const systemApi = {
   setConfig:  (data_dir) => api.post('/system/config', { data_dir }),
   setGpuMode:   (use_gpu) => api.post('/system/config/gpu-mode', { use_gpu }),
   setFunscriptLibrary: (funscript_library_path) => api.post('/system/config/funscript-library', { funscript_library_path }),
+  setIgnoreHiddenMedia: (enabled) => api.post('/system/config/ignore-hidden-media', { enabled }),
   getStartup:   ()        => api.get('/system/startup'),
   setStartup:   (enabled) => api.post('/system/startup', { enabled }),
   reset:        ()        => api.post('/system/reset'),

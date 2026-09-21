@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import DB_PATH, CONFIG_FILE, CONFIG_DIR, DATA_DIR, get_db
+from services.process_restart import INSTANCE_ID, schedule_restart
 
 router = APIRouter()
 
@@ -59,7 +60,7 @@ def _set_startup_enabled(enabled: bool):
 @router.get("/health")
 def health():
     """Simple liveness probe — frontend polls this after a restart."""
-    return {"status": "ok"}
+    return {"status": "ok", "instance_id": INSTANCE_ID}
 
 
 @router.get("/activity-tracking")
@@ -155,10 +156,7 @@ async def restore_database(file: UploadFile = File(...)):
         except Exception:
             pass
 
-    def _do_restore():
-        import time, subprocess
-        time.sleep(0.8)
-
+    def _restore_files():
         # Auto-backup current DB before overwriting — lives next to vault.db
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         pre_restore_path = DB_PATH + f".pre_restore_{stamp}"
@@ -167,25 +165,12 @@ async def restore_database(file: UploadFile = File(...)):
         except Exception:
             pass  # Don't block restore if backup fails
 
-        # Close SQLAlchemy connections so Windows doesn't lock the file
-        try:
-            from database import engine
-            engine.dispose()
-        except Exception:
-            pass
-
         # Write the uploaded database
         with open(DB_PATH, "wb") as f:
             f.write(content)
 
-        # Restart so SQLAlchemy picks up the new file cleanly
-        # Use subprocess.Popen + os._exit (same as /restart) — os.execv is unreliable on Windows
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([sys.executable, script] + sys.argv[1:], creationflags=_NO_WINDOW)
-        os._exit(0)
-
-    threading.Thread(target=_do_restore, daemon=False).start()
-    return {"message": "Restoring and restarting…"}
+    schedule_restart(before_launch=_restore_files)
+    return {"message": "Restoring and restarting…", "instance_id": INSTANCE_ID}
 
 
 def _read_config() -> dict:
@@ -218,6 +203,7 @@ def get_config():
         "config_dir":         CONFIG_DIR,
         "use_gpu":            config.get("use_gpu", True),  # GPU on by default
         "funscript_library_path": config.get("funscript_library_path", ""),
+        "ignore_hidden_media": config.get("ignore_hidden_media", True),
     }
 
 
@@ -250,6 +236,16 @@ def set_funscript_library(body: dict):
     config["funscript_library_path"] = path
     _write_config(config)
     return {"funscript_library_path": path}
+
+
+@router.post("/config/ignore-hidden-media")
+def set_ignore_hidden_media(body: dict):
+    """Choose whether scanner and Loading Bay skip hidden/system content."""
+    enabled = bool(body.get("enabled", True))
+    config = _read_config()
+    config["ignore_hidden_media"] = enabled
+    _write_config(config)
+    return {"ignore_hidden_media": enabled}
 
 
 @router.post("/config/gpu-mode")
@@ -297,15 +293,8 @@ def restart_server():
     Schedules a server restart 800ms after the response is sent.
     Uses subprocess.Popen + os._exit so it works reliably on Windows.
     """
-    def _do_restart():
-        import time, subprocess
-        time.sleep(0.8)
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([sys.executable, script] + sys.argv[1:], creationflags=_NO_WINDOW)
-        os._exit(0)
-
-    threading.Thread(target=_do_restart, daemon=False).start()
-    return {"message": "Restarting…"}
+    schedule_restart()
+    return {"message": "Restarting…", "instance_id": INSTANCE_ID}
 
 
 # ── App version & auto-update ─────────────────────────────────────────────────
@@ -612,40 +601,9 @@ def get_update_status():
 @router.post("/reset")
 def reset_collection():
     """
-    Wipes all user-generated content from the database (galleries, images, creators,
-    sessions, tags, cards, quests, achievements, XP events) and resets the user
-    profile to zero. The DB schema is preserved. The server restarts so SQLAlchemy
-    picks up the clean state.
+    Removes the complete collection database and derived thumbnail cache while
+    preserving configuration and source media. The replacement process recreates
+    a clean schema during startup.
     """
-    import sqlite3, time, subprocess
-
-    def _do_reset():
-        time.sleep(0.4)
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        tables = [
-            "card_inventory", "card_packs", "crafting_materials", "credit_events",
-            "cards", "playlist_images", "playlists", "image_tags", "gallery_tags",
-            "gallery_creators", "session_logs", "xp_events", "quests", "achievements",
-            "images", "galleries", "creators", "tags", "library_roots",
-        ]
-        for t in tables:
-            try:
-                cur.execute(f"DELETE FROM {t}")
-            except Exception:
-                pass
-        # Reset user profile to zero rather than deleting it
-        cur.execute("""
-            UPDATE user_profile SET
-                total_xp=0, level=1, streak_days=0, grace_tokens=1,
-                last_login=NULL, last_spin=NULL, total_cum_count=0,
-                total_packs_opened=0, vault_credits=0
-        """)
-        conn.commit()
-        conn.close()
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([sys.executable, script] + sys.argv[1:], creationflags=_NO_WINDOW)
-        os._exit(0)
-
-    threading.Thread(target=_do_reset, daemon=False).start()
-    return {"message": "Resetting and restarting…"}
+    schedule_restart(child_action="reset_collection")
+    return {"message": "Resetting and restarting…", "instance_id": INSTANCE_ID}
