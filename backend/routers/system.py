@@ -292,6 +292,8 @@ def restart_server():
     """
     Schedules a server restart 800ms after the response is sent.
     Uses subprocess.Popen + os._exit so it works reliably on Windows.
+    The returned instance_id identifies the process that accepted the request;
+    clients should wait for /health to return a different instance_id.
     """
     schedule_restart()
     return {"message": "Restarting…", "instance_id": INSTANCE_ID}

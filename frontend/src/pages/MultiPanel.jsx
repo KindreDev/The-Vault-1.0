@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
+import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore'
 import { galleriesApi, imagesApi, sessionsApi, panelPlaylistsApi } from '../lib/api'
 import PanelCell from '../components/PanelCell'
 import DeviceControls from '../components/DeviceControls'
@@ -894,6 +895,11 @@ export default function MultiPanel() {
   const deviceBtnRef = useRef(null)
 
   const deviceStatus = useDeviceStore(s => s.status)
+  const hasIndependentScript = useFunscriptPlayerStore(s => !!s.current)
+  const playerDockHidden = useFunscriptPlayerStore(s => s.dockHidden)
+  // The dock is fixed above the wall. Reserve its footprint so the bottom row
+  // and queue controls remain reachable at the target 1280×720 viewport.
+  const dockReserve = hasIndependentScript && !playerDockHidden ? 86 : 0
 
   const layout     = LAYOUTS[layoutIdx] ?? LAYOUTS[2]
   const panelItems = useMemo(
@@ -1234,7 +1240,7 @@ export default function MultiPanel() {
     : 'flex flex-col h-full relative'
 
   return (
-    <div ref={wrapperRef} className={wrapperClass} style={{ background: '#080808' }} onMouseMove={handleMouseMove}>
+    <div ref={wrapperRef} className={wrapperClass} style={{ background: '#080808', paddingBottom: dockReserve, boxSizing: 'border-box' }} onMouseMove={handleMouseMove}>
 
       {/* Top bar + queue strip — absolute overlay in fullscreen, normal flow otherwise */}
       <div style={isFullscreen ? {

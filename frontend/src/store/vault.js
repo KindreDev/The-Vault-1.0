@@ -223,8 +223,18 @@ export async function loadGlassBackground() {
   const hasCustom = localStorage.getItem('vault_glass_bg') === '1'
   if (!hasCustom) return
   try {
-    const dataUrl = await idbGet('glass_bg')
-    if (dataUrl) applyGlassBackground(dataUrl)
+    let dataUrl = null
+    try { dataUrl = await idbGet('glass_bg') } catch (e) {
+      console.warn('Could not read Glass background from IDB', e)
+    }
+    dataUrl ||= localStorage.getItem('vault_glass_bg_data')
+    // A theme can change while IndexedDB is being read. Only paint the
+    // custom backdrop if Glass is still the active theme when the read
+    // completes; otherwise a stale async result can leak into another theme.
+    if (dataUrl && document.body.getAttribute('data-theme') === 'glass') {
+      applyGlassBackground(dataUrl)
+      useVaultStore.setState({ glassBackground: true, glassBackgroundUrl: dataUrl })
+    }
   } catch (e) {
     console.warn('Could not load glass background from IDB', e)
   }
@@ -511,6 +521,10 @@ export const useVaultStore = create((set, get) => ({
   setPalette: (p) => {
     localStorage.setItem('vault_palette', p.id)
     applyPalette(p)
+    // Re-entering Glass resets the body to its fallback colour first. Reload
+    // the persisted image so switching themes does not make the selection
+    // appear to disappear.
+    if (p.id === 'glass') loadGlassBackground()
     set({ palette: p, accentColor: p.accent })
     gamiApi.updateProfile({ theme_accent: p.accent }).catch(() => {})
   },
@@ -563,17 +577,33 @@ export const useVaultStore = create((set, get) => ({
 
   // Glass theme background — true = user has a custom image stored in IDB
   glassBackground: localStorage.getItem('vault_glass_bg') === '1',
+  glassBackgroundUrl: null,
   setGlassBackground: async (dataUrl) => {
     if (dataUrl) {
-      await idbPut('glass_bg', dataUrl)
-      localStorage.setItem('vault_glass_bg', '1')
+      // Paint immediately so the selection is visible even if persistence is
+      // slow or unavailable in the current browser/WebView profile.
       applyGlassBackground(dataUrl)
-      set({ glassBackground: true })
+      set({ glassBackground: true, glassBackgroundUrl: dataUrl })
+      try {
+        await idbPut('glass_bg', dataUrl)
+        localStorage.setItem('vault_glass_bg', '1')
+        try { localStorage.removeItem('vault_glass_bg_data') } catch {}
+      } catch (e) {
+        // Keep a best-effort fallback for runtimes where IndexedDB is blocked.
+        // Large images may exceed localStorage; the current-session backdrop
+        // still remains visible in that case and the warning is diagnostic.
+        try {
+          localStorage.setItem('vault_glass_bg_data', dataUrl)
+          localStorage.setItem('vault_glass_bg', '1')
+        } catch {}
+        console.warn('Could not persist Glass background image', e)
+      }
     } else {
       await idbDelete('glass_bg')
       localStorage.removeItem('vault_glass_bg')
+      try { localStorage.removeItem('vault_glass_bg_data') } catch {}
       applyGlassBackground('')
-      set({ glassBackground: false })
+      set({ glassBackground: false, glassBackgroundUrl: null })
     }
   },
 

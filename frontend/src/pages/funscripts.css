@@ -1,0 +1,388 @@
+.fs-page { min-height: 100%; padding: 24px 20px 30px; color: rgba(255,255,255,.86); }
+.fs-page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:18px; }
+.fs-page-header h1 { margin:0; font-size:30px; line-height:1.1; font-weight:600; color:rgba(255,255,255,.95); }
+.fs-page-header p { margin:5px 0 0; color:var(--c-muted,rgba(255,255,255,.48)); font-size:17px; }
+.fs-page-header p span { color:var(--c-accent); margin:0 5px; }
+.fs-header-actions { display:flex; align-items:center; gap:12px; }
+.fs-analyze-button,.fs-health-pill { height:42px; border:1px solid var(--c-accent-line); border-radius:12px; display:inline-flex; align-items:center; gap:9px; padding:0 16px; font-size:16px; color:var(--c-accent-text); background:var(--c-accent-fill); }
+.fs-analyze-button { color:#d8fff4; border-color:var(--c-green-line); background:var(--c-green-fill); cursor:pointer; }
+.fs-analyze-button:disabled { opacity:.65; cursor:wait; }
+.fs-health-pill { color:rgba(255,255,255,.7); border-color:var(--c-green-line); background:rgba(16,155,116,.08); white-space:nowrap; }
+.fs-health-pill i { width:11px; height:11px; border-radius:50%; background:var(--c-green); box-shadow:0 0 12px var(--c-green); }
+.fs-layout { display:grid; grid-template-columns:minmax(0,1fr) 190px 310px; gap:10px; min-height:calc(100vh - 140px); }
+.fs-main,.fs-playlists,.fs-inspector,.fs-toolbar { border:1px solid rgba(255,255,255,.09); background:linear-gradient(180deg,rgba(28,30,32,.9),rgba(16,18,19,.92)); border-radius:12px; }
+.fs-main { min-width:0; overflow:hidden; }
+.fs-toolbar { padding:10px 12px 11px; margin-bottom:10px; }
+.fs-toolbar-top { display:flex; align-items:center; gap:16px; }
+.fs-search { height:46px; width:270px; flex:0 1 280px; display:flex; align-items:center; gap:10px; padding:0 14px; border-radius:11px; border:1px solid rgba(255,255,255,.2); color:rgba(255,255,255,.65); background:rgba(0,0,0,.26); }
+.fs-search input { width:100%; border:0; outline:0; background:none; color:white; font-size:16px; }
+.fs-search input::placeholder { color:rgba(255,255,255,.4); }
+.fs-tabs { display:flex; gap:8px; min-width:0; }
+.fs-tabs button,.fs-secondary-action { min-height:40px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border:1px solid rgba(255,255,255,.14); border-radius:22px; color:rgba(255,255,255,.66); background:rgba(255,255,255,.03); font-size:16px; cursor:pointer; white-space:nowrap; }
+.fs-tabs button.is-active { color:#d8fff4; border-color:#00b6a5; background:rgba(0,182,165,.2); }
+.fs-filters { display:flex; align-items:center; gap:8px; margin-top:10px; overflow:auto; }
+.fs-filters select { height:38px; min-width:105px; max-width:145px; padding:0 11px; color:rgba(255,255,255,.75); border:1px solid rgba(255,255,255,.14); border-radius:20px; background:#161a1c; font-size:16px; }
+.fs-filter-icon { color:rgba(255,255,255,.4); flex:0 0 auto; }
+.fs-filters .fs-sort-select { margin-left:auto; min-width:142px; }
+.fs-list-head { height:36px; display:grid; grid-template-columns:minmax(230px,1fr) 72px 70px 67px 68px minmax(150px,1.1fr) 72px; align-items:center; padding:0 10px 0 16px; color:rgba(255,255,255,.46); font-size:16px; border-bottom:1px solid rgba(255,255,255,.08); }
+.fs-script-row { min-height:112px; display:grid; grid-template-columns:42px 27px minmax(160px,1fr) 72px 70px 67px 68px minmax(150px,1.1fr) 72px 25px; gap:7px; align-items:center; padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.07); cursor:pointer; transition:background .15s,border-color .15s; }
+.fs-script-row:hover { background:rgba(255,255,255,.035); }
+.fs-script-row.is-selected { background:linear-gradient(90deg,rgba(0,182,165,.13),rgba(0,182,165,.025)); box-shadow:inset 2px 0 var(--c-green); }
+.fs-play-button { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--c-green); background:rgba(0,182,165,.12); border:1px solid var(--c-green-line); cursor:pointer; }
+.fs-heart,.fs-more { border:0; padding:3px; color:rgba(255,255,255,.55); background:none; cursor:pointer; }
+.fs-heart.is-favorite { color:#f05b9f; }
+.fs-script-summary { min-width:0; }
+.fs-script-title { color:rgba(255,255,255,.9); font-weight:600; font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fs-script-byline { margin-top:2px; color:rgba(255,255,255,.42); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fs-script-byline span { color:var(--c-accent); margin:0 2px; }
+.fs-waveform { height:30px; display:flex; align-items:center; gap:2px; margin-top:7px; overflow:hidden; }
+.fs-waveform i { display:block; width:3px; min-height:4px; border-radius:3px; background:linear-gradient(180deg,#f05b9f 0%,var(--c-accent) 48%,#00b6a5 100%); opacity:.9; }
+.fs-waveform-unavailable { justify-content:center; border:1px dashed rgba(255,255,255,.12); border-radius:6px; color:rgba(255,255,255,.32); font-size:16px; }
+.fs-waveform-large { height:100px; padding:10px 8px; gap:3px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:rgba(0,0,0,.18); }
+.fs-waveform-large i { width:4px; }
+.fs-metric { min-width:0; text-align:center; color:rgba(255,255,255,.75); font-size:16px; }
+.fs-metric span { display:block; white-space:nowrap; }
+.fs-metric small { display:block; margin-top:3px; color:rgba(255,255,255,.36); font-size:16px; }
+.fs-row-labels { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.fs-badge { min-height:26px; display:inline-flex; align-items:center; gap:4px; padding:0 8px; color:rgba(255,255,255,.65); border:1px solid rgba(255,255,255,.2); border-radius:7px; font-size:16px; white-space:nowrap; }
+.fs-badge-danger { color:#ffadad; border-color:rgba(232,79,85,.7); background:rgba(232,79,85,.12); }.fs-badge-pink { color:#f4a4c8; border-color:var(--c-pink-line); background:var(--c-pink-fill); }.fs-badge-amber { color:#f0c77b; border-color:var(--c-amber-line); background:var(--c-amber-fill); }.fs-badge-focus { color:#c5bafa; border-color:var(--c-accent-line); background:var(--c-accent-fill); }.fs-badge-device { color:#8fe4d4; border-color:var(--c-green-line); background:var(--c-green-fill); }.fs-badge-tag { color:#d6bcff; border-color:rgba(167,106,255,.5); background:rgba(130,78,200,.12); }
+.fs-last-played,.fs-muted { color:rgba(255,255,255,.42); font-size:16px; }.fs-more { color:rgba(255,255,255,.42); }
+.fs-playlists { padding:13px 10px; }.fs-column-heading { display:flex; align-items:center; justify-content:space-between; text-transform:uppercase; letter-spacing:.07em; font-size:16px; color:rgba(255,255,255,.62); }.fs-column-heading button { border:0; background:none; color:var(--c-accent-text); cursor:pointer; display:flex; align-items:center; gap:4px; font-size:16px; }.fs-playlist-item { width:100%; min-height:40px; display:flex; align-items:center; gap:8px; border:0; padding:6px 4px; background:none; color:rgba(255,255,255,.77); font-size:16px; text-align:left; cursor:pointer; }.fs-playlist-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.fs-playlist-item b { color:rgba(255,255,255,.4); font-weight:400; }.fs-playlist-note { margin:18px 4px; line-height:1.4; }.fs-queue-preview { margin-top:28px; padding-top:16px; border-top:1px solid rgba(255,255,255,.1); }.fs-queue-preview .fs-column-heading button { text-transform:none; letter-spacing:0; color:#75d1c6; }.fs-queue-item { width:100%; display:grid; grid-template-columns:20px 32px minmax(0,1fr) auto; align-items:center; gap:6px; margin-top:12px; border:0; background:none; color:rgba(255,255,255,.75); text-align:left; cursor:pointer; }.fs-queue-item .fs-waveform { height:28px; margin:0; }.fs-queue-item em { font-style:normal; font-size:16px; color:rgba(255,255,255,.4); }.fs-queue-preview > p { margin-top:14px; line-height:1.4; }
+.fs-inspector { padding:16px; }.fs-inspector-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }.fs-inspector h2 { margin:0; font-size:22px; color:rgba(255,255,255,.93); }.fs-inspector-head p { margin:5px 0 15px; color:rgba(255,255,255,.45); font-size:16px; }.fs-wave-times { display:flex; justify-content:space-between; margin:4px 2px 12px; color:rgba(255,255,255,.45); font-size:16px; }.fs-inspector-tags { display:flex; flex-wrap:wrap; gap:5px; }.fs-manual-tag,.fs-add-tag { display:inline-flex; align-items:center; gap:4px; min-height:28px; padding:0 8px; border-radius:15px; border:1px solid rgba(163,111,255,.55); color:#d6bcff; background:rgba(130,78,200,.15); font-size:16px; cursor:pointer; }.fs-add-tag { color:rgba(255,255,255,.65); border-color:rgba(255,255,255,.18); background:none; }.fs-rating { display:flex; justify-content:space-between; margin:15px 0; color:#fa62a8; font-size:17px; }.fs-rating span { display:flex; align-items:center; gap:6px; }.fs-inspector-actions { display:flex; gap:8px; }.fs-primary-action,.fs-secondary-action { flex:1; min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:21px; cursor:pointer; font-size:16px; }.fs-primary-action { border:1px solid #00b6a5; color:#d8fff4; background:rgba(0,182,165,.24); }.fs-primary-action { border:1px solid #00b6a5; color:#d8fff4; background:rgba(0,182,165,.24); }.fs-secondary-action { padding:0 10px; }.fs-detail-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:14px; }.fs-detail-grid div { padding:11px; border:1px solid rgba(255,255,255,.08); border-radius:9px; background:rgba(255,255,255,.02); }.fs-detail-grid small,.fs-source-block label { display:block; color:rgba(255,255,255,.43); font-size:16px; }.fs-detail-grid strong { display:block; margin-top:4px; color:rgba(255,255,255,.87); font-size:18px; }.fs-source-block { margin-top:16px; padding-top:13px; border-top:1px solid rgba(255,255,255,.09); }.fs-source-link { display:flex; align-items:center; gap:8px; margin-top:10px; width:100%; padding:10px; border:1px solid rgba(255,255,255,.12); border-radius:9px; color:rgba(255,255,255,.7); background:rgba(255,255,255,.03); font-size:16px; text-align:left; cursor:pointer; }.fs-empty-inspector { display:flex; min-height:240px; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:rgba(255,255,255,.3); }.fs-empty-inspector h3 { margin:10px 0 3px; color:rgba(255,255,255,.7); font-size:20px; }.fs-empty-inspector p { max-width:220px; margin:0; line-height:1.45; font-size:16px; }.fs-tag-popover { display:flex; align-items:center; gap:7px; margin:0 10px 10px; padding:7px 9px; border:1px solid var(--c-accent-line); border-radius:9px; background:#1e2024; color:var(--c-accent-text); }.fs-tag-popover input,.fs-create-playlist input { flex:1; min-width:0; border:0; outline:0; background:none; color:#fff; font-size:16px; }.fs-tag-popover button,.fs-create-playlist button { border:0; padding:6px; border-radius:7px; color:#fff; background:var(--c-accent); cursor:pointer; font-size:16px; }.fs-tag-popover button:last-child { background:rgba(255,255,255,.1); }.fs-create-playlist { display:flex; gap:5px; margin:10px 0; padding:5px; border:1px solid rgba(255,255,255,.16); border-radius:8px; }.fs-create-playlist button { background:var(--c-green); }.fs-loading,.fs-playlist-empty { min-height:300px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; padding:30px; color:rgba(255,255,255,.5); font-size:16px; text-align:center; }.fs-playlist-empty h2 { margin:5px 0 0; color:rgba(255,255,255,.8); font-size:21px; }.fs-playlist-empty p { margin:0 0 8px; }.fs-playlist-choice { width:min(360px,100%); display:flex; justify-content:space-between; padding:11px 14px; border-radius:9px; border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.8); background:rgba(255,255,255,.04); cursor:pointer; font-size:16px; }
+.fs-spin { animation:fs-spin 1s linear infinite; } @keyframes fs-spin { to { transform:rotate(360deg); } }
+@media (max-width:1200px) { .fs-layout { grid-template-columns:minmax(0,1fr) 180px; }.fs-inspector { grid-column:1/-1; }.fs-list-head,.fs-script-row { grid-template-columns:minmax(190px,1fr) 65px 65px 65px 65px minmax(135px,1fr) 62px 24px; }.fs-row-labels { max-height:60px; overflow:hidden; }.fs-script-row .fs-heart { display:none; } }
+@media (max-width:850px) { .fs-page { padding:16px 12px; }.fs-page-header,.fs-toolbar-top { flex-direction:column; align-items:stretch; }.fs-header-actions { justify-content:space-between; }.fs-tabs { overflow:auto; }.fs-layout { display:block; }.fs-main,.fs-playlists,.fs-inspector { margin-bottom:10px; }.fs-playlists { display:none; }.fs-list-head { display:none; }.fs-script-row { grid-template-columns:40px 1fr 62px 24px; }.fs-script-row > .fs-heart,.fs-script-row > .fs-metric:nth-of-type(n+2),.fs-script-row > .fs-row-labels,.fs-script-row > .fs-last-played { display:none; }.fs-script-summary { grid-column:2/4; }.fs-script-row .fs-more { grid-column:4; grid-row:1; }.fs-filters { flex-wrap:wrap; }.fs-filters .fs-sort-select { margin-left:0; }.fs-search { width:100%; max-width:none; } }
+.fs-playlist-item.is-active { color:var(--c-accent-text); background:var(--c-accent-fill); }
+.fs-playlist-view { min-height:300px; border:1px solid rgba(255,255,255,.09); border-radius:10px; overflow:hidden; background:rgba(0,0,0,.08); }
+.fs-playlist-view-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.08); }
+.fs-playlist-view-head h2 { margin:0; font-size:21px; color:rgba(255,255,255,.9); }.fs-playlist-view-head p { margin:4px 0 0; color:rgba(255,255,255,.45); font-size:16px; }
+.fs-playlist-view-head button { display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:0 12px; border-radius:19px; border:1px solid rgba(255,255,255,.16); color:rgba(255,255,255,.75); background:rgba(255,255,255,.04); cursor:pointer; font-size:16px; }
+.fs-playlist-chooser { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:0 10px 10px; padding:10px; border:1px solid var(--c-accent-line); border-radius:10px; color:rgba(255,255,255,.78); background:#1d2023; font-size:16px; }.fs-playlist-chooser > span { margin-right:auto; }.fs-playlist-chooser button { display:inline-flex; align-items:center; gap:5px; min-height:32px; padding:0 10px; border:1px solid var(--c-accent-line); border-radius:16px; color:var(--c-accent-text); background:var(--c-accent-fill); cursor:pointer; font-size:16px; }.fs-playlist-chooser .fs-chooser-cancel { border-color:rgba(255,255,255,.15); color:rgba(255,255,255,.55); background:none; }
+.fs-pagination { display:flex; align-items:center; justify-content:center; gap:12px; padding:12px; border-top:1px solid rgba(255,255,255,.08); color:rgba(255,255,255,.55); font-size:16px; }.fs-pagination button { min-height:36px; padding:0 13px; border:1px solid rgba(255,255,255,.16); border-radius:18px; color:rgba(255,255,255,.8); background:rgba(255,255,255,.04); cursor:pointer; font-size:16px; }.fs-pagination button:disabled { opacity:.35; cursor:not-allowed; }
+
+/* Funscript collection polish: keep the familiar EroScripts metrics readable,
+   anchor actions to the thing they modify, and let the side columns stay put. */
+.fs-layout { align-items:start; }
+.fs-main { min-width:0; }
+.fs-list-head,
+.fs-script-row { grid-template-columns:42px 28px minmax(190px,1.45fr) 76px 72px 86px 86px minmax(170px,1.1fr) 74px 28px; column-gap:10px; }
+.fs-list-head { height:52px; padding:0 10px; align-items:end; padding-bottom:10px; text-transform:none; }
+.fs-list-head span:nth-child(-n+2) { visibility:hidden; }
+.fs-list-head span { white-space:nowrap; }
+.fs-script-row { min-height:116px; padding:13px 10px; }
+.fs-metric { padding:0 2px; }
+.fs-metric small { margin-top:6px; text-transform:none; letter-spacing:.01em; }
+.fs-row-labels { min-width:0; padding-left:10px; border-left:1px solid rgba(255,255,255,.1); gap:5px; }
+.fs-row-labels .fs-badge { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.fs-script-title { max-width:100%; }
+.fs-playlists,
+.fs-inspector { position:sticky; top:16px; align-self:start; max-height:calc(100vh - 32px); overflow:hidden; }
+.fs-inspector { overflow:visible; }
+.fs-queue-preview { min-height:0; display:flex; flex-direction:column; }
+.fs-queue-list { max-height:42vh; overflow-y:auto; overscroll-behavior:contain; padding:0 3px 4px 0; scrollbar-width:thin; }
+.fs-queue-item { display:grid; grid-template-columns:24px 30px minmax(0,1fr) 28px; gap:5px; align-items:center; margin-top:10px; min-width:0; }
+.fs-queue-number { color:rgba(255,255,255,.5); font-size:16px; text-align:center; }
+.fs-queue-reorder { display:flex; flex-direction:column; gap:1px; }
+.fs-queue-reorder button,
+.fs-queue-remove { display:inline-flex; align-items:center; justify-content:center; width:27px; height:25px; padding:0; border:1px solid rgba(255,255,255,.11); border-radius:6px; color:rgba(255,255,255,.55); background:rgba(255,255,255,.03); cursor:pointer; }
+.fs-queue-reorder button:disabled { opacity:.22; cursor:not-allowed; }
+.fs-queue-main { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:6px; padding:4px 0; border:0; color:rgba(255,255,255,.78); background:none; text-align:left; cursor:pointer; }
+.fs-queue-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:16px; }
+.fs-queue-duration { flex-shrink:0; color:rgba(255,255,255,.4); font-size:16px; }
+.fs-queue-remove { color:rgba(255,255,255,.5); }
+.fs-queue-item:hover .fs-queue-remove,
+.fs-queue-item:hover .fs-queue-reorder button { border-color:var(--c-accent-line); color:var(--c-accent-text); }
+.fs-row-inline-anchor { grid-column:3 / -1; min-width:0; }
+.fs-inline-popover { position:relative; display:flex; align-items:center; gap:7px; min-width:0; padding:7px 9px; border:1px solid var(--c-accent-line); border-radius:10px; background:#1e2024; color:var(--c-accent-text); box-shadow:0 10px 28px rgba(0,0,0,.28); animation:fs-popover-in .16s ease-out both; }
+.fs-inline-input-wrap { position:relative; min-width:0; flex:1; }
+.fs-inline-popover input { width:100%; min-width:0; border:0; outline:0; color:#fff; background:none; font-size:16px; }
+.fs-inline-submit,.fs-inline-close { display:inline-flex; align-items:center; justify-content:center; min-height:30px; padding:0 9px; border:0; border-radius:7px; color:#fff; background:var(--c-accent); cursor:pointer; font-size:16px; }
+.fs-inline-close { padding:5px; color:rgba(255,255,255,.65); background:rgba(255,255,255,.1); }
+.fs-inline-submit:disabled { opacity:.4; cursor:not-allowed; }
+.fs-tag-suggestions { position:absolute; z-index:8; left:-4px; right:-4px; top:calc(100% + 7px); display:flex; flex-direction:column; gap:2px; padding:5px; border:1px solid rgba(255,255,255,.14); border-radius:8px; background:#191b1e; box-shadow:0 12px 26px rgba(0,0,0,.4); animation:fs-popover-in .14s ease-out both; }
+.fs-tag-suggestions button { padding:6px 8px; border:0; border-radius:5px; color:rgba(255,255,255,.78); background:none; text-align:left; cursor:pointer; font-size:16px; }
+.fs-tag-suggestions button:hover { color:#fff; background:var(--c-accent-fill); }
+.fs-playlist-action { position:relative; flex:1; min-width:0; }
+.fs-playlist-action .fs-secondary-action { width:100%; }
+.fs-inline-playlist-chooser { position:absolute; z-index:7; top:calc(100% + 8px); right:0; width:min(360px,calc(100vw - 40px)); flex-wrap:wrap; }
+.fs-inline-playlist-chooser > span { width:100%; color:rgba(255,255,255,.72); }
+.fs-inline-choice-list { display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
+.fs-inline-choice-list button { display:inline-flex; align-items:center; gap:5px; min-height:32px; max-width:100%; padding:0 10px; border:1px solid var(--c-accent-line); border-radius:16px; color:var(--c-accent-text); background:var(--c-accent-fill); cursor:pointer; font-size:16px; }
+.fs-rating-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:15px 0; }
+.fs-rating-control { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-width:0; color:#fa62a8; }
+.fs-rating-label { min-width:60px; font-size:16px; }
+.fs-rating-stars { display:flex; gap:1px; }
+.fs-rating-stars button { display:inline-flex; align-items:center; justify-content:center; padding:2px; border:0; color:rgba(255,255,255,.28); background:none; cursor:pointer; }
+.fs-rating-stars button svg { width:14px; height:14px; }
+.fs-rating-stars button:hover,
+.fs-rating-stars button:focus-visible { color:#fa62a8; outline:none; }
+.fs-inspector h2 { overflow-wrap:anywhere; word-break:break-word; }
+.fs-source-link { overflow-wrap:anywhere; word-break:break-word; }
+.fs-dock { position:fixed; z-index:9990; bottom:12px; left:50%; transform:translateX(-50%); width:min(980px,calc(100vw - 28px)); border-radius:16px; overflow:hidden; }
+.fs-dock-row { display:flex; align-items:center; gap:7px; min-width:0; padding:9px 12px; }
+.fs-dock-title { display:flex; flex:0 1 190px; min-width:100px; flex-direction:column; gap:2px; color:var(--c-accent-text,var(--c-accent)); }
+.fs-dock-title > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(255,255,255,.9); font-size:16px; }
+.fs-dock-title small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(255,255,255,.5); font-size:16px; }
+.fs-dock-track { flex:1; min-width:100px; }
+.fs-dock-waveform { height:42px; overflow:hidden; border:1px solid rgba(255,255,255,.08); border-radius:8px; background:rgba(0,0,0,.25); }
+.fs-dock-waveform svg { width:100%; height:100%; }
+.fs-dock-track > div { display:flex; justify-content:space-between; margin-top:2px; color:rgba(255,255,255,.5); font-size:16px; }
+.fs-dock-icon { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; width:36px; height:36px; padding:0; border:0; border-radius:9px; color:rgba(255,255,255,.72); background:transparent; cursor:pointer; }
+.fs-dock-icon:hover,.fs-dock-icon.is-active { color:var(--c-accent-text,#fff); background:var(--c-accent-fill); }
+.fs-dock-icon:disabled { opacity:.35; cursor:not-allowed; }
+.fs-dock-seek { display:block; width:100%; height:6px; accent-color:var(--c-accent); }
+.fs-dock-warning { padding:5px 12px 8px; color:var(--c-pink,#D4537E); font-size:16px; }
+@keyframes fs-popover-in { from { opacity:0; transform:translateY(-5px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+@media (max-width:1200px) {
+  .fs-list-head,
+  .fs-script-row { grid-template-columns:minmax(180px,1fr) 68px 70px 78px 78px minmax(140px,1fr) 68px 25px; }
+  .fs-list-head span:nth-child(-n+2) { display:none; }
+  .fs-script-row { grid-template-columns:40px minmax(180px,1fr) 68px 70px 78px 78px minmax(140px,1fr) 68px 25px; }
+}
+@media (max-width:850px) {
+  .fs-toolbar-top { gap:8px; }
+  .fs-search { flex:0 0 46px; height:46px; }
+  .fs-tag-search { width:100%; max-width:none; }
+  .fs-list-head { display:none; }
+  .fs-script-row { grid-template-columns:40px minmax(0,1fr) 62px 28px; }
+  .fs-script-row > .fs-heart,.fs-script-row > .fs-metric:nth-of-type(n+2),.fs-script-row > .fs-row-labels,.fs-script-row > .fs-last-played { display:none; }
+  .fs-script-summary { grid-column:2/4; }
+  .fs-script-row .fs-more { grid-column:4; grid-row:1; }
+  .fs-row-inline-anchor { grid-column:2/-1; }
+  .fs-dock { bottom:5px; width:calc(100vw - 10px); }
+  .fs-dock-row { gap:3px; padding:7px; }
+  .fs-dock-title { flex-basis:120px; }
+  .fs-dock-title small { display:none; }
+  .fs-dock-icon { width:31px; height:34px; }
+}
+
+/* Vault-native dropdowns: animated, theme-aware replacements for browser
+   select chrome so filters feel like part of the collection surface. */
+.fs-filters { position:relative; overflow:visible; flex-wrap:wrap; }
+.fs-dropdown { position:relative; flex:0 0 auto; min-width:142px; }
+.fs-dropdown-button { width:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 12px 0 14px; border:1px solid rgba(255,255,255,.14); border-radius:20px; color:rgba(255,255,255,.78); background:linear-gradient(135deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); cursor:pointer; font-size:16px; text-align:left; transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,transform .18s ease; }
+.fs-dropdown-button:hover,.fs-dropdown.is-open .fs-dropdown-button { border-color:var(--c-accent-line); color:var(--c-accent-text); background:linear-gradient(135deg,var(--c-accent-fill),rgba(255,255,255,.035)); box-shadow:0 5px 18px rgba(0,0,0,.18); }
+.fs-dropdown-button:active { transform:translateY(1px); }
+.fs-dropdown-button svg { flex:0 0 auto; color:var(--c-accent-text); transition:transform .2s cubic-bezier(.2,.8,.2,1); }
+.fs-dropdown.is-open .fs-dropdown-button svg { transform:rotate(180deg); }
+.fs-dropdown-menu { position:absolute; z-index:30; top:calc(100% + 8px); left:0; min-width:100%; max-height:320px; overflow:auto; padding:6px; border:1px solid var(--c-accent-line); border-radius:12px; background:linear-gradient(180deg,#22262a,#17191b); box-shadow:0 16px 36px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.03); opacity:0; visibility:hidden; transform:translateY(-7px) scale(.98); transform-origin:top center; transition:opacity .16s ease,visibility .16s ease,transform .16s cubic-bezier(.2,.8,.2,1); }
+.fs-dropdown.is-open .fs-dropdown-menu { opacity:1; visibility:visible; transform:translateY(0) scale(1); }
+.fs-dropdown-menu button { position:relative; width:100%; min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 10px; border:0; border-radius:8px; color:rgba(255,255,255,.7); background:transparent; cursor:pointer; font-size:16px; text-align:left; transition:color .14s ease,background .14s ease,padding-left .14s ease; }
+.fs-dropdown-menu button:hover,.fs-dropdown-menu button:focus-visible { padding-left:14px; color:#fff; background:var(--c-accent-fill); outline:none; }
+.fs-dropdown-menu button.is-selected { color:var(--c-accent-text); background:rgba(0,182,165,.12); }
+.fs-dropdown-menu button i { width:6px; height:6px; flex:0 0 auto; border-radius:50%; background:transparent; transition:transform .14s ease,background .14s ease; }
+.fs-dropdown-menu button.is-selected i { background:var(--c-green); box-shadow:0 0 8px var(--c-green); }
+.fs-filters .fs-sort-select { margin-left:auto; min-width:172px; }
+.fs-filters > .fs-dropdown:last-child { margin-left:auto; min-width:172px; }
+
+/* Give the queue the same visual authority as the script inspector. */
+@media (min-width:1201px) {
+  .fs-layout { grid-template-columns:minmax(0,1fr) 310px 310px; gap:12px; }
+}
+.fs-playlists { padding:16px 14px; min-height:calc(100vh - 32px); }
+.fs-queue-preview { flex:1; }
+.fs-queue-list { flex:1; max-height:calc(100vh - 218px); min-height:220px; }
+.fs-queue-title { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.25; }
+.fs-queue-main { align-items:flex-start; }
+.fs-queue-item { min-height:48px; }
+.fs-queue-item:hover .fs-queue-main { color:#fff; }
+
+@media (max-width:1200px) {
+  .fs-playlists { min-height:0; }
+  .fs-queue-list { max-height:46vh; min-height:180px; }
+  .fs-dropdown { min-width:135px; }
+  .fs-filters > .fs-dropdown:last-child { margin-left:0; }
+}
+@media (max-width:850px) {
+  .fs-filters { display:flex; flex-wrap:wrap; }
+  .fs-dropdown { min-width:calc(50% - 5px); flex:1 1 calc(50% - 5px); }
+  .fs-filters > .fs-dropdown:last-child { min-width:100%; }
+  .fs-playlists { min-height:0; }
+}
+
+/* Theme contract: this page must follow the active Vault palette instead of
+   carrying a second, hard-coded green/gold skin. */
+.fs-page,
+.fs-page button,
+.fs-page input { color:var(--c-text,rgba(255,255,255,.85)); }
+.fs-main,
+.fs-playlists,
+.fs-inspector,
+.fs-toolbar,
+.fs-playlist-view { border-color:var(--c-accent-line); background:linear-gradient(180deg,color-mix(in srgb,var(--c-surface) 94%,var(--c-accent) 6%),color-mix(in srgb,var(--c-bg) 88%,var(--c-surface))); }
+.fs-page-header h1,
+.fs-inspector h2,
+.fs-playlist-view-head h2,
+.fs-empty-inspector h3,
+.fs-script-title { color:var(--c-text,rgba(255,255,255,.9)); }
+.fs-page-header p,
+.fs-page-header p span,
+.fs-playlist-view-head p,
+.fs-inspector-head p,
+.fs-wave-times,
+.fs-script-byline,
+.fs-list-head,
+.fs-metric small,
+.fs-muted,
+.fs-last-played,
+.fs-queue-number,
+.fs-queue-duration,
+.fs-source-block label,
+.fs-detail-grid small { color:var(--c-muted,rgba(255,255,255,.48)); }
+.fs-analyze-button,
+.fs-health-pill { color:var(--c-green-text,var(--c-accent-text)); border-color:var(--c-green-line); background:var(--c-green-fill); }
+.fs-toolbar input,
+.fs-search,
+.fs-dropdown-button,
+.fs-create-playlist,
+.fs-playlist-view-head button,
+.fs-pagination button,
+.fs-secondary-action { color:var(--c-text,rgba(255,255,255,.85)); border-color:color-mix(in srgb,var(--c-text,white) 18%,transparent); background:color-mix(in srgb,var(--c-card) 72%,transparent); }
+.fs-toolbar input::placeholder,
+.fs-playlist-picker-search input::placeholder { color:var(--c-muted,rgba(255,255,255,.42)); }
+.fs-search:focus-within,
+.fs-dropdown-button:hover,
+.fs-dropdown.is-open .fs-dropdown-button { color:var(--c-accent-text); border-color:var(--c-accent-line); background:var(--c-accent-fill); }
+.fs-tabs button,
+.fs-playlist-item,
+.fs-column-heading { color:var(--c-muted,rgba(255,255,255,.62)); }
+.fs-tabs button.is-active,
+.fs-playlist-item.is-active { color:var(--c-accent-text); border-color:var(--c-accent-line); background:var(--c-accent-fill); }
+.fs-script-row { border-color:color-mix(in srgb,var(--c-text,white) 10%,transparent); }
+.fs-script-row:hover { background:color-mix(in srgb,var(--c-accent) 7%,transparent); }
+.fs-script-row.is-selected { background:linear-gradient(90deg,var(--c-green-fill),color-mix(in srgb,var(--c-green) 3%,transparent)); box-shadow:inset 2px 0 var(--c-green); }
+.fs-play-button { color:var(--c-green); border-color:var(--c-green-line); background:var(--c-green-fill); }
+.fs-heart.is-favorite,
+.fs-rating-control,
+.fs-rating-stars button:hover,
+.fs-rating-stars button:focus-visible { color:var(--c-pink); }
+.fs-waveform i { background:linear-gradient(180deg,var(--c-pink) 0%,var(--c-accent) 48%,var(--c-green) 100%); }
+.fs-waveform-large,
+.fs-dock-waveform { border-color:var(--c-accent-line); background:color-mix(in srgb,var(--c-bg) 62%,transparent); }
+.fs-badge-danger { color:var(--c-pink-text); border-color:var(--c-pink-line); background:var(--c-pink-fill); }
+.fs-badge-pink { color:var(--c-pink-text); border-color:var(--c-pink-line); background:var(--c-pink-fill); }
+.fs-badge-amber { color:var(--c-amber-text); border-color:var(--c-amber-line); background:var(--c-amber-fill); }
+.fs-badge-focus,
+.fs-badge-tag { color:var(--c-accent-text); border-color:var(--c-accent-line); background:var(--c-accent-fill); }
+.fs-badge-device { color:var(--c-green-text); border-color:var(--c-green-line); background:var(--c-green-fill); }
+.fs-detail-grid div,
+.fs-source-link { border-color:color-mix(in srgb,var(--c-text,white) 13%,transparent); background:color-mix(in srgb,var(--c-card) 74%,transparent); }
+.fs-detail-grid strong { color:var(--c-text,rgba(255,255,255,.87)); }
+.fs-primary-action { color:var(--c-green-text); border-color:var(--c-green-line); background:var(--c-green-fill); }
+.fs-manual-tag { color:var(--c-accent-text); border-color:var(--c-accent-line); background:var(--c-accent-fill); }
+.fs-add-tag,
+.fs-queue-reorder button,
+.fs-queue-remove { color:var(--c-muted,rgba(255,255,255,.55)); border-color:color-mix(in srgb,var(--c-text,white) 16%,transparent); background:color-mix(in srgb,var(--c-card) 66%,transparent); }
+.fs-queue-item { color:var(--c-text,rgba(255,255,255,.78)); }
+.fs-queue-item:hover .fs-queue-main { color:var(--c-text,white); }
+.fs-queue-item:hover .fs-queue-remove,
+.fs-queue-item:hover .fs-queue-reorder button { color:var(--c-accent-text); border-color:var(--c-accent-line); }
+.fs-inline-popover,
+.fs-tag-suggestions,
+.fs-dropdown-menu { color:var(--c-text,rgba(255,255,255,.85)); border-color:var(--c-accent-line); background:linear-gradient(180deg,color-mix(in srgb,var(--c-surface) 96%,var(--c-accent) 4%),var(--c-bg)); }
+.fs-inline-popover input,
+.fs-playlist-picker-search input { color:var(--c-text,white); }
+.fs-inline-submit,
+.fs-column-heading button,
+.fs-inline-close { color:var(--c-accent-text); }
+.fs-dropdown-menu button { color:var(--c-muted,rgba(255,255,255,.7)); }
+.fs-dropdown-menu button:hover,
+.fs-dropdown-menu button:focus-visible,
+.fs-dropdown-menu button.is-selected { color:var(--c-accent-text); background:var(--c-accent-fill); }
+.fs-dropdown-menu button i { background:transparent; }
+.fs-dropdown-menu button.is-selected i { background:var(--c-accent); box-shadow:0 0 8px var(--c-accent); }
+
+/* Playlist picker: searchable and scrollable, so thirty playlists remain a
+   compact anchored dropdown instead of a wall of chips. */
+.fs-inline-playlist-chooser { display:block; padding:10px; }
+.fs-playlist-picker-head { display:flex; align-items:center; gap:7px; min-height:28px; }
+.fs-playlist-picker-head strong { flex:1; color:var(--c-text,white); font-size:16px; }
+.fs-playlist-picker-search { display:flex; align-items:center; gap:7px; min-height:38px; margin-top:8px; padding:0 9px; border:1px solid color-mix(in srgb,var(--c-text,white) 16%,transparent); border-radius:8px; background:color-mix(in srgb,var(--c-card) 74%,transparent); }
+.fs-playlist-picker-search input { min-width:0; flex:1; border:0; outline:0; background:none; font-size:16px; }
+.fs-playlist-picker-meta { margin:8px 2px 5px; color:var(--c-muted,rgba(255,255,255,.45)); font-size:16px; }
+.fs-playlist-picker-list { display:flex; flex-direction:column; gap:3px; max-height:280px; overflow-y:auto; padding-right:2px; scrollbar-width:thin; }
+.fs-playlist-picker-option { width:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 9px; border:1px solid transparent; border-radius:8px; color:var(--c-text,rgba(255,255,255,.82)); background:transparent; text-align:left; cursor:pointer; font-size:16px; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+.fs-playlist-picker-option span { min-width:0; display:flex; align-items:center; gap:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fs-playlist-picker-option b { flex:0 0 auto; color:var(--c-muted,rgba(255,255,255,.45)); font-size:16px; font-weight:400; }
+.fs-playlist-picker-option:hover,
+.fs-playlist-picker-option:focus-visible { border-color:var(--c-accent-line); background:var(--c-accent-fill); transform:translateX(2px); outline:none; }
+.fs-playlist-picker-empty { padding:12px 7px; color:var(--c-muted,rgba(255,255,255,.5)); font-size:16px; }
+
+/* Native HTML drag-and-drop affordance for queue ordering, with the arrow
+   controls retained as a keyboard/accessibility fallback. */
+.fs-queue-item[draggable="true"] { cursor:grab; }
+.fs-queue-item[draggable="true"]:active { cursor:grabbing; }
+.fs-queue-item.is-dragging { opacity:.42; }
+.fs-queue-item.is-drop-target { border-top:2px solid var(--c-accent); box-shadow:0 -5px 14px color-mix(in srgb,var(--c-accent) 18%,transparent); }
+
+/* Final theme pass: primary controls use the active Vault accent. The
+   palette's green/pink/amber families remain available for semantic badges,
+   but the page chrome must never fall back to the old teal skin. */
+.fs-page {
+  --fs-primary: var(--c-accent, #7F77DD);
+  --fs-primary-fill: var(--c-accent-fill);
+  --fs-primary-line: var(--c-accent-line);
+  --fs-primary-text: var(--c-accent-text);
+}
+.fs-analyze-button,
+.fs-health-pill,
+.fs-tabs button.is-active,
+.fs-play-button,
+.fs-primary-action,
+.fs-create-playlist button,
+.fs-queue-preview .fs-column-heading button {
+  color: var(--fs-primary-text);
+  border-color: var(--fs-primary-line);
+  background: var(--fs-primary-fill);
+}
+.fs-health-pill i,
+.fs-play-button { color: var(--fs-primary); }
+.fs-health-pill i { background: var(--fs-primary); box-shadow: 0 0 12px var(--fs-primary); }
+.fs-play-button { box-shadow: 0 0 0 1px color-mix(in srgb,var(--fs-primary) 8%,transparent); }
+.fs-script-row.is-selected {
+  background: linear-gradient(90deg, var(--fs-primary-fill), color-mix(in srgb,var(--fs-primary) 3%,transparent));
+  box-shadow: inset 2px 0 var(--fs-primary);
+}
+.fs-waveform i {
+  background: linear-gradient(180deg, var(--fs-primary-text) 0%, var(--fs-primary) 52%, color-mix(in srgb,var(--fs-primary) 58%, white) 100%);
+}
+.fs-column-heading button:hover,
+.fs-analyze-button:hover:not(:disabled),
+.fs-primary-action:hover,
+.fs-play-button:hover { color: #fff; border-color: var(--fs-primary); background: var(--c-accent-fill-2); }
+
+/* The column labels are real keyboard-accessible sort controls. Their arrow
+   is painted from state added by Funscripts.jsx, so the grid stays compact. */
+.fs-list-head .fs-sort-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--c-muted, rgba(255,255,255,.52));
+  background: transparent;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: color .16s ease, background .16s ease;
+}
+.fs-list-head .fs-sort-heading:nth-child(3) { justify-content: flex-start; text-align: left; }
+.fs-list-head .fs-sort-heading:hover,
+.fs-list-head .fs-sort-heading:focus-visible,
+.fs-list-head .fs-sort-heading[data-sort-active="true"] {
+  color: var(--fs-primary-text);
+  background: var(--fs-primary-fill);
+  outline: none;
+}
+.fs-list-head .fs-sort-heading[data-sort-active="true"]::after {
+  display: inline-block;
+  color: var(--fs-primary);
+  font-size: 15px;
+  line-height: 1;
+}
+.fs-list-head .fs-sort-heading[data-sort-direction="asc"][data-sort-active="true"]::after { content: '↑'; }
+.fs-list-head .fs-sort-heading[data-sort-direction="desc"][data-sort-active="true"]::after { content: '↓'; }

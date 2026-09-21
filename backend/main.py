@@ -216,7 +216,7 @@ if getattr(sys, 'frozen', False):
 
 from sqlalchemy.orm import Session
 from database import engine, Base, SessionLocal, get_db, DATA_DIR
-from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake, tag_vocab, panel_playlists
+from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake, tag_vocab, panel_playlists, funscripts
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
@@ -260,6 +260,8 @@ def _migrate_add_columns():
         "ALTER TABLE images ADD COLUMN duration FLOAT",
         "ALTER TABLE images ADD COLUMN funscript_path VARCHAR",
         "ALTER TABLE images ADD COLUMN notes TEXT DEFAULT ''",
+        # First-class funscript collection — added after v1 databases existed
+        "ALTER TABLE funscripts ADD COLUMN waveform_json TEXT DEFAULT '[]'",
         # creators — banner persistence columns
         "ALTER TABLE creators ADD COLUMN banner_image_id INTEGER",
         "ALTER TABLE creators ADD COLUMN banner_y FLOAT DEFAULT 20.0",
@@ -1152,6 +1154,7 @@ app.include_router(gamification.router,  prefix="/api/gamification",  tags=["gam
 app.include_router(scanner.router,       prefix="/api/scanner",       tags=["scanner"])
 app.include_router(intake.router,        prefix="/api/intake",        tags=["intake"])
 app.include_router(playlists.router,     prefix="/api/playlists",     tags=["playlists"])
+app.include_router(funscripts.router,    prefix="/api/funscripts",    tags=["funscripts"])
 app.include_router(panel_playlists.router, prefix="/api/panel-playlists", tags=["panel-playlists"])
 app.include_router(cards_router)
 app.include_router(economy_router)

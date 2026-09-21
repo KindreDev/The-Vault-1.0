@@ -4,13 +4,13 @@ import {
   LayoutDashboard, Images, Users, Play, ListMusic,
   Columns3, Gamepad2, Trophy, Star, Map, CreditCard,
   ScanLine, Tag, Settings, Flame, Box, Film, Video, Cpu, ScrollText, Layers,
-  Wifi, WifiOff, Activity, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
-  Sparkles, Newspaper, Compass,
+  CheckCircle2, ChevronDown, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
+  Sparkles, Newspaper, Compass, Waves,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
-import { deviceService } from '../../services/device'
 import { gamiApi, companionApi, recapApi } from '../../lib/api'
 import { useT } from '../../i18n'
 
@@ -22,8 +22,8 @@ const NAV = [
   { to: '/creators',    icon: Users,           label: 'Creators' },
 ]
 
-// The social-media simulation lives in its own section — keeps the library
-// block tight while giving VaultGram a home of its own
+// Social lives beneath Goon in the sidebar hierarchy, but has its own toggle
+// so it can be collapsed independently.
 const SOCIAL_NAV = [
   { to: '/feed',    icon: Newspaper, label: 'Feed' },
   { to: '/explore', icon: Compass,   label: 'Explore' },
@@ -31,6 +31,7 @@ const SOCIAL_NAV = [
 
 const GOON_NAV = [
   { to: '/playlists',      icon: Columns3,   label: 'Playlists' },
+  { to: '/funscripts',     icon: Waves,      label: 'Funscripts' },
   { to: '/device-control', icon: Cpu,        label: 'Device Control' },
 ]
 
@@ -88,48 +89,16 @@ function xpProgress(totalXp, level) {
   return Math.min(100, Math.max(0, ((totalXp - current) / (next - current)) * 100))
 }
 
-const STATUS_DOT = {
-  disconnected: 'rgba(255,255,255,0.2)',
-  connecting:   '#BA7517',
-  connected:    '#1D9E75',
-  error:        '#D4537E',
-}
-
-function QuickConnect() {
-  const status  = useDeviceStore(s => s.status)
-  const mode    = useDeviceStore(s => s.mode)
-  const color   = STATUS_DOT[status] || STATUS_DOT.disconnected
-  const t       = useT()
-
-  const handleClick = async () => {
-    if (status === 'connected') await deviceService.disconnect()
-    else await deviceService.connect()
-  }
-
-  return (
-    <button onClick={handleClick}
-      className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] w-[calc(100%-16px)] transition-all hover:bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.45)] hover:text-[rgba(255,255,255,0.75)]">
-      <div className="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
-        {status === 'connected' ? <Wifi size={20} style={{ color }} /> : <WifiOff size={20} style={{ color }} />}
-        {mode === 'freestyle' && (
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--c-pink)] animate-pulse" />
-        )}
-      </div>
-      <span className="flex-1 text-left" style={{ color }}>
-        {status === 'connected' ? (mode === 'freestyle' ? t('Device · Live') : t('Device · Idle')) : status === 'connecting' ? t('Connecting…') : t('Device · Off')}
-      </span>
-    </button>
-  )
-}
-
-function NavItem({ to, icon: Icon, label, badge }) {
+function NavItem({ to, icon: Icon, label, badge, connected = false }) {
   const t = useT()
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] transition-all duration-150 cursor-pointer active:scale-95
-         ${isActive
+        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] transition-all duration-150 cursor-pointer active:scale-95 ${connected ? 'device-connected-nav' : ''}
+         ${connected
+           ? 'bg-[color-mix(in_srgb,_var(--c-green)_16%,_transparent)] text-[var(--c-green-text)]'
+           : isActive
            ? 'bg-[color-mix(in_srgb,_var(--c-accent)_15%,_transparent)] text-[var(--c-accent-text)]'
            : 'text-[rgba(255,255,255,0.45)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[rgba(255,255,255,0.75)]'
          }`
@@ -137,6 +106,9 @@ function NavItem({ to, icon: Icon, label, badge }) {
     >
       <Icon size={20} />
       <span className="flex-1">{t(label)}</span>
+      {connected && (
+        <CheckCircle2 size={19} strokeWidth={2.4} aria-label={t('Connected')} />
+      )}
       {badge > 0 && (
         <span className="text-[15px] font-medium px-2 py-0.5 rounded-full flex-shrink-0"
               style={{ background: 'color-mix(in srgb, var(--c-accent) 35%, transparent)', color: 'var(--c-accent-text)' }}>
@@ -147,23 +119,43 @@ function NavItem({ to, icon: Icon, label, badge }) {
   )
 }
 
-function ActionItem({ icon: Icon, label, onClick, color = 'rgba(255,255,255,0.45)', activeColor }) {
-  const t = useT()
-  return (
-    <button onClick={onClick}
-      className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] w-[calc(100%-16px)] transition-all hover:bg-[rgba(255,255,255,0.05)] cursor-pointer"
-      style={{ color }}>
-      <Icon size={20} />
-      <span className="flex-1 text-left">{t(label)}</span>
-    </button>
-  )
+function DeviceNavItem() {
+  const status = useDeviceStore(s => s.status)
+  return <NavItem to="/device-control" icon={Cpu} label="Device Control" connected={status === 'connected'} />
 }
 
-function SectionLabel({ label }) {
+function CollapsibleSection({ label, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen)
   const t = useT()
   return (
-    <div className="text-[17px] font-medium text-[rgba(255,255,255,0.2)] uppercase tracking-[.06em] px-5 pt-4 pb-1">
-      {t(label)}
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+        className="flex items-center gap-3 px-4 py-2.5 mx-2 mt-1 rounded-[10px] text-[17px] uppercase tracking-[.06em] w-[calc(100%-16px)] transition-all hover:bg-[rgba(255,255,255,0.05)] cursor-pointer"
+        style={{ color: 'rgba(255,255,255,0.32)' }}
+      >
+        <span className="flex-1 text-left">{t(label)}</span>
+        <ChevronDown
+          size={16}
+          className={`flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -175,7 +167,6 @@ export default function Sidebar() {
   const avatarBust       = useVaultStore(s => s.avatarBust)
   const vaultName        = useVaultStore(s => s.vaultName)
   const setCompanionConfig = useVaultStore(s => s.setCompanionConfig)
-  const companionEnabled = useVaultStore(s => s.companion.enabled)
 
   const { data: profile } = useQuery({
     queryKey: ['profile'],
@@ -239,47 +230,53 @@ export default function Sidebar() {
            style={{ scrollbarWidth: 'none' }}>
         {NAV.map(n => <NavItem key={n.to} {...n} />)}
 
-        <SectionLabel label="Social" />
-        {SOCIAL_NAV.map(n => <NavItem key={n.to} {...n} />)}
+        <CollapsibleSection label="Goon">
+          <NavItem to="/playlists" icon={Columns3} label="Playlists" badge={queueCount} />
+          {GOON_NAV.filter(n => n.to !== '/playlists' && n.to !== '/device-control').map(n => <NavItem key={n.to} {...n} />)}
+          <DeviceNavItem />
+          <NavItem to="/erika" icon={Sparkles} label="Erika AI" />
 
-        <SectionLabel label="Goon" />
-        <NavItem to="/playlists" icon={Columns3} label="Playlists" badge={queueCount} />
-        {GOON_NAV.filter(n => n.to !== '/playlists').map(n => <NavItem key={n.to} {...n} />)}
-        <NavItem to="/erika" icon={Sparkles} label="Erika AI" />
-        <QuickConnect />
+        </CollapsibleSection>
 
-        <SectionLabel label="Collect" />
-        {COLLECT_NAV
-          .filter(n => n.to !== '/recap' || recapUnlocked)
-          .map(n => <NavItem key={n.to} {...n} />)}
-        <SectionLabel label="Tools" />
-        {activeTask && (
-          <NavLink to="/task-queue" className="block mx-2 mb-1 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors" style={{ textDecoration: 'none' }}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: 'var(--c-green)' }} />
-              <span className="text-xs text-white/60 truncate flex-1">{activeTask.label}</span>
-              {queuedCount > 0 && (
-                <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent)' }}>
-                  +{queuedCount}
-                </span>
-              )}
-            </div>
-            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-              {activeTask.total > 0 ? (
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.round((activeTask.progress / activeTask.total) * 100)}%`,
-                    background: 'var(--c-green)',
-                  }}
-                />
-              ) : (
-                <div className="h-full rounded-full animate-pulse" style={{ background: 'var(--c-green)', opacity: 0.5 }} />
-              )}
-            </div>
-          </NavLink>
-        )}
-        {LIB_NAV.map(n => <NavItem key={n.to} {...n} />)}
+        <CollapsibleSection label="Social">
+          {SOCIAL_NAV.map(n => <NavItem key={n.to} {...n} />)}
+        </CollapsibleSection>
+
+        <CollapsibleSection label="Collect">
+          {COLLECT_NAV
+            .filter(n => n.to !== '/recap' || recapUnlocked)
+            .map(n => <NavItem key={n.to} {...n} />)}
+        </CollapsibleSection>
+
+        <CollapsibleSection label="Tools">
+          {activeTask && (
+            <NavLink to="/task-queue" className="block mx-2 mb-1 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors" style={{ textDecoration: 'none' }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: 'var(--c-green)' }} />
+                <span className="text-xs text-white/60 truncate flex-1">{activeTask.label}</span>
+                {queuedCount > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent)' }}>
+                    +{queuedCount}
+                  </span>
+                )}
+              </div>
+              <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                {activeTask.total > 0 ? (
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.round((activeTask.progress / activeTask.total) * 100)}%`,
+                      background: 'var(--c-green)',
+                    }}
+                  />
+                ) : (
+                  <div className="h-full rounded-full animate-pulse" style={{ background: 'var(--c-green)', opacity: 0.5 }} />
+                )}
+              </div>
+            </NavLink>
+          )}
+          {LIB_NAV.map(n => <NavItem key={n.to} {...n} />)}
+        </CollapsibleSection>
       </nav>
 
       {/* Profile area — always visible at bottom (not inside scroll) */}

@@ -94,6 +94,24 @@ body {
   overflow: hidden;
 }
 
+/* Glass uses a real image layer in Layout so the selected backdrop remains
+   visible across route changes and WebView runtimes. Keep the app shell
+   transparent so that layer can show through its page surfaces. */
+.vault-glass-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+}
+[data-theme="glass"] #root,
+[data-theme="glass"] main {
+  background-color: transparent !important;
+}
+
 /* The app shell owns the page scroll on its main element rather than body.
    Modal locks use this state marker so wheel/touch input cannot move the page
    behind an overlay, while modal-local overflow regions remain scrollable. */
@@ -456,6 +474,16 @@ img.img-loaded:not([data-no-fade]) { opacity: 1; }
 [data-theme="cyber-gold"] aside button:hover {
   background: color-mix(in srgb, var(--cyber-primary) 10%, transparent) !important;
   color: color-mix(in srgb, var(--cyber-primary) 80%, white) !important;
+}
+
+/* A connected device keeps its semantic green state even when the current
+   page is active or a cyber theme's generic active-link rules are present. */
+aside a.device-connected-nav,
+[data-theme="cyberpunk"] aside a.device-connected-nav,
+[data-theme="cyber-gold"] aside a.device-connected-nav {
+  background: color-mix(in srgb, var(--c-green) 16%, transparent) !important;
+  color: var(--c-green-text) !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--c-green) 18%, transparent) !important;
 }
 
 

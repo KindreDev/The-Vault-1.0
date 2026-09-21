@@ -380,6 +380,34 @@ export const panelPlaylistsApi = {
   autosave: (d)       => api.put('/panel-playlists/autosave', d),
 }
 
+// ── Funscripts ───────────────────────────────────────────────────────────────
+// Script collections are intentionally separate from media playlists. Keep all
+// script mutations behind this adapter so the script-first page does not know
+// the backend's persistence details (and so the independent player can evolve
+// without turning this page into a video player).
+export const funscriptsApi = {
+  list:        (params = {}) => api.get('/funscripts', { params }),
+  get:         (id) => api.get(`/funscripts/${id}`),
+  payload:     (id) => api.get(`/funscripts/${id}/payload`),
+  payloadUrl:  (url) => api.get(url),
+  markPlayed:  (id) => api.post(`/funscripts/${id}/played`),
+  analyze:     (params = {}) => api.post('/funscripts/analyze', params),
+  update:      (id, data) => api.patch(`/funscripts/${id}`, data),
+  favorite:    (id, favorite = true) => api.patch(`/funscripts/${id}`, { is_favorite: favorite }),
+  addTag:      (id, tag) => api.post(`/funscripts/${id}/tags`, { name: tag }),
+  removeTag:   (id, tagId) => api.delete(`/funscripts/${id}/tags/${encodeURIComponent(tagId)}`),
+  playlists: {
+    list:       () => api.get('/funscripts/playlists'),
+    get:        (id) => api.get(`/funscripts/playlists/${id}`),
+    create:     (data) => api.post('/funscripts/playlists', data),
+    update:     (id, data) => api.patch(`/funscripts/playlists/${id}`, data),
+    delete:     (id) => api.delete(`/funscripts/playlists/${id}`),
+    addScript:  (playlistId, scriptId) => api.post(`/funscripts/playlists/${playlistId}/scripts`, { funscript_id: scriptId }),
+    removeScript: (playlistId, scriptId) => api.delete(`/funscripts/playlists/${playlistId}/scripts/${scriptId}`),
+    reorder:    (playlistId, scriptIds) => api.put(`/funscripts/playlists/${playlistId}/scripts/order`, { funscript_ids: scriptIds }),
+  },
+}
+
 // ── Tags ──────────────────────────────────────────────────────────────────────
 export const tagsApi = {
   list:       (cat) => api.get('/tags/', { params: cat ? { category: cat } : {} }),

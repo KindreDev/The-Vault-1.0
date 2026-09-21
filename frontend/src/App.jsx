@@ -19,6 +19,7 @@ const CreatorList   = lazy(() => import('./pages/CreatorList'))
 const CreatorProfile = lazy(() => import('./pages/CreatorProfile'))
 const ImageList     = lazy(() => import('./pages/ImageList'))
 const VideoList     = lazy(() => import('./pages/VideoList'))
+const Funscripts    = lazy(() => import('./pages/Funscripts'))
 const Feed          = lazy(() => import('./pages/Feed'))
 const Explore       = lazy(() => import('./pages/Explore'))
 const TagManager    = lazy(() => import('./pages/TagManager'))
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="galleries/:id" element={<GalleryView />} />
           <Route path="images"       element={<ImageList />} />
           <Route path="videos"       element={<VideoList />} />
+          <Route path="funscripts"   element={<Funscripts />} />
           <Route path="creators"     element={<CreatorList />} />
           <Route path="creators/:id" element={<CreatorProfile />} />
           <Route path="playlists"      element={<MultiPanel />} />

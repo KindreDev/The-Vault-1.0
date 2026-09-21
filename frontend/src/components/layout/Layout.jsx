@@ -10,11 +10,14 @@ import { useVaultStore, loadGlassBackground } from '../../store/vault'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { deviceService } from '../../services/device'
 import { imagesApi } from '../../lib/api'
+import FunscriptPlayerDock from '../FunscriptPlayerDock'
 
 export default function Layout() {
   const sessionActive          = useVaultStore(s => s.sessionActive)
   const showGoonBorder         = useVaultStore(s => s.showGoonBorder)
   const applyStoredPalette     = useVaultStore(s => s.applyStoredPalette)
+  const palette                 = useVaultStore(s => s.palette)
+  const glassBackgroundUrl      = useVaultStore(s => s.glassBackgroundUrl)
   const multiPanelFullscreen   = useVaultStore(s => s.multiPanelFullscreen)
   const location = useLocation()
 
@@ -93,7 +96,17 @@ export default function Layout() {
   const isPlaylistsPage = location.pathname.startsWith('/playlists') || location.pathname.startsWith('/multi-panel')
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-bg)' }}>
+    <>
+      {palette.id === 'glass' && glassBackgroundUrl && (
+        <img
+          className="vault-glass-backdrop"
+          src={glassBackgroundUrl}
+          alt=""
+          aria-hidden="true"
+          data-no-fade="true"
+        />
+      )}
+      <div className="flex h-screen overflow-hidden relative z-[1]" style={{ background: 'var(--c-bg)' }}>
       {!multiPanelFullscreen && <Sidebar />}
       <main className={`flex-1 min-w-0 bg-[var(--c-bg)] ${isPlaylistsPage ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         <AnimatePresence mode="wait" initial={false}>
@@ -125,11 +138,16 @@ export default function Layout() {
       <XPToastLayer />
       <LevelUpOverlay />
       <CompanionBubble />
+      {/* Independent funscript clock persists across route changes. It is a
+          compact transport, never a second video player, and can collapse to
+          a draggable edge tab without stopping device output. */}
+      <FunscriptPlayerDock />
 
       {/* Neon goon-mode border — fixed overlay, pointer-events none */}
       {sessionActive && showGoonBorder && (
         <div className="fixed inset-0 z-[9998] goon-border" />
       )}
-    </div>
+      </div>
+    </>
   )
 }

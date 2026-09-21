@@ -11,7 +11,8 @@
     "test:tcg-room-device": "node scripts/test-room-device-surface.mjs",
     "test:tcg-room-cache": "node scripts/test-room-asset-cache.mjs && node scripts/test-room-streaming.mjs && node scripts/test-room-layout.mjs && node scripts/test-room-card-material.mjs",
     "test:tcg-trader-vn": "node scripts/test-trader-vn.mjs",
-    "test:device-stop": "node scripts/test-device-stop.mjs"
+    "test:device-stop": "node scripts/test-device-stop.mjs",
+    "test:independent-funscript": "node tests/test-independent-funscript.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",

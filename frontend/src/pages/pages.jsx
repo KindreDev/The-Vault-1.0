@@ -2406,18 +2406,45 @@ export function Settings() {
 
   const handleRestart = async () => {
     setRestartState('restarting')
+    // Capture the current process identity before asking it to hand off. A
+    // healthy response from the old process is not proof that the restart has
+    // completed, so the poll below waits for a different instance_id.
+    let previousInstanceId = null
     try {
-      await systemApi.restart()
+      const health = await systemApi.health()
+      previousInstanceId = health?.data?.instance_id || null
+    } catch { /* the process may already be going away */ }
+    try {
+      const response = await systemApi.restart()
+      previousInstanceId = response?.data?.instance_id || previousInstanceId
     } catch { /* server died mid-response — that's expected */ }
-    // Poll until the server is back — use native fetch with a 1.5s abort so the
-    // poll fires fast enough that the 25s safety timer can actually clear it.
+
     if (restartPollRef.current) clearInterval(restartPollRef.current)
-    restartPollRef.current = setInterval(async () => {
+    let polling = false
+    const poll = async () => {
+      if (polling) return
+      polling = true
       try {
         const ctrl = new AbortController()
         const t = setTimeout(() => ctrl.abort(), 1500)
-        await fetch('/api/system/health', { signal: ctrl.signal })
-        clearTimeout(t)
+        let response
+        try {
+          response = await fetch('/api/system/health', {
+            signal: ctrl.signal,
+            cache: 'no-store',
+          })
+          if (!response.ok) throw new Error(`Health check failed: ${response.status}`)
+        } finally {
+          clearTimeout(t)
+        }
+        const payload = await response.json().catch(() => null)
+        const nextInstanceId = payload?.instance_id || null
+        // If we know the old identity, only a new one counts as back online.
+        // The no-identity fallback is for a server that died before either
+        // health request could complete.
+        if (previousInstanceId
+          ? (!nextInstanceId || nextInstanceId === previousInstanceId)
+          : !nextInstanceId) return
         if (restartPollRef.current) {
           clearInterval(restartPollRef.current)
           restartPollRef.current = null
@@ -2425,15 +2452,19 @@ export function Settings() {
         setRestartState('done')
         setTimeout(() => setRestartState('idle'), 3000)
       } catch { /* still restarting */ }
-    }, 800)
-    // Safety timeout — give up after 25s
+      finally { polling = false }
+    }
+    restartPollRef.current = setInterval(poll, 800)
+    poll()
+    // Safety timeout — allow a cold Python process to finish importing before
+    // giving up. The UI still remains usable if the handoff genuinely fails.
     setTimeout(() => {
       if (restartPollRef.current) {
         clearInterval(restartPollRef.current)
         restartPollRef.current = null
       }
       setRestartState('idle')
-    }, 25000)
+    }, 45000)
   }
 
   const { data: roots } = useQuery({
@@ -2451,6 +2482,14 @@ export function Settings() {
     queryKey: ['scan-status'],
     queryFn: () => fetch('/api/scanner/status').then(r => r.json()),
     refetchInterval: (query) => query.state.data?.running ? 2000 : false,
+  })
+
+  const { data: durationStatus } = useQuery({
+    queryKey: ['video-duration-status'],
+    queryFn: () => scannerApi.durationStatus().then(r => r.data),
+    enabled: settingsTab === 'scanner',
+    refetchInterval: (query) => query.state.data?.running ? 1000 : false,
+    staleTime: 0,
   })
 
   const { data: taskQueueState } = useQuery({
@@ -2926,31 +2965,34 @@ export function Settings() {
                       </button>
                     ))}
                   </div>
-                  {/* Video length backfill — videos imported before the duration
-                      probe existed have no length on record, and a normal
-                      rescan won't fix it because known files are skipped. */}
-                  <div className="mt-4 pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                    <div className="text-[16px] text-white/75 mb-1">{t('Read video lengths')}</div>
-                    <div className="text-[14px] text-white/30 mb-3">
-                      {t('Fills in the length of videos imported before The Vault started reading it. A normal rescan skips them. Safe to cancel and resume.')}
+                  {/* This is deliberately a one-time legacy repair. Once every
+                      video has a duration, normal scans keep it populated and
+                      there is no reason to leave the repair button around. */}
+                  {(durationStatus == null || durationStatus.missing > 0) && (
+                    <div className="mt-4 pt-4" style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                      <div className="text-[16px] text-white/75 mb-1">{t('Read video lengths')}</div>
+                      <div className="text-[14px] text-white/30 mb-3">
+                        {t('Fills in the length of videos imported before The Vault started reading it. A normal rescan skips them. Safe to cancel and resume.')}
+                      </div>
+                      <button disabled={regenning || durationStatus?.running}
+                              onClick={async () => {
+                                setRegenning(true)
+                                try {
+                                  const { data } = await scannerApi.backfillDurations()
+                                  qc.invalidateQueries({ queryKey: ['video-duration-status'] })
+                                  toast.success(data.queued
+                                    ? `${t('Queued')} — ${data.missing} ${t('videos')}`
+                                    : t('Every video already has a length'))
+                                }
+                                catch { toast.error(t('Failed to start')) }
+                                finally { setTimeout(() => setRegenning(false), 3000) }
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
+                              style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
+                        {durationStatus?.running ? t('Reading…') : t('⏱️ Read video lengths')}
+                      </button>
                     </div>
-                    <button disabled={regenning}
-                            onClick={async () => {
-                              setRegenning(true)
-                              try {
-                                const { data } = await scannerApi.backfillDurations()
-                                toast.success(data.queued
-                                  ? `${t('Queued')} — ${data.missing} ${t('videos')}`
-                                  : t('Every video already has a length'))
-                              }
-                              catch { toast.error(t('Failed to start')) }
-                              finally { setTimeout(() => setRegenning(false), 3000) }
-                            }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                            style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
-                      {t('⏱️ Read video lengths')}
-                    </button>
-                  </div>
+                  )}
                 </SettingsSection>
 
                 <SettingsSection title={t('Funscript library')} icon={ScanLine} accentColor="var(--c-pink)" defaultOpen={false}>
@@ -3711,7 +3753,7 @@ export function Settings() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-[17px] font-semibold text-white/80">{t('Restart server')}</div>
-                      <div className="text-[16px] text-white/35 mt-0.5">{t('Restarts the Python backend. The page will reconnect automatically — takes about 3–5 seconds.')}</div>
+                      <div className="text-[16px] text-white/35 mt-0.5">{t('Restarts the Python backend and waits for the replacement process to come back online.')}</div>
                     </div>
                     <button onClick={restartState === 'idle' ? handleRestart : undefined}
                             disabled={restartState === 'restarting'}

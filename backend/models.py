@@ -436,6 +436,96 @@ class Playlist(Base):
     images      = relationship("Image", secondary=playlist_images)
 
 
+# ── First-class funscripts ────────────────────────────────────────────────────
+#
+# These records are an index/cache over files on disk.  The file remains the
+# source of truth; deleting or moving a media item must not implicitly delete a
+# script record.  A script may be referenced by more than one video, therefore
+# source_image_id is only optional context and the path is the identity.
+funscript_tags = Table(
+    "funscript_tags", Base.metadata,
+    Column("funscript_id", Integer, ForeignKey("funscripts.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column("source", String, default="manual", nullable=False),
+)
+
+
+class Funscript(Base):
+    __tablename__ = "funscripts"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    path               = Column(String, nullable=False, unique=True, index=True)
+    name               = Column(String, nullable=False)
+    title              = Column(String, nullable=True)
+    source_image_id    = Column(Integer, ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Persisted analysis/cache fields.  Values are deliberately nullable so a
+    # malformed or missing file can still be surfaced and repaired by reindex.
+    duration           = Column(Float, nullable=True)
+    action_count       = Column(Integer, default=0)
+    actions_per_min    = Column(Float, default=0.0)
+    avg_speed          = Column(Float, default=0.0)
+    p95_speed          = Column(Float, default=0.0)
+    max_speed          = Column(Float, default=0.0)
+    avg_movement_distance = Column(Float, default=0.0)
+    movement_range     = Column(Float, default=0.0)
+    avg_position       = Column(Float, default=0.0)
+    active_ratio       = Column(Float, default=0.0)
+    pause_count        = Column(Integer, default=0)
+    longest_pause      = Column(Float, default=0.0)
+    high_focus         = Column(Float, default=0.0)
+    low_focus          = Column(Float, default=0.0)
+    intensity          = Column(Float, default=0.0)
+    axes_json          = Column(Text, default="[]")
+    waveform_json      = Column(Text, default="[]")
+    axis_count         = Column(Integer, default=0)
+    health_status      = Column(String, default="unknown", index=True)  # healthy | missing | invalid
+    parse_status       = Column(String, default="unanalysed")           # parsed | invalid | missing
+    content_hash       = Column(String, nullable=True, index=True)
+    file_mtime         = Column(Float, nullable=True)
+    analysis_version   = Column(String, default="1")
+    analysis_error     = Column(Text, nullable=True)
+
+    is_favorite        = Column(Boolean, default=False, nullable=False, index=True)
+    rating             = Column(Float, default=0.0)
+    notes              = Column(Text, default="")
+    last_played_at     = Column(DateTime, nullable=True)
+    created_at         = Column(DateTime, default=func.now())
+    updated_at         = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    source_image       = relationship("Image", foreign_keys=[source_image_id])
+    tags               = relationship("Tag", secondary=funscript_tags)
+
+
+class FunscriptPlaylist(Base):
+    __tablename__ = "funscript_playlists"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String, nullable=False)
+    description = Column(Text, default="")
+    created_at  = Column(DateTime, default=func.now())
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    entries = relationship(
+        "FunscriptPlaylistEntry",
+        back_populates="playlist",
+        cascade="all, delete-orphan",
+        order_by="FunscriptPlaylistEntry.sort_order",
+    )
+
+
+class FunscriptPlaylistEntry(Base):
+    __tablename__ = "funscript_playlist_entries"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    playlist_id   = Column(Integer, ForeignKey("funscript_playlists.id", ondelete="CASCADE"), nullable=False, index=True)
+    funscript_id  = Column(Integer, ForeignKey("funscripts.id", ondelete="CASCADE"), nullable=False, index=True)
+    sort_order    = Column(Integer, default=0, nullable=False)
+
+    playlist = relationship("FunscriptPlaylist", back_populates="entries")
+    funscript = relationship("Funscript")
+
+
 # ── Panel playlists (multi-panel viewer) ───────────────────────────────────────
 #
 # Deliberately separate from `playlists` above, which belongs to the mobile app:

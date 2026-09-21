@@ -319,6 +319,34 @@ class PlaylistOut(BaseModel):
         from_attributes = True
 
 
+# ── First-class funscripts ────────────────────────────────────────────────────
+class FunscriptUpdate(BaseModel):
+    is_favorite: Optional[bool] = None
+    rating: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class FunscriptTagIn(BaseModel):
+    name: str
+
+
+class FunscriptPlaylistCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+
+
+class FunscriptPlaylistRename(BaseModel):
+    name: str
+
+
+class FunscriptPlaylistAdd(BaseModel):
+    funscript_id: int
+
+
+class FunscriptPlaylistOrder(BaseModel):
+    funscript_ids: List[int]
+
+
 # ── Gamification ───────────────────────────────────────────────────────────────
 class UserProfileOut(BaseModel):
     id: int

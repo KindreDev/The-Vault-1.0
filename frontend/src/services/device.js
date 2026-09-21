@@ -13,6 +13,7 @@ import {
   OutputType,
 } from 'buttplug'
 import { useDeviceStore, PRESETS } from '../store/deviceStore.js'
+import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const store = () => useDeviceStore.getState()
@@ -22,6 +23,14 @@ const store = () => useDeviceStore.getState()
 const HANDY_APP_KEY = '1sWGa-ThX~iSFzdMTz9pUXPE18P9tfZB'
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+
+// Seek/start semantics: never replay the action immediately before the
+// requested point. If the point is beyond the authored track, the cursor sits
+// at actions.length and the scheduler emits nothing until a loop is requested.
+export function firstActionAtOrAfter(actions, timeMs) {
+  const index = (actions || []).findIndex(action => Number(action?.at || 0) >= Number(timeMs || 0))
+  return index < 0 ? (actions || []).length : index
+}
 
 function lerpPattern(a, b, t) {
   return {
@@ -71,6 +80,11 @@ export class DeviceService {
     this._funscriptTimer  = null          // legacy single-axis timer (kept for safety)
     this._funscriptTimers = {}            // multi-axis: { axisId: timeoutId }
     this._videoEl         = null
+    // Independent player clock. It never receives or owns an HTMLVideoElement.
+    this._independentFs   = null
+    this._independentFsTimer = null
+    this._funscriptOwner  = null          // 'video' | 'independent'
+    this._independentFsError = null
 
     // The Handy REST API v3 (HSP streaming protocol) — gated by firmware v4+,
     // not by hardware generation: an original Handy 1 updated to firmware 4
@@ -721,6 +735,10 @@ export class DeviceService {
 
   takeFunscriptControl() {
     if (!this._funscript || !this._videoEl) return
+    // A video sync explicitly wins device ownership. Keep the independent
+    // player's script loaded/paused, but never let two clocks send output.
+    this.pauseIndependentFunscript()
+    this._funscriptOwner = 'video'
     const prev = store().mode
     useDeviceStore.setState({ mode: 'funscript', previousMode: prev })
     this._stopPatternEngine()
@@ -728,20 +746,31 @@ export class DeviceService {
   }
 
   releaseFunscriptControl() {
+    if (this._funscriptOwner && this._funscriptOwner !== 'video') return
     this._stopFunscriptPlayer()
+    this._funscriptOwner = null
     store().restorePreviousMode()
     if (store().mode === 'freestyle') this._startPatternEngine()
   }
 
   unloadFunscript() {
+    if (this._funscriptOwner === 'independent') {
+      // The video component may unmount while the independent script keeps
+      // playing; clear only its stale references, never the independent clock.
+      this._funscript = null
+      this._videoEl = null
+      return
+    }
+    if (this._funscriptOwner && this._funscriptOwner !== 'video') return
     this._stopFunscriptPlayer()
     this._funscript = null
     this._videoEl   = null
+    this._funscriptOwner = null
   }
 
   _startFunscriptPlayer() {
     this._stopFunscriptPlayer()
-    if (!this._funscript || !this._videoEl) return
+    if (!this._funscript || !this._videoEl || this._funscriptOwner === 'independent') return
     // The Handy streams the script itself; every other provider gets per-action
     // commands from the scheduler below.
     if (store().provider === 'handy') { this._startHandyFsFeed(); return }
@@ -779,7 +808,7 @@ export class DeviceService {
   }
 
   _scheduleFunscriptActions() {
-    if (store().mode !== 'funscript' || !this._funscript || !this._videoEl) return
+    if (store().mode !== 'funscript' || this._funscriptOwner === 'independent' || !this._funscript || !this._videoEl) return
     // Nothing may drive the device unless the video is actually rolling.
     // The scheduler advances on wall-clock timers, so without this it walks the
     // whole script while the video sits paused — the device moves on its own.
@@ -825,6 +854,7 @@ export class DeviceService {
   // engine runs for the active provider (Handy streams, everything else
   // schedules per action). _startFunscriptPlayer stops the previous one first.
   onVideoSeek() {
+    if (this._funscriptOwner === 'independent') return
     this._stopFunscriptPlayer()
     if (store().mode === 'funscript') this._startFunscriptPlayer()
   }
@@ -841,13 +871,197 @@ export class DeviceService {
     // is the right behaviour on pause — but a vibrator would hold its last
     // intensity and keep buzzing through the pause, so scalar actuators are
     // zeroed. onVideoPlay() re-arms the scheduler and they pick straight back up.
-    if (store().mode === 'funscript') this._stopFunscriptPlayer()
+    if (this._funscriptOwner === 'video' && store().mode === 'funscript') this._stopFunscriptPlayer()
     this._stopScalarActuators()
   }
 
   onVideoPlay() {
     // Resume scheduling from the new current time
-    if (store().mode === 'funscript') this._startFunscriptPlayer()
+    if (this._funscriptOwner === 'video' && store().mode === 'funscript') this._startFunscriptPlayer()
+  }
+
+  // ── Independent funscript player ─────────────────────────────────────────
+  // This clock is intentionally separate from the video scheduler above. It
+  // consumes an axes/actions payload, emits device commands, and reports time
+  // to the persistent UI. No video element, media queue, or panel state enters
+  // this path.
+  getIndependentFunscriptDuration(payload) {
+    const axes = payload?.axes && typeof payload.axes === 'object'
+      ? Object.values(payload.axes) : [payload?.actions || []]
+    return Math.max(0, ...axes.flat().map(a => Number(a?.at || 0))) / 1000
+  }
+
+  getIndependentFunscriptError() { return this._independentFsError }
+
+  _independentAxes(payload) {
+    if (payload?.axes && typeof payload.axes === 'object') {
+      const axes = {}
+      for (const [axis, actions] of Object.entries(payload.axes)) {
+        if (Array.isArray(actions) && actions.length) axes[axis] = [...actions].sort((a, b) => a.at - b.at)
+      }
+      if (Object.keys(axes).length) return axes
+    }
+    return Array.isArray(payload?.actions) && payload.actions.length
+      ? { L0: [...payload.actions].sort((a, b) => a.at - b.at) } : {}
+  }
+
+  startIndependentFunscript(payload, options = {}) {
+    this._independentFsError = null
+    if (!payload) return false
+    if (store().status !== 'connected') {
+      this._independentFsError = 'Connect a device before playing a funscript'
+      options.onError?.(this._independentFsError)
+      return false
+    }
+    const axes = this._independentAxes(payload)
+    if (!Object.keys(axes).length) {
+      this._independentFsError = 'This funscript has no actions'
+      options.onError?.(this._independentFsError)
+      return false
+    }
+    // Video sync loses ownership deterministically. Its linked script remains
+    // loaded and can be reclaimed by the existing Sync control later.
+    if (this._funscriptOwner === 'video') {
+      this._stopFunscriptPlayer()
+      this._funscriptOwner = null
+      useDeviceStore.setState({ mode: 'off' })
+    }
+    this._stopIndependentFunscriptClock()
+    this._stopPatternEngine()
+    this._funscriptOwner = 'independent'
+    useDeviceStore.setState({ mode: 'funscript', previousMode: 'off' })
+
+    const rawDuration = Number(payload.duration || 0)
+    const duration = (rawDuration > 10000 ? rawDuration / 1000 : rawDuration)
+      || this.getIndependentFunscriptDuration(payload)
+    const state = {
+      axes,
+      duration,
+      // Player/store time is seconds. Funscript action timestamps are ms and
+      // are converted only when comparing against this clock.
+      startTime: Math.max(0, Number(options.startTime || 0)),
+      speed: Math.max(0.25, Math.min(3, Number(options.speed || 1))),
+      range: options.range || { min: 0, max: 100 },
+      intensity: Math.max(0, Math.min(2, Number(options.intensity ?? 1))),
+      axisEnabled: options.axisEnabled || {},
+      loop: !!options.loop,
+      loopRegion: options.loopRegion || null,
+      startedAt: Date.now(),
+      indexes: {},
+      onTime: options.onTime,
+      onPause: options.onPause,
+      onEnd: options.onEnd,
+      onError: options.onError,
+      paused: false,
+    }
+    const unsupportedAxes = Object.keys(axes).filter(axis => axis !== 'L0' && store().provider !== 'serial')
+    if (unsupportedAxes.length) {
+      this._independentFsError = `${store().provider === 'handy' ? 'The Handy' : 'This device'} supports L0 only; ${unsupportedAxes.join(', ')} will be skipped`
+      useFunscriptPlayerStore.setState({ compatibilityWarning: this._independentFsError })
+    } else {
+      useFunscriptPlayerStore.setState({ compatibilityWarning: null })
+    }
+    for (const [axis, actions] of Object.entries(axes)) {
+      state.indexes[axis] = firstActionAtOrAfter(actions, state.startTime * 1000)
+    }
+    this._independentFs = state
+    this._independentFsTimer = setInterval(() => this._tickIndependentFunscript(), 30)
+    this._tickIndependentFunscript()
+    return true
+  }
+
+  setIndependentFunscriptParams(patch = {}) {
+    if (!this._independentFs) return
+    const now = this._independentFs.startTime + ((Date.now() - this._independentFs.startedAt) / 1000) * this._independentFs.speed
+    Object.assign(this._independentFs, patch)
+    if (patch.speed) {
+      this._independentFs.startTime = now
+      this._independentFs.startedAt = Date.now()
+    }
+  }
+
+  _tickIndependentFunscript() {
+    const s = this._independentFs
+    if (!s || this._funscriptOwner !== 'independent') return
+    const now = s.startTime + ((Date.now() - s.startedAt) / 1000) * s.speed
+    const region = s.loopRegion
+    const end = region?.end > region?.start ? region.end : s.duration
+    if (now >= end) {
+      if (s.loop) {
+        s.startTime = region?.start >= 0 ? region.start : 0
+        s.startedAt = Date.now()
+        for (const [axis, actions] of Object.entries(s.axes)) s.indexes[axis] = firstActionAtOrAfter(actions, s.startTime * 1000)
+      } else {
+        this._stopIndependentFunscriptClock()
+        s.onTime?.(s.duration, s.duration)
+        s.onEnd?.()
+        return
+      }
+    }
+    const timeMs = s.startTime + ((Date.now() - s.startedAt) / 1000) * s.speed
+    for (const [axis, actions] of Object.entries(s.axes)) {
+      if (s.axisEnabled[axis] === false) continue
+      let idx = s.indexes[axis] ?? 0
+      while (idx < actions.length && actions[idx].at <= timeMs * 1000) {
+        const a = actions[idx]
+        const next = actions[idx + 1]
+        const raw = Number(a.pos ?? a.position ?? 0)
+        const min = Number(s.range?.min ?? 0), max = Number(s.range?.max ?? 100)
+        const scaled = min + (max - min) * (raw / 100)
+        const pos = axis === 'L0' ? 50 + (scaled - 50) * s.intensity : scaled
+        const dur = next ? Math.max(50, (next.at - a.at) / s.speed) : 100
+        this._sendAxis(axis, pos, dur)
+        idx += 1
+      }
+      s.indexes[axis] = idx
+    }
+    // The independent player clock is seconds; only action comparisons above
+    // convert to the funscript millisecond timestamp unit.
+    s.onTime?.(Math.min(timeMs, s.duration), s.duration)
+  }
+
+  pauseIndependentFunscript() {
+    const s = this._independentFs
+    if (!s) return
+    if (this._funscriptOwner === 'independent') {
+      s.startTime = Math.min(s.duration, s.startTime + ((Date.now() - s.startedAt) / 1000) * s.speed)
+      this._stopIndependentFunscriptClock()
+      s.paused = true
+      this._stopScalarActuators()
+      s.onPause?.()
+    }
+  }
+
+  // Independent player time is seconds end-to-end. Action timestamps remain
+  // funscript-standard milliseconds, so conversion happens only at the action
+  // comparison boundary above.
+  seekIndependentFunscript(timeSeconds) {
+    if (!this._independentFs) return
+    const wasPlaying = !!this._independentFsTimer
+    this._independentFs.startTime = Math.max(0, Math.min(this._independentFs.duration, Number(timeSeconds) || 0))
+    this._independentFs.startedAt = Date.now()
+    for (const [axis, actions] of Object.entries(this._independentFs.axes)) {
+      this._independentFs.indexes[axis] = firstActionAtOrAfter(actions, this._independentFs.startTime * 1000)
+    }
+    if (wasPlaying && !this._independentFsTimer && this._funscriptOwner === 'independent') {
+      this._independentFsTimer = setInterval(() => this._tickIndependentFunscript(), 30)
+      this._tickIndependentFunscript()
+    }
+  }
+
+  _stopIndependentFunscriptClock() {
+    clearInterval(this._independentFsTimer)
+    this._independentFsTimer = null
+  }
+
+  stopIndependentFunscript({ clear = false } = {}) {
+    this._stopIndependentFunscriptClock()
+    if (this._funscriptOwner === 'independent') {
+      this._stopScalarActuators()
+      this._funscriptOwner = null
+      useDeviceStore.setState({ mode: 'off', previousMode: 'off' })
+    }
+    if (clear) this._independentFs = null
   }
 
   // ── Finisher ──────────────────────────────────────────────────────────────
@@ -929,6 +1143,9 @@ export class DeviceService {
   _stopAll() {
     this._stopPatternEngine()
     this._stopFunscriptPlayer()
+    this._stopIndependentFunscriptClock()
+    if (this._funscriptOwner === 'independent') this._stopScalarActuators()
+    this._funscriptOwner = null
     this._stopRamp()
     this._stopScheduler()
     this._stopEdgeMode()
@@ -1375,3 +1592,6 @@ export class DeviceService {
 }
 
 export const deviceService = new DeviceService()
+// The persistent player store calls into this singleton without importing it
+// eagerly, avoiding a service/store cycle while keeping a stable public action.
+useFunscriptPlayerStore.getState().attachService(deviceService)

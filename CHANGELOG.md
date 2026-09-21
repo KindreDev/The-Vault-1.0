@@ -16,10 +16,15 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ### Fixed
 
+- Fixed the Glass theme showing its selected background image immediately and across every page.
 - Fixed WMV and other VLC/FFmpeg-compatible videos not playing in Chromium by adding cached browser-compatible playback.
 - Fixed booster pack reveals so mouse and touch swipes reliably advance the top card and expose the card underneath.
+- Fixed the Photos/Videos viewer overlay appearing beneath the library filter toolbar.
+- Fixed the legacy video-length repair control so it disappears after every video has a known duration.
+- Fixed Settings restoring the configured funscript library path and waiting for the replacement backend before reporting a restart complete.
 
 ### Added
+- Script-first Funscripts collection with independent script playlists, metrics, compatibility filters, and manual tags.
 - Videos now have their own page module and can be sorted by length, with unknown durations kept at the end.
 - Gallery detail now searches filenames in place, and image/video viewers persist readable per-file notes alongside ten cumulative-hover rating stars.
 - Help now documents a temporary `ollama pull --insecure` workaround for Hugging Face redirect errors while keeping the normal model download command as the recommended path.
@@ -74,6 +79,11 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
 
 ### Changed
+- Sidebar navigation now uses animated collapsible Goon, Social, Collect, and Tools groups; Social sits under Goon and the standalone Device Off/On control is replaced by a live green check indicator on Device Control.
+- Funscripts now use EroScripts-style Max Speed/Avg Speed metrics, inline animated tag and playlist controls, tag search/autocomplete, ratings, a reorderable queue, sticky collection columns, and a collapsible edge-tab player.
+- Funscript filters and sorting now use animated Vault-native dropdowns with rating sorting, and the queue is wider with readable multi-line titles; misleading universal vibrator badges are removed.
+- Funscripts now follow the active Vault theme, support native drag-and-drop queue ordering, use a searchable scrollable playlist picker, and match EroScripts' peak/action speed statistics.
+- Funscript accents now follow the selected Vault palette, and every collection metric header plus the sort control supports reversible ascending/descending sorting.
 - GalleryView now keeps rapid viewer arrow navigation from triggering image zoom and adds a one-click Reshuffle control for Random sorting.
 - Library scans and Loading Bay now ignore hidden/system files and metadata folders by default, with an explicit Scanner setting to include them.
 - File-level creator assignment now stays attached to the selected image or video, refreshes GalleryView coverage immediately, and keeps many-creator summaries contained in a scrollable card grid.

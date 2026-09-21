@@ -551,7 +551,7 @@ function ImageViewer({ images, startIdx, onClose }) {
   const isZoomed = zoom > 1
 
   return createPortal((
-    <div ref={viewerRef} className="fixed inset-0 z-50 flex" style={{ background: '#090909' }}
+    <div ref={viewerRef} className="fixed inset-0 z-[300] flex" style={{ background: '#090909' }}
       onMouseMove={handleMouseMove}>
 
       {/* ── Main stage ─────────────────────────────────────────────────── */}
