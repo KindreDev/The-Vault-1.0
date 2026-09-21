@@ -6,12 +6,21 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
   const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const selectedOptionRef = useRef(null)
   
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  // If the current sort is near the end of a long list (Length is the final
+  // video option), bring it into view when the menu opens instead of making
+  // the user hunt through a clipped menu.
+  useEffect(() => {
+    if (!open) return
+    requestAnimationFrame(() => selectedOptionRef.current?.scrollIntoView({ block: 'nearest' }))
+  }, [open, value])
 
   const selected = options.find(o => o.value === value)
 
@@ -56,11 +65,21 @@ export function SortDropdown({ value, onChange, options, sortDir, onSortDirChang
         )}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 rounded-[10px] shadow-2xl overflow-hidden animate-menu-pop min-w-[160px]"
-             style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)', minWidth: 220, maxHeight: 300 }}>
+        <div className="absolute top-full left-0 mt-1 rounded-[10px] shadow-2xl animate-menu-pop min-w-[160px]"
+             onWheel={e => e.stopPropagation()}
+             style={{
+               background: '#1e1e1e',
+               border: '0.5px solid rgba(255,255,255,0.15)',
+               minWidth: 220,
+               maxHeight: 'min(360px, calc(100dvh - 120px))',
+               overflowY: 'auto',
+               overscrollBehavior: 'contain',
+               scrollbarWidth: 'thin',
+             }}>
           {options.map(o => (
             <button key={o.value} type="button" onMouseDown={() => handleSelect(o.value)}
-                    className="w-full text-left px-3 py-2 text-[13px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
+                    ref={o.value === value ? selectedOptionRef : undefined}
+                    className="w-full text-left px-3 py-2 text-[16px] leading-6 cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center gap-2"
                     style={{
                       color: value === o.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)',
                       background: value === o.value ? 'color-mix(in srgb, var(--c-accent) 15%, transparent)' : 'transparent',

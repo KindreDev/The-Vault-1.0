@@ -59,6 +59,18 @@ const VIDEO_SORTS = [
   { value: 'duration',      label: 'Length' },
 ]
 
+function formatVideoDuration(seconds) {
+  const value = Number(seconds)
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  const total = Math.round(value)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${minutes}:${String(secs).padStart(2, '0')}`
+}
+
 
 // ── Thumbnail ──────────────────────────────────────────────────────────────────
 function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMenu, masonry = false }) {
@@ -192,6 +204,24 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         </div>
       )}
 
+      {/* Scanned video duration */}
+      {image.is_video && (
+        <div
+          className="absolute top-1 right-1 rounded-md px-2 py-1 font-semibold leading-none tabular-nums"
+          title={image.duration > 0 ? 'Video duration' : 'Video duration not available'}
+          style={{
+            background: 'rgba(0,0,0,0.82)',
+            border: '1px solid color-mix(in srgb, var(--c-accent) 65%, transparent)',
+            color: 'var(--c-accent-text)',
+            fontSize: 16,
+            zIndex: 4,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          }}
+        >
+          {formatVideoDuration(image.duration)}
+        </div>
+      )}
+
       {(image.rating > 0 || image.cum_count > 0) && (
         <div className="absolute bottom-1 right-1 flex items-center gap-1" style={{ zIndex: 3 }}>
           {image.rating > 0 && (
@@ -232,7 +262,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
       <button
         onMouseDown={handleSendToViewer}
         title={t('Send to Playlists')}
-        className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
+        className="absolute top-9 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
         style={inQueue
           ? { background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)', opacity: 1 }
           : { background: 'rgba(0,0,0,0.6)', opacity: 0, transition: 'opacity 0.15s' }

@@ -22,6 +22,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Fixed the Photos/Videos viewer overlay appearing beneath the library filter toolbar.
 - Fixed the legacy video-length repair control so it disappears after every video has a known duration.
 - Fixed Settings restoring the configured funscript library path and waiting for the replacement backend before reporting a restart complete.
+- Fixed the Videos sort menu so Length remains reachable in its own contained scroll area instead of being clipped or scrolling the whole page.
+- Fixed video cards so scanned durations are visible in a themed top-right badge, including an honest unavailable marker when a duration is missing.
 
 ### Added
 - Script-first Funscripts collection with independent script playlists, metrics, compatibility filters, and manual tags.
