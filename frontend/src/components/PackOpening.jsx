@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import { FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
 import VaultCard from './VaultCard'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
@@ -169,30 +168,80 @@ function PackPile({ count, phase, firstCard, onTurn }) {
 }
 
 function RevealStack({ cards, currentIndex, onAdvance }) {
-  const throwTop = useCallback(direction => onAdvance(direction), [onAdvance])
+  const gestureRef = useRef(null)
+  const [dragX, setDragX] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const remaining = cards.slice(currentIndex)
+
+  const handlePointerDown = useCallback(event => {
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      lastX: event.clientX,
+      startedAt: performance.now(),
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setDragX(0)
+    setIsDragging(true)
+    event.preventDefault()
+  }, [])
+
+  const handlePointerMove = useCallback(event => {
+    const gesture = gestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    gesture.lastX = event.clientX
+    setDragX(event.clientX - gesture.startX)
+    event.preventDefault()
+  }, [])
+
+  const finishPointerGesture = useCallback((event, cancelled = false) => {
+    const gesture = gestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+
+    const delta = gesture.lastX - gesture.startX
+    const elapsed = Math.max(1, performance.now() - gesture.startedAt)
+    const velocity = delta / elapsed * 1000
+    gestureRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    setIsDragging(false)
+    setDragX(0)
+
+    if (!cancelled && (Math.abs(delta) >= 72 || Math.abs(velocity) >= 450)) {
+      onAdvance(delta < 0 ? -1 : 1)
+    }
+  }, [onAdvance])
+
+  const handleKeyDown = useCallback(event => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    onAdvance(event.key === 'ArrowLeft' ? -1 : 1)
+  }, [onAdvance])
+
   return (
     <div className="pack-opening__reveal-stack" style={{ '--stack-count': remaining.length }}>
       {remaining.map((card, offset) => {
         const isTop = offset === 0
         const className = `pack-opening__stack-card${isTop ? ' is-top' : ''}`
         if (!isTop) return <div className={className} key={`under-${currentIndex + offset}`} style={{ '--stack-offset': Math.min(offset, 4), '--stack-y': `${Math.min(offset, 4) * 8}px`, '--stack-scale': 1 - Math.min(offset, 4) * .018, zIndex: 100 - offset }}>{cardFace(card)}</div>
-        return <motion.div
+        return <div
           className={className}
           key={`top-${currentIndex}`}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.9}
-          whileDrag={{ scale: 1.015 }}
-          animate={{ x: 0, rotate: 0 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          onDragEnd={(_, info) => {
-            if (Math.abs(info.offset.x) > 72 || Math.abs(info.velocity.x) > 450) {
-              throwTop(info.offset.x < 0 ? -1 : 1)
-            }
+          role="button"
+          tabIndex={0}
+          aria-label="Swipe card left or right to reveal the next card"
+          aria-grabbed={isDragging}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishPointerGesture}
+          onPointerCancel={event => finishPointerGesture(event, true)}
+          onKeyDown={handleKeyDown}
+          style={{
+            touchAction: 'none',
+            transform: `translate3d(${dragX}px, 0, 0) rotate(${dragX * 0.035}deg) scale(${isDragging ? 1.015 : 1})`,
+            transition: isDragging ? 'none' : 'transform 160ms ease-out',
           }}
-          style={{ touchAction: 'none' }}
-        >{cardFace(card)}</motion.div>
+        >{cardFace(card)}</div>
       })}
     </div>
   )

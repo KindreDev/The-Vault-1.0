@@ -374,6 +374,7 @@
   z-index: 100;
   cursor: grab;
   pointer-events: auto;
+  will-change: transform;
 }
 .pack-opening__stack-card.is-top:active { cursor: grabbing; }
 .pack-opening__stack-card img {

@@ -17,6 +17,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ### Fixed
 
 - Fixed WMV and other VLC/FFmpeg-compatible videos not playing in Chromium by adding cached browser-compatible playback.
+- Fixed booster pack reveals so mouse and touch swipes reliably advance the top card and expose the card underneath.
 
 ### Added
 - Videos now have their own page module and can be sorted by length, with unknown durations kept at the end.
