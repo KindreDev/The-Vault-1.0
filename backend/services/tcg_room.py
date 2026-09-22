@@ -915,6 +915,9 @@ def open_parcel(db: Session, parcel_id: int) -> dict:
         order = db.get(TCGOnlineOrder, parcel.order_id)
         order.status, order.opened_at = "opened", now
         db.commit()
+        if results:
+            from services.gamification import notify_action
+            notify_action(db, "pack_opened", count=len(results), override_amount=75 * len(results))
         return parcel_status(db, parcel.id)
     except Exception:
         db.rollback()

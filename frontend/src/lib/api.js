@@ -254,7 +254,7 @@ export const imagesApi = {
 export const sessionsApi = {
   log:   (d)  => api.post('/sessions/', d),
   list:  (p)  => api.get('/sessions/', { params: p }),
-  stats: ()   => api.get('/sessions/stats'),
+  stats: (params) => api.get('/sessions/stats', { params }),
   // Analytics keeps every longitudinal query behind one adapter so chart
   // components never need to know endpoint details.
   analytics: (params) => api.get('/sessions/analytics', { params }),
@@ -264,6 +264,7 @@ export const sessionsApi = {
   // it was. Sessions are logged automatically, so a crash or a forgotten stop
   // leaves rows only the user can put right.
   update:     (id, d) => api.patch(`/sessions/${id}`, d),
+  updateGroup: (d) => api.patch('/sessions/group', d),
   delete:     (id)    => api.delete(`/sessions/${id}`),
   // A playlist session writes one row per creator — deleting what looks like
   // one entry has to take the whole group.
@@ -669,12 +670,16 @@ export const recapApi = {
 // ── Collection Curating ──────────────────────────────────────────────────────────
 export const curationApi = {
   state:      ()            => api.get('/curation/state'),
-  debt:       ()            => api.get('/curation/debt'),
+  debt:       (mode = 'gallery') => api.get('/curation/debt', { params: { mode } }),
   // `exclude` is the ids already seen this sitting, so a long run never doubles back.
   next:       (exclude = []) => api.get('/curation/next', { params: { exclude: exclude.join(',') } }),
   gallery:    (id, allImages = false) => api.get(`/curation/gallery/${id}`, { params: { all_images: allImages } }),
+  nextFile:   (exclude = []) => api.get('/curation/next-file', { params: { exclude: exclude.join(',') } }),
+  file:       (id)          => api.get(`/curation/file/${id}`),
   save:       (body)        => api.post('/curation/save', body),
+  saveFile:   (body)        => api.post('/curation/save-file', body),
   snooze:     (id, days)    => api.post('/curation/snooze', { gallery_id: id, days }),
+  snoozeFile: (id, days)    => api.post('/curation/snooze-file', { image_id: id, days }),
   pin:        (id)          => api.post('/curation/pin', { gallery_id: id }),
   focus:      (creatorId)   => api.post('/curation/focus', { creator_id: creatorId }),
   beloved:    ()            => api.get('/curation/beloved'),

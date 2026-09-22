@@ -3,7 +3,7 @@ import os
 import random
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func, or_
+from sqlalchemy import func, nullslast, or_
 from typing import List, Optional, Literal
 
 from database import get_db
@@ -1177,6 +1177,8 @@ def gallery_images(
         q = q.order_by(func.random())
     elif sort_by == "date_added":
         q = q.order_by(Image.created_at.desc(), Image.id.desc())
+    elif sort_by == "date_modified":
+        q = q.order_by(nullslast(Image.file_modified_at.desc()), Image.id.desc())
     elif sort_by == "view_count":
         q = q.order_by(Image.view_count.desc(), Image.id.desc())
     elif sort_by == "cum_count":

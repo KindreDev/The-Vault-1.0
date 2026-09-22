@@ -27,6 +27,11 @@ import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
+// Large galleries can contain several thousand files. Keep the full metadata
+// list available for search, selection, and viewer navigation, but mount the
+// thumbnail grid in small browseable batches so React and the browser do not
+// have to build thousands of interactive tiles on the first paint.
+const GALLERY_RENDER_BATCH = 240
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 import { TagPanel, CreatorPanel } from '../components/ViewerPanel'
@@ -40,6 +45,7 @@ const SORTS = [
   { value: 'filename',   label: 'Filename' },
   { value: 'sort_order', label: 'Default Order' },
   { value: 'date_added', label: 'Date Added' },
+  { value: 'date_modified', label: 'Date Modified' },
   { value: 'view_count', label: 'Most Viewed' },
   { value: 'cum_count',  label: 'Most Cummed' },
   { value: 'rating',     label: 'Rating' },
@@ -1793,6 +1799,7 @@ export default function GalleryView() {
   const [sortBy, setSortBy] = useState('filename')
   const [mediaSearch, setMediaSearch] = useState('')
   const [randomSeed, setRandomSeed] = useState(0)
+  const [renderLimit, setRenderLimit] = useState(GALLERY_RENDER_BATCH)
   const [isRenaming, setIsRenaming] = useState(false)
   const [editName, setEditName] = useState('')
   const renameSubmittedRef = useRef(false)
@@ -1815,6 +1822,7 @@ export default function GalleryView() {
   const [bulkMode, setBulkMode]   = useState(() => new URLSearchParams(window.location.search).get('select') === 'true')
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExtract, setShowExtract] = useState(false)
+  const [extractImages, setExtractImages] = useState(null)
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
   const [bulkAssignSearch, setBulkAssignSearch] = useState('')
   const [bulkTagOpen, setBulkTagOpen] = useState(false)
@@ -1878,9 +1886,61 @@ export default function GalleryView() {
   }, [images, mediaSearch])
 
   const displayedImages = useMemo(
-    () => searchedImages.filter(image => !deletedIds.has(image.id)),
+    () => {
+      const deletedKeys = new Set([...deletedIds].map(String))
+      return searchedImages.filter(image => !deletedKeys.has(String(image.id)))
+    },
     [searchedImages, deletedIds],
   )
+
+  // Keep selection comparisons type-safe. API responses can contain numeric IDs
+  // while DOM/event payloads may hand us strings, which used to make a selected
+  // right-click silently fall back to a single-file action.
+  const selectedIdKeys = useMemo(
+    () => new Set([...selectedIds].map(String)),
+    [selectedIds],
+  )
+  const selectedImages = useMemo(() => {
+    const deletedKeys = new Set([...deletedIds].map(String))
+    return (images ?? []).filter(image => (
+      !deletedKeys.has(String(image.id)) && selectedIdKeys.has(String(image.id))
+    ))
+  }, [images, deletedIds, selectedIdKeys])
+
+  // Right-clicking a selected tile applies the menu action to the whole current
+  // selection. Right-clicking an unselected tile intentionally targets only it.
+  const contextImages = imgCtx
+    ? (bulkMode && selectedIdKeys.has(String(imgCtx.image.id))
+        ? displayedImages.filter(image => selectedIdKeys.has(String(image.id)))
+        : [imgCtx.image])
+    : []
+  const contextBulkImages = contextImages.length > 1 ? contextImages : null
+
+  const renderedImages = useMemo(
+    () => displayedImages.slice(0, renderLimit),
+    [displayedImages, renderLimit],
+  )
+
+  const loadMoreRef = useRef(null)
+
+  // A new search or sort should start at the top of the result set. The
+  // observer below will keep extending the mounted window as the user gets
+  // near the end, without changing the full list used by selection/viewer
+  // actions.
+  useEffect(() => {
+    setRenderLimit(GALLERY_RENDER_BATCH)
+  }, [id, sortBy, randomSeed, mediaSearch])
+
+  useEffect(() => {
+    const node = loadMoreRef.current
+    if (!node || renderLimit >= displayedImages.length) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      setRenderLimit(current => Math.min(current + GALLERY_RENDER_BATCH, displayedImages.length))
+    }, { rootMargin: '900px 0px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [displayedImages.length, renderLimit])
 
   const galleryFolderName = gallery?.folder_path
     ? gallery.folder_path.split(/[\\/]/).filter(Boolean).pop()
@@ -2283,24 +2343,26 @@ export default function GalleryView() {
              style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
           <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>{selectedIds.size} {t('selected')}</span>
           <button type="button"
-                  onMouseDown={() => setSelectedIds(s => displayedImages.length > 0 && displayedImages.every(i => s.has(i.id)) ? new Set() : new Set(displayedImages.map(i => i.id)))}
+                  onMouseDown={() => setSelectedIds(() => displayedImages.length > 0 && displayedImages.every(i => selectedIdKeys.has(String(i.id)))
+                    ? new Set()
+                    : new Set(displayedImages.map(i => String(i.id))))}
                   className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            {displayedImages.length > 0 && displayedImages.every(i => selectedIds.has(i.id)) ? t('Deselect all') : t('Select all')}
+            {displayedImages.length > 0 && displayedImages.every(i => selectedIdKeys.has(String(i.id))) ? t('Deselect all') : t('Select all')}
           </button>
-          <button type="button" onMouseDown={() => setShowExtract(true)}
+          <button type="button" onMouseDown={() => { setExtractImages(null); setShowExtract(true) }}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
             <FolderOutput size={12} /> {t('Extract to gallery')}
           </button>
           <button type="button"
-                  onMouseDown={() => setRelocatingImages(images.filter(i => selectedIds.has(i.id)))}
+                  onMouseDown={() => setRelocatingImages(selectedImages)}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
             <HardDrive size={12} /> {t('Relocate')}
           </button>
           <button type="button"
-                  onMouseDown={() => setTransferCtx({ images: images.filter(i => selectedIds.has(i.id)) })}
+                  onMouseDown={() => setTransferCtx({ images: selectedImages })}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
             <Copy size={12} /> {t('Copy to gallery')}
@@ -2352,7 +2414,7 @@ export default function GalleryView() {
               disabled={!bulkPendingTags.length || bulkTagging}
               onMouseDown={async () => {
                 if (!bulkPendingTags.length || bulkTagging) return
-                const targets = images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? []
+                const targets = selectedImages
                 setBulkTagging(true)
                 let errs = 0
                 for (const img of targets)
@@ -2400,8 +2462,7 @@ export default function GalleryView() {
                   key={c.id}
                   type="button"
                   onMouseDown={async () => {
-                    const ids = (images?.filter(i => !deletedIds.has(i.id) && selectedIds.has(i.id)) ?? [])
-                      .map(i => i.id)
+                    const ids = selectedImages.map(i => i.id)
                     try {
                       const { data } = await imagesApi.bulkAddCreator(ids, c.id)
                       const n = data?.assigned ?? 0
@@ -2448,13 +2509,14 @@ export default function GalleryView() {
           ? <div className="text-center py-16 text-[rgba(255,255,255,0.25)] text-[16px]">{t('No images in this gallery')}</div>
         : displayedImages.length === 0
           ? <div className="text-center py-16 text-[rgba(255,255,255,0.35)] text-[16px]">{t('No filenames match this search')}</div>
-          : <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${THUMB_SIZES[thumbSizeIdx]}px, 1fr))` }}>
-              {displayedImages.map((img, i) => (
+          : <>
+            <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${THUMB_SIZES[thumbSizeIdx]}px, 1fr))` }}>
+              {renderedImages.map((img, i) => (
                 <ImageThumb key={img.id} image={img} idx={i} onClick={setViewerIdx}
                             galleryId={parseInt(id)}
                             onDeleted={(imgId) => setDeletedIds(s => new Set([...s, imgId]))}
                             bulkMode={bulkMode}
-                            selected={selectedIds.has(img.id)}
+                            selected={selectedIdKeys.has(String(img.id))}
                             onSelect={(imgId, imgIdx, shiftKey) => {
                               const visibleImgs = displayedImages
                               setSelectedIds(s => {
@@ -2465,10 +2527,11 @@ export default function GalleryView() {
                                 // extends a range instead of silently toggling one file — which was
                                 // why it "only worked after shift-clicking once first".
                                 let anchor = lastSelectIdxRef.current
-                                if (shiftKey && anchor === null && s.size > 0) {
+                                const current = new Set([...s].map(String))
+                                if (shiftKey && anchor === null && current.size > 0) {
                                   let best = null
                                   visibleImgs.forEach((im, i) => {
-                                    if (!s.has(im.id)) return
+                                    if (!current.has(String(im.id))) return
                                     if (best === null || Math.abs(i - imgIdx) < Math.abs(best - imgIdx)) best = i
                                   })
                                   anchor = best
@@ -2476,27 +2539,43 @@ export default function GalleryView() {
                                 if (shiftKey && anchor !== null) {
                                   const lo = Math.min(anchor, imgIdx)
                                   const hi = Math.max(anchor, imgIdx)
-                                  const n = new Set(s)
-                                  visibleImgs.slice(lo, hi + 1).forEach(im => n.add(im.id))
+                                  const n = new Set(current)
+                                  visibleImgs.slice(lo, hi + 1).forEach(im => n.add(String(im.id)))
                                   lastSelectIdxRef.current = imgIdx   // chain further shift-clicks
                                   return n
                                 }
-                                const n = new Set(s)
-                                n.has(imgId) ? n.delete(imgId) : n.add(imgId)
+                                const n = new Set(current)
+                                const key = String(imgId)
+                                n.has(key) ? n.delete(key) : n.add(key)
                                 lastSelectIdxRef.current = imgIdx
                                 return n
                               })
                             }}
                             onContextMenu={(im, e) => {
                               // Windows behaviour: right-click on selected image → apply to whole selection
-                              const inSel = bulkMode && selectedIds.has(im.id)
-                              const bulkImages = inSel
-                                ? displayedImages.filter(i => selectedIds.has(i.id))
-                                : null
-                              setImgCtx({ image: im, x: e.clientX, y: e.clientY, bulkImages })
+                              setImgCtx({ image: im, x: e.clientX, y: e.clientY })
                             }} />
               ))}
             </div>
+            {renderedImages.length < displayedImages.length && (
+              <div ref={loadMoreRef} className="flex flex-col items-center gap-2 py-8">
+                <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {t('Showing')} {renderedImages.length.toLocaleString()} {t('of')} {displayedImages.length.toLocaleString()}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRenderLimit(current => Math.min(current + GALLERY_RENDER_BATCH, displayedImages.length))}
+                  className="px-4 py-2 rounded-full text-[16px] cursor-pointer"
+                  style={{
+                    background: 'color-mix(in srgb, var(--c-accent) 14%, transparent)',
+                    color: 'var(--c-accent-text)',
+                    border: '0.5px solid color-mix(in srgb, var(--c-accent) 32%, transparent)',
+                  }}>
+                  {t('Load more')}
+                </button>
+              </div>
+            )}
+          </>
       }
 
       {/* More Like This */}
@@ -2530,10 +2609,11 @@ export default function GalleryView() {
       {showExtract && gallery && (
         <ExtractFromGalleryModal
           gallery={gallery}
-          selectedImages={images?.filter(img => selectedIds.has(img.id)) ?? []}
-          onClose={() => setShowExtract(false)}
+          selectedImages={extractImages ?? selectedImages}
+          onClose={() => { setShowExtract(false); setExtractImages(null) }}
           onExtracted={(newGallery) => {
             setShowExtract(false)
+            setExtractImages(null)
             setBulkMode(false)
             setSelectedIds(new Set())
             qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
@@ -2563,12 +2643,12 @@ export default function GalleryView() {
       {imgCtx && (
         <ImageContextMenu
           image={imgCtx.image}
-          bulkCount={imgCtx.bulkImages?.length ?? null}
+          bulkCount={contextBulkImages?.length ?? null}
           position={{ x: imgCtx.x, y: imgCtx.y }}
           onClose={() => setImgCtx(null)}
           onSelectMode={!bulkMode ? () => {
             setBulkMode(true)
-            setSelectedIds(new Set([imgCtx.image.id]))
+            setSelectedIds(new Set([String(imgCtx.image.id)]))
             // Seed the range anchor too — entering select mode this way used to
             // leave it unset, so the next shift-click toggled a single file
             // instead of extending a range.
@@ -2586,7 +2666,7 @@ export default function GalleryView() {
             .catch(() => toast.error(t('Failed to set cover')))
           }
           onSendToViewer={() => {
-            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            const targets = contextImages
             let added = 0, skipped = 0
             for (const img of targets) {
               if (multiViewerQueue.length + added >= MULTIVIEWER_MAX) { skipped += targets.length - added; break }
@@ -2596,8 +2676,12 @@ export default function GalleryView() {
             if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Playlists`)
             if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
           }}
-          onCopyTo={() => setTransferCtx({ images: imgCtx.bulkImages ?? [imgCtx.image] })}
-          onRelocate={() => setRelocatingImages(imgCtx.bulkImages ?? [imgCtx.image])}
+          onCopyTo={() => setTransferCtx({ images: contextImages })}
+          onRelocate={() => setRelocatingImages(contextImages)}
+          onExtract={() => {
+            setExtractImages(contextImages)
+            setShowExtract(true)
+          }}
           creators={gallery?.creators ?? []}
           onSetAsAvatar={(creatorId) => {
             if (imgCtx.image.is_video) {
@@ -2618,7 +2702,7 @@ export default function GalleryView() {
               .catch(() => toast.error(t('Failed to set banner')))
           }}
           onAssignCreator={async (creatorId) => {
-            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            const targets = contextImages
             try {
               // One request for the whole selection — the per-file loop this
               // replaces is why a big selection sat there spinning.
@@ -2637,7 +2721,7 @@ export default function GalleryView() {
             }
           }}
           onDelete={async (mode) => {
-            const targets = imgCtx.bulkImages ?? [imgCtx.image]
+            const targets = contextImages
             const ids = targets.map(img => img.id)
             const tid = toast.loading(mode === 'vault'
               ? `Removing ${ids.length} ${ids.length === 1 ? 'file' : 'files'}…`
@@ -2647,10 +2731,10 @@ export default function GalleryView() {
               const removedIds = data?.ids ?? []
               const failures = data?.failed ?? []
               if (removedIds.length) {
-                setDeletedIds(current => new Set([...current, ...removedIds]))
+                setDeletedIds(current => new Set([...current, ...removedIds.map(String)]))
                 setSelectedIds(current => {
-                  const next = new Set(current)
-                  removedIds.forEach(imageId => next.delete(imageId))
+                  const next = new Set([...current].map(String))
+                  removedIds.forEach(imageId => next.delete(String(imageId)))
                   return next
                 })
               }

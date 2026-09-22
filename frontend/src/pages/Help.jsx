@@ -100,7 +100,7 @@ const XP_ACTIONS = [
   { action: 'Log a session',     xp: 40,  note: 'Multiplied by daily streak' },
   { action: 'Count an O (cum)',  xp: 10,  note: 'Per tap. Multiplied by streak' },
   { action: 'Daily login',       xp: 20,  note: 'Once per day' },
-  { action: 'Daily spin',        xp: 25,  note: 'Fixed base; up to +100 bonus' },
+  { action: 'Daily spin',        xp: null, note: 'Random 15–150 XP or Vault Credits' },
   { action: 'Add a creator',     xp: 75,  note: 'Any type' },
   { action: 'Import a gallery',  xp: 15,  note: 'Per gallery scanned' },
   { action: 'Rate an image',     xp: 3,   note: 'Per rating action' },
@@ -108,8 +108,6 @@ const XP_ACTIONS = [
   { action: 'Add a manual tag',  xp: 5,   note: 'Per tag applied' },
   { action: 'Wiki import',       xp: 25,  note: 'Any wiki/AniList import' },
   { action: 'Open a card pack',  xp: 75,  note: 'Per pack (×quantity)' },
-  { action: 'Dismantle a card',  xp: 15,  note: 'Per card' },
-  { action: 'Tagging mission',   xp: 300, note: 'Daily AI tagging challenge' },
   { action: 'Complete a quest',  xp: null, note: 'Varies per quest (20–25,000)' },
   { action: 'Unlock achievement',xp: null, note: 'Varies per achievement (50–20,000)' },
 ]
@@ -366,9 +364,8 @@ function GamificationContent() {
       <Section title="Daily spin wheel" icon={Gamepad2} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed">
-            One free spin per day accessible from the Dashboard. Awards a random XP bonus on top of your base +25 XP.
-            The wheel has multiple segments weighted toward smaller bonuses, with rare jackpot segments for large amounts.
-            All spin XP is multiplied by your active streak. Resets daily at midnight.
+            One free spin per day accessible from the Dashboard. It awards either a random XP result or Vault Credits.
+            XP results range from 15 to 150 and are multiplied by your active streak. Resets daily at midnight.
           </p>
         </SectionBody>
       </Section>
@@ -409,6 +406,7 @@ function QuestsContent() {
     { title: 'Tag spree',       desc: 'Add 10 tags in one day',    xp: 95,  target: '10×' },
     { title: 'Rating spree',    desc: 'Rate 10 images today',      xp: 75,  target: '10×' },
     { title: 'Double tap',      desc: 'Count 2 Os today',          xp: 95,  target: '2×' },
+    { title: "Curator's eye",  desc: 'Curate 5 galleries',         xp: 70,  target: '5×' },
   ]
   const WEEKLY = [
     { title: 'Add a creator',     desc: 'Add any creator this week',         xp: 200,  target: '1×' },
@@ -418,7 +416,7 @@ function QuestsContent() {
     { title: 'Gallery marathon',  desc: 'Import 3 galleries this week',      xp: 550,  target: '3×' },
     { title: 'Pack addict',       desc: 'Open 5 packs this week',            xp: 350,  target: '5×' },
     { title: 'Weekly tagger',     desc: 'Add 50 tags this week',             xp: 400,  target: '50×' },
-    { title: 'The Recycler',      desc: 'Dismantle 10 cards this week',      xp: 400,  target: '10×' },
+    { title: 'Deep clean',        desc: 'Curate 30 galleries this week',     xp: 450,  target: '30×' },
   ]
 
   return (
@@ -426,13 +424,13 @@ function QuestsContent() {
       <div className="p-4 rounded-lg text-[17px] text-white/55"
            style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
         <div className="flex gap-6">
-          <div><span className="text-white/75 font-semibold">Daily quests:</span> 4 randomly selected from a pool of 10 each midnight.</div>
+          <div><span className="text-white/75 font-semibold">Daily quests:</span> 4 randomly selected from a pool of 11 each midnight.</div>
           <div><span className="text-white/75 font-semibold">Weekly quests:</span> 4 randomly selected from a pool of 8 each Monday.</div>
           <div><span className="text-white/75 font-semibold">Boss quests:</span> Permanent milestones — always visible, never expire.</div>
         </div>
       </div>
 
-      <Section title="Daily quest pool (10 quests, 4 shown each day)" icon={Calendar} defaultOpen accentColor="var(--c-accent)">
+      <Section title="Daily quest pool (11 quests, 4 shown each day)" icon={Calendar} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
           <QuestTable quests={DAILY} />
         </SectionBody>
@@ -539,12 +537,11 @@ function AchievementsContent() {
       label: 'First-time milestones', color: 'var(--c-green)', items: [
         { title: 'Welcome to the Vault', desc: 'First time opening the app', xp: 75 },
         { title: 'First Time',           desc: 'Log your first session',     xp: 100 },
-        { title: 'First Favorite',       desc: 'Add your first creator',     xp: 75 },
+        { title: 'First Creator',        desc: 'Add your first creator',     xp: 75 },
         { title: 'First Nut',            desc: 'Count your first O',         xp: 75 },
         { title: 'Pack Rat',             desc: 'Open your first card pack',  xp: 100 },
         { title: 'First Tag',            desc: 'Add your first tag',         xp: 50 },
         { title: 'First Impression',     desc: 'Rate your first image',      xp: 50 },
-        { title: 'The Recycler',         desc: 'Dismantle your first card',  xp: 75 },
       ],
     },
     {
@@ -591,7 +588,7 @@ function AchievementsContent() {
         { title: 'Connoisseur',     desc: '100 images rated',    xp: 200 },
         { title: 'Harsh Critic',    desc: '500 images rated',    xp: 600 },
         { title: 'Prolific Critic', desc: '1,000 images rated',  xp: 1500 },
-        { title: 'True Fan',        desc: 'Rate anything 5 stars',xp: 300 },
+        { title: 'True Fan',        desc: 'Rate a gallery 10/10',     xp: 300 },
       ],
     },
     {

@@ -15,8 +15,10 @@ def state(db: Session = Depends(get_db)):
 
 
 @router.get("/debt")
-def debt(db: Session = Depends(get_db)):
+def debt(mode: str = "gallery", db: Session = Depends(get_db)):
     """Headline curation-debt numbers for the dashboard stat strip."""
+    if mode == "file":
+        return curation.image_debt_summary(db)
     return curation.debt_summary(db)
 
 
@@ -45,6 +47,26 @@ def get_gallery(gallery_id: int, all_images: bool = False, db: Session = Depends
     return {"gallery": curation.gallery_payload(db, g, all_images=all_images)}
 
 
+@router.get("/next-file")
+def next_file(exclude: str = "", db: Session = Depends(get_db)):
+    """Serve the next incomplete file for dump-style file curation."""
+    exclude_ids = [int(x) for x in exclude.split(",") if x.strip().isdigit()]
+    picked = curation.next_image(db, exclude_ids)
+    if not picked:
+        return {"file": None, "exhausted": True}
+    img, score = picked
+    return {"file": curation.image_payload(db, img, score), "exhausted": False}
+
+
+@router.get("/file/{image_id}")
+def get_file(image_id: int, db: Session = Depends(get_db)):
+    from models import Image
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(404, "File not found")
+    return {"file": curation.image_payload(db, img)}
+
+
 @router.post("/save")
 def save(body: dict, db: Session = Depends(get_db)):
     """Commit staged edits for one gallery.
@@ -62,6 +84,18 @@ def save(body: dict, db: Session = Depends(get_db)):
         raise HTTPException(400, str(e))
 
 
+@router.post("/save-file")
+def save_file(body: dict, db: Session = Depends(get_db)):
+    image_id = body.get("image_id")
+    if not image_id:
+        raise HTTPException(400, "image_id is required")
+    try:
+        return curation.save_image(db, int(image_id), body,
+                                   mark_curated=bool(body.get("mark_curated", True)))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.post("/snooze")
 def snooze(body: dict, db: Session = Depends(get_db)):
     gallery_id = body.get("gallery_id")
@@ -69,6 +103,17 @@ def snooze(body: dict, db: Session = Depends(get_db)):
         raise HTTPException(400, "gallery_id is required")
     try:
         return curation.snooze(db, int(gallery_id), int(body.get("days") or curation.SNOOZE_DAYS))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/snooze-file")
+def snooze_file(body: dict, db: Session = Depends(get_db)):
+    image_id = body.get("image_id")
+    if not image_id:
+        raise HTTPException(400, "image_id is required")
+    try:
+        return curation.snooze_image(db, int(image_id), int(body.get("days") or curation.IMAGE_SNOOZE_DAYS))
     except ValueError as e:
         raise HTTPException(400, str(e))
 

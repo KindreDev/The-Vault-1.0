@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from models import (
     Gallery, Image, Creator, Tag, TagSource, UserProfile,
-    gallery_creators, gallery_tags, image_tags,
+    gallery_creators, gallery_tags, image_tags, image_creators,
 )
 import services.gamification as gami
 from services.file_ops import rename_path
@@ -45,6 +45,8 @@ BELOVED_SHARE         = 0.40  # ~4 in 10 pulls come from favourite creators
 SHORTLIST             = 200   # rows re-scored in Python per pull
 PICK_BAND             = 25    # winner drawn from the top N of the shortlist
 IMAGE_PAGE            = 300   # files sent per gallery before "load all"
+IMAGE_CURATED_COOLDOWN_DAYS = 90
+IMAGE_SNOOZE_DAYS           = 14
 
 # Debt weights. Structural holes (no creator, no tags, junk name) outrank
 # cosmetic ones (no cover) by roughly 5x — that ordering is the whole product.
@@ -415,6 +417,162 @@ def gallery_payload(db: Session, g: Gallery, lane: str = None, all_images: bool 
     }
 
 
+# ── File-level queue ──────────────────────────────────────────────────────────
+# Gallery curation remains the default. This parallel lane is deliberately
+# separate because one giant dump can contain hundreds of unrelated creators:
+# a file is complete when its own metadata is complete, regardless of the
+# parent folder's gallery-level state.
+IMAGE_W_NO_CREATOR = 40
+IMAGE_W_NO_TAGS    = 25
+IMAGE_W_NO_RATING  = 12
+IMAGE_W_NEVER_VIEWED = 12
+IMAGE_W_AGE_MAX     = 15
+
+
+def _image_eligible_filter():
+    now = datetime.utcnow()
+    cutoff = now - timedelta(days=IMAGE_CURATED_COOLDOWN_DAYS)
+    return and_(
+        or_(Gallery.is_mix.is_(False), Gallery.is_mix.is_(None)),
+        Image.file_path.isnot(None),
+        or_(Image.curated_at.is_(None), Image.curated_at < cutoff),
+        or_(Image.curate_snooze_until.is_(None), Image.curate_snooze_until < now),
+    )
+
+
+def _image_has_creator():
+    return or_(
+        Gallery.creator_id.isnot(None),
+        exists(select(gallery_creators.c.gallery_id)
+               .where(gallery_creators.c.gallery_id == Image.gallery_id)),
+        exists(select(image_creators.c.image_id)
+               .where(image_creators.c.image_id == Image.id)),
+    )
+
+
+def _image_sql_debt_score():
+    has_tags = exists(select(image_tags.c.image_id)
+                      .where(image_tags.c.image_id == Image.id))
+    return (
+        case((_image_has_creator(), 0), else_=IMAGE_W_NO_CREATOR)
+        + case((has_tags, 0), else_=IMAGE_W_NO_TAGS)
+        + case((func.coalesce(Image.rating, 0) > 0, 0), else_=IMAGE_W_NO_RATING)
+        + case((func.coalesce(Image.view_count, 0) > 0, 0), else_=IMAGE_W_NEVER_VIEWED)
+    )
+
+
+def _image_age_bonus(img: Image) -> float:
+    ref = img.file_created_at or img.file_modified_at or img.created_at
+    if not ref:
+        return IMAGE_W_AGE_MAX
+    return IMAGE_W_AGE_MAX * min(1.0, max(0.0, (datetime.utcnow() - ref).days / 730.0))
+
+
+def _image_python_score(img: Image, sql_score: float) -> float:
+    return float(sql_score or 0) + _image_age_bonus(img)
+
+
+def _image_shortlist(db: Session, exclude_ids=None):
+    score = _image_sql_debt_score().label("debt")
+    q = (db.query(Image, score)
+           .join(Gallery, Gallery.id == Image.gallery_id)
+           .filter(_image_eligible_filter())
+           .filter(Image.file_path.isnot(None)))
+    if exclude_ids:
+        q = q.filter(~Image.id.in_(list(exclude_ids)))
+    # Do not use ORDER BY random() here: dump-style libraries can contain
+    # hundreds of thousands of files, and SQLite would sort the whole eligible
+    # set before returning the shortlist. Python still randomises the top band.
+    rows = q.order_by(score.desc(), Image.id.desc()).limit(SHORTLIST).all()
+    scored = [(img, _image_python_score(img, raw_score)) for img, raw_score in rows]
+    scored.sort(key=lambda row: row[1], reverse=True)
+    return scored
+
+
+def next_image(db: Session, exclude_ids=None):
+    scored = _image_shortlist(db, exclude_ids)
+    if not scored:
+        return None
+    return random.choice(scored[:PICK_BAND])
+
+
+def _effective_image_creators(db: Session, img: Image):
+    gallery_creators_list = [{
+        "id": c.id, "name": c.name, "creator_type": c.creator_type,
+    } for c in (img.gallery.creators if img.gallery else [])]
+    if img.gallery and img.gallery.creator_id and not any(c["id"] == img.gallery.creator_id for c in gallery_creators_list):
+        legacy = db.query(Creator).filter(Creator.id == img.gallery.creator_id).first()
+        if legacy:
+            gallery_creators_list.append({"id": legacy.id, "name": legacy.name, "creator_type": legacy.creator_type})
+
+    file_creator_ids = [row.creator_id for row in db.execute(
+        select(image_creators.c.creator_id).where(image_creators.c.image_id == img.id)
+    ).fetchall()]
+    if not file_creator_ids:
+        return gallery_creators_list, [], False
+
+    file_creators = db.query(Creator).filter(Creator.id.in_(file_creator_ids)).all()
+    by_id = {c.id: {"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in file_creators}
+    gallery_ids = {c["id"] for c in gallery_creators_list}
+    merged = gallery_creators_list + [by_id[cid] for cid in file_creator_ids if cid not in gallery_ids and cid in by_id]
+    return merged, file_creator_ids, True
+
+
+def image_payload(db: Session, img: Image, score: float = None):
+    creators, file_creator_ids, has_image_creators = _effective_image_creators(db, img)
+    reasons = []
+    if not creators:
+        reasons.append("no creator assigned")
+    if not (img.tags or []):
+        reasons.append("no file tags")
+    if not (img.rating or 0):
+        reasons.append("unrated")
+    if not (img.view_count or 0):
+        reasons.append("never opened")
+
+    return {
+        "id": img.id,
+        "filename": img.filename,
+        "gallery_id": img.gallery_id,
+        "gallery_name": img.gallery.name if img.gallery else None,
+        "is_video": bool(img.is_video),
+        "duration": img.duration,
+        "thumb": f"/api/images/{img.id}/thumb",
+        "file_url": f"/api/images/{img.id}/file",
+        "rating": img.rating or 0,
+        "notes": img.notes or "",
+        "is_favorite": bool(img.is_favorite),
+        "width": img.width,
+        "height": img.height,
+        "file_size": img.file_size,
+        "funscript_path": img.funscript_path,
+        "tags": [{"id": t.id, "name": t.name, "source": getattr(t.source, "value", t.source)} for t in (img.tags or [])],
+        "creators": creators,
+        "file_creator_ids": file_creator_ids,
+        "has_image_creators": has_image_creators,
+        "reasons": reasons,
+        "curated_at": img.curated_at.isoformat() if img.curated_at else None,
+        "score": round(score, 1) if score is not None else None,
+    }
+
+
+def image_debt_summary(db: Session):
+    cutoff = datetime.utcnow() - timedelta(days=IMAGE_CURATED_COOLDOWN_DAYS)
+    base = (db.query(Image).join(Gallery, Gallery.id == Image.gallery_id)
+            .filter(or_(Gallery.is_mix.is_(False), Gallery.is_mix.is_(None)),
+                    Image.file_path.isnot(None)))
+    total = base.count()
+    curated = base.filter(Image.curated_at.isnot(None), Image.curated_at >= cutoff).count()
+    pending = base.filter(_image_eligible_filter()).count()
+    return {
+        "total": total,
+        "curated": curated,
+        "pending": pending,
+        "pct": round(100.0 * curated / total, 1) if total else 0.0,
+        "cooldown_days": IMAGE_CURATED_COOLDOWN_DAYS,
+    }
+
+
 def debt_summary(db: Session):
     """Headline numbers for the dashboard: how much of the library still owes work."""
     now = datetime.utcnow()
@@ -590,6 +748,75 @@ def save(db: Session, gallery_id: int, payload: dict, mark_curated: bool = True)
         xp_event = _award_curation(db, len(fixes))
 
     return {"gallery_id": g.id, "fixes": fixes, "xp": xp_event}
+
+
+def _apply_image_creators(db: Session, img: Image, creator_ids):
+    wanted = {int(cid) for cid in (creator_ids or [])}
+    valid = {c.id for c in db.query(Creator).filter(Creator.id.in_(wanted)).all()} if wanted else set()
+    current = {row.creator_id for row in db.execute(
+        select(image_creators.c.creator_id).where(image_creators.c.image_id == img.id)
+    ).fetchall()}
+    if valid == current:
+        return 0
+    db.execute(image_creators.delete().where(image_creators.c.image_id == img.id))
+    if valid:
+        db.execute(image_creators.insert(), [{"image_id": img.id, "creator_id": cid} for cid in sorted(valid)])
+    return 1
+
+
+def save_image(db: Session, image_id: int, payload: dict, mark_curated: bool = True):
+    """Commit metadata for one file and optionally take it out of file debt."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise ValueError("File not found")
+
+    fixes = []
+    if "creator_ids" in payload and _apply_image_creators(db, img, payload["creator_ids"]):
+        fixes.append("creators")
+    if "tags" in payload and _apply_tags(db, img, payload["tags"]):
+        fixes.append("tags")
+    if payload.get("rating") is not None and float(payload["rating"]) != (img.rating or 0):
+        img.rating = float(payload["rating"])
+        fixes.append("rated")
+    if payload.get("is_favorite") is not None and bool(payload["is_favorite"]) != bool(img.is_favorite):
+        img.is_favorite = bool(payload["is_favorite"])
+        fixes.append("favorite")
+    if payload.get("notes") is not None and payload["notes"] != (img.notes or ""):
+        img.notes = payload["notes"]
+        fixes.append("notes")
+
+    if mark_curated:
+        img.curated_at = datetime.utcnow()
+        img.curate_snooze_until = None
+
+    db.commit()
+
+    xp_event = None
+    if mark_curated:
+        xp_event = _award_image_curation(db, len(fixes))
+    return {"image_id": img.id, "fixes": fixes, "xp": xp_event}
+
+
+def _award_image_curation(db: Session, fix_count: int):
+    profile = gami.get_or_create_profile(db)
+    today = datetime.utcnow().date()
+    last = profile.last_curate_date.date() if profile.last_curate_date else None
+    if last != today:
+        profile.curate_streak_days = (profile.curate_streak_days or 0) + 1 if last == today - timedelta(days=1) else 1
+        profile.last_curate_date = datetime.utcnow()
+    profile.total_images_curated = (profile.total_images_curated or 0) + 1
+    db.commit()
+    amount = min(60, 8 + 6 * max(0, fix_count))
+    return gami.notify_action(db, "image_curated", override_amount=amount)
+
+
+def snooze_image(db: Session, image_id: int, days: int = IMAGE_SNOOZE_DAYS):
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise ValueError("File not found")
+    img.curate_snooze_until = datetime.utcnow() + timedelta(days=days)
+    db.commit()
+    return {"image_id": img.id, "snoozed_until": img.curate_snooze_until.isoformat()}
 
 
 def _award_curation(db: Session, fix_count: int):

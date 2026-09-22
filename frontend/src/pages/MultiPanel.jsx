@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, X, Heart, Search, Video, Images,
-  Maximize, Minimize, ChevronDown, LayoutGrid, MoreVertical, Sliders,
+  Maximize, Minimize, ChevronDown, ChevronUp, LayoutGrid, MoreVertical, Sliders,
   ListMusic, Save, Play, Pencil, Shuffle,
 } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
@@ -718,37 +718,64 @@ function AddMediaModal({ onClose }) {
 }
 
 // ── Queue strip ───────────────────────────────────────────────────────────────
-// The strip stays small while you're actually watching, and grows only when the
-// pointer enters it — so playback order is legible when you care and out of the
-// way when you don't. Dragging a tile onto another tile reorders playback
-// (left → right); dragging one onto a panel still pins it there.
+// The strip opens on hover, then stays open until the user explicitly collapses
+// it. This is important for drag-to-panel: leaving the strip must not make it
+// shrink and throw away the user's horizontal scroll position. Dragging a tile
+// onto another tile reorders playback (left → right); dragging one onto a panel
+// still pins it there.
 function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) {
-  const [hovered, setHovered]   = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [collapseLocked, setCollapseLocked] = useState(false)
   const [dragIdx, setDragIdx]   = useState(null)
   const [overIdx, setOverIdx]   = useState(null)
+  const stripRef = useRef(null)
+  const scrollLeft = useRef(0)
+
+  // Queue updates (reorder, assignment, removal) must not throw the user back
+  // to the beginning of a long strip. The browser usually preserves this on
+  // its own, but restoring the captured value makes the behavior deterministic.
+  useEffect(() => {
+    if (stripRef.current) stripRef.current.scrollLeft = scrollLeft.current
+  }, [queue])
 
   if (!queue.length) return null
 
-  const TILE = hovered ? 84 : 34
-  const strip = hovered ? 104 : 44
+  const isExpanded = expanded && !collapseLocked
+  const TILE = isExpanded ? 84 : 34
+  const strip = isExpanded ? 104 : 44
+
+  const rememberScroll = (event) => { scrollLeft.current = event.currentTarget.scrollLeft }
+  const openOnHover = () => {
+    if (!collapseLocked) setExpanded(true)
+  }
+  const toggleExpanded = (event) => {
+    event.stopPropagation()
+    if (isExpanded) {
+      setExpanded(false)
+      setCollapseLocked(true)
+    } else {
+      setCollapseLocked(false)
+      setExpanded(true)
+    }
+  }
 
   const endDrag = () => { setDragIdx(null); setOverIdx(null) }
 
   return (
-    <div className="flex items-center gap-1.5 px-2 overflow-x-auto overflow-y-hidden flex-shrink-0"
-         onMouseEnter={() => setHovered(true)}
-         onMouseLeave={() => { setHovered(false); endDrag() }}
-         style={{
-           height: strip,
-           borderBottom: '0.5px solid rgba(255,255,255,0.06)',
-           transition: 'height 180ms cubic-bezier(0.4, 0, 0.2, 1)',
-         }}>
+    <div className="relative flex-shrink-0"
+         style={{ height: strip, borderBottom: '0.5px solid rgba(255,255,255,0.06)', transition: 'height 180ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+      <div ref={stripRef}
+           className="flex items-center gap-1.5 px-2 pr-12 overflow-x-auto overflow-y-hidden h-full"
+           onMouseEnter={openOnHover}
+           onMouseLeave={endDrag}
+           onScroll={rememberScroll}
+           style={{ scrollbarWidth: 'thin' }}>
       {queue.map((item, i) => {
         const thumbSrc = item.type === 'gallery'
           ? item.media.cover_thumb
           : `/api/images/${item.media.id}/thumb`
         const isVid = item.type === 'image' && item.media.is_video
-        const badge  = hovered ? 18 : 12
+        const badge  = isExpanded ? 18 : 12
         const isDragging = dragIdx === i
         const showLeftMarker = overIdx === i && dragIdx !== null && dragIdx !== i
 
@@ -798,33 +825,33 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
               {isVid && (
                 <div className="absolute top-0.5 left-0.5 rounded-full flex items-center justify-center pointer-events-none"
                      style={{ width: badge, height: badge, background: 'rgba(0,0,0,0.7)' }}>
-                  <Video size={hovered ? 11 : 7} color="#fff" />
+                  <Video size={isExpanded ? 11 : 7} color="#fff" />
                 </div>
               )}
               {item.type === 'gallery' && (
                 <div className="absolute top-0.5 left-0.5 rounded-[3px] flex items-center justify-center pointer-events-none"
                      style={{ width: badge, height: badge, background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>
-                  <Images size={hovered ? 11 : 7} color="#fff" />
+                  <Images size={isExpanded ? 11 : 7} color="#fff" />
                 </div>
               )}
               {manualAssignments[item.id] !== undefined && (
                 <div className="absolute top-0 left-0 px-1 bg-[var(--c-accent)] text-white rounded-br-[4px] font-bold z-10 pointer-events-none"
-                     style={{ fontSize: hovered ? 13 : 9, boxShadow: '1px 1px 3px rgba(0,0,0,0.5)' }}>
+                     style={{ fontSize: isExpanded ? 13 : 9, boxShadow: '1px 1px 3px rgba(0,0,0,0.5)' }}>
                   P{manualAssignments[item.id] + 1}
                 </div>
               )}
               <button onClick={(e) => { e.stopPropagation(); onRemove(item.id) }}
                       className="absolute top-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"
-                      style={{ width: hovered ? 22 : 16, height: hovered ? 22 : 16, background: 'color-mix(in srgb, var(--c-pink) 90%, transparent)', borderBottomLeftRadius: '4px' }}
+                     style={{ width: isExpanded ? 22 : 16, height: isExpanded ? 22 : 16, background: 'color-mix(in srgb, var(--c-pink) 90%, transparent)', borderBottomLeftRadius: '4px' }}
                       title="Remove from queue">
-                <X size={hovered ? 14 : 10} color="#fff" />
+                <X size={isExpanded ? 14 : 10} color="#fff" />
               </button>
               <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none tabular-nums"
                    style={{
-                     height: hovered ? 20 : 11,
+                     height: isExpanded ? 20 : 11,
                      background: 'rgba(0,0,0,0.65)',
-                     fontSize: hovered ? 16 : 8,
-                     color: hovered ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
+                     fontSize: isExpanded ? 16 : 8,
+                     color: isExpanded ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
                      transition: 'height 180ms ease, font-size 180ms ease',
                    }}>
                 {i + 1}
@@ -846,9 +873,27 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
            style={{ width: 16, height: TILE, flexShrink: 0 }} />
 
       <button onMouseDown={onClear} className="flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer ml-1"
-              style={{ width: hovered ? 34 : 26, height: hovered ? 34 : 26, background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)', transition: 'width 180ms ease, height 180ms ease' }}
+              style={{ width: isExpanded ? 34 : 26, height: isExpanded ? 34 : 26, background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)', transition: 'width 180ms ease, height 180ms ease' }}
               title="Clear all">
-        <Trash2 size={hovered ? 15 : 11} color="#F4C0D1" />
+        <Trash2 size={isExpanded ? 15 : 11} color="#F4C0D1" />
+      </button>
+      </div>
+
+      <button type="button"
+              onMouseDown={toggleExpanded}
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'Collapse queue strip' : 'Expand queue strip'}
+              title={isExpanded ? 'Collapse queue strip' : 'Expand queue strip'}
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full cursor-pointer z-20"
+              style={{
+                width: 28, height: 28,
+                color: 'var(--c-accent-text)',
+                background: 'color-mix(in srgb, var(--c-surface) 88%, var(--c-accent) 12%)',
+                border: '0.5px solid var(--c-accent-line)',
+                boxShadow: '0 3px 12px rgba(0,0,0,0.35)',
+                transition: 'background 160ms ease, transform 180ms ease',
+              }}>
+        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
       </button>
     </div>
   )

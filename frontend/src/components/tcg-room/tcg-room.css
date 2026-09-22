@@ -655,6 +655,8 @@
 .vault-inv__pack h3 { margin: 0; font-size: 16px; }
 .vault-inv__pack p { margin: 0; color: rgba(255,255,255,.55); font-size: 16px; }
 .vault-inv__pack strong { justify-self: end; }
+.vault-inv__release-picker { display: grid; gap: 5px; color: rgba(255,255,255,.65); font-size: 16px; }
+.vault-inv__release-picker select { width: 100%; min-height: 38px; padding: 0 8px; border: 1px solid rgba(255,255,255,.16); border-radius: 8px; background: rgba(0,0,0,.28); color: #fff; font-size: 16px; }
 .vault-inv__cta, .vault-inv__place { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; border: 1px solid rgba(142,168,255,.7); border-radius: 10px; background: linear-gradient(180deg, #788bff, #596bd8); color: #fff; font-weight: 800; }
 .vault-inv__ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 42px; margin-top: 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: rgba(255,255,255,.05); }
 .vault-inv__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }

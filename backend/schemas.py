@@ -267,6 +267,10 @@ class SessionCreate(BaseModel):
     image_id: Optional[int] = None
     gallery_id: Optional[int] = None
     creator_id: Optional[int] = None
+    # A session can be credited to more than one creator.  The legacy
+    # creator_id field remains supported for callers that log one creator.
+    # None means "not supplied"; an explicit [] means "no creator".
+    creator_ids: Optional[List[int]] = None
     duration_sec: Optional[int] = None
     notes: Optional[str] = None
     skip_xp: bool = False  # True for secondary sessions (multi-panel multi-creator)
@@ -324,6 +328,12 @@ class FunscriptUpdate(BaseModel):
     is_favorite: Optional[bool] = None
     rating: Optional[float] = None
     notes: Optional[str] = None
+
+
+class SessionGroupUpdate(BaseModel):
+    """Replace the creators credited to one logical grouped session."""
+    session_ids: List[int] = []
+    creator_ids: List[int] = []
 
 
 class FunscriptTagIn(BaseModel):

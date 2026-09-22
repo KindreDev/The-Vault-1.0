@@ -16,7 +16,10 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ### Fixed
 
+- Fixed library scans failing on moved or deleted media that still had Vault history or other database references.
+- Fixed file-level Collection Curating repeatedly reloading its queue instead of opening a file, and made large dump queues avoid an expensive random database sort.
 - Fixed the Glass theme showing its selected background image immediately and across every page.
+- Fixed quest completion rewards so the Quests page describes the real V2 booster products and Collection Room can open weekly protection tokens after choosing a published release.
 - Fixed WMV and other VLC/FFmpeg-compatible videos not playing in Chromium by adding cached browser-compatible playback.
 - Fixed booster pack reveals so mouse and touch swipes reliably advance the top card and expose the card underneath.
 - Fixed the Photos/Videos viewer overlay appearing beneath the library filter toolbar.
@@ -24,10 +27,32 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Fixed Settings restoring the configured funscript library path and waiting for the replacement backend before reporting a restart complete.
 - Fixed the Videos sort menu so Length remains reachable in its own contained scroll area instead of being clipped or scrolling the whole page.
 - Fixed video cards so scanned durations are visible in a themed top-right badge, including an honest unavailable marker when a duration is missing.
+- Fixed Stats styling so accent surfaces, progress colors, and rarity/type accents follow the active Vault theme.
+- Fixed session statistics to use the browser's local timezone for date/hour buckets and to count multi-creator rows as one elapsed session.
+- Fixed Session History creator attribution so the "more" link opens the complete creator list and sessions can add or remove credited creators.
+- Fixed Session History edits after removing creators so only surviving session rows are updated.
+- Fixed the Session History "+N more" creator list so it opens inline instead of being clipped as a tooltip.
+- Fixed expanded Session History creator details so the list grows the row and keeps the date and Edit/Delete actions visible.
+- Fixed gallery multi-selection actions so context-menu operations apply to every selected file instead of only the right-clicked file.
+
+### Removed
+
+- Removed obsolete card-dismantling achievements and weekly quest, plus the dead tag-challenge spin reward.
+
+### Changed
+
+- Card Collection now keeps Legacy cards outside current rarity/type categories and shows a Legacy scope only when legacy cards are owned.
+- Reconciled quest and achievement checks with current curation actions, local-time session behavior, and TCG V2 SR/UR/SPR card rarities.
+- Large gallery views now mount thumbnail tiles in incremental browse batches while preserving full-list search, selection, and viewer navigation.
+- Queue strips now stay expanded after hover and drag/drop until manually collapsed with the themed chevron control, while preserving horizontal scroll position.
 
 ### Added
+- Gallery image context menus now offer Extract to gallery for single files and multi-selections.
+- Gallery view now supports sorting media by date modified.
+- Dashboard Collection Curating now offers a file-level mode for large mixed dump folders.
 - Script-first Funscripts collection with independent script playlists, metrics, compatibility filters, and manual tags.
 - Videos now have their own page module and can be sorted by length, with unknown durations kept at the end.
+- Session History now lets manual session entries credit selected creators, with searchable creator selection shared by add and edit flows.
 - Gallery detail now searches filenames in place, and image/video viewers persist readable per-file notes alongside ten cumulative-hover rating stars.
 - Help now documents a temporary `ollama pull --insecure` workaround for Hugging Face redirect errors while keeping the normal model download command as the recommended path.
 - ComfyUI images are now identified from embedded workflow metadata during import and automatically receive an `AI generated` provenance tag without running an AI tagger.

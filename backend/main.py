@@ -466,9 +466,15 @@ def _migrate_add_columns():
         "ALTER TABLE user_profile ADD COLUMN last_curate_date DATETIME",
         "ALTER TABLE user_profile ADD COLUMN total_galleries_curated INTEGER DEFAULT 0",
         "ALTER TABLE user_profile ADD COLUMN curate_focus_creator_id INTEGER",
+        # Collection Curating — file-level cooldown for large dump folders.
+        "ALTER TABLE images ADD COLUMN curated_at DATETIME",
+        "ALTER TABLE images ADD COLUMN curate_snooze_until DATETIME",
+        "ALTER TABLE user_profile ADD COLUMN total_images_curated INTEGER DEFAULT 0",
         # The queue filters on these constantly — index or every pull scans 21k rows.
         "CREATE INDEX IF NOT EXISTS ix_galleries_curated_at ON galleries(curated_at)",
         "CREATE INDEX IF NOT EXISTS ix_galleries_curate_snooze ON galleries(curate_snooze_until)",
+        "CREATE INDEX IF NOT EXISTS ix_images_curated_at ON images(curated_at)",
+        "CREATE INDEX IF NOT EXISTS ix_images_curate_snooze ON images(curate_snooze_until)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

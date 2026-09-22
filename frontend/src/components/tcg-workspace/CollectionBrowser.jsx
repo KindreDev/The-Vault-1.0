@@ -99,7 +99,7 @@ function sortRows(rows, sort) {
   })
 }
 
-export default function CollectionBrowser({ entries, inventory, view, classifications, values, releases = [], sets = [], filterOptions = {}, onOpen, total, page = 0, pageSize = 100, onPage, onFilters, serverFiltered = false, loading = false, disableLayoutAnimation = false }) {
+export default function CollectionBrowser({ entries, inventory, view, hasLegacyCards = false, classifications, values, releases = [], sets = [], filterOptions = {}, onOpen, total, page = 0, pageSize = 100, onPage, onFilters, serverFiltered = false, loading = false, disableLayoutAnimation = false }) {
   const [query, setQuery] = useState('')
   const [rarity, setRarity] = useState('All')
   const [type, setType] = useState('All')
@@ -118,19 +118,34 @@ export default function CollectionBrowser({ entries, inventory, view, classifica
   const selectionAnchor = useRef(null)
   const qc = useQueryClient()
   const { data: binders = [] } = useQuery({ queryKey: ['tcg-v2-binders'], queryFn: () => tcgV2Api.binders().then(response => response.data) })
+  const collectionScopes = useMemo(() => hasLegacyCards ? [...COLLECTION_SCOPES, ['legacy', 'Legacy']] : COLLECTION_SCOPES, [hasLegacyCards])
+  const legacyScope = scope === 'legacy'
+  useEffect(() => {
+    const nextScope = view === 'cards' ? 'owned' : view
+    setScope(current => current === nextScope ? current : nextScope)
+    setSelected(new Set())
+    selectionAnchor.current = null
+  }, [view])
+  useEffect(() => {
+    if (legacyScope && !hasLegacyCards) {
+      setScope('owned')
+      setSelected(new Set())
+      selectionAnchor.current = null
+    }
+  }, [legacyScope, hasLegacyCards])
   useEffect(() => {
     const scopeType = scope === 'creators' ? 'creator' : scope === 'characters' ? 'character' : scope === 'hof' ? 'hall-of-fame' : scope === 'bond' ? 'bond' : undefined
     const timer = setTimeout(() => onFilters?.({
-      ownership: ['missing', 'duplicates'].includes(scope) ? scope : 'owned',
+      ownership: legacyScope ? 'legacy' : ['missing', 'duplicates'].includes(scope) ? scope : 'owned',
       search: query || undefined,
-      rarity: rarity === 'All' ? undefined : rarity,
-      card_type: type === 'All' ? scopeType : type,
-      exposure: exposure === 'All' ? undefined : exposure,
-      intensity: intensity === 'All' ? undefined : intensity,
-      release_id: release === 'All' ? undefined : Number(release),
-      set_id: set === 'All' ? undefined : Number(set),
-      creator_id: creator === 'All' ? undefined : Number(creator),
-      character_id: character === 'All' ? undefined : Number(character),
+      rarity: legacyScope || rarity === 'All' ? undefined : rarity,
+      card_type: legacyScope ? undefined : type === 'All' ? scopeType : type,
+      exposure: legacyScope || exposure === 'All' ? undefined : exposure,
+      intensity: legacyScope || intensity === 'All' ? undefined : intensity,
+      release_id: legacyScope || release === 'All' ? undefined : Number(release),
+      set_id: legacyScope || set === 'All' ? undefined : Number(set),
+      creator_id: legacyScope || creator === 'All' ? undefined : Number(creator),
+      character_id: legacyScope || character === 'All' ? undefined : Number(character),
       binder_id: binder === 'All' ? undefined : binder,
     }), 250)
     return () => clearTimeout(timer)
@@ -143,19 +158,21 @@ export default function CollectionBrowser({ entries, inventory, view, classifica
   const filtered = useMemo(() => serverFiltered ? sortedRows : sortedRows.filter(row => {
     const card = row.card
     const classification = card ? classifications?.[card.id] : null
-    if (view === 'missing' && row.owned) return false
-    if (view === 'duplicates' && Number(row.quantity || 0) < 2) return false
-    if (view === 'hof' && card?.card_type !== 'hof') return false
-    if (view === 'bond' && card?.card_type !== 'bond') return false
-    if (view === 'creators' && card?.card_type !== 'creator') return false
-    if (view === 'characters' && !(card?.card_type === 'creator' && card?.creator_type === 'character')) return false
-    if (rarity !== 'All' && (row.rarity || card?.print_rarity || card?.rarity_class) !== rarity) return false
-    if (type !== 'All' && card?.card_type !== type && !(type === 'hall-of-fame' && card?.card_type === 'hof')) return false
-    if (exposure !== 'All' && classification?.exposure !== exposure) return false
-    if (intensity !== 'All' && classification?.intensity !== intensity) return false
+    if (scope === 'legacy' && !card?.is_legacy) return false
+    if (scope !== 'legacy' && card?.is_legacy) return false
+    if (scope === 'missing' && row.owned) return false
+    if (scope === 'duplicates' && Number(row.quantity || 0) < 2) return false
+    if (scope === 'hof' && card?.card_type !== 'hof') return false
+    if (scope === 'bond' && card?.card_type !== 'bond') return false
+    if (scope === 'creators' && card?.card_type !== 'creator') return false
+    if (scope === 'characters' && !(card?.card_type === 'creator' && card?.creator_type === 'character')) return false
+    if (scope !== 'legacy' && rarity !== 'All' && (row.rarity || card?.print_rarity || card?.rarity_class) !== rarity) return false
+    if (scope !== 'legacy' && type !== 'All' && card?.card_type !== type && !(type === 'hall-of-fame' && card?.card_type === 'hof')) return false
+    if (scope !== 'legacy' && exposure !== 'All' && classification?.exposure !== exposure) return false
+    if (scope !== 'legacy' && intensity !== 'All' && classification?.intensity !== intensity) return false
     if (query && !`${card?.display_name || ''} ${card?.creator_name || ''} ${card?.gallery_name || ''}`.toLowerCase().includes(query.toLowerCase())) return false
     return true
-  }), [sortedRows, view, rarity, type, exposure, intensity, query, classifications, serverFiltered])
+  }), [sortedRows, scope, rarity, type, exposure, intensity, query, classifications, serverFiltered])
 
   useEffect(() => {
     setSelected(current => new Set([...current].filter(id => filtered.some(row => row.card?.id === id))))
@@ -210,9 +227,9 @@ export default function CollectionBrowser({ entries, inventory, view, classifica
   const creatorOptions = [{ value: 'All', label: 'All creators' }, ...(filterOptions.creators || []).map(item => ({ value: String(item.id), label: item.name }))]
   const characterOptions = [{ value: 'All', label: 'All characters' }, ...(filterOptions.characters || []).map(item => ({ value: String(item.id), label: item.name }))]
   const binderOptions = [{ value: 'All', label: 'All binders' }, ...(filterOptions.binders || []).map(item => ({ value: String(item.id), label: item.name })), ...(filterOptions.has_unassigned ? [{ value: 'unassigned', label: 'Unassigned' }] : [])]
-  const grouped = view === 'creators' || view === 'characters'
+  const grouped = scope === 'creators' || scope === 'characters'
     ? Object.entries(filtered.reduce((groups, row) => {
-      const name = row.card?.creator_name || row.card?.display_name || (view === 'characters' ? 'Unknown Character' : 'Unknown Creator')
+      const name = row.card?.creator_name || row.card?.display_name || (scope === 'characters' ? 'Unknown Character' : 'Unknown Creator')
       ;(groups[name] ||= []).push(row)
       return groups
     }, {})).sort(([left], [right]) => left.localeCompare(right))
@@ -220,25 +237,25 @@ export default function CollectionBrowser({ entries, inventory, view, classifica
   return (
     <section className="tcgws-browser" aria-busy={loading}>
       <div className="tcgws-collection-scopes" role="tablist" aria-label="Collection scope">
-        {COLLECTION_SCOPES.map(([id, label]) => <button key={id} role="tab" aria-selected={scope === id} className={scope === id ? 'active' : ''} onClick={() => { setScope(id); onPage?.(0) }}>{label}</button>)}
+        {collectionScopes.map(([id, label]) => <button key={id} role="tab" aria-selected={scope === id} className={scope === id ? 'active' : ''} onClick={() => { setScope(id); onPage?.(0) }}>{label}</button>)}
         <button className={`tcgws-select-mode${selectionMode ? ' active' : ''}`} onClick={() => { setSelectionMode(value => !value); if (selectionMode) setSelected(new Set()) }}><CheckSquare2 size={18} /> Select cards</button>
       </div>
       <div className="tcgws-toolbar">
         <label className="tcgws-search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search cards" /></label>
         <div className="tcgws-filter-label"><Filter size={17} /> Filters</div>
-        <Select label="Rarity" value={rarity} onChange={setRarity} options={optionList(RARITIES)} />
-        <Select label="Type" value={type} onChange={setType} options={optionList(TYPES, TYPE_LABELS)} />
-        <Select label="Exposure" value={exposure} onChange={setExposure} options={optionList(['All', ...(values?.exposure || [])])} />
-        <Select label="Sexual intensity" value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])])} />
-        <Select label="Creator" value={creator} onChange={setCreator} options={creatorOptions} searchable />
-        <Select label="Character" value={character} onChange={setCharacter} options={characterOptions} searchable />
+        {!legacyScope && <Select label="Rarity" value={rarity} onChange={setRarity} options={optionList(RARITIES)} />}
+        {!legacyScope && <Select label="Type" value={type} onChange={setType} options={optionList(TYPES, TYPE_LABELS)} />}
+        {!legacyScope && <Select label="Exposure" value={exposure} onChange={setExposure} options={optionList(['All', ...(values?.exposure || [])])} />}
+        {!legacyScope && <Select label="Sexual intensity" value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])])} />}
+        {!legacyScope && <Select label="Creator" value={creator} onChange={setCreator} options={creatorOptions} searchable />}
+        {!legacyScope && <Select label="Character" value={character} onChange={setCharacter} options={characterOptions} searchable />}
         <Select label="Binder" value={binder} onChange={setBinder} options={binderOptions} searchable />
         {/*
         <Select label="Release" value={release} onChange={value => { setRelease(value); setSet('All') }}><option>All</option>{releases.map(item => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</Select>
         <Select label="Set" value={set} onChange={setSet}><option>All</option>{availableSets.map(item => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</Select>
         */}
-        <Select label="Release" value={release} onChange={value => { setRelease(value); setSet('All') }} options={[{ value: 'All', label: 'All' }, ...releases.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />
-        <Select label="Set" value={set} onChange={setSet} options={[{ value: 'All', label: 'All' }, ...availableSets.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />
+        {!legacyScope && <Select label="Release" value={release} onChange={value => { setRelease(value); setSet('All') }} options={[{ value: 'All', label: 'All' }, ...releases.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
+        {!legacyScope && <Select label="Set" value={set} onChange={setSet} options={[{ value: 'All', label: 'All' }, ...availableSets.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
         <Select label="Sort by (loaded page)" value={sort} onChange={setSort} options={SORT_OPTIONS} />
         <button className="tcgws-icon-btn" onClick={reset} title="Clear filters"><X size={18} /></button>
       </div>

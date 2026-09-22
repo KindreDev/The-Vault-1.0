@@ -15,6 +15,7 @@ import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
 import IntakeModal from '../components/IntakeModal'
 import CurationRun from '../components/curation/CurationRun'
+import FileCurationRun from '../components/curation/FileCurationRun'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
@@ -1128,6 +1129,7 @@ export default function Dashboard() {
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
 
   const [showCuration, setShowCuration] = useState(false)
+  const [curationMode, setCurationMode] = useState('gallery')
   const [showMoreStats, setShowMoreStats] = useState(false)
   const [showScanModal, setShowScanModal] = useState(false)
   const [showIntake, setShowIntake] = useState(false)
@@ -1178,7 +1180,7 @@ export default function Dashboard() {
   const { data: creatorHof }     = useQuery({ queryKey: ['creator-hof',  4, avatarBust],  queryFn: () => creatorsApi.hof(4).then(r => r.data) })
   const { data: quests }         = useQuery({ queryKey: ['quests'],           queryFn: () => gamiApi.quests().then(r => r.data) })
   const { data: recent }         = useQuery({ queryKey: ['recent-galleries', 24], queryFn: () => galleriesApi.recent(24).then(r => r.data) })
-  const { data: sesStats }       = useQuery({ queryKey: ['ses-stats'],        queryFn: () => sessionsApi.stats().then(r => r.data) })
+  const { data: sesStats }       = useQuery({ queryKey: ['ses-stats', new Date().getTimezoneOffset()],        queryFn: () => sessionsApi.stats({ timezone_offset: new Date().getTimezoneOffset() }).then(r => r.data) })
   const { data: randomGalleries} = useQuery({ queryKey: ['random-galleries', 24], queryFn: () => galleriesApi.randomPicks(24).then(r => r.data) })
   const { data: randomImages }   = useQuery({ queryKey: ['random-images', 24],    queryFn: () => imagesApi.randomPicks(24).then(r => r.data) })
   const { data: randomVideos }   = useQuery({ queryKey: ['random-videos', 24],    queryFn: () => imagesApi.randomVideos(24).then(r => r.data) })
@@ -1186,7 +1188,7 @@ export default function Dashboard() {
   const { data: topCollections }  = useQuery({ queryKey: ['top-collections'],  queryFn: () => creatorsApi.topByValue(5).then(r => r.data), enabled: collectionsOpen })
   const { data: recentSessions } = useQuery({ queryKey: ['recent-sessions'], queryFn: () => sessionsApi.list({ limit: 8 }).then(r => r.data) })
   const { data: balance }        = useQuery({ queryKey: ['economy-balance'], queryFn: () => economyApi.balance().then(r => r.data) })
-  const { data: curationDebt }   = useQuery({ queryKey: ['curation-debt'],    queryFn: () => curationApi.debt().then(r => r.data) })
+  const { data: curationDebt }   = useQuery({ queryKey: ['curation-debt', curationMode], queryFn: () => curationApi.debt(curationMode).then(r => r.data) })
   const { data: epicCards }      = useQuery({ queryKey: ['epic-cards-strip'], queryFn: () => cardsApi.inventory({ sort: 'rarity_desc', limit: 20 }).then(r => (r.data?.items ?? []).filter(c => ['epic','legendary','relic','celestial'].includes(c.rarity))) })
 
   const sessionMutation = useMutation({
@@ -1373,15 +1375,32 @@ export default function Dashboard() {
             <div className="grid gap-3" style={{ gridTemplateColumns: '1.2fr 1fr 1fr' }}>
               {/* Collection Curating — occupies the old Random Gallery tile's exact cell,
                   so the row's proportions are unchanged. */}
-              <button onClick={() => setShowCuration(true)}
-                      className="rounded-[12px] cursor-pointer text-left flex flex-col justify-between p-4 relative overflow-hidden group"
+              <div
+                      className="rounded-[12px] text-left flex flex-col justify-between p-4 relative overflow-hidden group"
                       style={{ minHeight: 120, background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)', transition: 'background 0.15s, border-color 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 13%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 45%, transparent)' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 7%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                   <Sparkles size={14} style={{ color: 'var(--c-amber)' }} />
                   <span className="text-[11px] uppercase tracking-wider font-medium"
                         style={{ color: 'color-mix(in srgb, var(--c-amber) 70%, transparent)' }}>{t('Collection Curating')}</span>
+                  </div>
+                  <div className="flex items-center gap-0.5 p-0.5 rounded-full"
+                       role="group" aria-label={t('Curation mode')}
+                       style={{ background: 'rgba(0,0,0,0.2)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+                    {[
+                      ['gallery', t('Galleries')],
+                      ['file', t('Files')],
+                    ].map(([mode, label]) => (
+                      <button key={mode} type="button" onClick={() => setCurationMode(mode)}
+                              aria-pressed={curationMode === mode}
+                              className="px-2 py-1 rounded-full cursor-pointer"
+                              style={{ fontSize: 16, background: curationMode === mode ? 'color-mix(in srgb, var(--c-amber) 28%, transparent)' : 'transparent', color: curationMode === mode ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)' }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-end justify-between gap-3">
@@ -1390,13 +1409,14 @@ export default function Dashboard() {
                       {(curationDebt?.pending ?? 0).toLocaleString()}
                     </div>
                     <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                      {t('galleries waiting to be curated')}
+                      {curationMode === 'file' ? t('files waiting to be curated') : t('galleries waiting to be curated')}
                     </div>
                   </div>
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0"
-                        style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)', color: 'var(--c-amber-text)' }}>
+                  <button type="button" onClick={() => setShowCuration(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0 cursor-pointer"
+                          style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)', color: 'var(--c-amber-text)' }}>
                     {t('Start')} <ArrowRight size={14} />
-                  </span>
+                  </button>
                 </div>
 
                 {(curationDebt?.total ?? 0) > 0 && (
@@ -1405,7 +1425,7 @@ export default function Dashboard() {
                     <div className="h-full" style={{ width: `${curationDebt.pct}%`, background: 'var(--c-amber)' }} />
                   </div>
                 )}
-              </button>
+              </div>
 
               {/* TCG shortcut — strip of epic+ cards */}
               <button onClick={() => navigate('/collection')}
@@ -1838,13 +1858,19 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {showCuration && (
+      {showCuration && (curationMode === 'file' ? (
+        <FileCurationRun onClose={() => {
+          setShowCuration(false)
+          qc.invalidateQueries({ queryKey: ['curation-debt'] })
+          qc.invalidateQueries({ queryKey: ['vault-stats'] })
+        }} />
+      ) : (
         <CurationRun onClose={() => {
           setShowCuration(false)
           qc.invalidateQueries({ queryKey: ['curation-debt'] })
           qc.invalidateQueries({ queryKey: ['vault-stats'] })
         }} />
-      )}
+      ))}
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
       {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}
       {showIntake && <IntakeModal onClose={() => setShowIntake(false)} />}

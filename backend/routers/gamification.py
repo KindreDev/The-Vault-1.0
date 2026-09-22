@@ -43,12 +43,15 @@ def daily_spin(db: Session = Depends(get_db)):
 
 @router.get("/quests")
 def get_quests(db: Session = Depends(get_db)):
+    gami.get_or_create_profile(db)
     quests = db.query(Quest).order_by(Quest.quest_type, Quest.id).all()
     return quests
 
 
 @router.get("/achievements")
 def get_achievements(db: Session = Depends(get_db)):
+    gami.get_or_create_profile(db)
+    gami.reconcile_current_card_achievements(db)
     return db.query(Achievement).order_by(Achievement.unlocked.desc(), Achievement.id).all()
 
 

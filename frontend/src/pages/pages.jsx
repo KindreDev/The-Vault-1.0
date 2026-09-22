@@ -11,6 +11,7 @@ import HotkeySettings from '../components/settings/HotkeySettings'
 import Almanac from '../components/stats/Almanac'
 import AnalyticsDashboard from '../components/analytics/AnalyticsDashboard'
 import { useSession } from '../hooks/useSession'
+import { useAllCreators } from '../hooks/useAllCreators'
 import toast from 'react-hot-toast'
 import { ComposableMap, Geographies, Geography, ZoomableGroup, Marker } from 'react-simple-maps'
 
@@ -558,7 +559,9 @@ export function Quests() {
     mutationFn: (type) => gamiApi.claimCompletionBonus(type),
     onSuccess: (_, type) => {
       qc.invalidateQueries({ queryKey: ['profile'] })
-      toast.success(type === 'daily' ? `🎴 ${t('Claimed 5 Booster Packs!')}` : `🎴 ${t('Claimed 5 Premium Packs!')}`)
+      toast.success(type === 'daily'
+        ? `🎴 ${t('Claimed 5 Permanent Vault Boosters!')}`
+        : `🎴 ${t('Claimed 1 Weekly Protection Pack!')}`)
     },
     onError: (err) => {
       // Surface what the server actually said — "Could not claim reward" gave
@@ -634,8 +637,8 @@ export function Quests() {
             progressPct={dailyPct}
             done={dailyDone}
             total={daily.length}
-            packLabel="5 booster packs"
-            packNote="5 cards per pack · standard drop rates · chance at Epic+"
+            packLabel="5 Permanent Vault Boosters"
+            packNote="10 cards per pack · SR-or-higher guarantee"
             claimable={dailyClaimable}
             onClaim={() => claimMut.mutate('daily')}
             claiming={claimMut.isPending && claimMut.variables === 'daily'}
@@ -650,8 +653,8 @@ export function Quests() {
             progressPct={weeklyPct}
             done={weeklyDone}
             total={weekly.length}
-            packLabel="5 premium packs"
-            packNote="5 cards per pack · guaranteed Rare floor · higher Legendary rate"
+            packLabel="1 Weekly Protection Pack"
+            packNote="4 cards · 3 UR + 1 SPR guaranteed · choose a published release"
             claimable={weeklyClaimable}
             onClaim={() => claimMut.mutate('weekly')}
             claiming={claimMut.isPending && claimMut.variables === 'weekly'}
@@ -722,16 +725,16 @@ function fmtSeconds(sec) {
 const xpForLevel = lvl => lvl <= 1 ? 0 : 500 * (lvl - 1) * lvl / 2
 
 function getLevelColor(lvl) {
-  if (lvl >= 96) return '#FFD700'
-  if (lvl >= 81) return '#C084FC'
-  if (lvl >= 71) return '#FF6B35'
-  if (lvl >= 61) return '#E24B4A'
+  if (lvl >= 96) return 'var(--c-amber-text)'
+  if (lvl >= 81) return 'var(--c-accent-text)'
+  if (lvl >= 71) return 'var(--c-pink-text)'
+  if (lvl >= 61) return 'var(--c-pink)'
   if (lvl >= 51) return 'var(--c-amber)'
   if (lvl >= 41) return 'var(--c-pink)'
   if (lvl >= 31) return 'var(--c-accent)'
-  if (lvl >= 21) return '#378ADD'
+  if (lvl >= 21) return 'var(--c-accent-text)'
   if (lvl >= 11) return 'var(--c-green)'
-  return '#888780'
+  return 'rgba(255,255,255,0.55)'
 }
 
 // ── Sessions history modal ────────────────────────────────────────────────────
@@ -781,11 +784,12 @@ function SessionsModal({ onClose }) {
     let cur = null
     for (const s of allSessions) {
       const tm = new Date(s.logged_at + (s.logged_at.endsWith('Z') ? '' : 'Z')).getTime()
-      if (!cur || Math.abs(tm - cur.refTime) > 5000) {
-        cur = {
-          refTime: tm, logged_at: s.logged_at,
-          creators: s.creator_name ? [s.creator_name] : [],
-          gallery_name: s.gallery_name, duration_sec: s.duration_sec,
+        if (!cur || Math.abs(tm - cur.refTime) > 5000) {
+          cur = {
+            refTime: tm, logged_at: s.logged_at,
+            creators: s.creator_name ? [s.creator_name] : [],
+            creator_ids: s.creator_id ? [s.creator_id] : [],
+            gallery_name: s.gallery_name, duration_sec: s.duration_sec,
           ids: [s.id],
           // The row that actually carries the duration — not always the first,
           // so an edit has to patch this one or the correction goes nowhere.
@@ -794,6 +798,7 @@ function SessionsModal({ onClose }) {
         result.push(cur)
       } else {
         if (s.creator_name && !cur.creators.includes(s.creator_name)) cur.creators.push(s.creator_name)
+        if (s.creator_id && !cur.creator_ids.includes(s.creator_id)) cur.creator_ids.push(s.creator_id)
         if (!cur.duration_sec && s.duration_sec) { cur.duration_sec = s.duration_sec; cur.durationId = s.id }
         cur.ids.push(s.id)
       }
@@ -803,7 +808,7 @@ function SessionsModal({ onClose }) {
 
   const [expanded,    setExpanded]    = React.useState(new Set())
   const [hoveredRow,  setHoveredRow]  = React.useState(null)
-  const [hoveredMore, setHoveredMore] = React.useState(null)
+  const [expandedMore, setExpandedMore] = React.useState(null)
 
   const toggle = (i) => setExpanded(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
@@ -837,31 +842,22 @@ function SessionsModal({ onClose }) {
     if (creators.length === 2) return <>{wrap(creators[0])} {t('and')} {wrap(creators[1])}</>
     if (creators.length === 3) return <>{wrap(creators[0])}, {wrap(creators[1])} {t('and')} {wrap(creators[2])}</>
     const extra = creators.slice(2)
+    const isMoreOpen = expandedMore === idx
     return (
       <>{wrap(creators[0])}, {wrap(creators[1])} {t('and')}{' '}
-        <span style={{ position: 'relative', display: 'inline-block' }}>
-          <span
-            style={{
-              color: 'var(--c-pink)', fontWeight: 700, cursor: 'default',
-              borderBottom: '1px dotted color-mix(in srgb, var(--c-pink) 50%, transparent)',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={() => setHoveredMore(idx)}
-            onMouseLeave={() => setHoveredMore(null)}
-          >{extra.length} {t('more')}</span>
-          <div style={{
-            position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
-            transform: `translateX(-50%) scale(${hoveredMore === idx ? 1 : 0.95})`,
-            background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)',
-            borderRadius: 8, padding: '8px 14px', zIndex: 200,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.7)', pointerEvents: 'none',
-            opacity: hoveredMore === idx ? 1 : 0,
-            transition: 'opacity 0.15s ease, transform 0.15s ease',
-            whiteSpace: 'nowrap',
-          }}>
-            {extra.map((n, j) => <div key={j} style={{ fontSize: 16, color: 'rgba(255,255,255,0.85)', lineHeight: 1.7 }}>{n}</div>)}
-          </div>
-        </span>
+        <button
+          type="button"
+          style={{
+            color: 'var(--c-pink-text)', fontWeight: 700, cursor: 'pointer',
+            borderBottom: '1px dotted color-mix(in srgb, var(--c-pink) 50%, transparent)',
+            background: 'none', borderTop: 0, borderLeft: 0, borderRight: 0,
+            padding: 0, font: 'inherit',
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onClick={(e) => { e.stopPropagation(); setExpandedMore(current => current === idx ? null : idx) }}
+          aria-expanded={isMoreOpen}
+          aria-controls={`session-more-${idx}`}
+        >{extra.length} {t('more')}</button>
       </>
     )
   }
@@ -875,8 +871,8 @@ function SessionsModal({ onClose }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#161616',
-          border: '0.5px solid rgba(255,255,255,0.1)',
+          background: 'var(--c-surface)',
+          border: '0.5px solid var(--c-accent-line)',
           borderRadius: 16,
           width: '100%', maxWidth: 640, maxHeight: '80vh',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -956,7 +952,7 @@ function SessionsModal({ onClose }) {
                       {/* Expanded detail */}
                       <div style={{
                         overflow: 'hidden',
-                        maxHeight: isOpen ? 200 : 0,
+                        maxHeight: isOpen ? (expandedMore === i ? 460 : 200) : 0,
                         opacity: isOpen ? 1 : 0,
                         transition: 'max-height 0.25s ease, opacity 0.2s ease',
                       }}>
@@ -964,6 +960,24 @@ function SessionsModal({ onClose }) {
                           {t('You gooned to')} {creatorSentence(g.creators, i)} {t('on')}{' '}
                           <span style={{ color: 'rgba(255,255,255,0.6)' }}>{fullDate(g.logged_at)}</span>
                           {dur && <>{' '}{t('for')} <span style={{ color: 'var(--c-pink)' }}>{dur}</span></>}.
+
+                          {expandedMore === i && g.creators.length > 3 && (
+                            <div style={{
+                              marginTop: 8, maxHeight: 160, overflowY: 'auto',
+                              background: 'var(--c-card)', border: '0.5px solid var(--c-pink-line)',
+                              borderRadius: 8, padding: '8px 12px',
+                              opacity: 1,
+                              transition: 'max-height 0.22s ease, margin 0.22s ease, padding 0.22s ease, opacity 0.16s ease',
+                            }}>
+                              <div id={`session-more-${i}`} role="list" aria-label={t('Other credited creators')}>
+                                {g.creators.slice(2).map((n, j) => (
+                                  <div key={j} role="listitem" style={{ fontSize: 16, color: 'rgba(255,255,255,0.85)', lineHeight: 1.55 }}>
+                                    {n}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Manual correction. Sessions log themselves, so a
                               crash or a forgotten stop can only be fixed here. */}
@@ -1039,6 +1053,7 @@ function RowAction({ icon: Icon, label, danger, onClick }) {
 function SessionEditor({ session, onClose, onSaved }) {
   const t = useT()
   const isEdit = !!session
+  const { data: allCreators = [] } = useAllCreators()
 
   // datetime-local wants local wall-clock; stored timestamps are naive UTC.
   const toLocalInput = (ts) => {
@@ -1050,7 +1065,15 @@ function SessionEditor({ session, onClose, onSaved }) {
   const [when,    setWhen]    = React.useState(() => toLocalInput(session?.logged_at))
   const [minutes, setMinutes] = React.useState(() =>
     String(Math.max(0, Math.round((session?.duration_sec || 0) / 60))))
+  const [creatorIds, setCreatorIds] = React.useState(() => (session?.creator_ids || []).map(Number))
+  const [creatorSearch, setCreatorSearch] = React.useState('')
   const [busy,    setBusy]    = React.useState(false)
+
+  const selectedCreators = allCreators.filter(c => creatorIds.includes(Number(c.id)))
+  const creatorMatches = allCreators
+    .filter(c => !creatorIds.includes(Number(c.id)))
+    .filter(c => !creatorSearch.trim() || c.name.toLowerCase().includes(creatorSearch.trim().toLowerCase()))
+    .slice(0, 40)
 
   const save = async () => {
     if (busy) return
@@ -1060,14 +1083,23 @@ function SessionEditor({ session, onClose, onSaved }) {
     setBusy(true)
     try {
       if (isEdit) {
-        await sessionsApi.update(session.durationId ?? session.ids[0], {
+        // Removing creators can delete sibling rows. Use the IDs returned by
+        // the reconciliation endpoint so we never PATCH rows that no longer
+        // exist (which used to turn a successful edit into a false error).
+        const grouped = await sessionsApi.updateGroup({ session_ids: session.ids, creator_ids: creatorIds })
+        const savedIds = grouped.data?.session_ids?.map(Number).filter(Boolean)
+          || session.ids
+        const durationId = session.durationId && savedIds.includes(session.durationId)
+          ? session.durationId
+          : savedIds[0]
+        await sessionsApi.update(durationId, {
           duration_sec: mins * 60,
           logged_at: loggedAt,
         })
         // Sibling rows of a playlist session share the timestamp — moving
         // only one would split the group into two entries in the history.
-        for (const id of session.ids) {
-          if (id === (session.durationId ?? session.ids[0])) continue
+        for (const id of savedIds) {
+          if (id === durationId) continue
           await sessionsApi.update(id, { logged_at: loggedAt })
         }
         toast.success(t('Session updated'))
@@ -1075,6 +1107,7 @@ function SessionEditor({ session, onClose, onSaved }) {
         await sessionsApi.log({
           duration_sec: mins * 60,
           logged_at: loggedAt,
+          creator_ids: creatorIds,
           count_orgasm: false,
           skip_xp: true,
         })
@@ -1131,6 +1164,69 @@ function SessionEditor({ session, onClose, onSaved }) {
             <input id="ses-mins" type="number" min="0" value={minutes}
                    onChange={e => setMinutes(e.target.value)} style={fieldStyle} />
           </div>
+          <div>
+            <label htmlFor="ses-creator-search" style={{ display: 'block', fontSize: 16, marginBottom: 7, color: 'rgba(255,255,255,0.4)' }}>
+              {t('Credit this session to creator(s)')} <span style={{ color: 'rgba(255,255,255,0.25)' }}>{t('(optional)')}</span>
+            </label>
+            {selectedCreators.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {selectedCreators.map(creator => (
+                  <button
+                    key={creator.id}
+                    type="button"
+                    onClick={() => setCreatorIds(current => current.filter(id => id !== Number(creator.id)))}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '5px 9px', borderRadius: 999, cursor: 'pointer',
+                      fontSize: 16, color: 'var(--c-accent-text)',
+                      background: 'var(--c-accent-fill)', border: '1px solid var(--c-accent-line)',
+                    }}
+                    title={t('Remove creator')}
+                  >
+                    {creator.name} <X size={13} />
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              id="ses-creator-search"
+              value={creatorSearch}
+              onChange={e => setCreatorSearch(e.target.value)}
+              placeholder={t('Search creators to add…')}
+              style={fieldStyle}
+            />
+            {creatorSearch.trim() && (
+              <div style={{
+                marginTop: 6, maxHeight: 168, overflowY: 'auto',
+                border: '1px solid var(--c-accent-line)', borderRadius: 9,
+                background: 'var(--c-card)', overscrollBehavior: 'contain',
+              }}>
+                {creatorMatches.length === 0
+                  ? <div style={{ padding: '9px 12px', color: 'rgba(255,255,255,0.35)', fontSize: 16 }}>{t('No creators found')}</div>
+                  : creatorMatches.map(creator => (
+                    <button
+                      key={creator.id}
+                      type="button"
+                      onClick={() => { setCreatorIds(current => [...current, Number(creator.id)]); setCreatorSearch('') }}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                        padding: '8px 12px', textAlign: 'left', cursor: 'pointer',
+                        color: 'rgba(255,255,255,0.8)', background: 'transparent',
+                        border: 0, borderBottom: '1px solid rgba(255,255,255,0.06)',
+                        fontSize: 16,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-accent-fill)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ color: 'var(--c-accent-text)' }}>+</span>{creator.name}
+                    </button>
+                  ))}
+              </div>
+            )}
+            {creatorIds.length === 0 && (
+              <div style={{ marginTop: 6, fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('No creator credited')}</div>
+            )}
+          </div>
         </div>
 
         <div style={{
@@ -1181,8 +1277,8 @@ export function Stats() {
   const qc = useQueryClient()
 
   const { data: stats } = useQuery({
-    queryKey: ['ses-stats'],
-    queryFn: () => sessionsApi.stats().then(r => r.data),
+    queryKey: ['ses-stats', new Date().getTimezoneOffset()],
+    queryFn: () => sessionsApi.stats({ timezone_offset: new Date().getTimezoneOffset() }).then(r => r.data),
     refetchInterval: 30000,
   })
 
@@ -1275,8 +1371,8 @@ export function Stats() {
         <button onClick={handleSession}
                 className="flex items-center gap-1.5 font-medium px-5 py-2.5 rounded-full cursor-pointer transition-all"
                 style={{ fontSize: 17, ...(sessionActive
-                  ? { background: 'color-mix(in srgb, var(--c-pink) 35%, transparent)', color: '#FFD4E2', border: '1px solid color-mix(in srgb, var(--c-pink) 70%, transparent)', boxShadow: '0 0 12px color-mix(in srgb, var(--c-pink) 40%, transparent)' }
-                  : { background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }) }}>
+                  ? { background: 'var(--c-pink-fill)', color: 'var(--c-pink-text)', border: '1px solid var(--c-pink-line)', boxShadow: '0 0 12px color-mix(in srgb, var(--c-pink) 40%, transparent)' }
+                  : { background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid var(--c-pink-line)' }) }}>
           ❤️ {sessionActive ? t('End session') : t('Start session')}
         </button>
       </div>
@@ -1311,7 +1407,7 @@ export function Stats() {
         {/* Left: session stats */}
         {totalCount > 0 && (
           <div className="flex-1 rounded-[14px] relative overflow-hidden"
-               style={{ background: `linear-gradient(135deg, rgba(${accentRgb},0.14) 0%, #0e0e0e 55%, rgba(${accentRgb},0.07) 100%)`, border: `0.5px solid rgba(${accentRgb},0.25)`, padding: '28px 32px' }}>
+               style={{ background: `linear-gradient(135deg, rgba(${accentRgb},0.14) 0%, var(--c-bg) 55%, rgba(${accentRgb},0.07) 100%)`, border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)', padding: '28px 32px' }}>
             {/* Decorative glow */}
             <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: 320, background: `radial-gradient(circle, rgba(${accentRgb},0.12) 0%, transparent 65%)`, transform: 'translate(25%, -25%)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: 0, left: '30%', width: 200, height: 200, background: 'radial-gradient(circle, color-mix(in srgb, var(--c-pink) 8%, transparent) 0%, transparent 65%)', pointerEvents: 'none' }} />
@@ -1339,7 +1435,7 @@ export function Stats() {
               {stats?.total_cum_count > 0 && (
                 <div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('All-time count')}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#F47AA0' }}>{stats.total_cum_count.toLocaleString()} 💦</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-pink-text)' }}>{stats.total_cum_count.toLocaleString()} 💦</div>
                 </div>
               )}
               {stats?.total_edge_count > 0 && (
@@ -1421,7 +1517,7 @@ export function Stats() {
                   {(groups.length >= 6 || totalCount > (recentSessions?.length ?? 0)) && (
                     <button
                       onClick={() => setShowSessionsModal(true)}
-                      style={{ marginTop: 12, fontSize: 16, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500, opacity: 0.7, transition: 'opacity 0.15s' }}
+                      style={{ marginTop: 12, fontSize: 16, color: 'var(--c-accent-text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500, opacity: 0.7, transition: 'opacity 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
                       onMouseLeave={e => { e.currentTarget.style.opacity = '0.7' }}
                     >
@@ -1436,7 +1532,7 @@ export function Stats() {
 
         {/* Right: world map */}
         <div className="rounded-[14px] flex flex-col overflow-hidden cursor-pointer"
-             style={{ width: totalCount > 0 ? '42%' : '100%', flexShrink: 0, background: 'rgba(255,255,255,0.03)', border: `0.5px solid rgba(${accentRgb},0.2)`, minHeight: 220 }}
+             style={{ width: totalCount > 0 ? '42%' : '100%', flexShrink: 0, background: 'color-mix(in srgb, var(--c-card) 88%, transparent)', border: '0.5px solid var(--c-accent-line)', minHeight: 220 }}
              onClick={() => setShowMapModal(true)}>
           <div className="flex items-center justify-between px-4 pt-3 flex-shrink-0">
             <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
@@ -1500,14 +1596,14 @@ export function Stats() {
                     return (
                       <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                         {/* value label — always reserve space so bars align */}
-                        <div style={{ fontSize: 16, fontWeight: 700, color: d.xp > 0 ? 'var(--accent, var(--c-accent))' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: d.xp > 0 ? 'var(--c-accent-text)' : 'transparent', flexShrink: 0, lineHeight: 1.2 }}>
                           {d.xp > 0 ? d.xp.toLocaleString() : '0'}
                         </div>
                         {/* bar area — grows to fill; bar rises from the bottom */}
                         <div className="flex-1 w-full flex flex-col justify-end min-h-0">
                           <div className="w-full rounded-t-[4px] transition-all"
                                style={{ height: d.xp > 0 ? `${Math.max(2, pct * 100)}%` : '2px',
-                                        background: d.xp > 0 ? 'linear-gradient(to top, var(--accent, var(--c-accent)), var(--c-accent-text))' : 'rgba(255,255,255,0.07)' }} />
+                                        background: d.xp > 0 ? 'linear-gradient(to top, var(--c-accent), var(--c-accent-text))' : 'rgba(255,255,255,0.07)' }} />
                         </div>
                         {/* date label */}
                         <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 }}>{d.date.slice(5)}</div>
@@ -1548,8 +1644,8 @@ export function Stats() {
                 { key: 'ethot',     label: 'E-girl',    color: 'var(--c-pink)' },
                 { key: 'artist',    label: 'Artist',    color: 'var(--c-accent)' },
                 { key: 'character', label: 'Character', color: 'var(--c-amber)' },
-                { key: 'actress',   label: 'Actress',   color: '#378ADD' },
-                { key: 'custom',    label: 'Model/Other', color: '#888780' },
+                { key: 'actress',   label: 'Actress',   color: 'var(--c-accent-text)' },
+                { key: 'custom',    label: 'Model/Other', color: 'rgba(255,255,255,0.45)' },
               ]
               const entries = TYPE_META.filter(ct => (byType[ct.key] || 0) > 0)
               const unassigned = totalPhotos - entries.reduce((s, ct) => s + (byType[ct.key] || 0), 0)
@@ -1607,8 +1703,8 @@ export function Stats() {
                 { key: 'ethot',     label: 'E-girl',    color: 'var(--c-pink)' },
                 { key: 'artist',    label: 'Artist',    color: 'var(--c-accent)' },
                 { key: 'character', label: 'Character', color: 'var(--c-amber)' },
-                { key: 'actress',   label: 'Actress',   color: '#378ADD' },
-                { key: 'custom',    label: 'Model/Other', color: '#888780' },
+                { key: 'actress',   label: 'Actress',   color: 'var(--c-accent-text)' },
+                { key: 'custom',    label: 'Model/Other', color: 'rgba(255,255,255,0.45)' },
               ]
               const entries = TYPE_META.filter(ct => (dist[ct.key] || 0) > 0)
               return (
@@ -1641,9 +1737,9 @@ export function Stats() {
               const RARITY_META = [
                 { key: 'legendary', label: 'Grand Collection', color: 'var(--c-amber)' },
                 { key: 'epic',      label: 'Library',          color: 'var(--c-accent)' },
-                { key: 'rare',      label: 'Big Portfolio',    color: '#378ADD' },
+                { key: 'rare',      label: 'Big Portfolio',    color: 'var(--c-accent-text)' },
                 { key: 'uncommon',  label: 'Album',            color: 'var(--c-green)' },
-                { key: 'common',    label: 'Snapshot',         color: '#888780' },
+                { key: 'common',    label: 'Snapshot',         color: 'rgba(255,255,255,0.45)' },
               ]
               const rareAndAbove = ['legendary','epic','rare'].reduce((s, k) => s + (dist[k] || 0), 0)
               const rareAbovePct = Math.round((rareAndAbove / total) * 100)
@@ -1657,7 +1753,7 @@ export function Stats() {
                     ))}
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>
-                    <span style={{ color: '#378ADD', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> {t('Big Portfolio or above')}
+                    <span style={{ color: 'var(--c-accent-text)', fontWeight: 700, fontSize: 18 }}>{rareAbovePct}%</span> {t('Big Portfolio or above')}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
                     {RARITY_META.filter(r => (dist[r.key] || 0) > 0).map(r => (
@@ -1704,13 +1800,13 @@ export function Stats() {
               const dist = cardRarityDist?.by_rarity ?? {}
               const total = cardRarityDist?.total || 1
               const RARITY_META = [
-                { key: 'celestial', label: 'Celestial', color: '#EDD87A' },
+                { key: 'celestial', label: 'Celestial', color: 'var(--c-amber-text)' },
                 { key: 'relic',     label: 'Relic',     color: 'var(--c-amber)' },
                 { key: 'legendary', label: 'Legendary', color: 'var(--c-pink)' },
                 { key: 'epic',      label: 'Epic',      color: 'var(--c-accent)' },
-                { key: 'rare',      label: 'Rare',      color: '#378ADD' },
+                { key: 'rare',      label: 'Rare',      color: 'var(--c-accent-text)' },
                 { key: 'uncommon',  label: 'Uncommon',  color: 'var(--c-green)' },
-                { key: 'common',    label: 'Core',      color: '#888780' },
+                { key: 'common',    label: 'Core',      color: 'rgba(255,255,255,0.45)' },
               ]
               const entries = RARITY_META.filter(r => (dist[r.key] || 0) > 0)
               const totalOwned = cardRarityDist?.total ?? 0

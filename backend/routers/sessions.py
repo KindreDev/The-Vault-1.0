@@ -4,7 +4,7 @@ from typing import List
 
 from database import get_db
 from models import SessionLog, Image, Gallery, Creator
-from schemas import SessionCreate, SessionUpdate, SessionOut
+from schemas import SessionCreate, SessionUpdate, SessionGroupUpdate, SessionOut
 import services.gamification as gami
 
 router = APIRouter()
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/", status_code=201)
 def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     # Auto-fill creator_id from gallery if not explicitly provided
-    if not data.creator_id and data.gallery_id:
+    if data.creator_ids is None and not data.creator_id and data.gallery_id:
         g = db.query(Gallery).filter(Gallery.id == data.gallery_id).first()
         if g:
             if g.creator_id:
@@ -24,21 +24,36 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
     # Transport-only flags — strip before writing to the DB.
     # logged_at is dropped when absent so the column default (now) still applies;
     # a manual add or a recovered session sends the real timestamp instead.
-    fields = data.model_dump(exclude={'skip_xp', 'image_ids', 'count_orgasm'})
+    fields = data.model_dump(exclude={'skip_xp', 'image_ids', 'count_orgasm', 'creator_ids', 'creator_id'})
     if fields.get("logged_at") is None:
         fields.pop("logged_at", None)
-    session = SessionLog(**fields)
-    db.add(session)
-    db.flush()
+    # Keep one row per credited creator for compatibility with the existing
+    # multi-panel session model. The first row carries XP/orgasm credit; the
+    # sibling rows are silent attribution rows.
+    creator_ids = data.creator_ids if data.creator_ids is not None else (
+        [data.creator_id] if data.creator_id else [None]
+    )
+    creator_ids = list(dict.fromkeys(creator_ids)) or [None]
+    known_ids = {row[0] for row in db.query(Creator.id).filter(Creator.id.in_([i for i in creator_ids if i is not None])).all()}
+    creator_ids = [i if i is None or i in known_ids else None for i in creator_ids]
+    creator_ids = list(dict.fromkeys(creator_ids)) or [None]
 
-    if not data.skip_xp:
-        xp = gami.notify_action(db, "session_logged", extra={"duration_sec": data.duration_sec or 0})
-        session.xp_earned = xp.amount
-    else:
-        session.xp_earned = 0
+    sessions = []
+    for index, creator_id in enumerate(creator_ids):
+        session = SessionLog(**fields, creator_id=creator_id)
+        db.add(session)
+        db.flush()
+        if not data.skip_xp and index == 0:
+            xp = gami.notify_action(db, "session_logged", extra={"duration_sec": data.duration_sec or 0})
+            session.xp_earned = xp.amount
+        else:
+            session.xp_earned = 0
+        sessions.append(session)
 
+    session = sessions[0]
     db.commit()
-    db.refresh(session)
+    for row in sessions:
+        db.refresh(row)
 
     # Finishing a session counts an orgasm against whatever was on screen.
     # Falls back to the single image the caller named when the on-screen list
@@ -51,10 +66,12 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
         orgasm = gami.credit_orgasm(db, targets)
 
     # Spending "quality time" with one creator can make a bonded girl jealous.
-    if data.creator_id:
+    if creator_ids[0]:
         try:
             from services.simulation import on_user_engagement
-            on_user_engagement(db, data.creator_id, "goon")
+            for creator_id in creator_ids:
+                if creator_id:
+                    on_user_engagement(db, creator_id, "goon")
         except Exception:
             pass
 
@@ -69,6 +86,7 @@ def log_session(data: SessionCreate, db: Session = Depends(get_db)):
 
     out = SessionOut.model_validate(session, from_attributes=True).model_dump()
     out["orgasm"] = orgasm
+    out["creator_ids"] = [row.creator_id for row in sessions if row.creator_id is not None]
     return out
 
 
@@ -91,6 +109,85 @@ def list_sessions(db: Session = Depends(get_db), skip: int = 0, limit: int = 50)
             "gallery_name": gallery.name if gallery else None,
         })
     return result
+
+
+@router.patch("/group")
+def update_session_group(data: SessionGroupUpdate, db: Session = Depends(get_db)):
+    """Replace the creator attribution for one logical session group.
+
+    Multi-panel sessions are persisted as sibling rows with the same timestamp.
+    Reusing those rows keeps the existing history model and lets the editor add
+    or remove creators without introducing a second source of truth.
+    """
+    ids = list(dict.fromkeys(int(i) for i in data.session_ids if i))
+    if not ids:
+        raise HTTPException(422, "At least one session row is required")
+    rows = db.query(SessionLog).filter(SessionLog.id.in_(ids)).order_by(SessionLog.id.asc()).all()
+    if not rows:
+        raise HTTPException(404, "Session not found")
+
+    requested = list(dict.fromkeys(int(i) for i in data.creator_ids if i))
+    known = {row[0] for row in db.query(Creator.id).filter(Creator.id.in_(requested)).all()}
+    requested = [creator_id for creator_id in requested if creator_id in known]
+
+    # Keep the duration-bearing row first so the history editor can continue to
+    # patch the same row after the creator list changes.
+    rows.sort(key=lambda row: (0 if row.duration_sec else 1, row.id))
+    template = rows[0]
+    keep = []
+    for index, creator_id in enumerate(requested):
+        if index < len(rows):
+            row = rows[index]
+            row.creator_id = creator_id
+            keep.append(row)
+        else:
+            clone = SessionLog(
+                logged_at=template.logged_at,
+                duration_sec=template.duration_sec,
+                image_id=template.image_id,
+                gallery_id=template.gallery_id,
+                creator_id=creator_id,
+                notes=template.notes,
+                xp_earned=0,
+            )
+            db.add(clone)
+            keep.append(clone)
+
+    if not requested:
+        # Removing every creator leaves an honest, still-editable unknown
+        # session rather than deleting the user's time record.
+        template.creator_id = None
+        keep = [template]
+
+    kept_ids = {row.id for row in keep if row.id is not None}
+    for row in rows:
+        if row.id not in kept_ids and row not in keep:
+            db.delete(row)
+
+    db.commit()
+    return {
+        "session_ids": [row.id for row in keep],
+        "creator_ids": [row.creator_id for row in keep if row.creator_id is not None],
+    }
+
+
+def _logical_session_groups(rows):
+    """Collapse one multi-creator session's sibling rows into one session.
+
+    The original schema predates a group key and stores multi-panel attribution
+    as rows sharing a timestamp.  Keep that compatibility rule in one place so
+    overall session time/counts do not multiply when several creators receive
+    credit for the same elapsed session.
+    """
+    groups = []
+    current = None
+    for row in rows:
+        if current is None or abs((current[0].logged_at - row.logged_at).total_seconds()) > 5:
+            current = [row]
+            groups.append(current)
+        else:
+            current.append(row)
+    return groups
 
 
 @router.patch("/{session_id}")
@@ -225,30 +322,37 @@ def analytics_wrapped(
 
 
 @router.get("/stats")
-def session_stats(db: Session = Depends(get_db)):
+def session_stats(
+    timezone_offset: int = Query(0, description="Browser getTimezoneOffset() in minutes"),
+    db: Session = Depends(get_db),
+):
     from sqlalchemy import func, extract
     from datetime import datetime, timedelta, date
     now = datetime.utcnow()
+    # Session timestamps are stored as naive UTC so every client can read the
+    # same database.  Stats buckets are displayed to this single local user,
+    # so shift grouping expressions back into the browser's local wall clock.
+    try:
+        timezone_offset = max(-840, min(840, int(timezone_offset)))
+    except (TypeError, ValueError):
+        timezone_offset = 0
+    local_now = now - timedelta(minutes=timezone_offset)
+    local_modifier = f"{(-timezone_offset):+d} minutes"
     week_ago = now - timedelta(days=7)
+    session_rows = db.query(SessionLog).order_by(SessionLog.logged_at.desc(), SessionLog.id.desc()).all()
+    logical_groups = _logical_session_groups(session_rows)
 
     # Sessions by day for the last 7 days
     days_data = {}
     for i in range(6, -1, -1):
-        d = (now - timedelta(days=i)).date()
+        d = (local_now - timedelta(days=i)).date()
         days_data[d.isoformat()] = 0
-    rows = (
-        db.query(
-            func.date(SessionLog.logged_at).label("day"),
-            func.count(SessionLog.id).label("cnt"),
-        )
-        .filter(SessionLog.logged_at >= week_ago)
-        .group_by(func.date(SessionLog.logged_at))
-        .all()
-    )
-    for row in rows:
-        key = str(row.day)
+    for group in logical_groups:
+        if group[0].logged_at < week_ago:
+            continue
+        key = (group[0].logged_at - timedelta(minutes=timezone_offset)).date().isoformat()
         if key in days_data:
-            days_data[key] = row.cnt
+            days_data[key] += 1
 
     # Top creator
     top_row = (
@@ -264,54 +368,35 @@ def session_stats(db: Session = Depends(get_db)):
         c = db.query(Creator).filter(Creator.id == top_row.creator_id).first()
         top_creator_name = c.name if c else None
     # Peak hour (0–23)
-    peak_row = (
-        db.query(
-            func.strftime('%H', SessionLog.logged_at).label("hr"),
-            func.count(SessionLog.id).label("cnt"),
-        )
-        .group_by(func.strftime('%H', SessionLog.logged_at))
-        .order_by(func.count(SessionLog.id).desc())
-        .first()
-    )
-    peak_hour = int(peak_row.hr) if peak_row else None
+    hour_counts = {}
+    for group in logical_groups:
+        hour = (group[0].logged_at - timedelta(minutes=timezone_offset)).hour
+        hour_counts[hour] = hour_counts.get(hour, 0) + 1
+    peak_hour = max(hour_counts, key=hour_counts.get) if hour_counts else None
 
     # 91-day heatmap
     heatmap_start = now - timedelta(days=91)
     heatmap_data = {}
     for i in range(91, -1, -1):
-        d = (now - timedelta(days=i)).date()
+        d = (local_now - timedelta(days=i)).date()
         heatmap_data[d.isoformat()] = 0
-    heatmap_rows = (
-        db.query(
-            func.date(SessionLog.logged_at).label("day"),
-            func.count(SessionLog.id).label("cnt"),
-        )
-        .filter(SessionLog.logged_at >= heatmap_start)
-        .group_by(func.date(SessionLog.logged_at))
-        .all()
-    )
-    for row in heatmap_rows:
-        key = str(row.day)
+    for group in logical_groups:
+        if group[0].logged_at < heatmap_start:
+            continue
+        key = (group[0].logged_at - timedelta(minutes=timezone_offset)).date().isoformat()
         if key in heatmap_data:
-            heatmap_data[key] = row.cnt
+            heatmap_data[key] += 1
 
     # Sessions by hour (0-23)
     hour_data = {str(h).zfill(2): 0 for h in range(24)}
-    hour_rows = (
-        db.query(
-            func.strftime('%H', SessionLog.logged_at).label("hr"),
-            func.count(SessionLog.id).label("cnt"),
-        )
-        .group_by(func.strftime('%H', SessionLog.logged_at))
-        .all()
-    )
-    for row in hour_rows:
-        if row.hr in hour_data:
-            hour_data[row.hr] = row.cnt
+    for hour, count in hour_counts.items():
+        key = str(hour).zfill(2)
+        if key in hour_data:
+            hour_data[key] = count
 
     # Duration stats
-    total_dur = db.query(func.sum(SessionLog.duration_sec)).scalar() or 0
-    total_count = db.query(SessionLog).count()
+    total_dur = sum(next((row.duration_sec for row in group if row.duration_sec), 0) for group in logical_groups)
+    total_count = len(logical_groups)
     avg_dur = (total_dur // total_count) if total_count > 0 else 0
 
     # Cum + edge counts from profile
@@ -323,15 +408,15 @@ def session_stats(db: Session = Depends(get_db)):
     # XP by day (last 7 days)
     xp_by_day_data = {}
     for i in range(6, -1, -1):
-        d = (now - timedelta(days=i)).date()
+        d = (local_now - timedelta(days=i)).date()
         xp_by_day_data[d.isoformat()] = 0
     xp_rows = (
         db.query(
-            func.date(XPEvent.earned_at).label("day"),
+            func.date(func.datetime(XPEvent.earned_at, local_modifier)).label("day"),
             func.sum(XPEvent.amount).label("total"),
         )
         .filter(XPEvent.earned_at >= week_ago)
-        .group_by(func.date(XPEvent.earned_at))
+        .group_by(func.date(func.datetime(XPEvent.earned_at, local_modifier)))
         .all()
     )
     for row in xp_rows:
@@ -397,7 +482,7 @@ def session_stats(db: Session = Depends(get_db)):
 
     return {
         "total": total_count,
-        "this_week": db.query(SessionLog).filter(SessionLog.logged_at >= week_ago).count(),
+        "this_week": sum(1 for group in logical_groups if group[0].logged_at >= week_ago),
         "top_creator_id": top_row.creator_id if top_row else None,
         "top_creator_name": top_creator_name,
         "peak_hour": peak_hour,

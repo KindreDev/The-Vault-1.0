@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta
 from typing import Optional
@@ -56,13 +57,14 @@ XP_REWARDS = {
     # Collection Curating — always passed an override_amount (10 base + 8 per fix,
     # capped at 70). The entry exists so the reason resolves for xp_events.
     "gallery_curated":     10,
+    "image_curated":       8,
     "pack_opened":          5,
     "card_dismantled":     15,
     "gallery_assigned":     0,   # override_amount = image count; base unused
 }
 
 
-# ── Daily quest POOL (10 quests — 4 randomly selected each day) ───────────────
+# ── Daily quest POOL (11 quests — 4 randomly selected each day) ───────────────
 ALL_DAILY_QUESTS = [
     {"key": "open_the_vault",  "title": "Open the Vault",    "description": "Log in today",                      "xp_reward": 30,  "credit_reward": 10,  "target": 1,  "icon": "ti-box"},
     {"key": "log_session",     "title": "Goon session",       "description": "Log a gooning session",             "xp_reward": 80,  "credit_reward": 30,  "target": 1,  "icon": "ti-heart"},
@@ -88,7 +90,6 @@ ALL_WEEKLY_QUESTS = [
     {"key": "gallery_marathon", "title": "Gallery marathon",    "description": "Import 3 galleries this week",      "xp_reward": 550,  "credit_reward": 200, "target": 3,  "icon": "ti-folders"},
     {"key": "pack_spree",       "title": "Pack addict",         "description": "Open 5 packs this week",            "xp_reward": 350,  "credit_reward": 125, "target": 5,  "icon": "ti-cards"},
     {"key": "tag_master_week",  "title": "Weekly tagger",       "description": "Add 50 tags this week",             "xp_reward": 400,  "credit_reward": 150, "target": 50, "icon": "ti-tags"},
-    {"key": "forge_week",       "title": "The Recycler",        "description": "Dismantle 10 cards this week",      "xp_reward": 400,  "credit_reward": 150, "target": 10, "icon": "ti-hammer"},
     {"key": "curate_week",      "title": "Deep clean",          "description": "Curate 30 galleries this week",     "xp_reward": 450,  "credit_reward": 175, "target": 30, "icon": "ti-sparkles"},
 ]
 WEEKLY_POOL_SIZE = 4
@@ -132,12 +133,11 @@ ACHIEVEMENTS = [
     # ── First-time milestones ──────────────────────────────────────────────────
     {"key": "first_login",       "title": "Welcome to the Vault",   "description": "First time opening the app",            "icon": "ti-box",            "xp_reward": 75,   "credit_reward": 25},
     {"key": "first_session",     "title": "First Time",             "description": "Log your first session",                 "icon": "ti-heart",          "xp_reward": 100,  "credit_reward": 35},
-    {"key": "first_creator",     "title": "First Favorite",         "description": "Add your first creator",                 "icon": "ti-user",           "xp_reward": 75,   "credit_reward": 25},
+    {"key": "first_creator",     "title": "First Creator",          "description": "Add your first creator",                 "icon": "ti-user",           "xp_reward": 75,   "credit_reward": 25},
     {"key": "first_cum",         "title": "First Nut",              "description": "Count your first O",                    "icon": "ti-droplet",        "xp_reward": 75,   "credit_reward": 25},
     {"key": "first_pack",        "title": "Pack Rat",               "description": "Open your first card pack",              "icon": "ti-cards",          "xp_reward": 100,  "credit_reward": 35},
     {"key": "first_tag",         "title": "First Tag",              "description": "Add your first tag",                     "icon": "ti-tag",            "xp_reward": 50,   "credit_reward": 15},
     {"key": "first_rating",      "title": "First Impression",       "description": "Rate your first image",                  "icon": "ti-star",           "xp_reward": 50,   "credit_reward": 15},
-    {"key": "first_dismantle",   "title": "The Recycler",           "description": "Dismantle your first card",              "icon": "ti-hammer",         "xp_reward": 75,   "credit_reward": 25},
     # ── Gooning milestones ────────────────────────────────────────────────────
     {"key": "dedicated",         "title": "Dedicated",              "description": "Count 10 Os",                           "icon": "ti-droplet",        "xp_reward": 150,  "credit_reward": 50},
     {"key": "gooner",            "title": "Gooner",                 "description": "Count 50 Os",                           "icon": "ti-droplet-filled", "xp_reward": 500,  "credit_reward": 175},
@@ -146,7 +146,7 @@ ACHIEVEMENTS = [
     {"key": "session_10",        "title": "Getting Addicted",       "description": "Log 10 sessions",                       "icon": "ti-heart",          "xp_reward": 200,  "credit_reward": 75},
     {"key": "session_50",        "title": "Regular",                "description": "Log 50 sessions",                       "icon": "ti-heart-filled",   "xp_reward": 750,  "credit_reward": 250},
     {"key": "session_100",       "title": "Century Gooner",         "description": "Log 100 sessions",                      "icon": "ti-flame",          "xp_reward": 2000, "credit_reward": 750},
-    {"key": "marathon_session",  "title": "Endurance Gooner",       "description": "Log a session over 60 minutes",         "icon": "ti-clock",          "xp_reward": 300,  "credit_reward": 100},
+    {"key": "marathon_session",  "title": "Endurance Gooner",       "description": "Log a 60+ minute session",               "icon": "ti-clock",          "xp_reward": 300,  "credit_reward": 100},
     # ── Login streaks ─────────────────────────────────────────────────────────
     {"key": "streak_3",          "title": "Back Again",             "description": "3 day login streak",                    "icon": "ti-flame",          "xp_reward": 75,   "credit_reward": 25},
     {"key": "streak_7",          "title": "Week Streak",            "description": "Log in 7 days in a row",                "icon": "ti-flame",          "xp_reward": 200,  "credit_reward": 75},
@@ -158,8 +158,6 @@ ACHIEVEMENTS = [
     {"key": "night_owl",         "title": "Night Owl",              "description": "Use the vault after midnight",           "icon": "ti-moon",           "xp_reward": 100,  "credit_reward": 35},
     {"key": "early_bird",        "title": "Early Bird",             "description": "Use the vault before 8 AM",             "icon": "ti-sun",            "xp_reward": 100,  "credit_reward": 35},
     # ── Collection milestones ─────────────────────────────────────────────────
-    {"key": "dismantle_25",      "title": "Card Shredder",          "description": "Dismantle 25 cards",                     "icon": "ti-hammer",         "xp_reward": 250,  "credit_reward": 100},
-    {"key": "dismantle_100",     "title": "Forge Adept",            "description": "Dismantle 100 cards",                    "icon": "ti-hammer",         "xp_reward": 600,  "credit_reward": 200},
     {"key": "true_fan",          "title": "True Fan",               "description": "Rate a gallery 10/10",                   "icon": "ti-heart-filled",   "xp_reward": 300,  "credit_reward": 100},
     {"key": "hundred_images",    "title": "Centurion",              "description": "Reach 100 images in the vault",          "icon": "ti-photo",          "xp_reward": 300,  "credit_reward": 100},
     {"key": "images_500",        "title": "Mid-Tier Vault",         "description": "Reach 500 images",                       "icon": "ti-stack",          "xp_reward": 750,  "credit_reward": 250},
@@ -172,7 +170,7 @@ ACHIEVEMENTS = [
     {"key": "gallery_50",        "title": "Serious Collector",      "description": "Have 50 galleries",                      "icon": "ti-folders",        "xp_reward": 750,  "credit_reward": 250},
     {"key": "gallery_100",       "title": "Archive Lord",           "description": "Have 100 galleries",                     "icon": "ti-archive",        "xp_reward": 2000, "credit_reward": 750},
     # ── Tagging ───────────────────────────────────────────────────────────────
-    {"key": "speed_tagger",      "title": "Speed Tagger",           "description": "Tag 50 images in one day",               "icon": "ti-tag",            "xp_reward": 250,  "credit_reward": 100},
+    {"key": "speed_tagger",      "title": "Speed Tagger",           "description": "Add 50 tags in one day",                 "icon": "ti-tag",            "xp_reward": 250,  "credit_reward": 100},
     {"key": "tag_master",        "title": "Tag Master",             "description": "Add 500 tags total",                     "icon": "ti-tags",           "xp_reward": 750,  "credit_reward": 250},
     {"key": "tag_obsessed",      "title": "Tag Obsessed",           "description": "Add 2,000 tags total",                   "icon": "ti-tags",           "xp_reward": 2000, "credit_reward": 750},
     # ── Rating ────────────────────────────────────────────────────────────────
@@ -183,9 +181,9 @@ ACHIEVEMENTS = [
     {"key": "card_collector",    "title": "Card Collector",         "description": "Own 25 cards",                           "icon": "ti-cards",          "xp_reward": 300,  "credit_reward": 100},
     {"key": "card_50",           "title": "Card Hoarder",           "description": "Own 50 cards",                           "icon": "ti-cards",          "xp_reward": 600,  "credit_reward": 200},
     {"key": "card_100",          "title": "Deck Lord",              "description": "Own 100 cards",                          "icon": "ti-cards",          "xp_reward": 1500, "credit_reward": 500},
-    {"key": "relic_hunter",      "title": "Relic Hunter",           "description": "Obtain a Relic or higher card",          "icon": "ti-diamond",        "xp_reward": 750,  "credit_reward": 300},
-    {"key": "first_legendary",   "title": "Legend",                 "description": "Obtain a Legendary card",                "icon": "ti-sparkles",       "xp_reward": 400,  "credit_reward": 150},
-    {"key": "first_celestial",   "title": "Ascended",               "description": "Obtain a Celestial card",                "icon": "ti-crown",          "xp_reward": 2000, "credit_reward": 750},
+    {"key": "relic_hunter",      "title": "Rare Pull",              "description": "Own an SR card",                         "icon": "ti-diamond",        "xp_reward": 750,  "credit_reward": 300},
+    {"key": "first_legendary",   "title": "Ultra Pull",              "description": "Own a UR card",                         "icon": "ti-sparkles",       "xp_reward": 1200, "credit_reward": 400},
+    {"key": "first_celestial",   "title": "SPR Hunter",              "description": "Own an SPR card",                        "icon": "ti-crown",          "xp_reward": 2000, "credit_reward": 750},
     {"key": "open_10_packs",     "title": "Pack Junkie",            "description": "Open 10 card packs",                     "icon": "ti-cards",          "xp_reward": 400,  "credit_reward": 150},
     {"key": "open_50_packs",     "title": "Pack Addict",            "description": "Open 50 card packs",                     "icon": "ti-cards",          "xp_reward": 1200, "credit_reward": 400},
     # ── Level milestones ──────────────────────────────────────────────────────
@@ -210,9 +208,10 @@ QUEST_TRIGGER_MAP = {
     "gallery_rated":    ["rate_galleries"],
     # card-count boss quests (fifty_cards, etc.) are synced by absolute value in pack_opened handler
     "pack_opened":      ["open_pack", "pack_spree"],
-    "card_dismantled":  ["forge_week"],
     "daily_login":      ["open_the_vault", "month_streak", "two_month_streak"],
+    # Gallery and file curation both advance the same curation quests.
     "gallery_curated":  ["curate_galleries", "curate_week"],
+    "image_curated":    ["curate_galleries", "curate_week"],
 }
 
 
@@ -305,6 +304,7 @@ def award_xp(db: Session, reason: str, override_amount: Optional[int] = None) ->
 def handle_login(db: Session) -> dict:
     profile = get_or_create_profile(db)
     now = datetime.utcnow()
+    unlock_achievement(db, "first_login")
 
     already_today = profile.last_login is not None and profile.last_login.date() == now.date()
     if already_today:
@@ -410,7 +410,7 @@ def _reset_weekly_quests(db: Session):
     for q in expired:
         db.delete(q)
     # Purge any active quests whose keys were removed from the pool
-    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic"}
+    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic", "forge_week"}
     stale = db.query(Quest).filter(Quest.key.in_(_REMOVED_QUEST_KEYS)).all()
     for q in stale:
         db.delete(q)
@@ -447,7 +447,7 @@ def _ensure_quests_present(db: Session):
     Also back-fills credit_reward on any existing quest row that is missing it — handles
     DB rows seeded before the credit_reward column existed."""
     # Purge any quest rows whose keys were removed from all pools
-    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic"}
+    _REMOVED_QUEST_KEYS = {"wiki_hunter", "wiki_scholar", "rate_spree_week", "gallery_critic", "forge_week"}
     stale = db.query(Quest).filter(Quest.key.in_(_REMOVED_QUEST_KEYS)).all()
     if stale:
         for q in stale:
@@ -482,7 +482,10 @@ def _ensure_quests_present(db: Session):
 
 def _ensure_achievements_present(db: Session):
     # Purge achievement rows whose keys were removed from the definitions
-    _REMOVED_ACHIEVEMENT_KEYS = {"lore_nerd", "wiki_scholar_ach"}
+    _REMOVED_ACHIEVEMENT_KEYS = {
+        "lore_nerd", "wiki_scholar_ach",
+        "first_dismantle", "dismantle_25", "dismantle_100",
+    }
     stale = db.query(Achievement).filter(Achievement.key.in_(_REMOVED_ACHIEVEMENT_KEYS)).all()
     for a in stale:
         db.delete(a)
@@ -495,12 +498,60 @@ def _ensure_achievements_present(db: Session):
         else:
             # Keep title/description in sync with code definitions
             row = existing_map[a["key"]]
-            if row.title != a["title"] or row.description != a["description"]:
-                row.title = a["title"]
-                row.description = a["description"]
+            # The old card-rarity achievements are being repurposed for the
+            # immutable TCG V2 rarities. Do not leave an old Celestial/Legend
+            # unlock displayed as a current SPR/UR unlock when the collection
+            # does not contain that current rarity.
+            old_card_descriptions = {
+                "relic_hunter": "Obtain a Relic or higher card",
+                "first_legendary": "Obtain a Legendary card",
+                "first_celestial": "Obtain a Celestial card",
+            }
+            if (
+                a["key"] in old_card_descriptions
+                and row.description == old_card_descriptions[a["key"]]
+                and row.unlocked
+                and not _has_owned_card_rarity(db, {
+                    "relic_hunter": "SR",
+                    "first_legendary": "UR",
+                    "first_celestial": "SPR",
+                }[a["key"]])
+            ):
+                row.unlocked = False
+                row.unlocked_at = None
+
+            for field in ("title", "description", "icon", "xp_reward", "credit_reward"):
+                if getattr(row, field) != a[field]:
+                    setattr(row, field, a[field])
     if additions:
         db.add_all(additions)
     db.commit()
+
+
+def _has_owned_card_rarity(db: Session, rarity: str) -> bool:
+    """Return whether the current collection owns a TCG V2 printing tier."""
+    from models import CardInventory as _CardInventory, Card as _Card
+
+    return bool(
+        db.query(_CardInventory)
+        .join(_Card, _CardInventory.card_id == _Card.id)
+        .filter(
+            _CardInventory.quantity > 0,
+            or_(_Card.print_rarity == rarity, _Card.rarity_class == rarity),
+        )
+        .first()
+    )
+
+
+def reconcile_current_card_achievements(db: Session):
+    """Backfill current TCG V2 rarity achievements from owned inventory."""
+    for key, rarity in {
+        "relic_hunter": "SR",
+        "first_legendary": "UR",
+        "first_celestial": "SPR",
+    }.items():
+        if _has_owned_card_rarity(db, rarity):
+            unlock_achievement(db, key)
 
 
 def _advance_quest(db: Session, key: str, amount: int = 1):
@@ -704,7 +755,7 @@ def do_daily_spin(db: Session) -> dict:
         {"type": "xp",        "amount": 150, "label": "+150 XP — lucky!"},
         {"type": "credits",   "amount": 50,  "label": "+50 Credits!"},
         {"type": "credits",   "amount": 100, "label": "+100 Credits!"},
-        {"type": "challenge", "amount": 0,   "label": "Tag challenge unlocked!"},
+        {"type": "xp",        "amount": 50,  "label": "+50 XP"},
         {"type": "spotlight", "amount": 25,  "label": "Creator spotlight! +25 XP"},
     ]
     reward = random.choice(rewards)
@@ -786,18 +837,13 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         profile.total_images_rated = (profile.total_images_rated or 0) + 1
         db.commit()
         unlock_achievement(db, "first_rating")
-        if profile.total_images_rated >= 50:   unlock_achievement(db, "lore_nerd")
         if profile.total_images_rated >= 100:  unlock_achievement(db, "top_rated")
-        if profile.total_images_rated >= 200:  unlock_achievement(db, "wiki_scholar_ach")
         if profile.total_images_rated >= 500:  unlock_achievement(db, "harsh_critic")
         if profile.total_images_rated >= 1000: unlock_achievement(db, "rated_1000")
-        # image max rating is 5 — true_fan triggers on perfect score
-        if extra.get("rating", 0) >= 5:
-            unlock_achievement(db, "true_fan")
 
     elif action == "gallery_rated":
-        # gallery max rating is 5 — true_fan triggers on perfect score
-        if extra.get("rating", 0) >= 5:
+        # Gallery ratings are scored out of 10 in the current UI/API.
+        if extra.get("rating", 0) >= 10:
             unlock_achievement(db, "true_fan")
 
     elif action == "tag_added":
@@ -843,24 +889,10 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         if profile.total_packs_opened >= 50: unlock_achievement(db, "open_50_packs")
         try:
             from models import CardInventory as _CI, Card as _Card
-            # relic_hunter — fixed: filter on Card entity, not CardInventory
-            has_relic = (db.query(_CI)
-                           .join(_Card, _CI.card_id == _Card.id)
-                           .filter(_Card.is_relic == True)
-                           .first())
-            if has_relic: unlock_achievement(db, "relic_hunter")
-            # first legendary / first celestial
-            has_legendary = (db.query(_CI)
-                               .join(_Card, _CI.card_id == _Card.id)
-                               .filter(_Card.rarity == "legendary")
-                               .first())
-            if has_legendary: unlock_achievement(db, "first_legendary")
-            has_celestial = (db.query(_CI)
-                               .join(_Card, _CI.card_id == _Card.id)
-                               .filter(_Card.rarity == "celestial")
-                               .first())
-            if has_celestial: unlock_achievement(db, "first_celestial")
-            total_cards = db.query(_CI).count()
+            if _has_owned_card_rarity(db, "SR"):  unlock_achievement(db, "relic_hunter")
+            if _has_owned_card_rarity(db, "UR"):  unlock_achievement(db, "first_legendary")
+            if _has_owned_card_rarity(db, "SPR"): unlock_achievement(db, "first_celestial")
+            total_cards = db.query(_CI).filter(_CI.quantity > 0).count()
             if total_cards >= 25:  unlock_achievement(db, "card_collector")
             if total_cards >= 50:  unlock_achievement(db, "card_50")
             if total_cards >= 100: unlock_achievement(db, "card_100")
@@ -871,11 +903,10 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
             pass
 
     elif action == "card_dismantled":
+        # Keep legacy history/counter writes intact for old records and routes;
+        # dismantling no longer advances a quest or achievement.
         profile.total_cards_dismantled = (profile.total_cards_dismantled or 0) + count
         db.commit()
-        unlock_achievement(db, "first_dismantle")
-        if profile.total_cards_dismantled >= 25:  unlock_achievement(db, "dismantle_25")
-        if profile.total_cards_dismantled >= 100: unlock_achievement(db, "dismantle_100")
 
     elif action == "gallery_assigned":
         # override_amount is the image count (minimum 1).
@@ -886,7 +917,9 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         xp.credits_earned = credit_amount
 
     # Night owl / early bird based on current hour
-    hour = now.hour
+    # Achievement time windows follow the user's local machine time, matching
+    # the session UI, rather than UTC.
+    hour = datetime.now().hour
     if hour >= 0 and hour < 3:
         unlock_achievement(db, "night_owl")
     elif hour >= 5 and hour < 8:

@@ -14,7 +14,7 @@ from PIL import Image as PILImage
 from models import Gallery, Image, LibraryRoot, Tag, TagSource, Creator
 from database import CONFIG_FILE, DATA_DIR
 import services.gamification as gami
-from services.gallery_deletion import delete_gallery_record
+from services.gallery_deletion import delete_gallery_record, detach_image_references
 from services.media_provenance import apply_generation_provenance_tag
 
 def _natural_sort_key(s: str):
@@ -1048,6 +1048,12 @@ def _prune_scanned_galleries(db: Session, scanned: dict) -> int:
             continue
         q = db.query(Image).filter(Image.gallery_id == gid)
         stale = q.filter(~Image.file_path.in_(paths)).all() if paths else q.all()
+        # These rows may still be referenced by session history, activity
+        # events, cards, playlists, tags, or other durable Vault records.
+        # Route cleanup through the same detachment path as explicit media
+        # deletion so SQLite foreign-key enforcement cannot abort the scan.
+        if stale:
+            detach_image_references(db, [image.id for image in stale])
         for s in stale:
             if s.thumb_path:
                 try:

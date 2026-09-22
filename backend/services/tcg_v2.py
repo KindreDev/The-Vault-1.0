@@ -1791,20 +1791,39 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             skip: int = 0, limit: int = 100) -> dict:
     """Release-aware catalog page with honest owned and missing states."""
     backfill_v2_records(db)
+    legacy_scope = ownership == "legacy"
+    latest_acquisition = (
+        db.query(
+            CardAcquisition.card_id.label("card_id"),
+            func.max(CardAcquisition.acquired_at).label("acquired_at"),
+        )
+        .group_by(CardAcquisition.card_id)
+        .subquery()
+    )
     q = (
-        db.query(TCGChecklistEntry, Card, CardInventory, CardContentClassification)
+        db.query(
+            TCGChecklistEntry, Card, CardInventory, CardContentClassification,
+            latest_acquisition.c.acquired_at,
+        )
         .select_from(Card)
         .outerjoin(TCGChecklistEntry, TCGChecklistEntry.card_id == Card.id)
         .outerjoin(CardInventory, CardInventory.card_id == Card.id)
         .outerjoin(CardContentClassification, CardContentClassification.card_id == Card.id)
+        .outerjoin(latest_acquisition, latest_acquisition.c.card_id == Card.id)
     )
+    if legacy_scope:
+        # Legacy cards are an explicit collection, never part of the current
+        # checklist, rarity, or type categories.
+        q = q.filter(Card.is_legacy.is_(True), CardInventory.quantity > 0)
+    else:
+        q = q.filter(Card.is_legacy.is_(False))
     if ownership == "owned":
         q = q.filter(CardInventory.quantity > 0)
     elif ownership == "missing":
         q = q.filter(TCGChecklistEntry.id.isnot(None), or_(CardInventory.id.is_(None), CardInventory.quantity <= 0))
     elif ownership == "duplicates":
         q = q.filter(CardInventory.quantity > 1)
-    if rarity:
+    if rarity and not legacy_scope:
         # Checklist rarity is authoritative for published entries. Earned
         # cards without a checklist row use their immutable print rarity.
         q = q.filter(func.coalesce(
@@ -1812,7 +1831,7 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             Card.print_rarity,
             Card.rarity_class,
         ) == rarity)
-    if card_type:
+    if card_type and not legacy_scope:
         storage_type = {"scene": "image", "cosplay": "variant", "hall-of-fame": "hof"}.get(card_type, card_type)
         if card_type == "character":
             q = q.filter(Card.card_type == CardType.creator, Card.source_creator.has(Creator.creator_type == "character"))
@@ -1820,9 +1839,9 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             q = q.filter(Card.card_type == CardType.creator, ~Card.source_creator.has(Creator.creator_type == "character"))
         else:
             q = q.filter(Card.card_type == storage_type)
-    if creator_id is not None:
+    if creator_id is not None and not legacy_scope:
         q = q.filter(_card_creator_match(creator_id))
-    if character_id is not None:
+    if character_id is not None and not legacy_scope:
         q = q.filter(_card_character_match(character_id))
     if binder_id is not None:
         if str(binder_id).lower() == "unassigned":
@@ -1837,29 +1856,30 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
                 TCGBinderSlot.binder_id == selected_binder_id,
                 TCGBinderSlot.card_id.isnot(None),
             )))
-    if exposure:
+    if exposure and not legacy_scope:
         q = q.filter(CardContentClassification.exposure_resolved == exposure)
-    if intensity:
+    if intensity and not legacy_scope:
         q = q.filter(CardContentClassification.intensity_resolved == intensity)
-    if release_id is not None:
+    if release_id is not None and not legacy_scope:
         q = q.filter(TCGChecklistEntry.release_id == release_id)
-    if set_id is not None:
+    if set_id is not None and not legacy_scope:
         q = q.filter(TCGChecklistEntry.set_id == set_id)
-    if signature == "signed":
-        q = q.filter(or_(TCGChecklistEntry.collector_suffix == "S", Card.print_rarity == "SPR"))
-    elif signature == "unsigned":
-        q = q.filter(and_(TCGChecklistEntry.collector_suffix != "S", Card.print_rarity != "SPR"))
-    if ownership in {"owned", "duplicates"}:
-        # Older earned cards can predate checklist publication. They remain
-        # valid owned catalog records and must be filterable by their card
-        # record's immutable rarity/class.
-        q = q.filter(or_(
-            TCGChecklistEntry.id.isnot(None),
-            CardInventory.quantity > 0,
-            Card.card_type.in_([CardType.hof, CardType.bond]),
-        ))
-    else:
-        q = q.filter(or_(TCGChecklistEntry.id.isnot(None), Card.card_type.in_([CardType.hof, CardType.bond])))
+    if not legacy_scope:
+        if signature == "signed":
+            q = q.filter(or_(TCGChecklistEntry.collector_suffix == "S", Card.print_rarity == "SPR"))
+        elif signature == "unsigned":
+            q = q.filter(and_(TCGChecklistEntry.collector_suffix != "S", Card.print_rarity != "SPR"))
+        if ownership in {"owned", "duplicates"}:
+            # Older earned cards can predate checklist publication. They remain
+            # valid owned catalog records and must be filterable by their card
+            # record's immutable rarity/class.
+            q = q.filter(or_(
+                TCGChecklistEntry.id.isnot(None),
+                CardInventory.quantity > 0,
+                Card.card_type.in_([CardType.hof, CardType.bond]),
+            ))
+        else:
+            q = q.filter(or_(TCGChecklistEntry.id.isnot(None), Card.card_type.in_([CardType.hof, CardType.bond])))
     rows = q.order_by(TCGChecklistEntry.release_id.desc(), TCGChecklistEntry.collector_position, Card.id).all()
     if search and search.strip():
         needle = search.strip().lower()
@@ -1868,20 +1888,14 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             f"{row[1].source_gallery.name if row[1].source_gallery else ''}"
         ).lower()]
     total = len(rows)
-    acquired_dates = dict(
-        db.query(CardAcquisition.card_id, func.max(CardAcquisition.acquired_at))
-        .filter(CardAcquisition.card_id.in_([card.id for _, card, _, _ in rows]))
-        .group_by(CardAcquisition.card_id)
-        .all()
-    ) if rows else {}
     items = []
-    for entry, card, inventory, classification in rows[skip:skip + min(limit, 250)]:
+    for entry, card, inventory, classification, acquired_at in rows[skip:skip + min(limit, 250)]:
         owned = bool(inventory and inventory.quantity > 0)
         items.append({
             "id": entry.id if entry else f"earned-{card.id}", "owned": owned, "quantity": inventory.quantity if inventory else 0,
             "display_number": f"{entry.collector_position:03d}{entry.collector_suffix}" if entry else (card.catalog_code or f"EARNED-{card.id:06d}"),
             "rarity": entry.published_rarity if entry else (card.print_rarity or card.rarity_class),
-            "acquired_at": acquired_dates.get(card.id).isoformat() if acquired_dates.get(card.id) else None,
+            "acquired_at": acquired_at.isoformat() if acquired_at else None,
             "published_at": card.generated_at.isoformat() if card.generated_at else None,
             "identity": _card_identity(db, card, entry),
             "acquisition_policy": _acquisition_policy(card.card_type),
@@ -1989,13 +2003,44 @@ def card_detail(db: Session, card_id: int) -> dict:
 
 def workspace_summary(db: Session) -> dict:
     backfill_v2_records(db)
-    owned_printings = db.query(func.count(CardInventory.id)).filter(CardInventory.quantity > 0).scalar() or 0
-    owned_copies = db.query(func.sum(CardInventory.quantity)).scalar() or 0
+    current_cards = Card.is_legacy.is_(False)
+    legacy_cards = Card.is_legacy.is_(True)
+    owned_printings = (
+        db.query(func.count(CardInventory.id))
+        .join(Card, Card.id == CardInventory.card_id)
+        .filter(CardInventory.quantity > 0, current_cards)
+        .scalar() or 0
+    )
+    owned_copies = (
+        db.query(func.sum(CardInventory.quantity))
+        .join(Card, Card.id == CardInventory.card_id)
+        .filter(CardInventory.quantity > 0, current_cards)
+        .scalar() or 0
+    )
+    legacy_printings = (
+        db.query(func.count(CardInventory.id))
+        .join(Card, Card.id == CardInventory.card_id)
+        .filter(CardInventory.quantity > 0, legacy_cards)
+        .scalar() or 0
+    )
+    legacy_copies = (
+        db.query(func.sum(CardInventory.quantity))
+        .join(Card, Card.id == CardInventory.card_id)
+        .filter(CardInventory.quantity > 0, legacy_cards)
+        .scalar() or 0
+    )
     checklist_total = db.query(func.count(TCGChecklistEntry.id)).scalar() or 0
-    duplicates = db.query(func.sum(CardInventory.quantity - 1)).filter(CardInventory.quantity > 1).scalar() or 0
+    duplicates = (
+        db.query(func.sum(CardInventory.quantity - 1))
+        .join(Card, Card.id == CardInventory.card_id)
+        .filter(CardInventory.quantity > 1, current_cards)
+        .scalar() or 0
+    )
     by_rarity = {rarity: count for rarity, count in db.query(TCGChecklistEntry.published_rarity, func.count(TCGChecklistEntry.id)).group_by(TCGChecklistEntry.published_rarity).all()}
     return {
         "owned_printings": owned_printings, "owned_copies": owned_copies,
+        "legacy_printings": legacy_printings, "legacy_copies": legacy_copies,
+        "has_legacy_cards": legacy_printings > 0,
         "catalog_total": checklist_total, "missing": max(0, checklist_total - owned_printings),
         "duplicates": duplicates, "release_count": db.query(func.count(TCGRelease.id)).scalar() or 0,
         "set_count": db.query(func.count(TCGSet.id)).scalar() or 0, "by_rarity": by_rarity,

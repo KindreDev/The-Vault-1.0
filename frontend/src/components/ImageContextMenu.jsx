@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { Eye, ImagePlus, LayoutTemplate, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy, HardDrive } from 'lucide-react'
+import { Eye, ImagePlus, LayoutTemplate, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy, HardDrive, FolderOutput } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
 
@@ -17,6 +17,7 @@ import { useAllCreators } from '../hooks/useAllCreators'
  *   onSetCover     – set as gallery cover (omit to hide this item)
  *   onSendToViewer
  *   onCopyTo       – copy a reference into a mix gallery (omit to hide this item)
+ *   onExtract      – extract the image(s) into a new gallery
  *   onRelocate     – move the files into another gallery's folder on disk
  *   onDelete       – (mode: 'vault' | 'disk')
  *   creators       – array of creators assigned to this gallery (for avatar/banner)
@@ -25,7 +26,7 @@ import { useAllCreators } from '../hooks/useAllCreators'
  */
 export default function ImageContextMenu({
   image, position, onClose, bulkCount,
-  onView, onSetCover, onSendToViewer, onCopyTo, onRelocate, onDelete,
+  onView, onSetCover, onSendToViewer, onCopyTo, onRelocate, onExtract, onDelete,
   creators, onSetAsAvatar, onSetAsBanner,
   onSelectMode, onAssignCreator,
 }) {
@@ -65,6 +66,7 @@ export default function ImageContextMenu({
     + (hasCreators ? 52 : 0)
     + expandedRows * creatorRowH
     + (onAssignCreator ? 32 : 0)
+    + (onExtract ? 32 : 0)
     + (assignOpen ? 200 : 0)
 
   const x = Math.min(position.x, window.innerWidth  - MENU_W - 8)
@@ -115,11 +117,14 @@ export default function ImageContextMenu({
           <MenuItem icon={MousePointer2} label="Select" onMouseDown={(e) => { e.stopPropagation(); onSelectMode(); onClose() }} />
         )}
 
-        {/* View */}
-        <MenuItem icon={Eye} label="View" onMouseDown={(e) => { e.stopPropagation(); onView?.(); onClose() }} />
+        {/* View is intentionally single-file; bulk menus stay focused on actions
+            that can safely apply to every selected item. */}
+        {bulkCount <= 1 && (
+          <MenuItem icon={Eye} label="View" onMouseDown={(e) => { e.stopPropagation(); onView?.(); onClose() }} />
+        )}
 
         {/* Set as cover */}
-        {onSetCover && !image.is_video && (
+        {onSetCover && bulkCount <= 1 && !image.is_video && (
           <MenuItem icon={ImagePlus} label="Set as cover" onMouseDown={(e) => { e.stopPropagation(); onSetCover?.(); onClose() }} />
         )}
 
@@ -133,6 +138,9 @@ export default function ImageContextMenu({
         )}
         {onCopyTo && (
           <MenuItem icon={Copy} label="Copy to gallery" onMouseDown={(e) => { e.stopPropagation(); onCopyTo(); onClose() }} />
+        )}
+        {onExtract && (
+          <MenuItem icon={FolderOutput} label="Extract to gallery" onMouseDown={(e) => { e.stopPropagation(); onExtract(); onClose() }} />
         )}
 
         {/* Assign creator to this file (expandable) */}
@@ -194,7 +202,7 @@ export default function ImageContextMenu({
         )}
 
         {/* Set as avatar (expandable) — videos open a frame-picker upstream */}
-        {hasCreators && onSetAsAvatar && (
+        {hasCreators && onSetAsAvatar && bulkCount <= 1 && (
           <>
             <ExpandRow
               icon={UserCircle}
@@ -226,7 +234,7 @@ export default function ImageContextMenu({
         )}
 
         {/* Set as banner (expandable) — only when gallery has creators and image is not a video */}
-        {canBanner && onSetAsBanner && (
+        {canBanner && onSetAsBanner && bulkCount <= 1 && (
           <>
             <ExpandRow
               icon={ImageIcon}

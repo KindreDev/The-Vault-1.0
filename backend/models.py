@@ -353,6 +353,10 @@ class Image(Base):
     mask_visual_mode = Column(String, nullable=True)  # layered | flat
 
     last_viewed_at   = Column(DateTime, nullable=True)
+    # Collection Curating — file-level cooldown for dump-style libraries where
+    # one folder contains many unrelated files.
+    curated_at           = Column(DateTime, nullable=True, index=True)
+    curate_snooze_until  = Column(DateTime, nullable=True, index=True)
     # Two different real-world dates, and the distinction matters for the almanac:
     #   file_modified_at = when the content was authored/published — its vintage
     #   file_created_at  = when it landed on your drive — when YOU acquired it
@@ -627,6 +631,7 @@ class UserProfile(Base):
     curate_streak_days       = Column(Integer, default=0)
     last_curate_date         = Column(DateTime, nullable=True)
     total_galleries_curated  = Column(Integer, default=0)
+    total_images_curated     = Column(Integer, default=0)
 
 
 class Quest(Base):

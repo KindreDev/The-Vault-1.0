@@ -98,6 +98,7 @@ async function hydratePacks(results, contents = []) {
 export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 'cards', onTabChange }) {
   const qc = useQueryClient()
   const [tab, setTab] = useState(initialTab === 'packs' ? 'packs' : initialTab)
+  const [selectedWeeklyReleases, setSelectedWeeklyReleases] = useState({})
   const selectTab = next => { setTab(next); onTabChange?.(next) }
   const [openedPacks, setOpenedPacks] = useState(null)
   const [openingLabel, setOpeningLabel] = useState('')
@@ -114,6 +115,12 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     queryFn: () => tcgRoomApi.inventory().then(response => response.data),
     staleTime: 0,
   })
+  const releasesQuery = useQuery({
+    queryKey: ['tcg-v2-releases'],
+    queryFn: () => tcgV2Api.releases().then(response => response.data),
+    staleTime: 60_000,
+  })
+  const publishedReleases = (releasesQuery.data || []).filter(release => release.status === 'published')
   const cardCatalog = useInfiniteQuery({
     queryKey: ['tcg-v2-catalog', 'room-inventory', cardQuery, rarity],
     queryFn: ({ pageParam = 0 }) => tcgV2Api.catalog({
@@ -168,7 +175,10 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   const openToken = useMutation({
     mutationFn: async token => {
       setOpeningLabel(`Opening ${token.product?.name || 'booster'}…`)
-      const response = await tcgV2Api.openPack(token.product_id, { use_token: true })
+      const response = await tcgV2Api.openPack(token.product_id, {
+        use_token: true,
+        selected_release_id: token.selected_release_id || undefined,
+      })
       const data = response.data || {}
       const cards = data.cards || []
       const product = { ...(token.product || {}), ...(data.product || {}) }
@@ -264,7 +274,30 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
                 <p>{token.product?.card_count || '?'} cards each</p>
                 <strong>x{token.token_count}</strong>
               </div>
-              <button type="button" className="vault-inv__cta" disabled={busy} onClick={() => openToken.mutate(token)}>Open</button>
+              {token.product?.product_kind === 'weekly_protection' && (
+                <label className="vault-inv__release-picker">
+                  <span>Choose release</span>
+                  <select
+                    value={selectedWeeklyReleases[token.product_id] || ''}
+                    onChange={event => setSelectedWeeklyReleases(current => ({ ...current, [token.product_id]: Number(event.target.value) }))}
+                    disabled={busy || releasesQuery.isLoading}
+                  >
+                    <option value="">Select a published release</option>
+                    {publishedReleases.map(release => <option key={release.id} value={release.id}>{release.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                className="vault-inv__cta"
+                disabled={busy || (token.product?.product_kind === 'weekly_protection' && !selectedWeeklyReleases[token.product_id])}
+                onClick={() => openToken.mutate({
+                  ...token,
+                  selected_release_id: selectedWeeklyReleases[token.product_id] || undefined,
+                })}
+              >
+                Open
+              </button>
             </article>
           ))}
           {parcels.flatMap(parcel => (parcel.contents?.length ? parcel.contents : [{ product: {}, quantity: parcel.pack_count || 0 }])

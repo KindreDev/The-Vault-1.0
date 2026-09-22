@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services import tcg_v2
+import services.gamification as gami
 
 
 router = APIRouter(prefix="/api/tcg-v2", tags=["tcg-v2"])
@@ -212,10 +213,14 @@ def simulate(request: SimulationRequest):
 
 @router.post("/packs/{product_id}/open")
 def open_pack(product_id: int, request: OpenPackRequest, db: Session = Depends(get_db)):
-    return _result(
+    result = _result(
         tcg_v2.open_pack_product, db, product_id,
         selected_release_id=request.selected_release_id, use_token=request.use_token,
     )
+    # The current collection opens packs through TCG V2, so keep the live
+    # quest/achievement counters on that path too.
+    gami.notify_action(db, "pack_opened", count=1, override_amount=75)
+    return result
 
 
 @router.get("/binders")

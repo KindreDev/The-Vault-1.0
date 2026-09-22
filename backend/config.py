@@ -161,7 +161,6 @@ ECONOMY = {
     "tag_added":          (5,    1),
     "image_rated":        (2,    0),
     "wiki_import":        (15,   5),
-    "tagging_mission":    (200, 50),
 }
 
 # ── Pack types ────────────────────────────────────────────────────────────────
