@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { AUTHORED_FURNITURE, FLOOR_Y, PLACEMENT_BOUNDS, SURFACE_ASSETS } from './roomLayout'
 
-export default function PlacementSession({ arranging, bootstrap, preview, onHover, onRotate, onConfirm, onSelectInstance }) {
+export default function PlacementSession({ arranging, bootstrap, preview, onHover, onRotate, onLock, onSelectInstance, onDeselect }) {
   const { camera, raycaster, pointer, scene } = useThree()
   const lastHover = useRef('')
   const walls = useRef([])
@@ -15,6 +15,7 @@ export default function PlacementSession({ arranging, bootstrap, preview, onHove
   const wallItem = definition?.placement_kind === 'wall'
   const placed = bootstrap?.room?.placements || []
   const definitions = useMemo(() => new Map((bootstrap?.catalog || []).map(item => [item.id, item])), [bootstrap])
+  const rightPointer = useRef(null)
 
   useEffect(() => {
     walls.current = []
@@ -31,24 +32,54 @@ export default function PlacementSession({ arranging, bootstrap, preview, onHove
     }
     const wheel = event => {
       if (!arranging) return
+      if (event.target?.closest?.('.placement-mode, .placement-context-hud')) return
       event.preventDefault()
       onRotate?.((preview?.transform?.rotation?.y || 0) + event.deltaY * .002)
     }
     const click = event => {
       if (event.button !== 0) return
       if (event.target?.closest?.('button, a, input, select, textarea, .placement-mode')) return
-      if (!preview?.valid) return
-      onConfirm?.()
+      if (!preview?.valid || preview.locked) return
+      onLock?.()
     }
     window.addEventListener('keydown', key)
     window.addEventListener('wheel', wheel, { passive: false })
     window.addEventListener('pointerdown', click)
+    const rightDown = event => {
+      if (event.button !== 2 || event.target?.closest?.('button, a, input, select, textarea, .placement-mode')) return
+      rightPointer.current = { x: event.clientX, y: event.clientY, moved: false }
+    }
+    const rightMove = event => {
+      const start = rightPointer.current
+      if (!start) return
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) start.moved = true
+    }
+    const rightUp = event => {
+      if (event.type !== 'pointercancel' && event.button !== 2) return
+      const start = rightPointer.current
+      rightPointer.current = null
+      if (start && !start.moved && !event.target?.closest?.('button, a, input, select, textarea, .placement-mode')) {
+        onDeselect?.()
+      }
+    }
+    const contextMenu = event => { if (arranging) event.preventDefault() }
+    window.addEventListener('pointerdown', rightDown)
+    window.addEventListener('pointermove', rightMove)
+    window.addEventListener('pointerup', rightUp)
+    window.addEventListener('pointercancel', rightUp)
+    window.addEventListener('contextmenu', contextMenu)
     return () => {
       window.removeEventListener('keydown', key)
       window.removeEventListener('wheel', wheel)
       window.removeEventListener('pointerdown', click)
+      window.removeEventListener('pointerdown', rightDown)
+      window.removeEventListener('pointermove', rightMove)
+      window.removeEventListener('pointerup', rightUp)
+      window.removeEventListener('pointercancel', rightUp)
+      window.removeEventListener('contextmenu', contextMenu)
+      rightPointer.current = null
     }
-  }, [arranging, onConfirm, onRotate, preview])
+  }, [arranging, onDeselect, onLock, onRotate, preview])
 
   useFrame(() => {
     if (!arranging || !definition) return
@@ -115,7 +146,11 @@ export default function PlacementSession({ arranging, bootstrap, preview, onHove
       const pos = row.transform?.position || {}
       const footprint = def.footprint || { width: .5, depth: .5, height: .5 }
       return <mesh key={row.instance_id} position={[pos.x || 0, (pos.y || 0) + (footprint.height || .5) / 2, pos.z || 0]} userData={{ instanceId: row.instance_id }}
-        onPointerDown={event => { event.stopPropagation(); onSelectInstance?.(row.instance_id) }}>
+        onPointerDown={event => {
+          event.stopPropagation()
+          if (event.button !== 0) return
+          onSelectInstance?.(row.instance_id)
+        }}>
         <boxGeometry args={[footprint.width || .5, footprint.height || .5, footprint.depth || .5]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>

@@ -97,7 +97,11 @@ def regenerate(image_id: int, db: Session = Depends(get_db)):
     img = db.query(Image).filter(Image.id == image_id).first()
     if not img:
         raise HTTPException(404, "Image not found")
-    info = masking.ensure_mask(db, img, force=True)
+    info = (
+        masking.ensure_scene_mask(db, img, force=True)
+        if masking.is_scene_card_source(db, img.id)
+        else masking.ensure_mask(db, img, force=True)
+    )
     if info is None:
         raise HTTPException(400, "Cannot mask this image (video, or file missing)")
     db.commit()

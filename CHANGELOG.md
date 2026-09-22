@@ -14,8 +14,26 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
-### Fixed
+- Changed: Rebalanced recurring Vault Credit income, quest rewards, and monthly release pack prices with deterministic persona simulation targets.
+- Changed: Help & Reference now documents current navigation, Library and Loading Bay workflows, Collection Curating, Stats, TCG V2 releases and economy, Collection Room, settings, and current quest rewards.
 
+### Fixed
+- Collection Room cards now open a darkened focus viewer with full VFX, drag tilt, zoom, reset, and keyboard close controls while keeping the inventory selection intact.
+- Collection Room now labels black/white furniture variants explicitly and turns compact card stands to face the room in both placement and display rendering.
+- Collection Room inventory now uses a narrower responsive card grid, a larger selected-card preview, and static non-selected inventory cards.
+- Collection Room stand previews now face the room correctly, remain visible in the dark rail, and glass cabinets render without pane shadows or transparency depth artifacts.
+
+- Collection Room inventory now shows loading state/count placeholders instead of a false zero-card flash, and furniture previews use transparent cleaned assets plus real framed Vault-photo poster previews.
+- Collection Room placement rail now uses larger physical-item previews, supports mouse-wheel horizontal scrolling, and keeps the rail centered instead of expanding off-screen.
+- Collection Room Controls is now a readable key/action list, and parcel booster reveals return resolved card payloads directly so opening does not fail during a second detail lookup.
+- Collection Room poster previews now retain their assigned Vault image while moving, and placement-wheel hover feedback stays contained inside its action button.
+- Fixed Scene card masking so subject and background foil effects stay separated instead of applying an unmasked effect across the whole card.
+- Collection Room placement thumbnails no longer expand over the interface and block clicks, and their rail cards now keep readable names and proportions.
+- Collection Room card displays nested inside cabinets now follow their parent shelf when it moves or rotates, while remaining blocked from floor placement.
+- Collection Room wall posters now face into the room correctly on every wall instead of rendering edge-on at side-wall corners.
+- Collection Room placement now targets the full walkable floor, repairs stale pre-category wall placements, and no longer rejects new furniture because of legacy center-of-room wall items.
+- Collection Room placement now validates furniture against the authored apartment’s real wall faces and floor surfaces instead of rectangular room bounds.
+- Collection Room placement now clears stale movement input, keeps previews fully visible while intersecting room geometry, and reserves right-click for deselecting instead of selecting furniture.
 - Fixed library scans failing on moved or deleted media that still had Vault history or other database references.
 - Fixed file-level Collection Curating repeatedly reloading its queue instead of opening a file, and made large dump queues avoid an expensive random database sort.
 - Fixed the Glass theme showing its selected background image immediately and across every page.
@@ -41,8 +59,16 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ### Changed
 
+- Collection Room placement now uses a world-attached contextual action wheel tied to the live furniture preview, with working Place, Return, Rotate, and Deselect actions.
+- Collection Room placement now shows transparent furniture thumbnails in the item rail and separates selecting, locking, and committing an item into three explicit stages; Tab opens the mode without selecting anything.
+- Monthly TCG V2 releases now scale their base-card target from the published Foundation size, freeze the formula and economy modifier in each manifest, and show the calculation during release review.
+- Collection Room furniture now keeps floor-standing shelves free-placeable, wall shelves and posters wall-only, and card stands placeable inside authored shelf levels.
 - Card Collection now keeps Legacy cards outside current rarity/type categories and shows a Legacy scope only when legacy cards are owned.
 - Reconciled quest and achievement checks with current curation actions, local-time session behavior, and TCG V2 SR/UR/SPR card rarities.
+- TCG V2 releases now enforce scaled C/R/SR/UR targets and mint deterministic linked SPR parallels without making SPRs required for base completion.
+- TCG V2 release generation now swaps same-rarity candidates to satisfy the creator-diversity guard before publication.
+- Foundation now scales C/R/SR/UR and additive SPR supply from the approved release economy, ranks SPRs by personal engagement and resolved creator context, and appends linked SPRs at the six-cum milestone without replacing owned base cards.
+- Gallery View now remembers the last selected media sort when navigating between galleries.
 - Large gallery views now mount thumbnail tiles in incremental browse batches while preserving full-list search, selection, and viewer navigation.
 - Queue strips now stay expanded after hover and drag/drop until manually collapsed with the themed chevron control, while preserving horizontal scroll position.
 

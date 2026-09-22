@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useGLTF, useTexture } from '@react-three/drei'
-import { AUTHORED_FURNITURE, BLUE_BOXES, FURNITURE_FILE, SURFACE_HOST_ASSETS, standMeshScale } from './roomLayout'
+import { AUTHORED_FURNITURE, BLUE_BOXES, FURNITURE_FILE, SURFACE_HOST_ASSETS, furnitureModelYawOffset, standMeshScale } from './roomLayout'
+import { textureFromImage } from './RoomPosterDisplays'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { roomQualityProfile } from './roomQuality'
@@ -81,7 +82,10 @@ const BASE_ROOM_URL = '/tcg-room/base_room.glb'
 function isCollideMesh(name) {
   const n = (name || '').replace(/^BAKE_/, '')
   if (/window|monitor|keyboard|aobox|roof|glass|circle/i.test(n)) return false
-  return /room|floor2|desk|door|defaultmaterial/i.test(n)
+  // The authored room has both the full walkable Floor mesh and a thin
+  // Floor2 perimeter/edge mesh.  Placement raycasts need the full floor;
+  // restricting this to Floor2 makes free placement snap to the room edges.
+  return /room|floor/i.test(n) || /desk|door|defaultmaterial/i.test(n)
 }
 
 /** Live apartment shell. Native glTF materials, no PALETTE remap, no shop furniture. */
@@ -296,17 +300,50 @@ function AuthoredFurniturePiece({ version, item, quality }) {
     const value = scene.clone(true)
     value.traverse(node => {
       if (!node.isMesh) return
-      const glass = /glass|acrylic/i.test(node.material?.name || '')
+      const materialName = Array.isArray(node.material)
+        ? node.material.map(material => material?.name || '').join(' ')
+        : node.material?.name || ''
+      const glass = /glass|acrylic|translucent/i.test(`${node.name || ''} ${materialName}`)
       node.castShadow = profile.shadows && !glass
-      node.receiveShadow = true
+      // Transparent panes must not receive the room's shadow map.  Doing so
+      // makes the pane render as a dark duplicate of the frame and produces
+      // the shelf-shaped shadow bands visible through the cabinet.
+      node.receiveShadow = !glass
       node.userData.placeSurface = SURFACE_HOST_ASSETS.has(item.assetId)
+      if (glass) {
+        const sourceMaterials = Array.isArray(node.material) ? node.material : [node.material]
+        const materials = sourceMaterials.map(source => {
+          if (!source) return source
+          const material = source.clone()
+          material.transparent = true
+          material.depthTest = true
+          material.depthWrite = false
+          material.side = THREE.DoubleSide
+          material.opacity = /translucent/i.test(`${node.name || ''} ${source.name || ''}`) ? .22 : .16
+          material.roughness = Math.max(.16, material.roughness ?? .16)
+          material.metalness = Math.min(.12, material.metalness ?? 0)
+          material.color?.set('#d7eef1')
+          material.needsUpdate = true
+          return material
+        })
+        node.material = Array.isArray(node.material) ? materials : materials[0]
+        node.renderOrder = 4
+        node.userData.vaultOwnsMaterial = true
+      }
     })
     return value
   }, [item.assetId, profile.shadows, scene])
+  useEffect(() => () => {
+    clone.traverse(node => {
+      if (!node.isMesh || !node.userData.vaultOwnsMaterial) return
+      const materials = Array.isArray(node.material) ? node.material : [node.material]
+      materials.forEach(material => material?.dispose?.())
+    })
+  }, [clone])
   const p = item.position
   const r = item.rotation
   const scale = item.scale || standMeshScale(item.assetId)
-  return <group position={p} rotation={r} scale={scale}>
+  return <group position={p} rotation={[r[0], (r[1] || 0) + furnitureModelYawOffset(item.assetId), r[2]]} scale={scale}>
     <primitive object={clone} />
   </group>
 }
@@ -408,7 +445,14 @@ export function PlacementGhost({ version, preview }) {
     const value = scene.clone(true)
     value.traverse(node => {
       if (!node.isMesh || node.name.startsWith('UCX_')) { if (node.name?.startsWith('UCX_')) node.visible = false; return }
-      node.material = new THREE.MeshBasicMaterial({ color: preview.valid ? '#38dc75' : '#ff4d62', transparent: true, opacity: .48, depthWrite: false })
+      // The preview is an overlay, not a physical render. Keep its whole
+      // silhouette visible when the candidate intersects a wall or another
+      // mesh; the room depth buffer otherwise makes the ghost look sliced up.
+      node.frustumCulled = false
+      node.material = new THREE.MeshBasicMaterial({
+        color: preview.valid ? '#38dc75' : '#ff4d62', transparent: true, opacity: .48,
+        depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+      })
       node.renderOrder = 20
     })
     return value
@@ -421,8 +465,9 @@ export function PlacementGhost({ version, preview }) {
   const width = Math.max(.35, footprint.width || .5)
   const depth = Math.max(.35, footprint.depth || .5)
   const scale = standMeshScale(preview.assetId)
-  return <group position={[p.x, p.y, p.z]} rotation={[r.x, r.y, r.z]} scale={scale}>
+  return <group position={[p.x, p.y, p.z]} rotation={[r.x, r.y + furnitureModelYawOffset(preview.assetId), r.z]} scale={scale}>
     <primitive object={ghost} frustumCulled={false} />
+    {preview.assetId === 'poster_frame' && preview.transform?.content?.image_id && <PlacementPosterPrint imageId={preview.transform.content.image_id} />}
     {preview.definition?.placement_kind === 'floor' && <>
       <mesh position={[0, .018, 0]} renderOrder={21}>
         <boxGeometry args={[width, .028, depth]} />
@@ -438,6 +483,32 @@ export function PlacementGhost({ version, preview }) {
       </mesh>
     </>}
   </group>
+}
+
+function PlacementPosterPrint({ imageId }) {
+  const [texture, setTexture] = useState(null)
+  useEffect(() => {
+    let disposed = false
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => {
+      if (disposed) return
+      try {
+        const next = textureFromImage(image)
+        setTexture(previous => { previous?.dispose(); return next })
+      } catch {
+        setTexture(previous => { previous?.dispose(); return null })
+      }
+    }
+    image.onerror = () => { if (!disposed) setTexture(previous => { previous?.dispose(); return null }) }
+    image.src = `/api/images/${encodeURIComponent(imageId)}/preview?w=720`
+    return () => { disposed = true; setTexture(previous => { previous?.dispose(); return null }) }
+  }, [imageId])
+  if (!texture) return null
+  return <mesh position={[0, 0, .018]} renderOrder={24}>
+    <planeGeometry args={[.66, .96]} />
+    <meshBasicMaterial map={texture} transparent opacity={.86} toneMapped={false} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
+  </mesh>
 }
 
 // Compatibility exports for older focused tests. Runtime uses MergedRoomAssets.

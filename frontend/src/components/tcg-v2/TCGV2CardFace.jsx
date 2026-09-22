@@ -56,6 +56,7 @@ export default function TCGV2CardFace({
   card,
   width = 360,
   showEffects = false,
+  interactive = showEffects,
   signatureUrl = null,
   className = '',
   onClick,
@@ -150,6 +151,13 @@ export default function TCGV2CardFace({
   const Renderer = RENDERERS[face.type]
   if (!Renderer) return fallback
 
+  // Layered Scene cards already own their foil response inside the SVG. The
+  // outer finish elements are intentionally reserved for flat/no-mask faces;
+  // mounting them here would put an unmasked glare over the subject again.
+  const sceneVisualMode = face.type === 'scene'
+    ? String(face.recipe?.visualMode || face.visualMode || card?.mask_visual_mode || '').toLowerCase()
+    : ''
+  const isLayeredFace = sceneVisualMode === 'layered' && Boolean(face.packedMaskUrl)
   const resetKey = `${card?.id ?? 'card'}:${face.type}:${face.recipe?.templateId ?? ''}`
 
   return (
@@ -157,8 +165,10 @@ export default function TCGV2CardFace({
          data-card-type={face.type} data-rarity={face.recipe?.rarity}
          data-foil-map={card?.foil_map_url ? 'true' : 'false'}
          data-mask-override={card?.presentation_override?.mask ? 'true' : 'false'}
+         data-mask-mode={isLayeredFace ? 'layered' : 'flat'}
          data-effects={showEffects ? 'on' : 'off'}
-         onPointerMove={onPointerMove} onPointerLeave={setRestingLight}>
+         onPointerMove={interactive ? onPointerMove : undefined}
+         onPointerLeave={interactive ? setRestingLight : undefined}>
       <div className="tcg-v2-card-stage">
         <CardFaceBoundary fallback={fallback} onRenderError={onRenderError} resetKey={resetKey}>
           <SignatureOverrideContext.Provider value={card?.presentation_override || null}>
@@ -176,8 +186,12 @@ export default function TCGV2CardFace({
             />
           </SignatureOverrideContext.Provider>
         </CardFaceBoundary>
-        <span className="tcg-v2-card-finish tcg-v2-card-shine" aria-hidden="true" />
-        <span className="tcg-v2-card-finish tcg-v2-card-glare" aria-hidden="true" />
+        {!isLayeredFace && (
+          <>
+            <span className="tcg-v2-card-finish tcg-v2-card-shine" aria-hidden="true" />
+            <span className="tcg-v2-card-finish tcg-v2-card-glare" aria-hidden="true" />
+          </>
+        )}
       </div>
     </div>
   )

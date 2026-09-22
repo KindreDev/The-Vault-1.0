@@ -10,7 +10,7 @@ const POSTER_HEIGHT = .96
 const POSTER_TEXTURE_WIDTH = 560
 const POSTER_TEXTURE_HEIGHT = 920
 
-function textureFromImage(image) {
+export function textureFromImage(image) {
   const width = image.naturalWidth || image.width
   const height = image.naturalHeight || image.height
   // Render into a fixed frame-sized canvas.  The source is contained (never
@@ -39,7 +39,7 @@ function textureFromImage(image) {
   return texture
 }
 
-function PosterPrint({ placement, url }) {
+export function PosterPrint({ placement, url }) {
   const [texture, setTexture] = useState(null)
   useEffect(() => {
     let disposed = false
@@ -75,15 +75,16 @@ function PosterPrint({ placement, url }) {
   </group>
 }
 
-export default function RoomPosterDisplays({ bootstrap }) {
+export default function RoomPosterDisplays({ bootstrap, activeInstanceId = null }) {
   const posters = useMemo(() => (bootstrap?.room?.placements || []).map(row => {
+    if (row.instance_id === activeInstanceId) return null
     const instance = bootstrap?.owned_instances?.find(value => value.id === row.instance_id)
     const definition = bootstrap?.catalog?.find(value => value.id === instance?.definition_id)
     if (definition?.asset_id !== 'poster_frame') return null
     const imageId = row.transform?.content?.image_id
     if (!imageId) return null
     return { row, url: `/api/images/${imageId}/preview?w=720`, imageId }
-  }).filter(Boolean), [bootstrap])
+  }).filter(Boolean), [activeInstanceId, bootstrap])
   return <group name="vault-posters">
     {posters.map(item => <PosterPrint key={`${item.row.instance_id}-${item.imageId}`} placement={item.row} url={item.url} />)}
   </group>

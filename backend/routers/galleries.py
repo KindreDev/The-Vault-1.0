@@ -1074,9 +1074,11 @@ def log_cum(gallery_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Gallery not found")
     g.cum_count += 1
     activity.record(db, "gallery_cum", gallery_id=g.id)
+    from services.foundation_catalog import ensure_foundation_spr_for_source
+    foundation_unlock = ensure_foundation_spr_for_source(db, gallery_id=g.id)
     db.commit()
     xp = gami.notify_action(db, "cum_logged")
-    return {"cum_count": g.cum_count, "xp": xp}
+    return {"cum_count": g.cum_count, "xp": xp, "foundation_unlock": foundation_unlock}
 
 
 @router.post("/{gallery_id}/rate")

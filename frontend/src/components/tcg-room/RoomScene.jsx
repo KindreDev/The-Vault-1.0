@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber'
 import { AuthoredBaseRoom, AuthoredFurnitureItems, DeliveredPacks, MergedRoomAssets, PlacementGhost, VaultMonitorScreen } from './RoomAsset'
 import FirstPersonController from './FirstPersonController'
 import PlacementSession from './PlacementSession'
+import PlacementContextOverlay from './PlacementContextOverlay'
 import RoomCardCollection, { displayHostTransform } from './RoomCardCollection'
 import RoomPosterDisplays from './RoomPosterDisplays'
 import { AUTHORED_FURNITURE, AUTHORED_ROOM, COMPUTER_SCREEN, SURFACE_ASSETS, standMeshScale } from './roomLayout'
@@ -80,7 +81,7 @@ export default function RoomScene(props) {
     ...items.filter(item => item.zone === 'owned' && item.interactive),
     ...cardInteractionItems(props.visibleCards, props.bootstrap),
   ], [items, props.bootstrap, props.visibleCards])
-  return <Canvas shadows={profile.shadows} dpr={profile.dpr} camera={{ fov: 66, near: .06, far: 50 }} gl={{ antialias: false, powerPreference: 'high-performance', stencil: false }} onCreated={({ gl }) => { gl.toneMappingExposure = 1.18 }}>
+  return <Canvas className="tcg-room__scene-canvas" shadows={profile.shadows} dpr={profile.dpr} camera={{ fov: 66, near: .06, far: 50 }} gl={{ antialias: false, powerPreference: 'high-performance', stencil: false }} onCreated={({ gl }) => { gl.toneMappingExposure = 1.18 }}>
     <RoomLighting quality={props.quality} />
     <Suspense fallback={null}>
       <AuthoredBaseRoom quality={props.quality} onLoaded={props.onLoaded} />
@@ -90,12 +91,13 @@ export default function RoomScene(props) {
       {props.parcels?.length ? <DeliveredPacks version={props.version} parcel={props.parcels} /> : props.parcel && <DeliveredPacks version={props.version} parcel={props.parcel} />}
       <VaultMonitorScreen position={COMPUTER_SCREEN.position} rotation={COMPUTER_SCREEN.rotation} size={COMPUTER_SCREEN.size} />
       {props.placementPreview && <PlacementGhost version={props.version} preview={props.placementPreview} />}
+      {props.placementPreview && <PlacementContextOverlay preview={props.placementPreview} onPlace={props.onConfirmPlacement} onReturn={props.onReturnPlacement} onRotate={props.onRotatePlacement} onDeselect={props.onDeselectPlacement} />}
     </Suspense>
-    <PlacementSession arranging={props.arranging} bootstrap={props.bootstrap} preview={props.placementPreview} onHover={sample => props.onWorldSample?.({ kind: 'hover', ...sample })} onRotate={yaw => props.onWorldSample?.({ kind: 'rotate', yaw })} onConfirm={props.onConfirmPlacement} onSelectInstance={props.onSelectPlaced} />
+    <PlacementSession arranging={props.arranging} bootstrap={props.bootstrap} preview={props.placementPreview} onHover={sample => props.onWorldSample?.({ kind: 'hover', ...sample })} onRotate={yaw => props.onWorldSample?.({ kind: 'rotate', yaw })} onLock={props.onLockPlacement} onSelectInstance={props.onSelectPlaced} onDeselect={props.onDeselectPlacement} />
     <Suspense fallback={null}>
       <RoomCardCollection payload={props.visibleCards} bootstrap={props.bootstrap} quality={profile.key} onVisibleCards={props.onVisibleCards} />
     </Suspense>
-    <RoomPosterDisplays bootstrap={props.bootstrap} />
+    <RoomPosterDisplays bootstrap={props.bootstrap} activeInstanceId={props.placementPreview?.instanceId} />
     <FirstPersonController {...props} interactionItems={interactions} />
   </Canvas>
 }

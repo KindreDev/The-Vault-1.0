@@ -143,24 +143,77 @@ FEED_CARD_TYPE_MULTIPLIERS = {
 # 1 credit per N overflow CXP, rounded down, minimum 1 credit per card with overflow
 OVERFLOW_CXP_TO_CREDITS_RATE = 5
 
-# ── Economy: action → (xp_reward, vault_credits) ─────────────────────────────
+# ── Credit economy: the single source of truth for recurring income ───────────
+# XP is intentionally kept separate. These values are tuned against the
+# reference monthly release: an active collector can reach roughly 40 standard
+# packs/month, while organizing remains worthwhile and file imports remain a
+# zero-credit setup operation.
+CREDIT_ECONOMY_VERSION = "credits-v2-fun-monthly-packs"
+CREDIT_ACTION_REWARDS = {
+    "session_logged": 40,
+    "cum_logged": 25,
+    "gallery_imported": 20,
+    "gallery_added": 20,       # legacy alias
+    "creator_added": 50,
+    "daily_login": 25,
+    "tag_added": 10,
+    "image_rated": 8,
+    "gallery_rated": 15,
+    "wiki_import": 15,
+    "gallery_curated": 25,
+    "image_curated": 12,
+    "pack_opened": 0,          # never refund the purchase through opening
+    "card_dismantled": 0,      # shards/CXP are the dismantle rewards
+    "file_added": 0,           # bulk import must never be an infinite faucet
+}
+CREDIT_ACTION_DAILY_CAPS = {"cum_logged": 10}
+CREDIT_GALLERY_ASSIGN_DIVISOR = 10
+CREDIT_GALLERY_ASSIGN_MAX = 40
+CREDIT_DAILY_SPIN_EXPECTED = 19  # nearest integer to the 18.75-credit mean
+
+# Quest credit rewards live here rather than being independently tuned in the
+# gamification service. Existing active quest rows synchronize to these values
+# without touching completed rows that have already paid out.
+CREDIT_QUEST_REWARDS = {
+    "open_the_vault": 20, "log_session": 80, "rate_images": 60,
+    "tag_images": 60, "open_pack": 30, "drain_tank": 45,
+    "rate_galleries": 50, "tag_spree": 120, "rate_spree": 100,
+    "double_goon": 100, "curate_galleries": 100,
+    "add_creator": 150, "import_gallery": 100, "session_streak": 350,
+    "session_binge": 300, "gallery_marathon": 250, "pack_spree": 300,
+    "tag_master_week": 600, "curate_week": 600,
+    "century": 250, "five_hundred_imgs": 700, "millennium": 1500,
+    "five_thousand_imgs": 4000, "ten_thousand_imgs": 10000,
+    "five_creators": 150, "ten_creators": 350, "twenty_five_creators": 1000,
+    "fifty_creators": 2500, "ten_sessions": 175, "fifty_sessions": 900,
+    "hundred_sessions": 2500, "fifty_nuts": 350, "hundred_nuts": 1000,
+    "five_hundred_nuts": 4000, "tag_master": 750, "tag_legend": 2500,
+    "month_streak": 900, "two_month_streak": 2500, "fifty_cards": 350,
+    "hundred_cards": 1000, "two_fifty_cards": 3000,
+}
+
+# Action → (XP reward, Vault Credits). XP remains the existing progression
+# value; only the credit column is sourced from the table above.
 ECONOMY = {
-    "session_logged":     (25,  10),
-    "orgasm_logged":      (50,  20),
-    "gallery_added":      (15,   5),
-    "creator_added":      (50,  15),
-    # Credits removed from file imports (2026-07): bulk-importing a library is a
-    # one-time setup event, not gameplay — 400k files once printed ~90k credits.
-    # XP stays; credits must come from sessions, quests, and play.
-    "file_added":         (5,    0),
-    "daily_login":        (20,  10),
-    "quest_complete":     (0,   40),   # XP comes from quest itself
-    "achievement_unlock": (0,   75),   # XP comes from achievement itself
-    "pack_opened":        (10,   0),
-    "card_dismantled":    (DISMANTLE_XP, 0),
-    "tag_added":          (5,    1),
-    "image_rated":        (2,    0),
-    "wiki_import":        (15,   5),
+    "session_logged":     (25, CREDIT_ACTION_REWARDS["session_logged"]),
+    "cum_logged":         (10, CREDIT_ACTION_REWARDS["cum_logged"]),
+    "orgasm_logged":      (50, CREDIT_ACTION_REWARDS["cum_logged"]),
+    "gallery_imported":   (15, CREDIT_ACTION_REWARDS["gallery_imported"]),
+    "gallery_added":      (15, CREDIT_ACTION_REWARDS["gallery_added"]),
+    "creator_added":      (50, CREDIT_ACTION_REWARDS["creator_added"]),
+    "file_added":         (5,  CREDIT_ACTION_REWARDS["file_added"]),
+    "daily_login":        (20, CREDIT_ACTION_REWARDS["daily_login"]),
+    "quest_complete":     (0, 0),
+    "achievement_unlock": (0, 0),
+    "daily_spin":         (25, CREDIT_DAILY_SPIN_EXPECTED),
+    "pack_opened":        (10, CREDIT_ACTION_REWARDS["pack_opened"]),
+    "card_dismantled":    (DISMANTLE_XP, CREDIT_ACTION_REWARDS["card_dismantled"]),
+    "tag_added":          (5, CREDIT_ACTION_REWARDS["tag_added"]),
+    "image_rated":        (2, CREDIT_ACTION_REWARDS["image_rated"]),
+    "gallery_rated":      (5, CREDIT_ACTION_REWARDS["gallery_rated"]),
+    "gallery_curated":    (10, CREDIT_ACTION_REWARDS["gallery_curated"]),
+    "image_curated":      (8, CREDIT_ACTION_REWARDS["image_curated"]),
+    "wiki_import":        (15, CREDIT_ACTION_REWARDS["wiki_import"]),
 }
 
 # ── Pack types ────────────────────────────────────────────────────────────────

@@ -85,6 +85,13 @@
   overflow: hidden;
 }
 
+/* Layered faces composite their foil inside the SVG masks. Keep this guard
+   alongside the render condition so a stale/alternate mount cannot reapply a
+   whole-card finish over the subject and background surfaces. */
+.tcg-v2-card-shell[data-mask-mode="layered"] .tcg-v2-card-finish {
+  display: none;
+}
+
 .tcg-v2-card-finish::before,
 .tcg-v2-card-finish::after {
   content: "";
@@ -786,7 +793,39 @@
    provides a physical light response over the complete card. */
 .tcg-v2-card-shell[data-foil-map="true"]
   .tcg-v2-masked-finishes--ur .tcg-v2-masked-finish--subject {
-  opacity: calc(var(--tcg-card-opacity) * .06);
+  background-image: radial-gradient(
+    ellipse 130% 115% at var(--tcg-pointer-x) var(--tcg-pointer-y),
+    rgba(255, 255, 255, .48) 0%,
+    rgba(185, 235, 255, .2) 28%,
+    rgba(255, 155, 225, .08) 52%,
+    transparent 78%);
+  filter: brightness(calc(var(--tcg-pointer-distance) * .18 + .9)) contrast(1.04) saturate(1.08);
+  mix-blend-mode: screen;
+  opacity: calc(var(--tcg-card-opacity) * .2);
+}
+
+/* A layered subject gets its own clean highlight, never the background's
+   repeating foil-map wave. The SVG group above supplies the subject mask. */
+.tcg-v2-card-shell[data-mask-mode="layered"]
+  .tcg-v2-masked-finishes--ur .tcg-v2-masked-finish--subject::before,
+.tcg-v2-card-shell[data-mask-mode="layered"]
+  .tcg-v2-masked-finishes--ur .tcg-v2-masked-finish--subject::after,
+.tcg-v2-card-shell[data-mask-mode="layered"]
+  .tcg-v2-masked-finishes--ur .tcg-v2-masked-finish--subject .tcg-v2-masked-finish__texture {
+  background-image: none;
+  display: none !important;
+}
+
+.tcg-v2-card-shell[data-mask-mode="layered"]
+  .tcg-v2-masked-finishes--ur .tcg-v2-masked-finish--subject {
+  background-image: radial-gradient(
+    ellipse 130% 115% at var(--tcg-pointer-x) var(--tcg-pointer-y),
+    rgba(255, 255, 255, .42) 0%,
+    rgba(185, 235, 255, .18) 30%,
+    transparent 76%) !important;
+  filter: brightness(calc(var(--tcg-pointer-distance) * .16 + .92)) contrast(1.03) saturate(1.05) !important;
+  mix-blend-mode: screen !important;
+  opacity: calc(var(--tcg-card-opacity) * .2) !important;
 }
 
 .tcg-v2-card-shell[data-foil-map="true"]

@@ -8,6 +8,11 @@ import random
 
 from models import UserProfile, Quest, Achievement, XPEvent, QuestStatus, QuestType
 from schemas import XPEventOut
+from config import (
+    CREDIT_GALLERY_ASSIGN_DIVISOR,
+    CREDIT_GALLERY_ASSIGN_MAX,
+    CREDIT_QUEST_REWARDS,
+)
 
 # ── Level titles (1–100, every 5 levels) ─────────────────────────────────────
 LEVEL_TITLES = [
@@ -389,7 +394,7 @@ def _reset_daily_quests(db: Session):
             expires_at=tomorrow,
             status=QuestStatus.active,
             progress=0,
-            **qd
+            **_quest_definition(qd)
         ))
     db.commit()
 
@@ -437,7 +442,7 @@ def _reset_weekly_quests(db: Session):
             expires_at=expires_at,
             status=QuestStatus.active,
             progress=0,
-            **qd
+            **_quest_definition(qd)
         ))
     db.commit()
 
@@ -462,19 +467,16 @@ def _ensure_quests_present(db: Session):
     for qd in BOSS_QUESTS:
         if qd["key"] not in existing_boss:
             additions.append(Quest(quest_type=QuestType.boss, expires_at=None,
-                                   status=QuestStatus.active, progress=0, **qd))
+                                   status=QuestStatus.active, progress=0, **_quest_definition(qd)))
     if additions:
         db.add_all(additions)
 
-    # Build a lookup of credit_reward by quest key across all pools
-    credit_lookup = {
-        q["key"]: q.get("credit_reward", 0)
-        for q in BOSS_QUESTS + ALL_DAILY_QUESTS + ALL_WEEKLY_QUESTS
-    }
-    # Sync credit_reward on existing rows that are missing it
+    # Build a lookup from the single credit-economy source of truth. Only
+    # active rows are changed; completed rows have already paid their reward.
+    credit_lookup = CREDIT_QUEST_REWARDS
     all_existing = db.query(Quest).all()
     for q in all_existing:
-        if q.key in credit_lookup and (q.credit_reward is None or q.credit_reward == 0):
+        if q.status == QuestStatus.active and q.key in credit_lookup:
             q.credit_reward = credit_lookup[q.key]
 
     db.commit()
@@ -669,6 +671,14 @@ def credit_orgasm(db: Session, image_ids: list) -> dict:
     activity.record_many(db, "cum", image_ids=[i.id for i in images])
     activity.record_many(db, "gallery_cum", gallery_ids=list(gallery_ids))
 
+    # Foundation SPRs are append-only personal milestones. This runs before the
+    # event commit for both the single-image endpoint and the multi-panel path,
+    # so six lifetime cums can unlock the linked printing immediately.
+    from services.foundation_catalog import ensure_foundation_spr_for_source
+    foundation_unlocks = [
+        ensure_foundation_spr_for_source(db, image_id=img.id) for img in images
+    ]
+
     db.commit()
 
     # Profile totals, achievements and quest progress — once for the event.
@@ -678,6 +688,7 @@ def credit_orgasm(db: Session, image_ids: list) -> dict:
         "counts": {img.id: img.cum_count for img in images},
         "images_credited": len(images),
         "galleries_credited": len(gallery_ids),
+        "foundation_unlocks": foundation_unlocks,
         "xp": xp,
     }
 
@@ -801,12 +812,6 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         profile.total_cum_count = (profile.total_cum_count or 0) + 1
         profile.daily_cum_count = (profile.daily_cum_count or 0) + 1
         db.commit()
-        if profile.daily_cum_count <= 10:
-            try:
-                from services.cards import award_credits_for_action
-                award_credits_for_action(db, "cum_logged")
-            except Exception:
-                pass
         unlock_achievement(db, "first_cum")
         if profile.total_cum_count >= 10:  unlock_achievement(db, "dedicated")
         if profile.total_cum_count >= 50:  unlock_achievement(db, "gooner")
@@ -909,10 +914,11 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
         db.commit()
 
     elif action == "gallery_assigned":
-        # override_amount is the image count (minimum 1).
-        # Award half that as credits, also floored to 1.
+        # Relationship assignment is useful curation, but must not become a
+        # bulk-operation faucet. The divisor and cap are centralized in config.
         image_count = override_amount or 1
-        credit_amount = max(1, image_count // 2)
+        credit_amount = min(CREDIT_GALLERY_ASSIGN_MAX,
+                            max(1, image_count // CREDIT_GALLERY_ASSIGN_DIVISOR))
         _award_credits_direct(db, credit_amount, source="gallery_assigned")
         xp.credits_earned = credit_amount
 
@@ -932,6 +938,16 @@ def notify_action(db: Session, action: str, count: int = 1, extra: dict = None, 
     return xp
 
 
+def _quest_definition(definition: dict) -> dict:
+    """Apply the canonical credit reward without duplicating quest rows."""
+    return {
+        **definition,
+        "credit_reward": CREDIT_QUEST_REWARDS.get(
+            definition["key"], definition.get("credit_reward", 0)
+        ),
+    }
+
+
 def _seed_quests(db: Session):
     now = datetime.utcnow()
     tomorrow = datetime(now.year, now.month, now.day) + timedelta(days=1)
@@ -941,11 +957,11 @@ def _seed_quests(db: Session):
     chosen_weekly = random.sample(ALL_WEEKLY_QUESTS, WEEKLY_POOL_SIZE)
 
     for qd in chosen_daily:
-        db.add(Quest(quest_type=QuestType.daily,  expires_at=tomorrow,    status=QuestStatus.active, progress=0, **qd))
+        db.add(Quest(quest_type=QuestType.daily,  expires_at=tomorrow,    status=QuestStatus.active, progress=0, **_quest_definition(qd)))
     for qd in chosen_weekly:
-        db.add(Quest(quest_type=QuestType.weekly, expires_at=next_monday, status=QuestStatus.active, progress=0, **qd))
+        db.add(Quest(quest_type=QuestType.weekly, expires_at=next_monday, status=QuestStatus.active, progress=0, **_quest_definition(qd)))
     for qd in BOSS_QUESTS:
-        db.add(Quest(quest_type=QuestType.boss,   expires_at=None,        status=QuestStatus.active, progress=0, **qd))
+        db.add(Quest(quest_type=QuestType.boss,   expires_at=None,        status=QuestStatus.active, progress=0, **_quest_definition(qd)))
     db.flush()
 
 

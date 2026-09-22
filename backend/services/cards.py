@@ -28,6 +28,7 @@ from config import (
     RARITY_SCORE_BASE, RARITY_SCORE_FOIL_MULT, RARITY_SCORE_LEVEL_BONUS,
     FORGE_VARIANT_SHARD_COST, FORGE_VARIANT_CATALYST_COST,
     FEED_CARD_TYPE_MULTIPLIERS, OVERFLOW_CXP_TO_CREDITS_RATE,
+    CREDIT_ACTION_DAILY_CAPS,
 )
 from services.creator_cards import CREATOR_CARD_TYPES, creator_card_eligible_type
 
@@ -1699,6 +1700,16 @@ def award_credits_for_action(db: Session, action: str) -> int:
         return 0
     _, credits = reward
     if credits > 0:
+        daily_cap = CREDIT_ACTION_DAILY_CAPS.get(action)
+        if daily_cap is not None:
+            from datetime import datetime, time
+            start = datetime.combine(datetime.utcnow().date(), time.min)
+            awarded_today = db.query(CreditEvent).filter(
+                CreditEvent.source == action,
+                CreditEvent.logged_at >= start,
+            ).count()
+            if awarded_today >= daily_cap:
+                return 0
         _award_credits(db, action, credits)
         return credits
     return 0
@@ -1719,7 +1730,7 @@ def prepare_card_face_for_reveal(db: Session, card: Card) -> tuple[Card, dict]:
     be retried instead of being silently published.
     """
     from services.foundation_catalog import prepare_acquired_visual
-    from services.masking import ensure_mask, is_temporal_source
+    from services.masking import ensure_mask, ensure_scene_mask, is_temporal_source
 
     card_id = card.id
     authoritative = db.get(Card, card_id)
@@ -1734,8 +1745,17 @@ def prepare_card_face_for_reveal(db: Session, card: Card) -> tuple[Card, dict]:
     )
     mask_info = None
     if source_image:
+        card_type = (
+            authoritative.card_type.value
+            if hasattr(authoritative.card_type, "value")
+            else authoritative.card_type
+        )
         try:
-            mask_info = ensure_mask(db, source_image, force=False, upgrade_stale=True)
+            mask_info = (
+                ensure_scene_mask(db, source_image, force=False)
+                if card_type == CardType.image.value
+                else ensure_mask(db, source_image, force=False, upgrade_stale=True)
+            )
         except Exception as exc:
             detail = f"{type(exc).__name__}: {exc}"
             raise ValueError(
@@ -1752,11 +1772,6 @@ def prepare_card_face_for_reveal(db: Session, card: Card) -> tuple[Card, dict]:
                 f"Card {card_id} mask preparation failed for static {rarity} source "
                 f"{source_image.id}: {detail or 'unknown mask error'}"
             )
-        card_type = (
-            authoritative.card_type.value
-            if hasattr(authoritative.card_type, "value")
-            else authoritative.card_type
-        )
         if rarity == "UR" and card_type != CardType.gallery.value \
                 and not temporal and mask_info and mask_info.get("usable"):
             from services.foil_maps import ensure_foil_map

@@ -1,557 +1,295 @@
 .tcgws-release-browser {
-  --release-border: color-mix(in srgb, var(--tcg-line, rgba(255,255,255,.12)) 86%, transparent);
-  --release-muted: var(--tcg-muted, rgba(255,255,255,.62));
+  --release-border: color-mix(in srgb, var(--c-accent) 16%, rgba(255, 255, 255, .12));
+  --release-line: color-mix(in srgb, var(--c-accent) 10%, rgba(255, 255, 255, .1));
+  --release-muted: rgba(255, 255, 255, .58);
+  --release-surface: color-mix(in srgb, var(--c-surface) 92%, transparent);
+  --release-card: color-mix(in srgb, var(--c-card) 92%, transparent);
   min-width: 0;
-  color: var(--tcg-text, rgba(255,255,255,.92));
+  color: var(--c-text, rgba(255, 255, 255, .9));
 }
 
 .tcgws-release-browser,
 .tcgws-release-browser button,
 .tcgws-release-browser small,
-.tcgws-release-browser p {
-  font-size: 16px;
-}
-
-.tcgws-release-browser button {
-  font: inherit;
-}
-
-.tcgws-release-browser__index-header,
-.tcgws-release-browser__detail-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 28px;
-  margin-bottom: 24px;
-}
-
-.tcgws-release-browser__index-header > div:first-child,
-.tcgws-release-browser__detail-header > div:first-child {
-  min-width: 0;
-}
-
-.tcgws-release-browser__index-header span,
-.tcgws-release-browser__detail-header > div:first-child > span,
-.tcgws-release-browser__eyebrow {
-  display: block;
-  color: var(--release-muted);
-  font-size: 16px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
+.tcgws-release-browser p { font-size: 16px; }
+.tcgws-release-browser button { font: inherit; }
 .tcgws-release-browser h1,
 .tcgws-release-browser h2,
 .tcgws-release-browser h3,
-.tcgws-release-browser p {
-  margin-top: 0;
-}
+.tcgws-release-browser p { margin-top: 0; }
+.tcgws-release-browser h1 { margin-bottom: 7px; font-size: 30px; line-height: 1.12; }
+.tcgws-release-browser h2 { margin: 4px 0 7px; font-size: 22px; line-height: 1.18; }
+.tcgws-release-browser h3 { font-size: 19px; }
+.tcgws-release-browser p { color: var(--release-muted); line-height: 1.45; }
 
-.tcgws-release-browser h1 {
-  margin-bottom: 8px;
-  font-size: 40px;
-  line-height: 1.08;
+.tcgws-release-browser__index-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 20px;
+  margin-bottom: 17px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--release-line);
 }
-
-.tcgws-release-browser h2 {
-  margin-bottom: 9px;
-  font-size: 23px;
-  line-height: 1.18;
+.tcgws-release-browser__index-header > div:first-child { min-width: 0; }
+.tcgws-release-browser__index-header > div:first-child > span,
+.tcgws-release-browser__detail-header > div:first-child > span,
+.tcgws-release-browser__eyebrow {
+  display: block;
+  color: var(--c-accent-text, rgba(255, 255, 255, .72));
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
-
-.tcgws-release-browser p {
-  color: var(--release-muted);
-  line-height: 1.5;
-}
-
+.tcgws-release-browser__index-header p { max-width: 760px; margin-bottom: 0; }
+.tcgws-release-browser__index-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .tcgws-release-browser__view-count {
-  flex: 0 0 auto;
-  padding: 11px 15px;
+  display: flex;
+  min-height: 48px;
+  padding: 7px 14px;
   border: 1px solid var(--release-border);
-  border-radius: 999px;
-  color: var(--release-muted);
+  border-radius: 12px;
+  background: var(--release-surface);
+  flex-direction: column;
+  justify-content: center;
   white-space: nowrap;
 }
-
-.tcgws-release-browser__index-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
-  gap: 18px;
+.tcgws-release-browser__view-count strong { color: var(--c-accent-text, #c8c4ff); font-size: 20px; line-height: 1; }
+.tcgws-release-browser__view-count span { margin-top: 3px; color: var(--release-muted); }
+.tcgws-release-browser .tcgws-generate {
+  display: inline-flex;
+  min-height: 48px;
+  margin: 0;
+  padding: 0 14px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--c-accent-line);
+  background: var(--c-accent-fill);
+  color: var(--c-accent-text);
 }
 
+.tcgws-release-browser__index-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
 .tcgws-release-browser__index-tile {
   display: grid;
-  grid-template-columns: minmax(230px, 42%) minmax(0, 1fr);
+  grid-template-columns: 150px minmax(0, 1fr);
   min-width: 0;
+  min-height: 278px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--release-border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--tcg-card, #17191f) 88%, transparent);
+  border: 1px solid var(--release-line);
+  border-radius: 14px;
+  background: var(--release-card);
   color: inherit;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 16px 38px rgba(0,0,0,.18);
-  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .16);
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
-
 .tcgws-release-browser__index-tile:hover,
 .tcgws-release-browser__index-tile:focus-visible {
-  border-color: color-mix(in srgb, var(--c-accent, #7f77dd) 70%, white 12%);
-  box-shadow: 0 20px 48px rgba(0,0,0,.3);
+  border-color: var(--c-accent-line);
+  background: color-mix(in srgb, var(--c-card) 96%, var(--c-accent) 4%);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, .28);
   outline: none;
-  transform: translateY(-3px);
+  transform: translateY(-2px);
 }
-
 .tcgws-release-browser__cover {
   position: relative;
   display: flex;
-  min-height: 390px;
-  padding: 18px;
+  min-height: 278px;
+  padding: 13px;
   isolation: isolate;
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
-  background: #12141a;
+  background: var(--c-surface);
 }
-
 .tcgws-release-browser__cover::after {
   position: absolute;
   inset: 0;
-  z-index: -1;
-  background: linear-gradient(140deg, rgba(255,255,255,.1), transparent 44%, rgba(0,0,0,.45));
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(4, 5, 8, .08), rgba(4, 5, 8, .72));
   content: '';
   pointer-events: none;
 }
-
 .tcgws-release-browser__code {
-  z-index: 2;
+  z-index: 4;
   align-self: flex-start;
-  padding: 7px 10px;
-  border: 1px solid rgba(255,255,255,.28);
-  border-radius: 999px;
-  background: rgba(7,8,11,.58);
-  color: rgba(255,255,255,.86);
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 8px;
+  background: rgba(7, 8, 11, .68);
+  color: rgba(255, 255, 255, .88);
+  line-height: 1.1;
 }
-
 .tcgws-release-browser__cover > strong {
-  z-index: 2;
-  max-width: 90%;
+  z-index: 4;
+  max-width: 95%;
   color: white;
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1.2;
-  text-shadow: 0 2px 14px rgba(0,0,0,.85);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .9);
 }
-
 .tcgws-release-browser__index-tile > section {
   display: flex;
   min-width: 0;
-  padding: 25px;
+  padding: 17px 18px 15px;
   flex-direction: column;
 }
-
+.tcgws-release-browser__card-heading { min-width: 0; }
 .tcgws-release-browser__index-tile > section p {
   display: -webkit-box;
   overflow: hidden;
+  margin-bottom: 0;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
-.tcgws-release-browser__completion {
-  margin-top: auto;
-  padding-top: 22px;
-}
-
-.tcgws-release-browser__completion b {
-  font-size: 17px;
-}
-
+.tcgws-release-browser__completion { margin-top: auto; padding: 13px 0 11px; border-top: 1px solid var(--release-line); }
+.tcgws-release-browser__completion-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.tcgws-release-browser__completion-copy b { font-size: 16px; }
+.tcgws-release-browser__completion-copy span { overflow: hidden; color: var(--release-muted); text-overflow: ellipsis; white-space: nowrap; }
 .tcgws-release-browser__completion i,
-.tcgws-release-browser .tcgws-set-strip i {
-  display: block;
-  height: 6px;
-  margin-top: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255,255,255,.1);
-}
-
+.tcgws-release-browser .tcgws-set-strip i { display: block; height: 6px; margin-top: 8px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .1); }
 .tcgws-release-browser__completion em,
-.tcgws-release-browser .tcgws-set-strip i b {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--c-accent, #7f77dd), color-mix(in srgb, var(--c-accent, #7f77dd) 45%, white));
-}
+.tcgws-release-browser .tcgws-set-strip i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c-accent), var(--c-accent-text)); }
 
-.tcgws-release-browser__index-tile > section > small {
+.tcgws-release-rarity-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.tcgws-release-rarity-summary > span {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-  color: var(--release-muted);
-  line-height: 1.4;
-}
-
-.tcgws-release-browser__preview {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  overflow: hidden;
-  background: linear-gradient(135deg, #26283a, #0c0e14);
-}
-
-.tcgws-release-browser__preview.is-collage {
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+  min-width: 0;
+  padding: 6px 5px;
+  border: 1px solid var(--release-line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--c-bg) 50%, transparent);
+  flex-direction: column;
   gap: 2px;
 }
+.tcgws-release-rarity-summary b,
+.tcgws-release-rarity-summary strong { overflow: hidden; font-size: 16px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.tcgws-release-rarity-summary strong { color: var(--release-muted); font-weight: 500; }
+.tcgws-release-rarity-summary > span[data-rarity='SR'] { border-color: color-mix(in srgb, var(--c-accent) 26%, transparent); }
+.tcgws-release-rarity-summary > span[data-rarity='UR'] { border-color: color-mix(in srgb, var(--c-amber) 35%, transparent); }
+.tcgws-release-rarity-summary > span[data-rarity='SPR'] { border-color: color-mix(in srgb, var(--c-pink) 42%, transparent); background: color-mix(in srgb, var(--c-pink) 8%, var(--c-bg)); }
+.tcgws-release-rarity-summary > span[data-rarity='SPR'] b { color: var(--c-pink-text); }
+.tcgws-release-browser__meta { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 9px; color: var(--release-muted); }
+.tcgws-release-browser__meta small { display: flex; align-items: center; gap: 7px; line-height: 1.3; }
 
+.tcgws-release-browser__preview { position: absolute; inset: 0; z-index: 1; display: grid; overflow: hidden; background: linear-gradient(135deg, var(--c-card), var(--c-bg)); }
+.tcgws-release-browser__preview.is-collage { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2px; }
 .tcgws-release-browser__preview.is-count-2 { grid-template-rows: 1fr; }
 .tcgws-release-browser__preview.is-count-5,
 .tcgws-release-browser__preview.is-count-6 { grid-template-columns: repeat(3, 1fr); }
-
-.tcgws-release-browser__preview.is-single {
-  grid-template-columns: 1fr;
-}
-
-.tcgws-release-browser__preview img {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  object-fit: cover;
-  filter: saturate(.9) contrast(1.04);
-  opacity: .92;
-  transform: scale(1.03);
-  transition: opacity .25s ease, transform .35s ease;
-}
-
-.tcgws-release-browser__preview.is-collage img:nth-child(2) { transform: scale(1.08); }
+.tcgws-release-browser__preview.is-single { grid-template-columns: 1fr; }
+.tcgws-release-browser__preview img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; filter: saturate(.9) contrast(1.04); opacity: .9; transform: scale(1.03); transition: opacity .25s ease, transform .35s ease; }
+.tcgws-release-browser__preview.is-collage img:nth-child(2),
 .tcgws-release-browser__preview.is-collage img:nth-child(3) { transform: scale(1.08); }
-.tcgws-release-browser__preview.is-collage img:nth-child(4) { transform: scale(1.13); }
-
+.tcgws-release-browser__preview.is-collage img:nth-child(4) { transform: scale(1.12); }
 .tcgws-release-browser__index-tile:hover .tcgws-release-browser__preview img,
-.tcgws-release-browser__index-tile:focus-visible .tcgws-release-browser__preview img {
-  opacity: 1;
-  transform: scale(1.07);
-}
-
-.tcgws-release-browser__preview::after {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(4,5,8,.06), rgba(4,5,8,.54));
-  content: '';
-  pointer-events: none;
-}
-
-
-.tcgws-release-browser__preview--empty {
-  place-items: center;
-  background: repeating-linear-gradient(135deg, #171a22 0 12px, #1d2029 12px 24px);
-}
-
-.tcgws-release-browser__preview--empty span {
-  z-index: 1;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: rgba(0,0,0,.35);
-  color: rgba(255,255,255,.72);
-}
+.tcgws-release-browser__index-tile:focus-visible .tcgws-release-browser__preview img { opacity: 1; transform: scale(1.07); }
+.tcgws-release-browser__preview--empty { place-items: center; background: repeating-linear-gradient(135deg, var(--c-surface) 0 12px, var(--c-card) 12px 24px); }
+.tcgws-release-browser__preview--empty span { z-index: 1; padding: 9px 12px; border-radius: 8px; background: rgba(0, 0, 0, .42); color: rgba(255, 255, 255, .76); }
 
 .tcgws-release-browser__detail-header {
-  align-items: center;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--release-border);
-}
-
-.tcgws-release-browser__detail-preview {
-  position: relative;
-  width: min(36vw, 380px);
-  min-width: 300px;
-  height: 240px;
-  overflow: hidden;
-  border: 1px solid var(--release-border);
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(0,0,0,.25);
-}
-
-.tcgws-release-browser .tcgws-release-progress {
-  min-width: 210px;
-  align-items: flex-end;
-}
-
-.tcgws-release-browser .tcgws-release-progress > strong {
-  font-size: 39px;
-  line-height: 1;
-}
-
-.tcgws-release-browser .tcgws-release-progress > span {
-  margin-top: 8px;
-  color: var(--release-muted);
-  text-align: right;
-}
-
-.tcgws-release-browser .tcgws-release-progress b {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 9px;
-  color: var(--c-accent, #a49df4);
-}
-
-.tcgws-release-browser .tcgws-set-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 1px;
-  margin: 20px 0;
-  overflow: hidden;
-  border: 1px solid var(--release-border);
-  border-radius: 16px;
-  background: var(--release-border);
-}
-
-.tcgws-release-browser .tcgws-set-strip > button {
-  display: grid;
-  grid-template-rows: 160px minmax(0, 1fr);
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: var(--tcg-card, #15171d);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color .2s ease, transform .2s ease;
-}
-
-.tcgws-release-browser .tcgws-set-strip__preview {
-  position: relative;
-  min-width: 0;
-  min-height: 160px;
-  overflow: hidden;
-  border-bottom: 1px solid var(--release-border);
-}
-
-.tcgws-release-browser .tcgws-set-strip__content {
-  min-width: 0;
-  padding: 14px 17px 17px;
-}
-
-.tcgws-release-browser .tcgws-set-strip > button:hover,
-.tcgws-release-browser .tcgws-set-strip > button.active {
-  background: color-mix(in srgb, var(--c-accent, #7f77dd) 12%, var(--tcg-card, #15171d));
-}
-
-.tcgws-release-browser .tcgws-set-strip > button.active {
-  box-shadow: inset 0 -3px 0 var(--c-accent, #7f77dd);
-}
-
-.tcgws-release-browser .tcgws-set-strip > button > .tcgws-set-strip__content > span,
-.tcgws-release-browser .tcgws-set-strip > button > .tcgws-set-strip__content > p {
-  color: var(--release-muted);
-}
-
-.tcgws-release-browser .tcgws-set-strip > button > .tcgws-set-strip__content > strong {
-  display: block;
-  margin-top: 5px;
-  overflow: hidden;
-  font-size: 17px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tcgws-release-browser .tcgws-set-strip > button > .tcgws-set-strip__content > p {
-  margin: 8px 0 0;
-}
-
-.tcgws-release-browser .tcgws-rarity-completion {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin: 0 0 22px;
-}
-
-.tcgws-release-browser .tcgws-rarity-completion > span {
-  display: flex;
-  min-width: 0;
-  padding: 13px 15px;
-  border: 1px solid var(--release-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--tcg-card, #15171d) 72%, transparent);
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tcgws-release-browser .tcgws-rarity-completion strong {
-  color: var(--release-muted);
-  font-weight: 500;
-}
-
-.tcgws-release-browser .tcgws-release-packs {
-  display: flex;
-  flex-wrap: wrap;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px) minmax(180px, 220px);
   align-items: stretch;
-  gap: 12px;
-  margin: 0 0 22px;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--release-line);
 }
+.tcgws-release-browser__detail-header > div:first-child { min-width: 0; padding: 8px 0; }
+.tcgws-release-browser__detail-header p { margin-bottom: 0; }
+.tcgws-release-browser__detail-preview { position: relative; min-width: 0; min-height: 172px; overflow: hidden; border: 1px solid var(--release-line); border-radius: 12px; background: var(--c-surface); }
+.tcgws-release-browser .tcgws-release-progress { display: flex; min-width: 0; padding: 15px; border: 1px solid var(--release-border); border-radius: 12px; background: var(--release-surface); flex-direction: column; align-items: flex-start; justify-content: center; }
+.tcgws-release-browser .tcgws-release-progress > strong { color: var(--c-accent-text); font-size: 34px; line-height: 1; }
+.tcgws-release-browser .tcgws-release-progress > span { margin-top: 7px; color: var(--release-muted); line-height: 1.35; }
+.tcgws-release-browser .tcgws-release-progress b { display: flex; align-items: center; gap: 7px; margin-top: 9px; color: var(--c-green-text); }
 
-.tcgws-release-browser .tcgws-release-packs > h3 {
-  display: flex;
-  min-width: 210px;
-  margin: 0;
-  align-items: center;
-  gap: 8px;
-}
+.tcgws-release-browser .tcgws-set-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; margin: 0 0 14px; overflow: hidden; border: 1px solid var(--release-line); border-radius: 12px; background: var(--release-line); }
+.tcgws-release-browser .tcgws-set-strip > button { display: grid; grid-template-rows: 112px minmax(0, 1fr); min-width: 0; padding: 0; border: 0; border-radius: 0; background: var(--release-card); color: inherit; text-align: left; cursor: pointer; transition: background-color .18s ease; }
+.tcgws-release-browser .tcgws-set-strip__preview { position: relative; min-width: 0; min-height: 112px; overflow: hidden; border-bottom: 1px solid var(--release-line); }
+.tcgws-release-browser .tcgws-set-strip__content { min-width: 0; padding: 11px 13px 13px; }
+.tcgws-release-browser .tcgws-set-strip > button:hover,
+.tcgws-release-browser .tcgws-set-strip > button.active { background: color-mix(in srgb, var(--c-accent) 10%, var(--c-card)); }
+.tcgws-release-browser .tcgws-set-strip > button.active { box-shadow: inset 0 -3px 0 var(--c-accent); }
+.tcgws-release-browser .tcgws-set-strip__content > span,
+.tcgws-release-browser .tcgws-set-strip__content > p { color: var(--release-muted); }
+.tcgws-release-browser .tcgws-set-strip__content > strong { display: block; margin-top: 4px; overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.tcgws-release-browser .tcgws-set-strip__content > p { margin: 7px 0 0; }
 
-.tcgws-release-browser .tcgws-release-packs > span {
-  display: flex;
-  min-width: 230px;
-  padding: 13px 15px;
-  border: 1px solid var(--release-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--tcg-card, #15171d) 75%, transparent);
-  flex: 1 1 230px;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.tcgws-release-browser .tcgws-release-packs small {
-  color: var(--release-muted);
-  line-height: 1.4;
-}
+.tcgws-release-browser .tcgws-rarity-completion { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin: 0 0 16px; }
+.tcgws-release-browser .tcgws-rarity-completion > span { display: flex; min-width: 0; padding: 9px 10px; border: 1px solid var(--release-line); border-radius: 9px; background: var(--release-surface); flex-direction: column; gap: 3px; }
+.tcgws-release-browser .tcgws-rarity-completion strong { color: var(--release-muted); font-weight: 500; }
+.tcgws-release-economy { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 14px; }
+.tcgws-release-economy > div { display: flex; min-width: 0; padding: 10px 12px; border: 1px solid var(--release-border); border-radius: 9px; background: var(--release-surface); flex-direction: column; gap: 4px; }
+.tcgws-release-economy span,
+.tcgws-release-economy small { color: var(--release-muted); }
+.tcgws-release-economy strong { color: var(--c-accent-text, #c8c4ff); line-height: 1.25; }
+.tcgws-release-browser .tcgws-release-packs { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 0 0 16px; }
+.tcgws-release-browser .tcgws-release-packs > h3 { display: flex; min-width: 190px; margin: 0; align-items: center; gap: 8px; }
+.tcgws-release-browser .tcgws-release-packs > span { display: flex; min-width: 210px; padding: 10px 12px; border: 1px solid var(--release-line); border-radius: 9px; background: var(--release-surface); flex: 1 1 210px; flex-direction: column; gap: 4px; }
+.tcgws-release-browser .tcgws-release-packs small { color: var(--release-muted); line-height: 1.35; }
 
 .tcgws-release-browser__syncing,
-.tcgws-release-browser__loading-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--release-muted);
-}
-
-.tcgws-release-browser__syncing {
-  margin: 0 0 15px;
-  color: var(--c-accent, #a49df4);
-}
-
+.tcgws-release-browser__loading-status { display: flex; align-items: center; gap: 9px; color: var(--release-muted); }
+.tcgws-release-browser__syncing { margin: 0 0 13px; color: var(--c-accent-text); }
 .tcgws-release-browser__syncing svg,
-.tcgws-release-browser__loading-status svg {
-  animation: tcgws-release-spin 1s linear infinite;
-}
-
-.tcgws-release-browser__loading {
-  padding-top: 10px;
-}
-
-.tcgws-release-browser__loading-status {
-  margin-bottom: 20px;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--c-accent, #7f77dd) 35%, var(--release-border));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--c-accent, #7f77dd) 8%, transparent);
-}
-
-.tcgws-release-browser__loading-status strong {
-  color: var(--tcg-text, white);
-}
-
-.tcgws-release-browser__loading-status span {
-  color: var(--release-muted);
-}
-
-.tcgws-release-browser__skeleton-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 18px;
-}
-
-.tcgws-release-browser__skeleton-tile {
-  display: flex;
-  min-height: 260px;
-  padding: 18px;
-  border: 1px solid var(--release-border);
-  border-radius: 16px;
-  background: var(--tcg-card, #15171d);
-  flex-direction: column;
-  gap: 14px;
-}
-
+.tcgws-release-browser__loading-status svg { animation: tcgws-release-spin 1s linear infinite; }
+.tcgws-release-browser__loading { padding-top: 4px; }
+.tcgws-release-browser__loading-status { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--release-border); border-radius: 11px; background: var(--release-surface); }
+.tcgws-release-browser__loading-status strong { color: var(--c-text, white); }
+.tcgws-release-browser__loading-status span { color: var(--release-muted); }
+.tcgws-release-browser__skeleton-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.tcgws-release-browser__skeleton-tile { display: flex; min-height: 240px; padding: 14px; border: 1px solid var(--release-line); border-radius: 13px; background: var(--release-card); flex-direction: column; gap: 12px; }
 .tcgws-release-browser__skeleton-tile i,
 .tcgws-release-browser__skeleton-tile b,
 .tcgws-release-browser__skeleton-tile em,
-.tcgws-release-browser__skeleton-tile span {
-  display: block;
-  border-radius: 8px;
-  background: linear-gradient(100deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.15) 42%, rgba(255,255,255,.06) 60%);
-  background-size: 220% 100%;
-  animation: tcgws-release-shimmer 1.4s ease-in-out infinite;
-}
-
-.tcgws-release-browser__skeleton-tile i { height: 150px; border-radius: 11px; }
+.tcgws-release-browser__skeleton-tile span { display: block; border-radius: 7px; background: linear-gradient(100deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.15) 42%, rgba(255,255,255,.06) 60%); background-size: 220% 100%; animation: tcgws-release-shimmer 1.4s ease-in-out infinite; }
+.tcgws-release-browser__skeleton-tile i { height: 132px; border-radius: 10px; }
 .tcgws-release-browser__skeleton-tile b { width: 62%; height: 20px; }
 .tcgws-release-browser__skeleton-tile em { width: 86%; height: 17px; animation-delay: .12s; }
 .tcgws-release-browser__skeleton-tile span { width: 48%; height: 17px; animation-delay: .24s; }
+.tcgws-release-browser__empty-state { display: grid; min-height: 220px; padding: 36px; place-items: center; align-content: center; gap: 11px; border: 1px solid var(--release-line); border-radius: 14px; background: var(--release-card); color: var(--release-muted); text-align: center; }
+.tcgws-release-browser__empty-state strong { color: var(--c-text, white); }
+.tcgws-release-browser .tcgws-card-grid { position: relative; min-height: 260px; }
 
-.tcgws-release-browser__empty-state {
-  display: grid;
-  min-height: 240px;
-  padding: 40px;
-  place-items: center;
-  align-content: center;
-  gap: 12px;
-  border: 1px solid var(--release-border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--tcg-card, #15171d) 80%, transparent);
-  color: var(--release-muted);
-  text-align: center;
-}
+@keyframes tcgws-release-spin { to { transform: rotate(360deg); } }
+@keyframes tcgws-release-shimmer { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
 
-.tcgws-release-browser__empty-state strong {
-  color: var(--tcg-text, white);
-}
-
-.tcgws-release-browser .tcgws-card-grid {
-  position: relative;
-  min-height: 260px;
-}
-
-@keyframes tcgws-release-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes tcgws-release-shimmer {
-  0%, 100% { background-position: 100% 0; }
-  50% { background-position: 0 0; }
-}
-
-@media (max-width: 900px) {
+@media (max-width: 1050px) {
   .tcgws-release-browser__index-grid { grid-template-columns: 1fr; }
-  .tcgws-release-browser__detail-header { align-items: flex-start; flex-wrap: wrap; }
-  .tcgws-release-browser__detail-preview { order: 3; width: 100%; min-width: 0; height: 300px; }
-  .tcgws-release-browser .tcgws-set-strip > button { grid-template-rows: 140px minmax(0, 1fr); }
-  .tcgws-release-browser .tcgws-set-strip__preview { min-height: 140px; }
-  .tcgws-release-browser .tcgws-release-progress { margin-left: auto; }
+  .tcgws-release-browser__detail-header { grid-template-columns: minmax(0, 1fr) 220px; }
+  .tcgws-release-browser__detail-preview { grid-column: 2; grid-row: 1; }
+  .tcgws-release-browser .tcgws-release-progress { grid-column: 1; grid-row: 2; }
+}
+@media (max-width: 760px) {
+  .tcgws-release-browser__index-header { grid-template-columns: 1fr; align-items: stretch; }
+  .tcgws-release-browser__index-actions { justify-content: flex-start; }
+  .tcgws-release-browser__index-tile { grid-template-columns: 136px minmax(0, 1fr); }
+  .tcgws-release-browser__cover { min-height: 260px; }
+  .tcgws-release-browser__detail-header { display: flex; flex-wrap: wrap; }
+  .tcgws-release-browser__detail-header > div:first-child { flex: 1 1 100%; }
+  .tcgws-release-browser__detail-preview { min-height: 190px; flex: 1 1 100%; }
+  .tcgws-release-browser .tcgws-release-progress { min-width: 100%; }
   .tcgws-release-browser .tcgws-rarity-completion { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tcgws-release-economy { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-
-@media (max-width: 620px) {
-  .tcgws-release-browser h1 { font-size: 32px; }
-  .tcgws-release-browser__index-header { align-items: stretch; flex-direction: column; }
-  .tcgws-release-browser__view-count { align-self: flex-start; }
+@media (max-width: 560px) {
+  .tcgws-release-browser h1 { font-size: 27px; }
+  .tcgws-release-browser__index-actions { align-items: stretch; flex-direction: column; }
+  .tcgws-release-browser__index-actions > * { width: 100%; }
   .tcgws-release-browser__index-tile { grid-template-columns: 1fr; }
-  .tcgws-release-browser__cover { min-height: 300px; }
-  .tcgws-release-browser .tcgws-set-strip > button { grid-template-rows: 120px minmax(0, 1fr); }
-  .tcgws-release-browser .tcgws-set-strip__preview { min-height: 120px; }
-  .tcgws-release-browser__index-tile > section { padding: 20px; }
-  .tcgws-release-browser .tcgws-release-progress { width: 100%; margin-left: 0; align-items: flex-start; }
-  .tcgws-release-browser .tcgws-release-progress > span { text-align: left; }
+  .tcgws-release-browser__cover { min-height: 220px; }
+  .tcgws-release-browser__index-tile > section { padding: 15px; }
   .tcgws-release-browser .tcgws-rarity-completion { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tcgws-release-economy { grid-template-columns: 1fr; }
+  .tcgws-release-browser .tcgws-set-strip { grid-template-columns: 1fr 1fr; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .tcgws-release-browser *,
   .tcgws-release-browser *::before,
-  .tcgws-release-browser *::after {
-    animation-duration: .01ms !important;
-    transition-duration: .01ms !important;
-  }
+  .tcgws-release-browser *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

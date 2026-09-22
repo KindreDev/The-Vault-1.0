@@ -409,6 +409,8 @@ def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
     activity.record(db, "cum", image_id=img.id)
     from services.bond_cards import sync_bond_card_for_image
     sync_bond_card_for_image(db, img, live_event=True)
+    from services.foundation_catalog import ensure_foundation_spr_for_source
+    foundation_unlock = ensure_foundation_spr_for_source(db, image_id=img.id)
     # Also bump gallery count
     if img.gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == img.gallery_id).first()
@@ -417,7 +419,7 @@ def log_cum(image_id: int, data: CumCountUpdate, db: Session = Depends(get_db)):
             activity.record(db, "gallery_cum", gallery_id=gallery.id)
     db.commit()
     xp = gami.notify_action(db, "cum_logged")
-    return {"cum_count": img.cum_count, "xp": xp}
+    return {"cum_count": img.cum_count, "xp": xp, "foundation_unlock": foundation_unlock}
 
 
 @router.get("/{image_id}/stats")

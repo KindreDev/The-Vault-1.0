@@ -20,6 +20,8 @@ from models import (
     Gallery, HofCrown, Image, Tag, TCGChecklistEntry, TCGBinder, TCGBinderSection,
     TCGBinderSlot, TCGPackOpening, TCGPackOpeningCard, TCGPackProduct,
     TCGPackToken, TCGRelease, TCGSet, TCGSettings, TCGWorkshopUnlock,
+    TCGPhysicalCardCopy, TCGDisplayAssignment, TCGOnlineOrder, TCGOnlineOrderLine,
+    TCGParcel, TCGParcelPack,
     TCGSetupState, UserProfile, gallery_creators, gallery_tags, image_creators, image_tags,
 )
 from services.cards import _card_to_dict, prepare_card_face_for_reveal
@@ -39,10 +41,77 @@ PACK_PRICE_DEFAULTS = {
     "release_standard": {"regular_price": 550, "launch_price": 700},
     "release_premium": {"regular_price": 1000, "launch_price": 1250},
 }
+PACK_PRICE_FORMULA_VERSION = "monthly-pack-price-v1"
+PACK_PRICE_STEP = 25
+PACK_PRICE_BOUNDS = {
+    "release_standard": {
+        "regular_price": (300, 900), "launch_price": (400, 1125),
+    },
+    "release_premium": {
+        "regular_price": (600, 1600), "launch_price": (750, 2000),
+    },
+}
 PACK_ODDS_DEFAULTS = {
     "release_standard": {"C": 0.57, "R": 0.30, "SR": 0.11, "UR": 0.018, "SPR": 0.002},
     "release_premium": {"SR": 0.80, "UR": 0.17, "SPR": 0.03},
 }
+
+# Monthly releases scale with the published Foundation base-card count, not
+# with SPR parallels.  These anchors preserve the accepted September scale
+# while making larger collections meaningfully broader without runaway packs.
+MONTHLY_RELEASE_SIZE_FORMULA_VERSION = "monthly-release-size-v1"
+MONTHLY_RELEASE_SIZE_ANCHORS = (
+    (10_000, 300),
+    (30_000, 460),
+    (60_000, 620),
+    (100_000, 800),
+    (160_000, 1_000),
+)
+MONTHLY_RELEASE_SIZE_FLOOR = 120
+MONTHLY_RELEASE_REFERENCE_TARGET = 620
+MONTHLY_RELEASE_ALGORITHM_VERSION = "release-v5-dynamic-size"
+
+
+def _round_pack_price(value: float) -> int:
+    """Round prices deterministically to the nearest 25-credit step."""
+    return int(math.floor(float(value) / PACK_PRICE_STEP + 0.5) * PACK_PRICE_STEP)
+
+
+def monthly_pack_prices(product_kind: str, economy_modifier: float) -> dict:
+    """Scale a future monthly product's prices from its frozen release size.
+
+    The 1.0 reference preserves September exactly. Floors keep small libraries
+    affordable without making packs trivial, and ceilings prevent a large
+    catalogue from turning Premium into a whale-only sink.
+    """
+    if product_kind not in PACK_PRICE_DEFAULTS:
+        raise ValueError(f"Unsupported monthly product kind: {product_kind}")
+    modifier = max(0.01, float(economy_modifier or 0.0))
+    values = {}
+    for field, base in PACK_PRICE_DEFAULTS[product_kind].items():
+        floor, ceiling = PACK_PRICE_BOUNDS[product_kind][field]
+        values[field] = min(ceiling, max(floor, _round_pack_price(base * modifier)))
+    return values
+
+
+def _release_economy_modifier(release: TCGRelease | None) -> float:
+    """Read the immutable modifier from a release manifest/report."""
+    if not release:
+        return 1.0
+    for raw in (release.generation_report, release.manifest_json):
+        payload = _json(raw, {})
+        if payload.get("economy_modifier") is not None:
+            return float(payload["economy_modifier"])
+    return 1.0
+
+
+def _release_price_metadata(release: TCGRelease | None, product_kind: str) -> dict:
+    modifier = _release_economy_modifier(release)
+    return {
+        "formula_version": PACK_PRICE_FORMULA_VERSION,
+        "economy_modifier": round(modifier, 6),
+        "prices": monthly_pack_prices(product_kind, modifier),
+    }
 
 # More specific evidence wins. Terms are normalized before matching and are
 # deliberately explicit: sexual intensity is not inferred from exposure alone.
@@ -509,7 +578,7 @@ def seed_foundation_release(db: Session) -> TCGRelease | None:
         release = TCGRelease(
             code="FND-CORE", name="Founder's Catalogue", description="The permanent opening catalogue of the Vault TCG.",
             status="published", release_kind="foundation", generation_mode="automatic",
-            generation_seed="foundation-catalog-v1", algorithm_version="foundation-v1",
+            generation_seed="foundation-catalog-v2", algorithm_version="foundation-v2-engagement-spr",
             published_at=now, available_from=now, frozen_at=now,
         )
         db.add(release)
@@ -541,7 +610,12 @@ def seed_foundation_release(db: Session) -> TCGRelease | None:
             published_rarity=rarity, selection_reason="Foundation catalogue publication",
         ))
     total = db.query(func.count(TCGChecklistEntry.id)).filter(TCGChecklistEntry.release_id == release.id).scalar() or len(cards)
-    release.manifest_json = json.dumps({"frozen": True, "base_total": total, "source": "foundation_catalog"})
+    release.algorithm_version = "foundation-v2-engagement-spr"
+    release.manifest_json = json.dumps({
+        "frozen": False, "base_total": total,
+        "spr_target": round(total * 40 / 620), "append_only_spr": True,
+        "spr_unlock_cum_threshold": 6, "source": "foundation_catalog",
+    })
     tcg_set.manifest_json = release.manifest_json
     return release
 
@@ -581,6 +655,7 @@ def _backfill_release_products(db: Session) -> None:
             definition = _release_pack_definition(product_kind)
             code = f"{release.code}-{definition['suffix']}"
             product = db.query(TCGPackProduct).filter(TCGPackProduct.code == code).first()
+            price_metadata = _release_price_metadata(release, product_kind)
             if not product:
                 product = TCGPackProduct(
                     code=code, name=f"{release.name} {definition['name']}",
@@ -593,9 +668,12 @@ def _backfill_release_products(db: Session) -> None:
                         "within_pack": True, "owned_cards_eligible": True,
                         "missing_weight": False, "pity": False,
                     }),
-                    eligible_pool_json=json.dumps({"release_id": release.id, "release_code": release.code}),
-                    regular_price=PACK_PRICE_DEFAULTS[product_kind]["regular_price"],
-                    launch_price=PACK_PRICE_DEFAULTS[product_kind]["launch_price"],
+                    eligible_pool_json=json.dumps({
+                        "release_id": release.id, "release_code": release.code,
+                        "price_model": price_metadata,
+                    }),
+                    regular_price=price_metadata["prices"]["regular_price"],
+                    launch_price=price_metadata["prices"]["launch_price"],
                     launch_days=7, available_from=release.available_from or release.published_at,
                     purchasable=True,
                 )
@@ -614,15 +692,18 @@ def _backfill_release_products(db: Session) -> None:
                 if not product.rarity_floor:
                     product.rarity_floor = definition["rarity_floor"]
                 if not product.regular_price:
-                    product.regular_price = PACK_PRICE_DEFAULTS[product_kind]["regular_price"]
+                    product.regular_price = price_metadata["prices"]["regular_price"]
                 if not product.launch_price:
-                    product.launch_price = PACK_PRICE_DEFAULTS[product_kind]["launch_price"]
+                    product.launch_price = price_metadata["prices"]["launch_price"]
                 if not product.launch_days:
                     product.launch_days = 7
                 if not product.available_from:
                     product.available_from = release.available_from or release.published_at
                 if not _json(product.eligible_pool_json, {}):
-                    product.eligible_pool_json = json.dumps({"release_id": release.id, "release_code": release.code})
+                    product.eligible_pool_json = json.dumps({
+                        "release_id": release.id, "release_code": release.code,
+                        "price_model": price_metadata,
+                    })
 
             report = _automatic_pack_report(product)
             product.simulation_report = json.dumps(report)
@@ -1251,25 +1332,184 @@ def _matches_theme(candidate: dict, theme: dict) -> bool:
     )
 
 
+def monthly_release_size(collection_size: int, candidate_pool_size: int | None = None) -> int:
+    """Return the bounded monthly base-printing target for a collection.
+
+    The formula is piecewise-linear between the approved collection-size
+    anchors.  Collections below the first anchor receive the small-library
+    floor, while the available unique candidate pool always remains the hard
+    upper bound.  The caller should use the published Foundation base count
+    as ``collection_size`` and exclude all linked SPR parallels.
+    """
+    collection_size = max(0, int(collection_size or 0))
+    if not collection_size:
+        target = 0
+    elif collection_size < MONTHLY_RELEASE_SIZE_ANCHORS[0][0]:
+        target = MONTHLY_RELEASE_SIZE_FLOOR
+    else:
+        target = MONTHLY_RELEASE_SIZE_ANCHORS[-1][1]
+        for (left_size, left_target), (right_size, right_target) in zip(
+            MONTHLY_RELEASE_SIZE_ANCHORS, MONTHLY_RELEASE_SIZE_ANCHORS[1:],
+        ):
+            if collection_size <= right_size:
+                fraction = (collection_size - left_size) / (right_size - left_size)
+                target = _round_half_up(left_target + fraction * (right_target - left_target))
+                break
+    if candidate_pool_size is not None:
+        target = min(target, max(0, int(candidate_pool_size or 0)))
+    return max(0, int(target))
+
+
+def monthly_release_economy_modifier(target: int) -> float:
+    """Return the explicit release-size multiplier relative to September."""
+    return round(max(0, int(target or 0)) / MONTHLY_RELEASE_REFERENCE_TARGET, 6)
+
+
+def _monthly_release_size_metadata(
+    collection_size: int,
+    candidate_pool_size: int,
+    *,
+    collection_size_source: str,
+) -> dict:
+    """Freeze the size formula inputs and result into a release manifest."""
+    target = monthly_release_size(collection_size, candidate_pool_size)
+    return {
+        "collection_size": max(0, int(collection_size or 0)),
+        "collection_size_source": collection_size_source,
+        "candidate_pool": max(0, int(candidate_pool_size or 0)),
+        "target": target,
+        "economy_modifier": monthly_release_economy_modifier(target),
+        "formula_version": MONTHLY_RELEASE_SIZE_FORMULA_VERSION,
+        "formula_anchors": [
+            {"collection_size": collection, "target": target_size}
+            for collection, target_size in MONTHLY_RELEASE_SIZE_ANCHORS
+        ],
+        "small_library_floor": MONTHLY_RELEASE_SIZE_FLOOR,
+        "reference_target": MONTHLY_RELEASE_REFERENCE_TARGET,
+    }
+
+
+_RELEASE_RARITY_ANCHORS = (
+    # Base-printing size -> UR and linked SPR targets.  The non-UR tiers are
+    # distributed from the approved 620-card proportions below.
+    (120, 20, 8),
+    (180, 25, 12),
+    (300, 40, 20),
+    (620, 70, 40),
+)
+_NON_UR_RARITY_WEIGHTS = {"C": 300, "R": 140, "SR": 110}
+
+
+def _round_half_up(value: float) -> int:
+    return int(math.floor(value + 0.5))
+
+
+def _interpolated_release_count(target: int, value_index: int) -> int:
+    """Interpolate an approved rarity count for an adaptive release size."""
+    target = max(0, int(target))
+    if target == 0:
+        return 0
+    if target <= _RELEASE_RARITY_ANCHORS[0][0]:
+        size, ur, spr = _RELEASE_RARITY_ANCHORS[0]
+        return _round_half_up(target * (ur if value_index == 1 else spr) / size)
+    for (left_size, left_ur, left_spr), (right_size, right_ur, right_spr) in zip(
+        _RELEASE_RARITY_ANCHORS, _RELEASE_RARITY_ANCHORS[1:],
+    ):
+        if target <= right_size:
+            left_value = left_ur if value_index == 1 else left_spr
+            right_value = right_ur if value_index == 1 else right_spr
+            fraction = (target - left_size) / (right_size - left_size)
+            return _round_half_up(left_value + fraction * (right_value - left_value))
+    size, ur, spr = _RELEASE_RARITY_ANCHORS[-1]
+    return _round_half_up(target * (ur if value_index == 1 else spr) / size)
+
+
+def _release_rarity_targets(target: int) -> dict[str, int]:
+    """Return deterministic base and additive SPR targets for a release.
+
+    The 620-card target is exactly 300 C / 140 R / 110 SR / 70 UR plus 40
+    linked SPR parallels.  Smaller adaptive releases preserve the same
+    non-UR proportions while following the approved UR/SPR anchor points.
+    Foundation deliberately does not use this monthly-release path.
+    """
+    target = max(0, int(target))
+    ur_target = min(target, _interpolated_release_count(target, 1))
+    spr_target = min(ur_target, _interpolated_release_count(target, 2))
+    non_ur_total = target - ur_target
+
+    raw = {
+        rarity: non_ur_total * weight / sum(_NON_UR_RARITY_WEIGHTS.values())
+        for rarity, weight in _NON_UR_RARITY_WEIGHTS.items()
+    }
+    counts = {rarity: int(math.floor(value)) for rarity, value in raw.items()}
+    remainder = non_ur_total - sum(counts.values())
+    for rarity in sorted(raw, key=lambda key: (-(raw[key] - counts[key]), key))[:remainder]:
+        counts[rarity] += 1
+    return {
+        "C": counts["C"], "R": counts["R"], "SR": counts["SR"],
+        "UR": ur_target, "SPR": spr_target,
+    }
+
+
+def _select_spr_source_keys(allocated: list[dict], spr_target: int) -> list[str]:
+    """Choose the fixed UR bases that will receive linked SPR parallels."""
+    ur_candidates = [
+        candidate for candidate in allocated
+        if candidate.get("published_rarity") == "UR" and candidate.get("source_key")
+    ]
+    ur_candidates.sort(key=lambda item: (
+        not bool(item.get("spr_eligible")),
+        int(item.get("prior_printings", 0)),
+        -float(item.get("engagement", 0) or 0),
+        item["source_key"],
+    ))
+    return [candidate["source_key"] for candidate in ur_candidates[:max(0, int(spr_target))]]
+
+
 def _validate_release_proposal(manifest: dict) -> dict:
     candidates = manifest.get("candidates", [])
     themes = manifest.get("themes", [])
     base = [candidate for candidate in candidates if candidate.get("lane") != "parallel"]
-    rarity = Counter(candidate["published_rarity"] for candidate in base)
-    target = manifest.get("target", len(base))
-    full_size = target >= 620
+    rarity = Counter(candidate.get("published_rarity") for candidate in base)
+    target = int(manifest.get("target", len(base)))
+    expected = _release_rarity_targets(target)
     errors = []
     warnings = []
     if len(themes) < 10:
         errors.append(f"Only {len(themes)} valid themes were found; ten are required.")
-    if len(base) < target:
-        errors.append(f"Only {len(base)} of {target} required base printings were allocated.")
-    expected_ur = 50 if full_size else max(1, math.floor(target * 50 / 620))
-    if rarity["UR"] < expected_ur:
-        errors.append(f"UR coverage is {rarity['UR']}; at least {expected_ur} is required at this scale.")
-    expected_sr = 120 if full_size else max(1, math.floor(target * 120 / 620))
-    if rarity["SR"] < expected_sr:
-        warnings.append(f"SR supply is {rarity['SR']}; the scaled target is {expected_sr}.")
+    if len(base) != target:
+        errors.append(f"Exactly {target} base printings are required; {len(base)} were allocated.")
+    declared_targets = manifest.get("rarity_targets")
+    if declared_targets is None:
+        errors.append("The release manifest is missing its explicit rarity targets.")
+    elif {key: int(declared_targets.get(key, -1)) for key in expected} != expected:
+        errors.append("The release manifest rarity targets do not match the approved scale.")
+    for rarity_name in ("C", "R", "SR", "UR"):
+        if rarity[rarity_name] != expected[rarity_name]:
+            errors.append(
+                f"{rarity_name} coverage is {rarity[rarity_name]}; "
+                f"exactly {expected[rarity_name]} is required at this scale."
+            )
+    spr_target = manifest.get("spr_target")
+    if spr_target is None:
+        errors.append("The release manifest is missing its explicit SPR target.")
+        spr_target = expected["SPR"]
+    else:
+        spr_target = int(spr_target)
+        if spr_target != expected["SPR"]:
+            errors.append(f"SPR target is {spr_target}; exactly {expected['SPR']} is required at this scale.")
+    spr_source_keys = manifest.get("spr_source_keys")
+    if spr_source_keys is None:
+        errors.append("The release manifest is missing its explicit SPR source list.")
+        spr_source_keys = []
+    spr_source_keys = list(spr_source_keys)
+    base_by_key = {candidate.get("source_key"): candidate for candidate in base}
+    if len(spr_source_keys) != spr_target or len(set(spr_source_keys)) != len(spr_source_keys):
+        errors.append(f"Exactly {spr_target} unique UR bases must be assigned SPR parallels.")
+    for source_key in spr_source_keys:
+        candidate = base_by_key.get(source_key)
+        if not candidate or candidate.get("published_rarity") != "UR":
+            errors.append(f"SPR source {source_key!r} is not a UR base printing in this release.")
     source_keys = [candidate["source_key"] for candidate in base]
     if len(source_keys) != len(set(source_keys)):
         errors.append("The proposal contains duplicate source definitions.")
@@ -1277,67 +1517,303 @@ def _validate_release_proposal(manifest: dict) -> dict:
     dominant = creator_counts.most_common(1)[0] if creator_counts else (None, 0)
     if base and dominant[1] / len(base) > 0.12:
         errors.append(f"Creator {dominant[0]} occupies {dominant[1] / len(base):.1%} of the release.")
+    distribution = dict(rarity)
+    distribution["SPR"] = len(spr_source_keys)
     return {
         "valid": not errors, "errors": errors, "warnings": warnings,
-        "base_count": len(base), "theme_count": len(themes), "rarity_distribution": dict(rarity),
+        "base_count": len(base), "theme_count": len(themes), "rarity_distribution": distribution,
         "creator_max": {"creator_id": dominant[0], "count": dominant[1]},
+        "rarity_targets": expected,
+        "spr_target": spr_target,
+        "spr_source_count": len(spr_source_keys),
     }
 
 
 def _rebalance_release_rarities(allocated: list[dict], candidates: list[dict], themes: list[dict], target: int) -> list[dict]:
-    """Meet release rarity floors by swapping like-for-like source printings.
+    """Meet the exact release rarity distribution by swapping source printings.
 
     Published rarity is immutable, so this never promotes a card. It replaces a
-    lower-rarity allocation with an unused source already published at the
+    surplus-rarity allocation with an unused source already published at the
     required rarity and preserves the donor's release lane and themed set.
     """
-    requirements = {
-        "UR": 50 if target >= 620 else max(1, math.floor(target * 50 / 620)),
-        "SR": 120 if target >= 620 else max(1, math.floor(target * 120 / 620)),
-    }
+    requirements = _release_rarity_targets(target)
     result = list(allocated)
     used = {candidate["source_key"] for candidate in result}
 
-    for rarity in ("UR", "SR"):
-        missing = max(0, requirements[rarity] - sum(
-            candidate["published_rarity"] == rarity for candidate in result
-        ))
+    # Each replacement fixes one deficit and one surplus.  Repeating by target
+    # tier makes the result exact whenever the source pool can support it.
+    for _ in range(len(requirements) * max(1, len(result))):
+        counts = Counter(candidate.get("published_rarity") for candidate in result)
+        needed = next((rarity for rarity in ("UR", "SR", "R", "C") if counts[rarity] < requirements[rarity]), None)
+        if needed is None:
+            break
         pool = [
             candidate for candidate in candidates
-            if candidate["source_key"] not in used and candidate["published_rarity"] == rarity
+            if candidate["source_key"] not in used and candidate.get("published_rarity") == needed
         ]
         pool.sort(key=lambda item: (
-            item["prior_printings"], -item["confidence"], -item["engagement"], item["source_key"],
+            item.get("prior_printings", 0), -item.get("confidence", 0),
+            -item.get("engagement", 0), item["source_key"],
         ))
-
-        for replacement in pool:
-            if missing <= 0:
-                break
-            donor_indexes = [
-                index for index, donor in enumerate(result)
-                if donor["published_rarity"] in {"C", "R"}
-            ]
-            matching_indexes = [
-                index for index in donor_indexes
-                if result[index].get("theme_index") is not None
-                and result[index]["theme_index"] < len(themes)
-                and _matches_theme(replacement, themes[result[index]["theme_index"]])
-            ]
-            unthemed_indexes = [index for index in donor_indexes if result[index].get("theme_index") is None]
-            choices = matching_indexes or unthemed_indexes or donor_indexes
-            if not choices:
-                break
-            donor_index = choices[-1]
-            donor = result[donor_index]
-            result[donor_index] = {
-                **replacement,
-                "theme_index": donor.get("theme_index"),
-                "lane": donor.get("lane", "discovery"),
-            }
-            used.discard(donor["source_key"])
-            used.add(replacement["source_key"])
-            missing -= 1
+        replacement = pool[0] if pool else None
+        if replacement is None:
+            break
+        donor_indexes = [
+            index for index, donor in enumerate(result)
+            if counts[donor.get("published_rarity")] > requirements.get(donor.get("published_rarity"), 0)
+        ]
+        matching_indexes = [
+            index for index in donor_indexes
+            if result[index].get("theme_index") is not None
+            and result[index]["theme_index"] < len(themes)
+            and _matches_theme(replacement, themes[result[index]["theme_index"]])
+        ]
+        unthemed_indexes = [index for index in donor_indexes if result[index].get("theme_index") is None]
+        choices = matching_indexes or unthemed_indexes or donor_indexes
+        if not choices:
+            break
+        donor_index = choices[-1]
+        donor = result[donor_index]
+        result[donor_index] = {
+            **replacement,
+            "theme_index": donor.get("theme_index"),
+            "lane": donor.get("lane", "discovery"),
+        }
+        used.discard(donor["source_key"])
+        used.add(replacement["source_key"])
     return result
+
+
+def _enforce_release_creator_cap(allocated: list[dict], candidates: list[dict], target: int) -> list[dict]:
+    """Keep adaptive releases diverse without changing their rarity totals."""
+    limit = max(1, int(math.floor(max(1, target) * 0.12)))
+    result = list(allocated)
+    used = {candidate["source_key"] for candidate in result}
+    for _ in range(len(result)):
+        creator_counts = Counter(
+            candidate.get("creator_id") for candidate in result if candidate.get("creator_id")
+        )
+        dominant = creator_counts.most_common(1)[0] if creator_counts else (None, 0)
+        if dominant[1] <= limit:
+            break
+        donor_indexes = [
+            index for index, candidate in enumerate(result)
+            if candidate.get("creator_id") == dominant[0]
+        ]
+        donor_indexes.sort(key=lambda index: (
+            result[index].get("lane") == "themed_set",
+            result[index].get("prior_printings", 0),
+            -float(result[index].get("engagement", 0) or 0),
+            result[index]["source_key"],
+        ))
+        donor_index = donor_indexes[-1]
+        donor = result[donor_index]
+        pool = [
+            candidate for candidate in candidates
+            if candidate["source_key"] not in used
+            and candidate.get("published_rarity") == donor.get("published_rarity")
+            and candidate.get("creator_id") != dominant[0]
+            and (
+                not candidate.get("creator_id")
+                or creator_counts.get(candidate.get("creator_id"), 0) < limit
+            )
+        ]
+        pool.sort(key=lambda candidate: (
+            candidate.get("prior_printings", 0),
+            -float(candidate.get("confidence", 0) or 0),
+            -float(candidate.get("engagement", 0) or 0),
+            candidate["source_key"],
+        ))
+        replacement = pool[0] if pool else None
+        if replacement is None:
+            break
+        result[donor_index] = {
+            **replacement,
+            "theme_index": donor.get("theme_index"),
+            "lane": donor.get("lane", "discovery"),
+        }
+        used.discard(donor["source_key"])
+        used.add(replacement["source_key"])
+    return result
+
+
+def reset_published_release(db: Session, code: str, *, dry_run: bool = False) -> dict:
+    """Remove one published monthly release and its owned records.
+
+    This is intentionally narrower than a general TCG reset.  It is used for
+    an explicitly authorized release replacement: Foundation, source media,
+    creator/gallery records, and unrelated catalogue cards remain untouched.
+    The operation is idempotent when the release code no longer exists.
+    """
+    release = db.query(TCGRelease).filter(TCGRelease.code == code).first()
+    if not release:
+        return {"status": "missing", "code": code, "dry_run": dry_run, "counts": {}}
+    if release.release_kind == "foundation" or code == "FND-CORE":
+        raise ValueError("Foundation releases cannot be reset by this helper")
+
+    release_id = release.id
+    set_ids = [row[0] for row in db.query(TCGSet.id).filter(TCGSet.release_id == release_id).all()]
+    product_ids = [row[0] for row in db.query(TCGPackProduct.id).filter(TCGPackProduct.release_id == release_id).all()]
+
+    # The catalogue code is the authoritative ownership boundary.  Include
+    # checklist cards as a defensive fallback for older manifests, then close
+    # over any linked parallels before removing the card rows.
+    card_ids = set(row[0] for row in db.query(Card.id).filter(Card.catalog_code == code).all())
+    card_ids.update(row[0] for row in db.query(TCGChecklistEntry.card_id).filter(
+        TCGChecklistEntry.release_id == release_id,
+    ).all())
+    while card_ids:
+        children = {
+            row[0] for row in db.query(Card.id).filter(Card.parallel_of_id.in_(card_ids)).all()
+            if row[0] not in card_ids
+        }
+        if not children:
+            break
+        card_ids.update(children)
+    card_ids = sorted(card_ids)
+
+    opening_ids = {
+        row[0] for row in db.query(TCGPackOpening.id).filter(or_(
+            TCGPackOpening.product_id.in_(product_ids) if product_ids else False,
+            TCGPackOpening.selected_release_id == release_id,
+        )).all()
+    }
+    opening_ids = sorted(opening_ids)
+    inventory_ids = [row[0] for row in db.query(CardInventory.id).filter(
+        CardInventory.card_id.in_(card_ids) if card_ids else False,
+    ).all()]
+    physical_copy_ids = [row[0] for row in db.query(TCGPhysicalCardCopy.id).filter(
+        TCGPhysicalCardCopy.card_id.in_(card_ids) if card_ids else False,
+    ).all()]
+    order_line_ids = [row[0] for row in db.query(TCGOnlineOrderLine.id).filter(
+        TCGOnlineOrderLine.product_id.in_(product_ids) if product_ids else False,
+    ).all()]
+    order_ids = [row[0] for row in db.query(TCGOnlineOrderLine.order_id).filter(
+        TCGOnlineOrderLine.id.in_(order_line_ids) if order_line_ids else False,
+    ).all()]
+    parcel_ids = [row[0] for row in db.query(TCGParcelPack.parcel_id).filter(or_(
+        TCGParcelPack.line_id.in_(order_line_ids) if order_line_ids else False,
+        TCGParcelPack.opening_id.in_(opening_ids) if opening_ids else False,
+    )).distinct().all()]
+
+    counts = {
+        "release": 1,
+        "sets": len(set_ids),
+        "checklist_entries": db.query(TCGChecklistEntry.id).filter(
+            TCGChecklistEntry.release_id == release_id,
+        ).count(),
+        "pack_products": len(product_ids),
+        "pack_tokens": db.query(TCGPackToken.id).filter(
+            TCGPackToken.product_id.in_(product_ids) if product_ids else False,
+        ).count(),
+        "pack_openings": len(opening_ids),
+        "pack_opening_cards": db.query(TCGPackOpeningCard.id).filter(or_(
+            TCGPackOpeningCard.opening_id.in_(opening_ids) if opening_ids else False,
+            TCGPackOpeningCard.card_id.in_(card_ids) if card_ids else False,
+        )).count(),
+        "card_acquisitions": db.query(CardAcquisition.id).filter(or_(
+            CardAcquisition.card_id.in_(card_ids) if card_ids else False,
+            CardAcquisition.pack_opening_id.in_(opening_ids) if opening_ids else False,
+        )).count(),
+        "cards": len(card_ids),
+        "card_inventory": len(inventory_ids),
+        "physical_copies": len(physical_copy_ids),
+        "presentation_overrides": db.query(CardPresentationOverride.id).filter(
+            CardPresentationOverride.card_id.in_(card_ids) if card_ids else False,
+        ).count(),
+        "content_classifications": db.query(CardContentClassification.id).filter(
+            CardContentClassification.card_id.in_(card_ids) if card_ids else False,
+        ).count(),
+        "binder_references_cleared": db.query(TCGBinderSlot.id).filter(or_(
+            TCGBinderSlot.card_id.in_(card_ids) if card_ids else False,
+            TCGBinderSlot.physical_copy_id.in_(physical_copy_ids) if physical_copy_ids else False,
+        )).count(),
+        "display_assignments": db.query(TCGDisplayAssignment.id).filter(
+            TCGDisplayAssignment.physical_copy_id.in_(physical_copy_ids) if physical_copy_ids else False,
+        ).count(),
+        "online_order_lines": len(order_line_ids),
+        "parcel_packs": db.query(TCGParcelPack.id).filter(or_(
+            TCGParcelPack.line_id.in_(order_line_ids) if order_line_ids else False,
+            TCGParcelPack.opening_id.in_(opening_ids) if opening_ids else False,
+        )).count(),
+        "parcels": len(parcel_ids),
+        "orders": len(set(order_ids)),
+    }
+    if dry_run:
+        return {"status": "planned", "code": code, "release_id": release_id, "dry_run": True, "counts": counts}
+
+    # Clear nullable physical references while preserving the user's binders.
+    if card_ids or physical_copy_ids:
+        db.query(TCGBinderSlot).filter(or_(
+            TCGBinderSlot.card_id.in_(card_ids) if card_ids else False,
+            TCGBinderSlot.physical_copy_id.in_(physical_copy_ids) if physical_copy_ids else False,
+        )).update({TCGBinderSlot.card_id: None, TCGBinderSlot.physical_copy_id: None}, synchronize_session=False)
+    if physical_copy_ids:
+        db.query(TCGDisplayAssignment).filter(
+            TCGDisplayAssignment.physical_copy_id.in_(physical_copy_ids),
+        ).delete(synchronize_session=False)
+    if card_ids:
+        db.query(HofCrown).filter(HofCrown.card_id.in_(card_ids)).update(
+            {HofCrown.card_id: None}, synchronize_session=False,
+        )
+        db.query(CardPresentationOverride).filter(CardPresentationOverride.card_id.in_(card_ids)).delete(synchronize_session=False)
+        db.query(CardContentClassification).filter(CardContentClassification.card_id.in_(card_ids)).delete(synchronize_session=False)
+        db.query(CreatorShowcase).filter(CreatorShowcase.inventory_id.in_(inventory_ids) if inventory_ids else False).delete(synchronize_session=False)
+        db.query(CardInventory).filter(CardInventory.id.in_(inventory_ids) if inventory_ids else False).delete(synchronize_session=False)
+    if physical_copy_ids:
+        db.query(TCGPhysicalCardCopy).filter(TCGPhysicalCardCopy.id.in_(physical_copy_ids)).delete(synchronize_session=False)
+    db.query(TCGPackOpeningCard).filter(or_(
+        TCGPackOpeningCard.opening_id.in_(opening_ids) if opening_ids else False,
+        TCGPackOpeningCard.card_id.in_(card_ids) if card_ids else False,
+    )).delete(synchronize_session=False)
+    db.query(CardAcquisition).filter(or_(
+        CardAcquisition.card_id.in_(card_ids) if card_ids else False,
+        CardAcquisition.pack_opening_id.in_(opening_ids) if opening_ids else False,
+    )).delete(synchronize_session=False)
+    db.query(TCGParcelPack).filter(or_(
+        TCGParcelPack.line_id.in_(order_line_ids) if order_line_ids else False,
+        TCGParcelPack.opening_id.in_(opening_ids) if opening_ids else False,
+    )).delete(synchronize_session=False)
+    db.query(TCGPackOpening).filter(TCGPackOpening.id.in_(opening_ids) if opening_ids else False).delete(synchronize_session=False)
+    db.query(TCGPackToken).filter(TCGPackToken.product_id.in_(product_ids) if product_ids else False).delete(synchronize_session=False)
+    db.query(TCGOnlineOrderLine).filter(TCGOnlineOrderLine.id.in_(order_line_ids) if order_line_ids else False).delete(synchronize_session=False)
+
+    # Order/parcel containers that became empty belong entirely to the reset
+    # release; mixed orders remain intact.
+    for parcel_id in parcel_ids:
+        if not db.query(TCGParcelPack.id).filter(TCGParcelPack.parcel_id == parcel_id).first():
+            db.query(TCGParcel).filter(TCGParcel.id == parcel_id).delete(synchronize_session=False)
+    for order_id in set(order_ids):
+        if not db.query(TCGOnlineOrderLine.id).filter(TCGOnlineOrderLine.order_id == order_id).first():
+            db.query(TCGParcel).filter(TCGParcel.order_id == order_id).delete(synchronize_session=False)
+            db.query(TCGOnlineOrder).filter(TCGOnlineOrder.id == order_id).delete(synchronize_session=False)
+
+    db.query(TCGChecklistEntry).filter(TCGChecklistEntry.release_id == release_id).delete(synchronize_session=False)
+    db.query(Card).filter(Card.id.in_(card_ids) if card_ids else False).delete(synchronize_session=False)
+    db.query(TCGSet).filter(TCGSet.release_id == release_id).delete(synchronize_session=False)
+    db.query(TCGPackProduct).filter(TCGPackProduct.id.in_(product_ids) if product_ids else False).delete(synchronize_session=False)
+    db.query(TCGRelease).filter(TCGRelease.id == release_id).delete(synchronize_session=False)
+    db.commit()
+    return {"status": "deleted", "code": code, "release_id": release_id, "dry_run": False, "counts": counts}
+
+
+def _monthly_collection_size_input(db: Session, candidate_pool_size: int) -> tuple[int, str]:
+    """Resolve the frozen monthly-size denominator without counting SPRs."""
+    foundation = db.query(TCGRelease.id).filter(
+        TCGRelease.release_kind == "foundation",
+        TCGRelease.status == "published",
+    ).order_by(TCGRelease.published_at.asc(), TCGRelease.id.asc()).first()
+    if foundation:
+        foundation_base_count = db.query(func.count(func.distinct(Card.id))).join(
+            TCGChecklistEntry, TCGChecklistEntry.card_id == Card.id,
+        ).filter(
+            TCGChecklistEntry.release_id == foundation[0],
+            TCGChecklistEntry.is_base_printing.is_(True),
+            Card.parallel_of_id.is_(None),
+        ).scalar() or 0
+        if foundation_base_count:
+            return int(foundation_base_count), "foundation_base_cards"
+    return max(0, int(candidate_pool_size or 0)), "unique_candidate_pool"
 
 
 def draft_release(db: Session, *, year: int, month: int, regenerate: bool = False) -> dict:
@@ -1373,7 +1849,13 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
         for card in unique_cards
     ]
     rng.shuffle(candidates)
-    target = min(620, len(candidates))
+    collection_size, collection_size_source = _monthly_collection_size_input(db, len(candidates))
+    release_size = _monthly_release_size_metadata(
+        collection_size,
+        len(candidates),
+        collection_size_source=collection_size_source,
+    )
+    target = release_size["target"]
     themes = _theme_proposals(candidates, _json(settings.enabled_theme_sources, []))
 
     allocated = []
@@ -1402,8 +1884,20 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
         allocated.append({**candidate, "theme_index": None, "lane": "discovery"}); used.add(candidate["source_key"])
 
     allocated = _rebalance_release_rarities(allocated, candidates, themes, target)
+    allocated = _enforce_release_creator_cap(allocated, candidates, target)
 
-    manifest = {"target": target, "themes": themes, "candidates": allocated, "seed": seed, "algorithm_version": "release-v3-personal-value"}
+    rarity_targets = _release_rarity_targets(target)
+    spr_source_keys = _select_spr_source_keys(allocated, rarity_targets["SPR"])
+    manifest = {
+        **release_size,
+        "rarity_targets": rarity_targets,
+        "spr_target": rarity_targets["SPR"],
+        "spr_source_keys": spr_source_keys,
+        "themes": themes,
+        "candidates": allocated,
+        "seed": seed,
+        "algorithm_version": MONTHLY_RELEASE_ALGORITHM_VERSION,
+    }
     validation = _validate_release_proposal(manifest)
     now = datetime.utcnow()
     if not release:
@@ -1411,17 +1905,19 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
             code=code, name=f"{datetime(year, month, 1).strftime('%B %Y')} Release",
             description="A monthly drop assembled from memorable shoots, characters, creators, and themes across the Vault.",
             status="draft", release_kind="monthly", generation_mode=settings.release_generation_mode,
-            generation_seed=seed, algorithm_version="release-v3-personal-value", drafted_at=now,
+            generation_seed=seed, algorithm_version=MONTHLY_RELEASE_ALGORITHM_VERSION, drafted_at=now,
         )
         db.add(release); db.flush()
     release.generation_seed = seed
     release.generation_mode = settings.release_generation_mode
-    release.algorithm_version = "release-v3-personal-value"
+    release.algorithm_version = MONTHLY_RELEASE_ALGORITHM_VERSION
     release.manifest_json = json.dumps(manifest)
     release.validation_report = json.dumps(validation)
     release.rarity_distribution = json.dumps(validation["rarity_distribution"])
     release.generation_report = json.dumps({
-        "candidate_pool": len(candidates), "allocated": len(allocated),
+        **release_size,
+        "allocated": len(allocated),
+        "algorithm_version": MONTHLY_RELEASE_ALGORITHM_VERSION,
         "theme_coverage": [{"name": theme["name"], "eligible": theme["eligible"], "confidence": theme["confidence"]} for theme in themes],
         "reprint_statistics": {
             "sources_considered": len(unique), "selected": len(allocated),
@@ -1512,6 +2008,9 @@ def publish_release(db: Session, release_id: int) -> dict:
     now = datetime.utcnow()
     try:
         from services.foundation_catalog import prepare_acquired_visual
+        spr_source_keys = set(manifest.get("spr_source_keys", []))
+        spr_target = int(manifest.get("spr_target", 0))
+        spr_minted = 0
         for position, candidate in enumerate(manifest["candidates"], start=1):
             source = db.get(Card, candidate["source_card_id"])
             if not source:
@@ -1541,7 +2040,9 @@ def publish_release(db: Session, release_id: int) -> dict:
                     "personal_value": candidate.get("personal_value"),
                 }),
             ))
-            if candidate.get("spr_eligible") and candidate["published_rarity"] == "UR":
+            if candidate.get("source_key") in spr_source_keys:
+                if candidate.get("published_rarity") != "UR":
+                    raise ValueError("An SPR source must reference a UR base printing")
                 parallel = Card(
                     card_type=source.card_type, rarity=source.rarity, foil=False, is_relic=False,
                     is_unique=source.is_unique, source_image_id=source.source_image_id,
@@ -1563,6 +2064,9 @@ def publish_release(db: Session, release_id: int) -> dict:
                     is_base_printing=False, required_for_complete=False,
                     published_rarity="SPR", selection_reason="Linked signature parallel",
                 ))
+                spr_minted += 1
+        if spr_minted != spr_target:
+            raise ValueError(f"SPR minting produced {spr_minted} of {spr_target} required parallels")
         release.status = "published"; release.published_at = now; release.available_from = now; release.frozen_at = now
         for tcg_set in sets:
             tcg_set.frozen_at = now
@@ -1571,6 +2075,7 @@ def publish_release(db: Session, release_id: int) -> dict:
             ("PREM", "Premium Booster", "release_premium", 4, "SR", ["UR"]),
         ):
             code = f"{release.code}-{suffix}"
+            price_metadata = _release_price_metadata(release, kind)
             if not db.query(TCGPackProduct.id).filter(TCGPackProduct.code == code).first():
                 db.add(TCGPackProduct(
                     code=code, name=f"{release.name} {name}", product_kind=kind,
@@ -1579,9 +2084,12 @@ def publish_release(db: Session, release_id: int) -> dict:
                     odds_json=json.dumps(PACK_ODDS_DEFAULTS[kind]),
                     replacement_rules=json.dumps({"same_printing_twice": False}),
                     duplicate_protection=json.dumps({"within_pack": True, "owned_cards_eligible": True, "missing_weight": False, "pity": False}),
-                    eligible_pool_json=json.dumps({"release_id": release.id, "release_code": release.code}),
-                    regular_price=PACK_PRICE_DEFAULTS[kind]["regular_price"],
-                    launch_price=PACK_PRICE_DEFAULTS[kind]["launch_price"], launch_days=7,
+                    eligible_pool_json=json.dumps({
+                        "release_id": release.id, "release_code": release.code,
+                        "price_model": price_metadata,
+                    }),
+                    regular_price=price_metadata["prices"]["regular_price"],
+                    launch_price=price_metadata["prices"]["launch_price"], launch_days=7,
                     available_from=now, purchasable=True, active=False,
                     simulation_report=json.dumps({"approved": False, "reason": "Validation pending."}),
                 ))
@@ -2143,6 +2651,7 @@ def pack_dict(product: TCGPackProduct, release: TCGRelease | None = None) -> dic
     launch_ends = release.published_at + timedelta(days=product.launch_days) if release and release.published_at else None
     launch_active = bool(launch_ends and now < launch_ends and product.launch_price is not None)
     release_name, set_count, pool_summary = _pack_display_context(product, release)
+    eligible_pool = _json(product.eligible_pool_json, {})
     return {
         "id": product.id, "code": product.code, "name": product.name,
         "product_kind": product.product_kind, "release_id": product.release_id,
@@ -2151,7 +2660,8 @@ def pack_dict(product: TCGPackProduct, release: TCGRelease | None = None) -> dic
         "guaranteed_slots": _json(product.guaranteed_slots, []), "odds": _json(product.odds_json, {}),
         "replacement_rules": _json(product.replacement_rules, {}),
         "duplicate_protection": _json(product.duplicate_protection, {}),
-        "eligible_pool": _json(product.eligible_pool_json, {}),
+        "eligible_pool": eligible_pool,
+        "price_model": eligible_pool.get("price_model"),
         "price": product.launch_price if launch_active else product.regular_price,
         "launch_active": launch_active, "launch_ends_at": launch_ends.isoformat() if launch_ends else None,
         "available_from": product.available_from.isoformat() if product.available_from else None,

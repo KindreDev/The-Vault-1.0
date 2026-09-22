@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import RoomCardSurface from './RoomCardSurface'
 import { isPremiumRoomCardReady, selectBoundedRoomCards } from './roomCardMaterial'
-import { displaySlotsFor, SURFACE_ASSETS, SURFACE_HOST_ASSETS } from './roomLayout'
+import { displaySlotsFor, furnitureModelYawOffset, SURFACE_ASSETS, SURFACE_HOST_ASSETS } from './roomLayout'
 
 function developmentProofTransform(item) {
   if (!import.meta.env.DEV) return null
@@ -28,7 +28,7 @@ function developmentStageTransform(item) {
   if (Number(params.get('roomCardFixture') || params.get('roomCardProof')) !== Number(item.preview?.card_id)) return null
   const slot = displaySlotsFor('card_display_stand_white')[0]
   const hostPosition = [3.06, 1.319, 3.18]
-  const hostYaw = params.get('roomCardStageView') === 'display' ? Math.PI : 0
+  const hostYaw = (params.get('roomCardStageView') === 'display' ? Math.PI : 0) + furnitureModelYawOffset('card_display_stand_white')
   const cosine = Math.cos(hostYaw)
   const sine = Math.sin(hostYaw)
   const hostRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, hostYaw, 0))
@@ -63,7 +63,7 @@ export function displayHostTransform(item, bootstrap) {
   // same side; the placement yaw rotates both together.
   // The broad near panel is the back of the compact holder. Restore the
   // authored card yaw so its artwork faces outward from the far display side.
-  const cardYaw = yaw + (slot.yaw || 0)
+  const cardYaw = yaw + furnitureModelYawOffset(definition.asset_id) + (slot.yaw || 0)
   const hostRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, cardYaw, 0))
   const localTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(slot.tilt, 0, 0))
   const rotation = new THREE.Euler().setFromQuaternion(hostRotation.multiply(localTilt))

@@ -78,6 +78,10 @@ export default function TCGRoomRuntime({ version }) {
   const [placementPreview, setPlacementPreview] = useState(null)
   const [worldSample, setWorldSample] = useState(null)
   const confirmPlacement = useRef(() => {})
+  const lockPlacement = useRef(() => {})
+  const deselectPlacement = useRef(() => {})
+  const returnPlacement = useRef(() => {})
+  const rotatePlacement = useRef(() => {})
   const [doorTransition, setDoorTransition] = useState(false)
   const [traderOpen, setTraderOpen] = useState(false)
   const [quality, setQuality] = useState(() => localStorage.getItem('vault.tcg-room.quality') || 'medium')
@@ -143,9 +147,9 @@ export default function TCGRoomRuntime({ version }) {
       if (event.code === 'Tab') {
         event.preventDefault()
         if (confirmExit || traderOpen || inventoryOpen) return
-        if (arranging) { setArranging(false); setPlacementPreview(null); setPaused(false); return }
+        if (arranging) { setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setPaused(false); return }
         document.exitPointerLock?.()
-        setFocused(null); setPaused(false); setArranging(true)
+        setFocused(null); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false); setArranging(true)
         return
       }
       if (event.code !== 'Escape') return
@@ -169,7 +173,7 @@ export default function TCGRoomRuntime({ version }) {
   const worldParcel = useMemo(() => parcels.find(parcel => ['ready', 'collected', 'placed'].includes(parcel.status)), [parcels])
   const focusKind = focused?.interactive
   const promptTarget = preview.traderProof === 'prompt' ? DEV_FOCUS.door : nearby
-  const closePanel = () => { setFocused(null); setInspectTilt({ x: 0, y: 0 }); setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false) }
+  const closePanel = () => { deselectPlacement.current?.(); setFocused(null); setInspectTilt({ x: 0, y: 0 }); setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false) }
   const openInventory = (tab = 'cards') => {
     document.exitPointerLock?.()
     setFocused(null); setArranging(false); setPlacementInstanceId(null); setPaused(true)
@@ -200,7 +204,7 @@ export default function TCGRoomRuntime({ version }) {
 
   return <main className={`tcg-room ${proofCardId ? 'tcg-room--proof' : ''}${sceneReady ? '' : ' tcg-room--booting'}`} style={{ background: '#12111a' }}>
     <div style={{ position: 'absolute', inset: 0, visibility: sceneReady ? 'visible' : 'hidden' }}>
-      <RoomCanvasBoundary><RoomScene version={version} quality={quality} paused={paused} focused={focused} arranging={arranging} parcel={worldParcel} parcels={parcels} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={setMetrics} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onConfirmPlacement={() => confirmPlacement.current?.()} onSelectPlaced={id => { if (!placementPreview) setPlacementInstanceId(id) }} /></RoomCanvasBoundary>
+      <RoomCanvasBoundary><RoomScene version={version} quality={quality} paused={paused} focused={focused} arranging={arranging} parcel={worldParcel} parcels={parcels} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={setMetrics} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onLockPlacement={() => lockPlacement.current?.()} onConfirmPlacement={() => confirmPlacement.current?.()} onReturnPlacement={() => returnPlacement.current?.()} onRotatePlacement={() => rotatePlacement.current?.()} onSelectPlaced={id => { if (!placementPreview) setPlacementInstanceId(id) }} onDeselectPlacement={() => deselectPlacement.current?.()} /></RoomCanvasBoundary>
     </div>
     {!sceneReady && <div className="tcg-room__boot" role="status" style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'grid', placeContent: 'center', background: '#12111a' }}><i className="tcg-room__boot-mark" /></div>}
     {sceneReady && !arranging && <div className="tcg-room__reticle" aria-hidden="true" />}
@@ -214,7 +218,7 @@ export default function TCGRoomRuntime({ version }) {
       <div className="vault-hud__actions">
         <button type="button" onClick={() => openInventory('cards')}><Home size={16} /> Room Menu</button>
         <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setSettingsOpen(true) }}><Settings2 size={16} /> Settings</button>
-        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setHelpOpen(true) }}><CircleHelp size={16} /> Help</button>
+        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setHelpOpen(true) }}><CircleHelp size={16} /> Controls</button>
       </div>
       {(!inventoryOpen || inventoryTab === 'packs') && !focused && !arranging && <div className="vault-hud__summary">
         <h3>Inventory Summary</h3>
@@ -229,7 +233,7 @@ export default function TCGRoomRuntime({ version }) {
     {sceneReady && paused && !focused && !arranging && !inventoryOpen && !confirmExit && !helpOpen && !settingsOpen && <button type="button" className="vault-hud__resume" onClick={() => setPaused(false)}>Click to explore · WASD · E interact · I inventory · Tab placement</button>}
     {confirmExit && <section className="tcg-room__exit-confirm" role="dialog" aria-modal="true" aria-labelledby="room-exit-title"><div><h2 id="room-exit-title">Leave your room?</h2><p>Your layout is saved. Closing a menu or pressing Escape never exits the room.</p><button className="primary" onClick={() => navigate('/collection')}>Yes, exit to collection</button><button onClick={() => { setConfirmExit(false); setPaused(false) }}>No, return to room</button></div></section>}
     {inventoryOpen && <RoomInventory initialTab={inventoryTab} onTabChange={setInventoryTab} onClose={() => { setInventoryOpen(false); setPaused(false) }} onPlaceFurniture={openFurniturePlacement} />}
-    {arranging && <RoomLayoutPanel bootstrap={roomData} initialInstanceId={placementInstanceId} worldSample={worldSample} onPreview={setPlacementPreview} onConfirmReady={fn => { confirmPlacement.current = fn }} onExit={closePanel} />}
+    {arranging && <RoomLayoutPanel bootstrap={roomData} initialInstanceId={placementInstanceId} worldSample={worldSample} onPreview={setPlacementPreview} onConfirmReady={fn => { confirmPlacement.current = fn }} onLockReady={fn => { lockPlacement.current = fn || (() => {}) }} onDeselectReady={fn => { deselectPlacement.current = fn }} onActionsReady={actions => { returnPlacement.current = actions?.returnToInventory || (() => {}); rotatePlacement.current = actions?.rotate || (() => {}) }} onExit={closePanel} />}
     {focused?.interactive === 'card-inspect' && focused.card && <section className="tcg-room__card-inspector" onMouseMove={event => {
       const box = event.currentTarget.getBoundingClientRect()
       setInspectTilt({ x: ((event.clientY - box.top) / box.height - .5) * -18, y: ((event.clientX - box.left) / box.width - .5) * 24 })
@@ -254,7 +258,21 @@ export default function TCGRoomRuntime({ version }) {
     {readyParcel && <div className="tcg-room__delivery"><Box size={22} /><span><strong>Delivery arrived</strong>Packs are on the table.</span></div>}
     {carriedCopies.length > 0 && <div className="tcg-room__held tcg-room__held--cards" aria-label={`Carrying ${carriedCopies.length} physical cards`}><span>{carriedCopies.length}</span><strong>physical cards held</strong></div>}
     {perfOpen && <PerformanceOverlay metrics={metrics} quality={quality} visibleCards={visibleCardCount} loadedAssets={loadedAssets} />}
-    {helpOpen && <section className="vault-hud__modal" role="dialog"><div><h2>Controls</h2><p>WASD move · mouse look · E interact · I inventory · Tab placement · C crouch · Esc close</p><button type="button" onClick={() => { setHelpOpen(false); setPaused(false) }}>Close</button></div></section>}
+    {helpOpen && <section className="vault-hud__modal" role="dialog" aria-labelledby="room-controls-title"><div><h2 id="room-controls-title">Controls</h2><dl className="vault-hud__controls-list">
+      {[
+        ['WASD', 'Movement'],
+        ['Mouse', 'Look'],
+        ['E', 'Interact'],
+        ['I', 'Inventory'],
+        ['Tab', 'Placement mode'],
+        ['Left click', 'Select / lock placement'],
+        ['Q / E', 'Rotate furniture'],
+        ['Mouse wheel', 'Rotate furniture / scroll items'],
+        ['Right mouse', 'Look / deselect placement'],
+        ['C', 'Crouch'],
+        ['Esc', 'Close'],
+      ].map(([key, label]) => <div key={key}><dt>{key}</dt><dd>{label}</dd></div>)}
+    </dl><button type="button" onClick={() => { setHelpOpen(false); setPaused(false) }}>Close</button></div></section>}
     {settingsOpen && <section className="vault-hud__modal" role="dialog"><div><h2>Settings</h2><label>Graphics quality<select value={quality} onChange={event => setQuality(event.target.value)}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><button type="button" onClick={() => { setSettingsOpen(false); setPaused(false) }}>Close</button></div></section>}
     {proofCard && <aside className="tcg-room__proof-card"><strong>{proofCard.dev_fixture ? 'DEV-only visual fixture' : 'Persisted physical card proof'}</strong><span>Copy {proofCard.copy.id} · Card {proofCard.preview.card_id}</span><span>{proofCard.preview.card_type} · {proofCard.preview.rarity} · packed mask {proofCard.card?.mask_url ? 'loaded' : 'not required'}</span></aside>}
     {proofCard?.card && <aside className="tcg-room__proof-reference"><strong>Authoritative 2D reference</strong><TCGV2CardFace card={proofCard.card} width={250} showEffects={false} /></aside>}

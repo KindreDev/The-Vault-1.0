@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Search, ChevronDown, BookOpen, Map, Zap, Trophy, Star,
+  Search, ChevronDown, BookOpen, Map, Compass, Zap, Trophy, Star,
   WalletCards, Cpu, LayoutDashboard, Images, Film,
   Video, Users, Columns3, BarChart2, Layers, Tag, GitCompare,
   ListTodo, Terminal, Settings, Flame, Wifi, Droplets, Heart,
@@ -46,7 +46,7 @@ function NavRow({ icon: Icon, label, path, desc, color = 'rgba(255,255,255,0.55)
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <span className="text-[18px] font-semibold text-white/85">{label}</span>
-          {path && <span className="text-[15px] font-mono text-white/25">{path}</span>}
+          {path && <span className="text-[16px] font-mono text-white/25">{path}</span>}
         </div>
         <p className="text-[17px] text-white/50 leading-snug">{desc}</p>
       </div>
@@ -97,19 +97,36 @@ function SectionBody({ children }) {
 
 // ── Data tables ───────────────────────────────────────────────────────────────
 const XP_ACTIONS = [
-  { action: 'Log a session',     xp: 40,  note: 'Multiplied by daily streak' },
-  { action: 'Count an O (cum)',  xp: 10,  note: 'Per tap. Multiplied by streak' },
-  { action: 'Daily login',       xp: 20,  note: 'Once per day' },
-  { action: 'Daily spin',        xp: null, note: 'Random 15–150 XP or Vault Credits' },
-  { action: 'Add a creator',     xp: 75,  note: 'Any type' },
-  { action: 'Import a gallery',  xp: 15,  note: 'Per gallery scanned' },
-  { action: 'Rate an image',     xp: 3,   note: 'Per rating action' },
-  { action: 'Rate a gallery',    xp: 5,   note: 'Per rating action' },
-  { action: 'Add a manual tag',  xp: 5,   note: 'Per tag applied' },
-  { action: 'Wiki import',       xp: 25,  note: 'Any wiki/AniList import' },
-  { action: 'Open a card pack',  xp: 75,  note: 'Per pack (×quantity)' },
-  { action: 'Complete a quest',  xp: null, note: 'Varies per quest (20–25,000)' },
-  { action: 'Unlock achievement',xp: null, note: 'Varies per achievement (50–20,000)' },
+  { action: 'Log a session',       xp: 40,  note: 'Multiplied by daily streak' },
+  { action: 'Count an O (cum)',    xp: 10,  note: 'Per event. Multiplied by streak' },
+  { action: 'Log an edge',         xp: 3,   note: 'Per edge event' },
+  { action: 'Daily login',         xp: 20,  note: 'Once per day' },
+  { action: 'Daily spin',          xp: null, note: 'Random 15–150 XP, or Vault Credits' },
+  { action: 'Add a creator',       xp: 75,  note: 'Any creator type' },
+  { action: 'Import a gallery',    xp: 15,  note: 'Per gallery imported or scanned' },
+  { action: 'Rate an image',       xp: 3,   note: 'Per rating action' },
+  { action: 'Rate a gallery',      xp: 5,   note: 'Per rating action' },
+  { action: 'Add a manual tag',    xp: 5,   note: 'Per tag applied' },
+  { action: 'Curate a gallery/file', xp: null, note: 'Scales with how much you fix' },
+  { action: 'Wiki / character import', xp: 25, note: 'Any supported catalogue import' },
+  { action: 'Open a TCG pack',     xp: 75,  note: 'Per published booster pack' },
+  { action: 'Complete a quest',    xp: null, note: 'Varies by quest' },
+  { action: 'Unlock achievement',  xp: null, note: 'One-time milestone reward' },
+]
+
+const CREDIT_ACTIONS = [
+  { action: 'Log a session', value: '+40', note: 'Recurring activity income' },
+  { action: 'Count an O', value: '+25', note: 'Up to 10 credit-paying events per day' },
+  { action: 'Daily login', value: '+25', note: 'Once per day' },
+  { action: 'Rate an image', value: '+8', note: 'Per rating action' },
+  { action: 'Rate a gallery', value: '+15', note: 'Per rating action' },
+  { action: 'Add a tag', value: '+10', note: 'Per manual tag' },
+  { action: 'Curate a gallery/file', value: '+12–25', note: 'Depends on the curation action' },
+  { action: 'Import a gallery', value: '+20', note: 'Setup work; bulk file imports pay 0' },
+  { action: 'Add a creator', value: '+50', note: 'Per creator' },
+  { action: 'Wiki / character import', value: '+15', note: 'Per supported import' },
+  { action: 'Daily spin', value: '+50 or +100', note: 'Random credit result' },
+  { action: 'Complete a quest', value: 'Varies', note: 'Active quest board shows the exact reward' },
 ]
 
 const STREAK_MULTIPLIERS = [
@@ -208,17 +225,17 @@ function OverviewContent({ search }) {
           <div className="grid grid-cols-2 gap-3">
             {[
               { icon: Zap,      color: 'var(--c-accent)', label: 'Daily login bonus',    body: '+20 XP automatically when you open the app.' },
-              { icon: Gamepad2, color: 'var(--c-amber)',  label: 'Daily spin wheel',     body: 'One free spin per day on the Dashboard. Win 10–100 bonus XP.' },
-              { icon: Trophy,   color: '#4682DC',         label: '4 daily quests',       body: 'Chosen randomly from a pool of 10. Expire at midnight.' },
+              { icon: Gamepad2, color: 'var(--c-amber)',  label: 'Daily spin wheel',     body: 'One free spin per day on the Dashboard. Win 15–150 XP, or 50/100 Vault Credits.' },
+              { icon: Trophy,   color: '#4682DC',         label: '4 daily quests',       body: 'Chosen randomly from a pool of 11. Expire at midnight and can award XP plus Credits.' },
               { icon: Trophy,   color: 'var(--c-pink)',   label: '4 weekly quests',      body: 'Refresh every Monday. Larger rewards for bigger tasks.' },
               { icon: Flame,    color: 'var(--c-amber)',  label: 'Streak multiplier',    body: 'All XP earned is multiplied by your streak. Hit 30 days for 3×.' },
-              { icon: Droplets, color: 'var(--c-pink)',   label: 'Count your Os',        body: '+10 XP per cum logged. Unlocks achievements and boss quests.' },
+              { icon: Droplets, color: 'var(--c-pink)',   label: 'Count your Os',        body: '+10 XP and +25 Credits per event, with a daily credit cap. Unlocks achievements, quests, and Foundation SPR milestones.' },
             ].map(({ icon: Icon, color, label, body }) => (
               <div key={label} className="flex gap-3 p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <Icon size={16} style={{ color }} className="flex-shrink-0 mt-0.5" />
                 <div>
                   <div className="text-[17px] font-semibold text-white/75 mb-0.5">{label}</div>
-                  <p className="text-[15px] text-white/40 leading-snug">{body}</p>
+                  <p className="text-[16px] text-white/40 leading-snug">{body}</p>
                 </div>
               </div>
             ))}
@@ -234,29 +251,39 @@ function NavContent() {
     <div className="space-y-3">
       <Section title="Main" icon={LayoutDashboard} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
-          <NavRow icon={LayoutDashboard} label="Dashboard"  path="/dashboard"  color="var(--c-accent)" desc="Command center. Shows stats overview, Hall of Fame highlights, random picks, daily quests, spin wheel, and Collection Curating." />
+          <NavRow icon={LayoutDashboard} label="Dashboard"  path="/dashboard"  color="var(--c-accent)" desc="Command center with your stats, Hall of Fame highlights, random picks, Daily Spin, Collection Curating, Loading Bay, and active session controls." />
           <NavRow icon={Images}          label="Galleries"  path="/galleries"  color="var(--c-accent)" desc="Browse all scanned gallery folders. Filter by creator, rating, or search by name. Bulk-assign creators. Set cover photos." />
           <NavRow icon={Film}            label="Photos"     path="/images"     color="var(--c-accent)" desc="Every individual image across all galleries. Sort by rating, orgasm count, or date added." />
-          <NavRow icon={Video}           label="Videos"     path="/videos"     color="var(--c-accent)" desc="Same as Photos but videos only. Shows a ⚡ funscript badge when a matching .funscript file is detected." />
+          <NavRow icon={Video}           label="Videos"     path="/videos"     color="var(--c-accent)" desc="Video-only browsing with duration badges, length sorting, browser-compatible playback, funscript detection, and the full viewer controls." />
           <NavRow icon={Users}           label="Creators"   path="/creators"   color="var(--c-accent)" desc="Your roster of creators and characters. 6 types: cosplayer, ethot, artist, character, actress, custom." />
         </SectionBody>
       </Section>
 
       <Section title="Goon" icon={Flame} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <NavRow icon={Columns3} label="Playlists"      path="/playlists"       color="var(--c-pink)" desc="Build and save playlists: queue media into 1–4 independent panels, save each arrangement, and resume it later." />
+          <NavRow icon={Columns3} label="Playlists"      path="/playlists"       color="var(--c-pink)" desc="Build and save playlists: queue media into up to 6 independent panels, save each arrangement, and resume it later." />
+          <NavRow icon={ScrollText} label="Funscripts"    path="/funscripts"      color="var(--c-pink)" desc="Manage your funscript library and script-only playlists. Analyze scripts, inspect speed/action metrics, tag and rate them, and play them independently." />
           <NavRow icon={Cpu}      label="Device Control" path="/device-control" color="var(--c-pink)" desc="Connect and control your physical device. Supports Intiface Central (Buttplug), The Handy REST API, and direct USB serial (T-Code)." />
+          <NavRow icon={Bot}      label="Erika AI"      path="/erika"          color="var(--c-pink)" desc="Optional local companion powered by Ollama. Her chat, bond, persona, and Vault context stay on your machine." />
           <NavRow icon={Wifi}     label="Device status"  path=""                color="var(--c-green)"        desc="Quick-connect button in the sidebar. Shows Idle (connected, no motion) or Live (freestyle mode active). Click to connect/disconnect." />
+        </SectionBody>
+      </Section>
+
+      <Section title="Social" icon={Radio} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <NavRow icon={Radio} label="Feed"    path="/feed"    color="var(--c-accent)" desc="Your local social-style feed of Vault activity and collection posts." />
+          <NavRow icon={Compass} label="Explore" path="/explore" color="var(--c-accent)" desc="Discover creators, galleries, and media across the collection without changing the library structure." />
         </SectionBody>
       </Section>
 
       <Section title="Collect" icon={Trophy} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <NavRow icon={BarChart2} label="Stats & analytics" path="/stats"      color="var(--c-amber)" desc="Explore the session overview, Almanac history, and Analytics dashboards for viewing time, activity, orgasms, creators, and XP." />
+          <NavRow icon={BarChart2} label="Stats"          path="/stats"        color="var(--c-amber)" desc="Overview, Analytics, and Collection History: inspect sessions, viewing time, activity, orgasms, creators, XP, long-term phases, and curation health." />
           <NavRow icon={Trophy}    label="Quests"         path="/quests"       color="var(--c-amber)" desc="Active daily and weekly quests with progress bars. Boss quests show your lifetime milestone progress." />
           <NavRow icon={Star}      label="Hall of Fame"   path="/hall-of-fame" color="var(--c-amber)" desc="Expanded leaderboards for creators, galleries, and media, with period and all-time boards, rank movement, and detailed stats." />
           <NavRow icon={Activity}  label="Recap"          path="/recap"       color="var(--c-pink)" desc="A visual recap of your collection and session history, with highlights from the selected period." />
-          <NavRow icon={WalletCards} label="Card Collection" path="/collection" color="var(--c-amber)" desc="Browse the published trading-card catalogue, filter by type and C / R / SR / UR / SPR rarity, and inspect each frozen card face." />
+          <NavRow icon={WalletCards} label="Card Collection" path="/collection" color="var(--c-amber)" desc="Browse the published trading-card catalogue, releases, sets, boosters, binders, Workshop cosmetics, physical copies, and C / R / SR / UR / SPR rarities." />
+          <NavRow icon={Box}         label="Collection Room" path="/collection/room" color="var(--c-amber)" desc="Optional first-person collector room for furniture, parcels, physical card copies, binders, cabinets, posters, and display layouts." />
         </SectionBody>
       </Section>
 
@@ -266,7 +293,7 @@ function NavContent() {
           <NavRow icon={GitCompare}label="Duplicates"   path="/duplicates" color="rgba(255,255,255,0.45)" desc="Find near-duplicate images using visual hash comparison. Delete duplicates safely — originals are kept." />
           <NavRow icon={ListTodo}  label="Task Queue"   path="/task-queue" color="rgba(255,255,255,0.45)" desc="Background task monitor. Shows active scans, AI tagging jobs, and thumbnail generation progress." />
           <NavRow icon={Terminal}  label="Console"      path="/console"    color="rgba(255,255,255,0.45)" desc="Live server log output. Useful for debugging scan issues or checking AI tagging progress." />
-          <NavRow icon={Settings}  label="Settings"     path="/settings"   color="rgba(255,255,255,0.45)" desc="Library root management, manual scan trigger, backup/restore, theme, font picker, device settings." />
+          <NavRow icon={Settings}  label="Settings"     path="/settings"   color="rgba(255,255,255,0.45)" desc="Library and scanner controls, AI tagging, themes, typography, session behavior, hotkeys, backup/restore, storage, updates, and system maintenance." />
         </SectionBody>
       </Section>
 
@@ -357,15 +384,15 @@ function GamificationContent() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/30">You can set a custom title from any title you've unlocked via your Profile page.</p>
+          <p className="mt-3 text-[16px] text-white/30">You can set a custom title from any title you've unlocked via your Profile page.</p>
         </SectionBody>
       </Section>
 
       <Section title="Daily spin wheel" icon={Gamepad2} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed">
-            One free spin per day accessible from the Dashboard. It awards either a random XP result or Vault Credits.
-            XP results range from 15 to 150 and are multiplied by your active streak. Resets daily at midnight.
+            One free spin per day is accessible from Dashboard → Daily Spin. It awards a random XP result, a 50/100-Credit result, or a small spotlight XP reward.
+            XP results range from 15 to 150 and are multiplied by your active streak. The spin resets daily at midnight and the button becomes unavailable after it is consumed.
           </p>
         </SectionBody>
       </Section>
@@ -374,13 +401,13 @@ function GamificationContent() {
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-3">
             Every image and gallery has a lifetime orgasm count that <strong className="text-white/70">never resets</strong>.
-            Tap the 💧 button on any image or gallery to log one. Each tap gives +10 XP (multiplied by streak).
+            Tap the 💧 button on any image or gallery to log one. Each event gives +10 XP (multiplied by streak) and can give +25 Credits, up to the daily Credit cap.
           </p>
           <div className="grid grid-cols-3 gap-2 text-[16px]">
             {[
               { label: 'Per image', desc: 'Tracked individually. Shown on the image card and in the viewer.' },
               { label: 'Per gallery', desc: 'Sum of all image cum counts. Also trackable at gallery level.' },
-              { label: 'Lifetime total', desc: 'Drives boss quests (50, 100, 500 Os) and achievement unlocks.' },
+              { label: 'Lifetime total', desc: 'Drives Foundation SPR milestones, boss quests (50, 100, 500 Os), and achievement unlocks.' },
             ].map(({ label, desc }) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
                 <div className="font-semibold text-[var(--c-pink-text)] mb-1">{label}</div>
@@ -396,27 +423,27 @@ function GamificationContent() {
 
 function QuestsContent() {
   const DAILY = [
-    { title: 'Open the Vault',  desc: 'Log in today',              xp: 30,  target: '1×' },
-    { title: 'Goon session',    desc: 'Log a gooning session',     xp: 80,  target: '1×' },
-    { title: 'Rate 5 images',   desc: 'Give any image a rating',   xp: 55,  target: '5×' },
-    { title: 'Tag 3 images',    desc: 'Add tags to images',        xp: 45,  target: '3×' },
-    { title: 'Open a pack',     desc: 'Open any card pack',        xp: 60,  target: '1×' },
-    { title: 'Drain the tank',  desc: 'Count an O today',          xp: 50,  target: '1×' },
-    { title: 'Gallery judge',   desc: 'Rate 3 galleries',          xp: 50,  target: '3×' },
-    { title: 'Tag spree',       desc: 'Add 10 tags in one day',    xp: 95,  target: '10×' },
-    { title: 'Rating spree',    desc: 'Rate 10 images today',      xp: 75,  target: '10×' },
-    { title: 'Double tap',      desc: 'Count 2 Os today',          xp: 95,  target: '2×' },
-    { title: "Curator's eye",  desc: 'Curate 5 galleries',         xp: 70,  target: '5×' },
+    { title: 'Open the Vault',  desc: 'Log in today',              xp: 30,  credit: 20,  target: '1×' },
+    { title: 'Goon session',    desc: 'Log a gooning session',     xp: 80,  credit: 80,  target: '1×' },
+    { title: 'Rate 5 images',   desc: 'Give any image a rating',   xp: 55,  credit: 60,  target: '5×' },
+    { title: 'Tag 3 images',    desc: 'Add tags to images',        xp: 45,  credit: 60,  target: '3×' },
+    { title: 'Open a pack',     desc: 'Open any card pack',        xp: 60,  credit: 30,  target: '1×' },
+    { title: 'Drain the tank',  desc: 'Count an O today',          xp: 50,  credit: 45,  target: '1×' },
+    { title: 'Gallery judge',   desc: 'Rate 3 galleries',          xp: 50,  credit: 50,  target: '3×' },
+    { title: 'Tag spree',       desc: 'Add 10 tags in one day',    xp: 95,  credit: 120, target: '10×' },
+    { title: 'Rating spree',    desc: 'Rate 10 images today',      xp: 75,  credit: 100, target: '10×' },
+    { title: 'Double tap',      desc: 'Count 2 Os today',          xp: 95,  credit: 100, target: '2×' },
+    { title: "Curator's eye",  desc: 'Curate 5 galleries',        xp: 70,  credit: 100, target: '5×' },
   ]
   const WEEKLY = [
-    { title: 'Add a creator',     desc: 'Add any creator this week',         xp: 200,  target: '1×' },
-    { title: 'Import a gallery',  desc: 'Scan a new gallery folder',         xp: 250,  target: '1×' },
-    { title: 'Session marathon',  desc: 'Log 3 sessions this week',          xp: 400,  target: '3×' },
-    { title: 'Session binge',     desc: 'Log 5 sessions this week',          xp: 175,  target: '5×' },
-    { title: 'Gallery marathon',  desc: 'Import 3 galleries this week',      xp: 550,  target: '3×' },
-    { title: 'Pack addict',       desc: 'Open 5 packs this week',            xp: 350,  target: '5×' },
-    { title: 'Weekly tagger',     desc: 'Add 50 tags this week',             xp: 400,  target: '50×' },
-    { title: 'Deep clean',        desc: 'Curate 30 galleries this week',     xp: 450,  target: '30×' },
+    { title: 'Add a creator',     desc: 'Add any creator this week',         xp: 200,  credit: 150, target: '1×' },
+    { title: 'Import a gallery',  desc: 'Scan a new gallery folder',         xp: 250,  credit: 100, target: '1×' },
+    { title: 'Session marathon',  desc: 'Log 3 sessions this week',          xp: 400,  credit: 350, target: '3×' },
+    { title: 'Session binge',     desc: 'Log 5 sessions this week',           xp: 175,  credit: 300, target: '5×' },
+    { title: 'Gallery marathon',  desc: 'Import 3 galleries this week',       xp: 550,  credit: 250, target: '3×' },
+    { title: 'Pack addict',       desc: 'Open 5 packs this week',             xp: 350,  credit: 300, target: '5×' },
+    { title: 'Weekly tagger',     desc: 'Add 50 tags this week',              xp: 400,  credit: 600, target: '50×' },
+    { title: 'Deep clean',        desc: 'Curate 30 galleries this week',      xp: 450,  credit: 600, target: '30×' },
   ]
 
   return (
@@ -424,9 +451,9 @@ function QuestsContent() {
       <div className="p-4 rounded-lg text-[17px] text-white/55"
            style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
         <div className="flex gap-6">
-          <div><span className="text-white/75 font-semibold">Daily quests:</span> 4 randomly selected from a pool of 11 each midnight.</div>
+          <div><span className="text-white/75 font-semibold">Daily quests:</span> 4 randomly selected from a pool of 11 each midnight. Each shows XP and Credits.</div>
           <div><span className="text-white/75 font-semibold">Weekly quests:</span> 4 randomly selected from a pool of 8 each Monday.</div>
-          <div><span className="text-white/75 font-semibold">Boss quests:</span> Permanent milestones — always visible, never expire.</div>
+          <div><span className="text-white/75 font-semibold">Boss quests:</span> Permanent milestones — always visible, never expire. Completing the whole daily/weekly board unlocks a separate pack reward to claim.</div>
         </div>
       </div>
 
@@ -442,14 +469,30 @@ function QuestsContent() {
         </SectionBody>
       </Section>
 
+      <Section title="Completion rewards" icon={Package} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <div className="grid grid-cols-2 gap-3 text-[16px]">
+            <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
+              <div className="text-[18px] font-bold text-[var(--c-accent-text)] mb-1">Daily sweep</div>
+              <p className="text-white/50 leading-snug">Complete every active daily quest, then claim <strong className="text-white/75">5 Permanent Vault Boosters</strong>. Each contains 10 cards with an SR-or-higher guarantee.</p>
+            </div>
+            <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+              <div className="text-[18px] font-bold text-[var(--c-amber-text)] mb-1">Weekly sweep</div>
+              <p className="text-white/50 leading-snug">Complete every active weekly quest, choose a published release, then claim <strong className="text-white/75">1 Weekly Protection Pack</strong>: 4 cards with 3 UR + 1 SPR guaranteed.</p>
+            </div>
+          </div>
+          <p className="mt-3 text-[16px] text-white/40">The board does not open these rewards silently. Click Claim. If a period rolls over before you claim, an earned completion reward waits for you instead of disappearing.</p>
+        </SectionBody>
+      </Section>
+
       <Section title="Boss quests — image milestones" icon={Archive} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
           <BossQuestTable rows={[
-            { title: 'Century',              desc: '100 images',   xp: 750 },
-            { title: 'The Hoarder',          desc: '500 images',   xp: 2000 },
-            { title: 'The Archivist',        desc: '1,000 images', xp: 4000 },
-            { title: 'Vault Lord',           desc: '5,000 images', xp: 10000 },
-            { title: "God Emperor's Archive",desc: '10,000 images',xp: 25000 },
+            { title: 'Century',              desc: '100 images',   xp: 750,   credit: 250 },
+            { title: 'The Hoarder',          desc: '500 images',   xp: 2000,  credit: 700 },
+            { title: 'The Archivist',        desc: '1,000 images', xp: 4000,  credit: 1500 },
+            { title: 'Vault Lord',           desc: '5,000 images', xp: 10000, credit: 4000 },
+            { title: "God Emperor's Archive",desc: '10,000 images',xp: 25000, credit: 10000 },
           ]} />
         </SectionBody>
       </Section>
@@ -457,16 +500,16 @@ function QuestsContent() {
       <Section title="Boss quests — creator, session & cum milestones" icon={Trophy} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
           <BossQuestTable rows={[
-            { title: 'Starting Roster',   desc: '5 creators',       xp: 500 },
-            { title: 'The Collector',     desc: '10 creators',      xp: 1000 },
-            { title: 'Devoted Fan',       desc: '25 creators',      xp: 3000 },
-            { title: 'Roster Legend',     desc: '50 creators',      xp: 7000 },
-            { title: 'Getting Hooked',    desc: '10 sessions',      xp: 500 },
-            { title: 'Dedicated Gooner',  desc: '50 sessions',      xp: 2500 },
-            { title: 'Century Gooner',    desc: '100 sessions',     xp: 6000 },
-            { title: 'Prolific Drainer',  desc: '50 Os',            xp: 1000 },
-            { title: 'Absolute Unit',     desc: '100 Os',           xp: 3000 },
-            { title: 'Legendary Drainer', desc: '500 Os',           xp: 10000 },
+            { title: 'Starting Roster',   desc: '5 creators',       xp: 500,   credit: 150 },
+            { title: 'The Collector',     desc: '10 creators',      xp: 1000,  credit: 350 },
+            { title: 'Devoted Fan',       desc: '25 creators',      xp: 3000,  credit: 1000 },
+            { title: 'Roster Legend',     desc: '50 creators',      xp: 7000,  credit: 2500 },
+            { title: 'Getting Hooked',    desc: '10 sessions',      xp: 500,   credit: 175 },
+            { title: 'Dedicated Gooner',  desc: '50 sessions',      xp: 2500,  credit: 900 },
+            { title: 'Century Gooner',    desc: '100 sessions',     xp: 6000,  credit: 2500 },
+            { title: 'Prolific Drainer',  desc: '50 Os',            xp: 1000,  credit: 350 },
+            { title: 'Absolute Unit',     desc: '100 Os',           xp: 3000,  credit: 1000 },
+            { title: 'Legendary Drainer', desc: '500 Os',           xp: 10000, credit: 4000 },
           ]} />
         </SectionBody>
       </Section>
@@ -474,13 +517,13 @@ function QuestsContent() {
       <Section title="Boss quests — tags, streaks & cards" icon={Tag} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <BossQuestTable rows={[
-            { title: 'Completionist',  desc: '500 tags',      xp: 2000 },
-            { title: 'Tag Legend',     desc: '2,000 tags',    xp: 7000 },
-            { title: 'Month Devotee',  desc: '30-day streak', xp: 2500 },
-            { title: 'Obsessed',       desc: '60-day streak', xp: 7000 },
-            { title: 'Card Hoarder',   desc: '50 cards',      xp: 1000 },
-            { title: 'Deck Lord',      desc: '100 cards',     xp: 3000 },
-            { title: 'Card Sovereign', desc: '250 cards',     xp: 8000 },
+            { title: 'Completionist',  desc: '500 tags',      xp: 2000, credit: 750 },
+            { title: 'Tag Legend',     desc: '2,000 tags',    xp: 7000, credit: 2500 },
+            { title: 'Month Devotee',  desc: '30-day streak', xp: 2500, credit: 900 },
+            { title: 'Obsessed',       desc: '60-day streak', xp: 7000, credit: 2500 },
+            { title: 'Card Hoarder',   desc: '50 cards',      xp: 1000, credit: 350 },
+            { title: 'Deck Lord',      desc: '100 cards',     xp: 3000, credit: 1000 },
+            { title: 'Card Sovereign', desc: '250 cards',     xp: 8000, credit: 3000 },
           ]} />
         </SectionBody>
       </Section>
@@ -498,6 +541,7 @@ function QuestTable({ quests }) {
             <th className="text-left px-4 py-2.5 text-white/40 font-medium">Objective</th>
             <th className="text-center px-3 py-2.5 text-white/40 font-medium">Goal</th>
             <th className="text-right px-4 py-2.5 text-white/40 font-medium">XP</th>
+            <th className="text-right px-4 py-2.5 text-white/40 font-medium">Credits</th>
           </tr>
         </thead>
         <tbody>
@@ -507,6 +551,7 @@ function QuestTable({ quests }) {
               <td className="px-4 py-2 text-white/50">{q.desc}</td>
               <td className="px-3 py-2 text-center text-white/40 font-mono text-[16px]">{q.target}</td>
               <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: 'var(--c-accent)' }}>+{q.xp}</td>
+              <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: '#FFD700' }}>+{q.credit}</td>
             </tr>
           ))}
         </tbody>
@@ -518,13 +563,14 @@ function QuestTable({ quests }) {
 function BossQuestTable({ rows }) {
   return (
     <div className="space-y-1.5">
-      {rows.map(({ title, desc, xp }) => (
+      {rows.map(({ title, desc, xp, credit }) => (
         <div key={title} className="flex items-center gap-3 px-4 py-2.5 rounded-lg"
              style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <Target size={13} style={{ color: 'var(--c-pink)' }} className="flex-shrink-0" />
           <span className="flex-1 text-[17px] text-white/75 font-medium">{title}</span>
           <span className="text-[16px] text-white/40 mr-4">{desc}</span>
           <XpBadge xp={xp} />
+          <span className="text-[16px] font-bold font-mono" style={{ color: '#FFD700' }}>+{credit} Credits</span>
         </div>
       ))}
     </div>
@@ -627,7 +673,7 @@ function AchievementsContent() {
                      style={{ background: `${color}0D`, border: `0.5px solid ${color}22` }}>
                   <div className="flex-1 min-w-0">
                     <div className="text-[17px] font-semibold text-white/80 truncate">{title}</div>
-                    <div className="text-[15px] text-white/40">{desc}</div>
+                    <div className="text-[16px] text-white/40">{desc}</div>
                   </div>
                   <XpBadge xp={xp} />
                 </div>
@@ -640,13 +686,190 @@ function AchievementsContent() {
   )
 }
 
+function LibraryContent() {
+  return (
+    <div className="space-y-3">
+      <Section title="The library model" icon={FolderOpen} defaultOpen accentColor="var(--c-accent)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            The Vault is local-first and folder-based. A library root is a folder you choose; every gallery is a folder beneath it; every image or video stays attached to that gallery. The filesystem remains the source of truth, so scans reconcile the database with what is actually on disk instead of flattening your collection.
+          </p>
+          <div className="grid grid-cols-2 gap-3 text-[16px]">
+            {[
+              { icon: FolderOpen, label: 'Library root', desc: 'A watched location configured in Settings → Library. You can have more than one root.' },
+              { icon: Images, label: 'Gallery', desc: 'One folder on disk. Nested gallery folders can be imported without losing their structure.' },
+              { icon: Film, label: 'Media', desc: 'Images and videos retain their file identity, metadata, ratings, notes, tags, and history.' },
+              { icon: Archive, label: 'Unsorted', desc: 'Files or complete galleries without a creator can wait in an Unsorted area for later relocation.' },
+            ].map(({ icon: Icon, label, desc }) => (
+              <div key={label} className="flex gap-3 p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                <Icon size={18} style={{ color: 'var(--c-accent)' }} className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
+                  <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Vault Credit economy" icon={WalletCards} defaultOpen={false} accentColor="#FFD700">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            XP controls progression; <strong className="text-white/75">Vault Credits</strong> are the separate pack currency. Credit rewards are designed to make collecting, organizing, and using the Vault all worthwhile without turning a bulk import into an infinite faucet.
+          </p>
+          <div className="rounded-lg overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <table className="w-full text-[16px]">
+              <thead><tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Activity</th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Credits</th>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Rule</th>
+              </tr></thead>
+              <tbody>
+                {CREDIT_ACTIONS.map((row, i) => (
+                  <tr key={row.action} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                    <td className="px-4 py-2 text-white/70">{row.action}</td>
+                    <td className="px-4 py-2 text-right font-mono font-bold" style={{ color: '#FFD700' }}>{row.value}</td>
+                    <td className="px-4 py-2 text-white/45">{row.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-[16px]">
+            <div className="p-3 rounded-lg" style={{ background: 'rgba(255,215,0,0.07)', border: '0.5px solid rgba(255,215,0,0.22)' }}>
+              <div className="font-semibold text-[#FFD700] mb-1">What does not pay Credits?</div>
+              <p className="text-white/45 leading-snug">Bulk file imports, pack opening itself, and card dismantling. Dismantling still produces forge materials; opening a pack never refunds its price.</p>
+            </div>
+            <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 22%, transparent)' }}>
+              <div className="font-semibold text-[var(--c-accent-text)] mb-1">Why the cap?</div>
+              <p className="text-white/45 leading-snug">Cum Credits are capped at 10 credit-paying events per day. Your lifetime counter and XP remain lifetime progression; only the recurring currency faucet is bounded.</p>
+            </div>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Loading Bay — formerly Intake" icon={ScanLine} defaultOpen accentColor="var(--c-amber)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            Loading Bay is the safe staging area for files that are not ready to become ordinary library media. It can inspect archives, preview pending files, detect duplicates, import complete gallery folders, and place content into an existing gallery or Unsorted without breaking the folder model.
+          </p>
+          <div className="space-y-2.5 text-[16px]">
+            {[
+              ['Inspect first', 'Preview images, videos, archives, counts, filenames, thumbnails, video duration, and the reason a file matched another item.'],
+              ['Import complete galleries', 'Bring in a whole folder, including nested folders and sidecars, without flattening it. Creator assignment is optional.'],
+              ['Handle duplicates safely', 'Compare exact and visual matches, see resolution/file size/duration, then keep the original or use an explicit bulk action.'],
+              ['Control archive cleanup', 'Inspect ZIP, 7z, and RAR archives, preview them, and choose whether an extracted archive is deleted, moved, or kept.'],
+              ['Ignore or remove deliberately', 'Temporary hide, permanent ignore, and explicit disk deletion are separate actions. Deletion always requires confirmation.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="flex gap-3 items-start">
+                <CheckCircle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
+                <p className="text-white/55 leading-snug"><strong className="text-white/75">{label}:</strong> {desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 p-3 rounded-lg flex gap-2 text-[16px]" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
+            <Info size={15} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
+            <span className="text-white/50">Loading Bay is an intake workflow, not a second library hierarchy. Once imported, the normal root → gallery → media model takes over.</span>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Collection Curating" icon={Sparkles} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            Collection Curating is the guided cleanup loop for galleries that still need attention. It presents one gallery at a time and lets you fix the metadata that makes the rest of the Vault useful.
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-[16px]">
+            {[
+              ['What you can fix', 'Rename the folder, assign creators, add tags, rate the gallery, set a cover, mark it favourite, record period/price, or delete it.'],
+              ['Save & next', 'Save the current work and move forward without losing the curation queue. Large mixed folders can be handled at file level.'],
+              ['Not now', 'Snooze one gallery for a fortnight when you do not want to decide yet.'],
+              ['Curation rotation', 'Completed galleries leave the active rotation for three months, so the queue keeps showing work that actually needs you.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 22%, transparent)' }}>
+                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
+                <p className="text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Tags, AI tagging & provenance" icon={Tag} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <div className="space-y-3 text-[16px] text-white/55">
+            <p><strong className="text-white/75">Manual tags</strong> are your explicit curation. <strong className="text-[#C084FC]">AI tags</strong> are model suggestions and stay visually distinct. Tag Manager can merge duplicates, remove orphaned tags, browse the raw WD14/JoyTag vocabulary, and enable or disable tags per model.</p>
+            <p>Per-tag confidence overrides take priority over the global AI threshold. This is useful when a tag is consistently reliable or consistently noisy.</p>
+            <p>ComfyUI images are identified from embedded workflow metadata during import. They receive the <strong className="text-white/75">AI generated</strong> provenance tag without needing to run an AI tagger.</p>
+            <p>Creator and character assignment is metadata, not a forced folder level. A file can carry its own creator relationship while its gallery remains intact.</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Duplicates, missing folders & background work" icon={GitCompare} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <div className="space-y-3 text-[16px] text-white/55">
+            <p><strong className="text-white/75">Duplicates</strong> uses exact and visual comparison. The safe deletion flow keeps the selected original and updates database references before removing a duplicate.</p>
+            <p><strong className="text-white/75">Missing folders</strong> appears in Settings when a root or gallery is unavailable. Resolve all can scan online roots and relink confidently moved folders while protecting offline libraries; genuinely stale records can be removed explicitly.</p>
+            <p><strong className="text-white/75">Task Queue</strong> is where long scans, thumbnail work, AI tagging, and other background jobs report progress. Long AI-tagging runs can pause, survive a restart, and resume from their last committed checkpoint.</p>
+            <p><strong className="text-white/75">Console</strong> shows live server output when you need to diagnose a scan, model, or playback issue.</p>
+          </div>
+        </SectionBody>
+      </Section>
+    </div>
+  )
+}
+
+function StatsContent() {
+  return (
+    <div className="space-y-3">
+      <Section title="Stats has three jobs" icon={BarChart2} defaultOpen accentColor="var(--c-amber)">
+        <SectionBody>
+          <div className="grid grid-cols-3 gap-2 text-[16px]">
+            {[
+              ['Overview', 'Current totals, recent sessions, session controls, XP/profile progress, and the quick read of how you use the Vault.'],
+              ['Analytics', 'Choose a page-wide range and compare viewing time, new versus rewatched media, creators, timing, edges, personal bests, and session patterns.'],
+              ['Collection History', 'The long view formerly called Almanac: reconstruct collection years, phases, creator growth, curation health, and the written read from your own numbers.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 22%, transparent)' }}>
+                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
+                <p className="text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Sessions are local, editable history" icon={Clock} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <div className="space-y-2.5 text-[16px] text-white/55">
+            <p>Start and stop sessions from Dashboard, Stats, Playlists, or a viewer. A session can survive a refresh and the recovery prompt can resume an interrupted one.</p>
+            <p>Session History uses your browser's local timezone for date and hour buckets. It can show multiple credited creators without turning one elapsed session into several sessions.</p>
+            <p>Every history row can be edited or deleted, and you can add a session the app never observed. Creator attribution can be corrected without rewriting the rest of the session.</p>
+            <p>The Session settings tab controls what ending a session means: count a climax automatically, ask each time, or never count one automatically. Edges are tracked separately.</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="When analytics are unavailable" icon={Info} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed">
+            Some charts require enough timestamped session history to say something useful. The Vault shows an honest unavailable state instead of inventing missing history. A shorter range may still work when the full history does not.
+          </p>
+        </SectionBody>
+      </Section>
+    </div>
+  )
+}
+
 function CardsContent() {
   return (
     <div className="space-y-3">
       <Section title="One rarity ladder — C / R / SR / UR / SPR" icon={Sparkles} defaultOpen accentColor="#FFD700">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Every card has one visible rarity ladder: <strong className="text-white/75">C → R → SR → UR → SPR</strong>. Rarity is assigned before publication and then frozen with the card definition; it never changes because of later ownership or engagement.
+            Every printing has one visible rarity: <strong className="text-white/75">C → R → SR → UR → SPR</strong>. Each printing is frozen when it is created; Foundation may append a new linked SPR later when fresh personal engagement reaches its unlock milestone.
           </p>
           <div className="space-y-2">
             {RARITY_DATA.map(({ label, color, bg, note }) => (
@@ -657,7 +880,7 @@ function CardsContent() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[16px] text-white/35">Rarity is not a live score or an upgrade track: once a printing is published, its rarity and collectible identity stay fixed.</p>
+          <p className="mt-3 text-[16px] text-white/35">Rarity is not a live score or an upgrade track: an existing printing never changes, while an eligible Foundation source can receive one new linked SPR printing.</p>
         </SectionBody>
       </Section>
 
@@ -683,7 +906,7 @@ function CardsContent() {
           <div className="p-3 rounded-lg text-[16px] text-white/50 flex gap-2"
                style={{ background: 'rgba(85,194,255,0.08)', border: '0.5px solid rgba(85,194,255,0.25)' }}>
             <Info size={14} style={{ color: '#55C2FF' }} className="flex-shrink-0 mt-0.5" />
-            <span>Rarity is a publication fact, not a live score. Engagement can inform preparation before publication, but it cannot silently rewrite a card that is already in the catalogue.</span>
+            <span>Rarity is a publication fact, not a live score. Engagement can inform initial selection and append a linked Foundation SPR at the six-cum milestone, but it never rewrites the existing base card.</span>
           </div>
         </SectionBody>
       </Section>
@@ -717,12 +940,12 @@ function CardsContent() {
       <Section title="Special Rare parallels" icon={Crown} defaultOpen={false} accentColor="#ff5db1">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            <strong className="text-white/75">SPR</strong> is a linked Special Rare printing, not a live upgrade button. It is published as its own immutable card definition with its own artwork, number, and rarity treatment. The collection keeps the base card and its SPR parallel distinct.
+            <strong className="text-white/75">SPR</strong> is a linked Special Rare printing, not a live upgrade button. It is created as its own immutable card definition with its own artwork, number, and rarity treatment. Foundation starts with a substantial engagement-ranked SPR pool and may append one linked SPR when a source reaches six lifetime cums. The collection keeps the base card and its SPR parallel distinct.
           </p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
               { label: 'Linked printing', desc: 'A parallel points back to its base card and remains tied to the same published source identity.' },
-              { label: 'No silent upgrades', desc: 'Ownership and engagement never rewrite a published card.' },
+              { label: 'No silent upgrades', desc: 'Ownership and engagement never rewrite the existing base card; a milestone can add one separate parallel.' },
             ].map(({ label, desc }) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,93,177,0.08)', border: '0.5px solid rgba(255,93,177,0.25)' }}>
                 <div className="font-semibold text-[#ff9dd0] mb-1">{label}</div>
@@ -766,16 +989,61 @@ function CardsContent() {
           <div className="grid grid-cols-2 gap-3 text-[16px]">
             <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Vault Booster</span>
+                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Permanent Vault Booster</span>
               </div>
-              <p className="text-white/50 leading-snug">The permanent pool: an always-available pack drawing from published Foundation cards.</p>
+              <p className="text-white/50 leading-snug">The permanent pool: 10 cards drawn from the published Foundation catalogue with an SR-or-higher guarantee.</p>
             </div>
             <div className="p-4 rounded-lg" style={{ background: 'rgba(255,136,0,0.08)', border: '0.5px solid rgba(255,136,0,0.3)' }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-[18px] font-bold text-[#ffb347]">Release packs</span>
               </div>
-              <p className="text-white/50 leading-snug">Standard and Premium packs draw only from a named release's frozen checklist; reward packs can target a published release.</p>
+              <p className="text-white/50 leading-snug">Standard packs contain 6 cards with an SR-or-higher slot. Premium packs contain 4 cards with a UR guarantee. Both draw from a named release checklist.</p>
             </div>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Dynamic monthly releases" icon={Calendar} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            Monthly releases scale with the published Foundation <strong className="text-white/75">base-card count</strong>, not with the number of SPR parallels. The target and economy modifier are frozen into the release when it is drafted, so a later library scan cannot silently change an existing release.
+          </p>
+          <div className="rounded-lg overflow-hidden mb-4" style={{ border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <table className="w-full text-[16px]">
+              <thead><tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Published base collection</th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Monthly base cards</th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Economy modifier</th>
+              </tr></thead>
+              <tbody>
+                {[
+                  ['Under 10,000', '120 minimum', '0.19× or lower'],
+                  ['10,000', '300', '0.48×'],
+                  ['30,000', '460', '0.74×'],
+                  ['60,000', '620', '1.00×'],
+                  ['100,000', '800', '1.29×'],
+                  ['160,000+', '1,000 cap', '1.61× or higher'],
+                ].map(([size, target, modifier], i) => (
+                  <tr key={size} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                    <td className="px-4 py-2 text-white/70">{size}</td>
+                    <td className="px-4 py-2 text-right font-mono text-white/70">{target}</td>
+                    <td className="px-4 py-2 text-right font-mono" style={{ color: 'var(--c-pink-text)' }}>{modifier}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[16px] text-white/45 leading-snug">The modifier also scales future monthly pack prices in 25-Credit steps. At the 1.00× reference, Standard is 550 Credits regular / 700 launch and Premium is 1,000 regular / 1,250 launch. Published prices are frozen with the release; September's existing products are not rewritten.</p>
+        </SectionBody>
+      </Section>
+
+      <Section title="Pack opening, copies & binders" icon={Archive} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <div className="space-y-3 text-[16px] text-white/55">
+            <p>Opening a booster creates an acquisition record and durable physical-copy identity for each card. The published card definition stays frozen; duplicate pulls become additional owned copies rather than a different card.</p>
+            <p>Binders, cabinets, display stands, and physical placements refer to owned copies. Collection filters, release checklists, provenance, and the approved card renderers remain authoritative in the ordinary Card Collection workspace.</p>
+            <p>Pack odds are independent of the card's personal-value evidence. Engagement can decide which real sources deserve a printing or an SPR, but opening a pack does not rewrite a card's rarity or artwork.</p>
+            <p>Legacy cards from before TCG V2 are preserved as Legacy and kept outside current rarity/type categories unless you explicitly enable the Legacy scope.</p>
           </div>
         </SectionBody>
       </Section>
@@ -784,9 +1052,10 @@ function CardsContent() {
         <SectionBody>
           <div className="space-y-2.5 text-[17px]">
             {[
-              { name: 'Vault Credits', color: '#FFD700', desc: 'The pack currency earned through Vault activity and rewards. Prices and availability are recorded with each published pack product.' },
-              { name: 'Pack tokens',   color: 'var(--c-accent)', desc: 'Quest and event rewards that redeem a specific persisted pack product without inventing new cards.' },
-              { name: 'Bond rewards',  color: 'var(--c-pink)', desc: 'Bond and Hall of Fame cards are earned from real persisted activity and remain protected from ordinary trading.' },
+              { name: 'Vault Credits', color: '#FFD700', desc: 'The recurring pack currency earned through sessions, cums, curation, ratings, tags, imports, logins, spins, quests, and milestones. Bulk file imports do not create an infinite faucet.' },
+              { name: 'Pack tokens',   color: 'var(--c-accent)', desc: 'Quest and event rewards that redeem a specific persisted pack product without inventing new cards. Daily and weekly completion rewards use this route.' },
+              { name: 'Forge materials', color: 'var(--c-green)', desc: 'Shards, catalyst tokens, and CXP support dismantling, fusing, and evolution. Dismantling is a material sink, not a second credit faucet.' },
+              { name: 'Bond rewards',  color: 'var(--c-pink)', desc: 'Bond and Hall of Fame cards are earned from real persisted activity and remain distinct from ordinary booster pulls.' },
             ].map(({ name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
@@ -814,6 +1083,129 @@ function CardsContent() {
               </div>
             ))}
           </div>
+        </SectionBody>
+      </Section>
+    </div>
+  )
+}
+
+function CollectionRoomContent() {
+  return (
+    <div className="space-y-3">
+      <Section title="What the Collection Room is" icon={Box} defaultOpen accentColor="var(--c-amber)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
+            Collection Room is an optional first-person home for the TCG layer. It gives your cards a physical place to live: shelves, cabinets, binders, posters, stands, parcels, and furniture. The ordinary Card Collection remains authoritative; the room is its tactile display space.
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-[16px]">
+            {[
+              ['I inventory', 'Press I to open the persistent inventory. Place exact owned furniture instances, inspect held items, and open collected parcels or earned booster tokens.'],
+              ['In-room PC', 'Use the room computer to browse Booster Packs and place orders. The room treats ordering, delivery, collection, and opening as separate states.'],
+              ['Physical copies', 'A displayed card is an owned physical copy. Moving a display item changes its room placement, not the card definition or its collection history.'],
+              ['Safe persistence', 'Room layouts, furniture instances, parcels, and display assignments are persisted with revision-safe updates and undo/redo support.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 22%, transparent)' }}>
+                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
+                <p className="text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="The parcel-to-card flow" icon={Package} defaultOpen={false} accentColor="var(--c-accent)">
+        <SectionBody>
+          <div className="space-y-2.5 text-[16px]">
+            {[
+              ['Order', 'Choose a published booster through the room computer or the normal collection shop. The order reserves its product and contents.'],
+              ['Wait for delivery', 'The pack arrives as a delayed parcel. It is not opened at the moment of purchase.'],
+              ['Collect and place', 'Use the I inventory to collect the parcel, carry it into the room, and place it where you want it.'],
+              ['Open authoritatively', 'Open the parcel through the same persisted pack-opening and card-resolution path used by the main collection workspace.'],
+              ['Display or bind', 'Place the resulting physical copies on stands, in cabinets, or in binders. The copy ledger prevents duplicate openings and preserves ownership.'],
+            ].map(([label, desc], index) => (
+              <div key={label} className="flex gap-3 items-start">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[16px] font-bold" style={{ background: 'color-mix(in srgb, var(--c-accent) 22%, transparent)', color: 'var(--c-accent)' }}>{index + 1}</div>
+                <p className="text-white/55 leading-snug"><strong className="text-white/75">{label}:</strong> {desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Placement rules" icon={Layers3} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <div className="space-y-2.5 text-[16px] text-white/55">
+            <p><strong className="text-white/75">Floor furniture</strong> can be placed freely on the authored walkable floor and moved or rotated later.</p>
+            <p><strong className="text-white/75">Wall shelves and posters</strong> are wall-only. The placement preview uses the actual authored wall faces rather than treating the whole room as a loose rectangle.</p>
+            <p><strong className="text-white/75">Card stands</strong> belong inside authored shelf levels. Cards displayed in cabinets follow their parent shelf when it moves or rotates.</p>
+            <p><strong className="text-white/75">Context actions</strong> stay attached to the live preview: Place, Return, Rotate, and Deselect. Right-click is reserved for deselecting rather than accidentally selecting another object.</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Module and display safety" icon={Settings} defaultOpen={false} accentColor="rgba(255,255,255,0.45)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed">
+            The room is an optional downloadable module. Its installer can resume downloads, verify integrity, repair a damaged version, update it, cancel safely, and uninstall only the room module without deleting your collection. If the room is unavailable, your cards, binders, releases, and physical-copy ledger remain usable in the main TCG workspace.
+          </p>
+        </SectionBody>
+      </Section>
+    </div>
+  )
+}
+
+function SettingsContent() {
+  return (
+    <div className="space-y-3">
+      <Section title="Settings at a glance" icon={Settings} defaultOpen accentColor="var(--c-accent)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4">Settings is organized by the kind of thing it changes. The important distinction is between library paths, behavior preferences, and destructive maintenance.</p>
+          <div className="grid grid-cols-2 gap-2 text-[16px]">
+            {[
+              ['Library', 'Roots, missing-folder resolution, creator-folder synchronization, and the configured data locations.'],
+              ['Scanner', 'Hidden/system-file policy, thumbnail generation, video-length repair, archive behavior, and the central funscript library.'],
+              ['AI Tagging', 'Download/check local models, choose WD14/JoyTag, set confidence thresholds, pause/resume runs, and inspect progress.'],
+              ['Appearance', 'Theme palette, typography, animation/effects, Vault identity, and companion presentation.'],
+              ['Session', 'End-session climax behavior, edge preferences, and Session History corrections.'],
+              ['Hotkeys', 'Rebind global and viewer shortcuts, choose arrow-key behavior, and set normal/long seek distances.'],
+              ['Backup', 'Download a database backup, restore a selected .db after an automatic safety backup, or change storage location.'],
+              ['System', 'Connect a mobile device, check updates, read the in-app changelog, restart the server, or perform a factory reset.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
+                <p className="text-white/45 leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Scanning and video compatibility" icon={ScanLine} defaultOpen={false} accentColor="var(--c-green)">
+        <SectionBody>
+          <div className="space-y-2.5 text-[16px] text-white/55">
+            <p>Scans ignore hidden/system files and metadata folders by default. The Scanner setting can include them when a library needs that behavior.</p>
+            <p>Video durations are recorded during new scans. Read video lengths is a resumable repair action for older imports, and unknown durations stay visibly unknown instead of being guessed.</p>
+            <p>Funscripts can stay beside videos or be centralized in a configured library. Matching uses the video's filename and permanent links survive future playback.</p>
+            <p>When Chromium cannot play a VLC/FFmpeg-compatible file directly, The Vault can create a cached browser-compatible playback copy while preserving the original media.</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Backup, restore & destructive actions" icon={AlertTriangle} defaultOpen={false} accentColor="var(--c-pink)">
+        <SectionBody>
+          <div className="space-y-2.5 text-[16px] text-white/55">
+            <p>Use Backup before a large repair or economy/catalogue operation. Restore replaces the current database only after you choose a backup file, and the current database is saved automatically first.</p>
+            <p>Changing the data location moves future database/thumb storage; the fixed configuration file remains the anchor so the app can find the setting again.</p>
+            <p>Factory reset is different from restore: it wipes the collection and should be treated as irreversible. It does not mean “clear the current filters” or “re-scan the library.”</p>
+          </div>
+        </SectionBody>
+      </Section>
+
+      <Section title="Themes and semantic colours" icon={Sparkles} defaultOpen={false} accentColor="var(--c-amber)">
+        <SectionBody>
+          <p className="text-[17px] text-white/55 leading-relaxed">
+            Theme palettes recolour the interface, surfaces, controls, and charts. Some colours intentionally remain semantic: rarity, AI-versus-manual tag source, and device status keep their meaning when the palette changes. This is why a rarity badge may stay gold or a connected device may stay green in every theme.
+          </p>
         </SectionBody>
       </Section>
     </div>
@@ -993,7 +1385,7 @@ function ErikaContent() {
                    style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}>1</div>
               <div>
                 <div className="text-[18px] font-semibold text-white/80 mb-0.5">Download Ollama</div>
-                <p className="text-[16px] text-white/50 leading-snug">Go to <span className="font-mono text-[15px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>https://ollama.com</span> and download the Windows installer. Run it — Ollama installs as a background service and starts automatically.</p>
+                <p className="text-[16px] text-white/50 leading-snug">Go to <span className="font-mono text-[16px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>https://ollama.com</span> and download the Windows installer. Run it — Ollama installs as a background service and starts automatically.</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -1009,7 +1401,7 @@ function ErikaContent() {
             <div className="p-3 rounded-lg flex gap-2 text-[16px]"
                  style={{ background: 'color-mix(in srgb, var(--c-green) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 20%, transparent)' }}>
               <Info size={14} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />
-              <span className="text-white/50">Ollama listens on <span className="font-mono text-[15px] text-white/70">http://localhost:11434</span> by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port.</span>
+              <span className="text-white/50">Ollama listens on <span className="font-mono text-[16px] text-white/70">http://localhost:11434</span> by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port.</span>
             </div>
           </div>
         </SectionBody>
@@ -1022,7 +1414,7 @@ function ErikaContent() {
             Erika works with any model available in Ollama. The recommended model is an uncensored 27B that handles
             roleplay and explicit content well. Pull it with:
           </p>
-          <code className="block px-4 py-3 rounded-lg text-[15px] font-mono mb-4 leading-relaxed break-all"
+          <code className="block px-4 py-3 rounded-lg text-[16px] font-mono mb-4 leading-relaxed break-all"
                 style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
             ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
           </code>
@@ -1049,10 +1441,10 @@ function ErikaContent() {
               { model: 'hf.co/bartowski/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF:Q5_K_M',   vram: '~6 GB', note: '8B uncensored — fast, works on most gaming GPUs' },
             ].map(({ model, vram, note }) => (
               <div key={model} className="px-3 py-2.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-                <code className="text-[14px] font-mono text-white/60 break-all">{model}</code>
+                <code className="text-[16px] font-mono text-white/60 break-all">{model}</code>
                 <div className="flex gap-3 mt-1">
-                  <span className="text-[15px] font-semibold" style={{ color: 'var(--c-amber)' }}>{vram}</span>
-                  <span className="text-[15px] text-white/40">{note}</span>
+                  <span className="text-[16px] font-semibold" style={{ color: 'var(--c-amber)' }}>{vram}</span>
+                  <span className="text-[16px] text-white/40">{note}</span>
                 </div>
               </div>
             ))}
@@ -1102,13 +1494,13 @@ function ErikaContent() {
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
                 <div className="flex-shrink-0 text-center w-24">
                   <div className="text-[17px] font-bold" style={{ color }}>{tier}</div>
-                  <div className="text-[14px] text-white/35 font-mono">{xp.toLocaleString()} XP</div>
+                  <div className="text-[16px] text-white/35 font-mono">{xp.toLocaleString()} XP</div>
                 </div>
                 <p className="text-[16px] text-white/55 leading-snug mt-0.5">{desc}</p>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/30">Bond XP accumulates naturally through conversation. There is no shortcut to skip tiers — the progression is intentional.</p>
+          <p className="mt-3 text-[16px] text-white/30">Bond XP accumulates naturally through conversation. There is no shortcut to skip tiers — the progression is intentional.</p>
         </SectionBody>
       </Section>
 
@@ -1188,7 +1580,7 @@ function HotkeysContent() {
             viewer keys — including the number-key ratings — act on. The <b>wall</b> keys ignore the pin and drive every
             panel at once.
           </p>
-          <p className="mt-3 text-[15px] text-white/30">
+          <p className="mt-3 text-[16px] text-white/30">
             Every binding below is yours to change in Settings → Hotkeys. Seek currently moves {seekStep}s,
             long seek {seekStepBig}s.
           </p>
@@ -1212,7 +1604,7 @@ function HotkeysContent() {
                        style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
                     <div className="min-w-0">
                       <div className="text-[16px] text-white/70">{a.label}</div>
-                      <div className="text-[15px] text-white/30">{a.hint}</div>
+                      <div className="text-[16px] text-white/30">{a.hint}</div>
                     </div>
                     <span className="px-2.5 py-1 rounded-[6px] text-[16px] font-mono flex-shrink-0"
                           style={{
@@ -1236,10 +1628,14 @@ function HotkeysContent() {
 const TABS = [
   { id: 'overview',  label: 'Overview',     icon: BookOpen   },
   { id: 'nav',       label: 'Navigation',   icon: Map        },
+  { id: 'library',   label: 'Library',      icon: FolderOpen },
+  { id: 'stats',     label: 'Stats',        icon: BarChart2  },
   { id: 'gami',      label: 'Gamification', icon: Zap        },
   { id: 'quests',    label: 'Quests',       icon: Trophy     },
   { id: 'achieve',   label: 'Achievements', icon: Star       },
   { id: 'cards',     label: 'Cards',        icon: WalletCards },
+  { id: 'room',      label: 'Collection Room', icon: Box      },
+  { id: 'settings',  label: 'Settings',     icon: Settings   },
   { id: 'devices',   label: 'Devices',      icon: Cpu        },
   { id: 'hotkeys',   label: 'Hotkeys',      icon: Keyboard   },
   { id: 'erika',     label: 'Erika',        icon: Bot        },
@@ -1253,10 +1649,14 @@ export default function Help() {
     switch (activeTab) {
       case 'overview':  return <OverviewContent search={search} />
       case 'nav':       return <NavContent />
+      case 'library':   return <LibraryContent />
+      case 'stats':     return <StatsContent />
       case 'gami':      return <GamificationContent />
       case 'quests':    return <QuestsContent />
       case 'achieve':   return <AchievementsContent />
       case 'cards':     return <CardsContent />
+      case 'room':      return <CollectionRoomContent />
+      case 'settings':  return <SettingsContent />
       case 'devices':   return <DevicesContent />
       case 'hotkeys':   return <HotkeysContent />
       case 'erika':     return <ErikaContent />

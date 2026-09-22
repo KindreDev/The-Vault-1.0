@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { COLLISION_BOXES, EYE_HEIGHT, FLOOR_Y, INTERACTION_COPY, SAFE_SPAWN, WALK_BOUNDS } from './roomLayout'
 
 const SPEED = 2.65
+const MOVEMENT_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'Space'])
 const CROUCH_EYE_HEIGHT = 1.05
 const CEILING_EYE_HEIGHT = 2.62
 const PLAYER_RADIUS = .28
@@ -110,6 +111,10 @@ export default function FirstPersonController({ paused, focused, arranging, inte
   const lookHeld = useRef(false)
   const collideMeshes = useRef([])
   const collideReady = useRef(false)
+  const clearInput = useCallback(() => {
+    keys.current.clear()
+    lookHeld.current = false
+  }, [])
 
   useEffect(() => {
     camera.position.set(...SAFE_SPAWN.position)
@@ -122,12 +127,15 @@ export default function FirstPersonController({ paused, focused, arranging, inte
 
   useEffect(() => {
     const down = event => {
-      keys.current.add(event.code)
-      if (event.code === 'KeyE' && !arranging) onInteract()
-      if (event.code === 'MouseRight' || event.button === 2) lookHeld.current = true
+      if (event.type === 'keydown') {
+        if (MOVEMENT_CODES.has(event.code)) keys.current.add(event.code)
+        if (event.code === 'KeyE' && !arranging) onInteract()
+      } else if (event.button === 2) {
+        lookHeld.current = true
+      }
     }
     const up = event => {
-      keys.current.delete(event.code)
+      if (event.type === 'keyup') keys.current.delete(event.code)
       if (event.button === 2) lookHeld.current = false
     }
     const move = event => {
@@ -142,6 +150,10 @@ export default function FirstPersonController({ paused, focused, arranging, inte
     window.addEventListener('keyup', up)
     window.addEventListener('mousedown', down)
     window.addEventListener('mouseup', up)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', clearInput)
+    window.addEventListener('blur', clearInput)
+    document.addEventListener('visibilitychange', clearInput)
     document.addEventListener('mousemove', move)
     gl.domElement.addEventListener('click', click)
     gl.domElement.addEventListener('contextmenu', blockMenu)
@@ -150,11 +162,19 @@ export default function FirstPersonController({ paused, focused, arranging, inte
       window.removeEventListener('keyup', up)
       window.removeEventListener('mousedown', down)
       window.removeEventListener('mouseup', up)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', clearInput)
+      window.removeEventListener('blur', clearInput)
+      document.removeEventListener('visibilitychange', clearInput)
       document.removeEventListener('mousemove', move)
       gl.domElement.removeEventListener('click', click)
       gl.domElement.removeEventListener('contextmenu', blockMenu)
     }
-  }, [arranging, focused, gl, onInteract, paused])
+  }, [arranging, clearInput, focused, gl, onInteract, paused])
+
+  useEffect(() => {
+    clearInput()
+  }, [arranging, clearInput, focused, paused])
 
   useEffect(() => {
     if (!focused?.position) {

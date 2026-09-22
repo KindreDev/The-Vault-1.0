@@ -38,6 +38,49 @@ export const FURNITURE_FILE = Object.freeze({
   graded_card_stand: 'graded_card_stand_black',
 })
 
+// The shop renders for the compact stand were captured from the reverse side
+// of the holder.  The room mesh itself has the correct local orientation; only
+// the 2D preview needs the front-facing mirror.  Use the white wide-stand
+// render for the black variant so its silhouette does not disappear into the
+// dark placement rail.
+export const FURNITURE_PREVIEW_FILE = Object.freeze({
+  graded_card_stand: 'graded_card_stand_white',
+  graded_card_stand_black: 'graded_card_stand_white',
+})
+
+export const FURNITURE_PREVIEW_MIRROR_X = Object.freeze(new Set([
+  'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
+]))
+
+// The compact holder GLBs were authored with their display face toward the
+// back of the room. Keep persisted placement yaw intact and apply this local
+// model correction everywhere the authored mesh is rendered.
+export const FURNITURE_MODEL_YAW_OFFSET = Object.freeze(new Set([
+  'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
+]))
+
+export function furniturePreviewAssetId(assetId) {
+  return FURNITURE_PREVIEW_FILE[assetId] || assetId
+}
+
+export function furniturePreviewMirrorX(assetId) {
+  return FURNITURE_PREVIEW_MIRROR_X.has(assetId)
+}
+
+export function furnitureModelYawOffset(assetId) {
+  return FURNITURE_MODEL_YAW_OFFSET.has(assetId) ? Math.PI : 0
+}
+
+export function furnitureDisplayName(name, assetId, variantKey = '') {
+  const value = String(name || 'Room item')
+  const isCardStand = /^(?:card_display_stand|graded_card_stand)(?:_|$)/i.test(String(assetId || ''))
+  if (!isCardStand) return value
+  if (/\((?:black|white)\)\s*$/i.test(value)) return value
+  const assetColor = String(assetId || '').match(/(?:^|_)(black|white)$/i)?.[1]
+  const color = assetColor || String(variantKey || '').match(/^(black|white)$/i)?.[1]
+  return color ? `${value} (${color.toLowerCase()})` : value
+}
+
 export const COMPUTER_SCREEN = Object.freeze({
   // Monitor glass faces +X. PlaneGeometry faces +Z, so yaw +90°.
   position: [-4.45, 1.254, -3.58],
@@ -79,12 +122,12 @@ export const INTERACTION_COPY = {
 }
 
 export const PLACEMENT_BOUNDS = Object.freeze({
-  floor: { minX: -4.85, maxX: 3.85, minZ: -4.85, maxZ: 4.85 },
-  // Wall meshes extend beyond the walkable floor rectangle.  Placement mode
-  // must use the authored wall envelope for ray-hit positions.
-  wall: { minX: -5.15, maxX: 4.15, minZ: -5.25, maxZ: 5.25 },
   wallY: { min: .12, max: 2.75 },
 })
+
+// These authored GLBs use their floor/base as the transform origin. Posters
+// and other module wall decor use a centered transform origin.
+export const WALL_BASE_ORIGIN_ASSETS = Object.freeze(new Set(['floating_glass_cabinet']))
 
 export const SURFACE_ASSETS = Object.freeze(new Set([
   'card_display_stand', 'card_display_stand_white', 'card_display_stand_black',
@@ -144,6 +187,32 @@ export function displaySlotCount(assetId) {
 export const SURFACE_HOST_ASSETS = Object.freeze(new Set([
   'glass_display_cabinet', 'glass_display_case', 'floating_glass_cabinet',
 ]))
+
+// Shelf tops measured from each authored furniture GLB origin.  Card stands
+// can be placed on any of these openings, not only on the cabinet's roof.
+export const SHELF_SUPPORT_SLOTS = Object.freeze({
+  glass_display_case: Object.freeze([
+    { y: .02, width: .52, depth: .52 },
+    { y: .54, width: .52, depth: .52 },
+    { y: 1.07, width: .52, depth: .52 },
+    { y: 1.60, width: .52, depth: .52 },
+    { y: 2.11, width: .52, depth: .52 },
+  ]),
+  glass_display_cabinet: Object.freeze([
+    { y: .72, width: .48, depth: .30 },
+    { y: 1.14, width: .48, depth: .30 },
+    { y: 1.56, width: .48, depth: .30 },
+    { y: 1.97, width: .48, depth: .30 },
+    { y: 2.38, width: .48, depth: .30 },
+  ]),
+  floating_glass_cabinet: Object.freeze([
+    { y: .04, width: .62, depth: .24 },
+    { y: .47, width: .62, depth: .24 },
+    { y: .91, width: .62, depth: .24 },
+    { y: 1.35, width: .62, depth: .24 },
+    { y: 1.78, width: .62, depth: .24 },
+  ]),
+})
 
 export const AUTHORED_SURFACES = Object.freeze([
   { id: 'desk', minX: -4.73, maxX: -4.07, minZ: -4.4, maxZ: -2.81, top: .855 },

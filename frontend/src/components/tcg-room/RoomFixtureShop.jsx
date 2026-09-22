@@ -15,6 +15,16 @@ const ASSET_PRESENTATION = {
   poster_frame: 'Wall decor',
 }
 
+function furnitureDescription(definition) {
+  const assetId = definition.asset_id
+  if (assetId === 'poster_frame') return 'A framed print of a photo from your Vault.'
+  if (assetId?.includes('graded_card_stand')) return 'Holds 9 cards, 3 per row. Sits on a table or shelf.'
+  if (assetId?.includes('card_display_stand')) return 'Holds 1 card. Sits on a table or shelf.'
+  if (assetId === 'glass_display_case' || assetId === 'glass_display_cabinet') return 'Free-standing shelf. Card stands can sit inside its shelf levels.'
+  if (assetId === 'floating_glass_cabinet') return 'Wall-mounted shelf. Card stands can sit inside its shelf levels.'
+  return definition.placement_kind === 'wall' ? 'Mounts on a room wall.' : 'Furniture for the Collection Room.'
+}
+
 function vaultThumb(img) {
   if (!img) return ''
   if (img.thumb_url) return img.thumb_url
@@ -96,7 +106,7 @@ export default function RoomFixtureShop({ bootstrap, wallet }) {
     <div className="furniture-store__results"><strong>{products.length} products</strong><span>Purchased pieces stay in your Inventory until placed.</span></div>
     <div className="furniture-store__grid">{products.map(definition => <article key={definition.id}>
       <ProductVisual definition={definition} />
-      <div className="furniture-store__body"><div className="furniture-store__owned">{ownedCounts[definition.asset_id] ? `${ownedCounts[definition.asset_id]} owned` : 'Not owned'}</div><h3>{definition.name}</h3><p>{definition.asset_id === 'poster_frame' ? 'A framed print of a photo from your Vault.' : definition.asset_id?.includes('graded_card_stand') ? 'Holds 9 cards, 3 per row. Sits on a table or shelf.' : definition.asset_id?.includes('card_display_stand') ? 'Holds 1 card. Sits on a table or shelf.' : definition.placement_kind === 'wall' ? 'Mounts on a room wall.' : 'Furniture only — cards go in stands, not in the cabinet.'}</p></div>
+      <div className="furniture-store__body"><div className="furniture-store__owned">{ownedCounts[definition.asset_id] ? `${ownedCounts[definition.asset_id]} owned` : 'Not owned'}</div><h3>{definition.name}</h3><p>{furnitureDescription(definition)}</p></div>
       <footer><div><span>Price</span><strong>{definition.unit_cost.toLocaleString()} {definition.currency === 'credits' ? 'Credits' : 'Shards'}</strong></div><button disabled={purchase.isPending} onClick={() => purchase.mutate({ definition, requestKey: crypto.randomUUID() })}>{definition.currency === 'credits' ? <CreditCard size={18} /> : <Gem size={18} />} {purchase.isPending && purchase.variables?.definition.id === definition.id ? 'Adding…' : 'Add to inventory'}</button></footer>
     </article>)}</div>
     {!products.length && <div className="furniture-store__empty">No furniture matches those filters.</div>}

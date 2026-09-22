@@ -137,6 +137,26 @@ def clean_scene_matte(matte: np.ndarray) -> np.ndarray:
     return np.round(np.maximum(cleaned, filled)).astype(np.uint8)
 
 
+def project_scene_matte(matte: np.ndarray, *, source_width: int,
+                        source_height: int, focal_x: float = 0.5,
+                        focal_y: float = 0.5) -> np.ndarray:
+    """Project a source matte using the same cover geometry as SceneCard."""
+    if source_width <= 0 or source_height <= 0:
+        raise ValueError("Scene matte projection requires source dimensions")
+    scale = max(CANVAS_WIDTH / source_width, CANVAS_HEIGHT / source_height)
+    rendered_width = round(source_width * scale)
+    rendered_height = round(source_height * scale)
+    x = round(-(rendered_width - CANVAS_WIDTH) * min(1.0, max(0.0, focal_x)))
+    y = round(-(rendered_height - CANVAS_HEIGHT) * min(1.0, max(0.0, focal_y)))
+
+    rendered = PILImage.fromarray(np.clip(matte, 0, 255).astype(np.uint8), "L").resize(
+        (rendered_width, rendered_height), PILImage.Resampling.BILINEAR
+    )
+    canvas = PILImage.new("L", (CANVAS_WIDTH, CANVAS_HEIGHT), 0)
+    canvas.paste(rendered, (x, y))
+    return np.asarray(canvas, dtype=np.uint8)
+
+
 def combine_scene_mattes(primary: np.ndarray, secondary: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     """Recover conservative omissions only when two independent models agree."""
     primary_f = np.clip(primary, 0, 255).astype(np.float32) / 255.0
@@ -184,7 +204,7 @@ def evaluate_scene_matte(matte: np.ndarray, *, person_count: int | None = None,
     if person_count is not None and person_count != 1:
         warnings.append("multiple-people-detected")
     if mirror_disagreement is not None and mirror_disagreement > MAX_MIRROR_DISAGREEMENT:
-        reasons.append("unstable-subject-extraction")
+        warnings.append("mirrored-pass-disagrees")
     if (cross_model_disagreement is not None
             and cross_model_disagreement > MAX_CROSS_MODEL_MERGE_DISAGREEMENT):
         warnings.append("independent-models-disagree")
@@ -203,6 +223,17 @@ def evaluate_scene_matte(matte: np.ndarray, *, person_count: int | None = None,
         "reasons": reasons,
         "warnings": warnings,
     }
+
+
+def scene_mask_quality(metrics: dict[str, Any]) -> float:
+    """Convert the strict scene decision into the shared mask confidence field.
+
+    Scene eligibility is deliberately binary: a warning may still be rendered,
+    but a hard extraction reason must use the flat-card fallback.  Keeping the
+    stored value binary prevents the generic ``MIN_QUALITY`` gate from making a
+    different decision than the scene evaluator.
+    """
+    return 1.0 if metrics.get("accepted") else 0.0
 
 
 def build_scene_recipe(*, rarity: str, creator_name: str, creator_type: str,

@@ -22,6 +22,9 @@ from models import (
 from services.cards import _card_to_dict
 from services.physical_cards import ensure_reconciled, move_copy
 from services.tcg_room_module import REQUIRED_ASSET_IDS
+from services.room_geometry import (
+    authored_room_bounds, floor_footprint_supported, infer_wall_yaw, wall_footprint_supported,
+)
 
 
 MAX_PLACEMENTS = 250
@@ -30,14 +33,9 @@ DEFAULT_DELAY_SECONDS = 5
 VISIBLE_PILE_LIMIT = 8
 VISIBLE_PLACED_LIMIT = 64
 VISIBLE_CARRIED_LIMIT = 4
-FURNITURE_MIGRATION_VERSION = 1
-ROOM_BOUNDS = {"min_x": -4.85, "max_x": 3.85, "min_z": -4.85, "max_z": 4.85, "max_y": 3.0}
-# The floor bounds describe the walkable floor, but the authored wall meshes
-# sit outside that rectangle.  Keep a separate envelope for wall-mounted
-# items so a ray hit on the inside face (notably the PC wall) is not rejected
-# as being outside the room.
-WALL_BOUNDS = {"min_x": -5.15, "max_x": 4.15, "min_z": -5.25, "max_z": 5.25}
-WALL_ATTACH_TOLERANCE = .55
+FURNITURE_MIGRATION_VERSION = 6
+ROOM_FLOOR_Y = .17
+ROOM_HEIGHT = 3.0
 PERMANENT_FIXTURES = (
     "room_floor", "room_ceiling", "wall_north", "wall_south_windowed", "wall_east",
     "wall_west_door", "window_double", "bedroom_door", "baseboard_trim",
@@ -45,17 +43,49 @@ PERMANENT_FIXTURES = (
     "pc_mouse", "kitchen_counter", "upper_kitchen_cabinet", "refrigerator", "microwave",
     "kitchen_sink", "dining_table", "ceiling_light", "door_mail_slot",
 )
-SAFETY_ZONES = (
-    (2.15, 3.95, 3.85, 4.85, "door"),
-    (-4.85, -3.85, -4.50, -2.70, "computer"),
-    (2.50, 3.55, -1.90, 0.30, "dining area"),
-)
 LIVE_SHOP_ASSETS = frozenset({
     "card_display_stand_white", "card_display_stand_black",
     "graded_card_stand_white", "graded_card_stand_black",
     "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet", "poster_frame",
 })
 MANUAL_ASSET_IDS = LIVE_SHOP_ASSETS
+SURFACE_HOST_ASSETS = frozenset({
+    "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet",
+})
+SHELF_ASSETS = SURFACE_HOST_ASSETS
+WALL_BASE_ORIGIN_ASSETS = frozenset({"floating_glass_cabinet"})
+
+# These are measured from the authored GLB origins.  A support item is placed
+# on one of these shelf tops, inside the host's clear opening.  Keeping the
+# authored slots in the catalog makes the same rule available to both the
+# browser preview and the server-side layout validator.
+SHELF_SUPPORT_SLOTS = {
+    "glass_display_case": (
+        {"y": .02, "width": .52, "depth": .52},
+        {"y": .54, "width": .52, "depth": .52},
+        {"y": 1.07, "width": .52, "depth": .52},
+        {"y": 1.60, "width": .52, "depth": .52},
+        {"y": 2.11, "width": .52, "depth": .52},
+    ),
+    "glass_display_cabinet": (
+        {"y": .72, "width": .48, "depth": .30},
+        {"y": 1.14, "width": .48, "depth": .30},
+        {"y": 1.56, "width": .48, "depth": .30},
+        {"y": 1.97, "width": .48, "depth": .30},
+        {"y": 2.38, "width": .48, "depth": .30},
+    ),
+    "floating_glass_cabinet": (
+        {"y": .04, "width": .62, "depth": .24},
+        {"y": .47, "width": .62, "depth": .24},
+        {"y": .91, "width": .62, "depth": .24},
+        {"y": 1.35, "width": .62, "depth": .24},
+        {"y": 1.78, "width": .62, "depth": .24},
+    ),
+}
+AUTHORED_SURFACE_SLOTS = (
+    {"min_x": -4.73, "max_x": -4.07, "min_z": -4.40, "max_z": -2.81, "top": .855},
+    {"min_x": 2.63, "max_x": 3.42, "min_z": -1.77, "max_z": .18, "top": .932},
+)
 
 
 class RevisionConflict(ValueError):
@@ -99,7 +129,11 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if set(raw).issubset({"x", "y", "z"}) and set(raw):
         raw = {"position": {"x": raw.get("x", 0), "y": raw.get("y", 0), "z": raw.get("z", 0)},
                "rotation": {"x": 0, "y": 0, "z": 0}}
-    allowed = {"position", "rotation", "content"}
+    allowed = {
+        "position", "rotation", "content",
+        "support_host_instance_id", "support_slot", "support_offset_x", "support_offset_z",
+        "support_local_rotation_y",
+    }
     if not set(raw).issubset(allowed):
         raise ValueError("Furniture transform accepts only position, rotation, and content")
     position, rotation = raw.get("position"), raw.get("rotation")
@@ -111,23 +145,38 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in values):
         raise ValueError("Furniture transform values must be finite numbers")
     px, py, pz = (float(position[k]) for k in ("x", "y", "z"))
-    bounds = WALL_BOUNDS if definition.placement_kind == "wall" else ROOM_BOUNDS
-    if not (bounds["min_x"] <= px <= bounds["max_x"] and
-            bounds["min_z"] <= pz <= bounds["max_z"] and 0 <= py <= ROOM_BOUNDS["max_y"]):
-        raise ValueError("Furniture must remain inside the room")
-    if definition.placement_kind == "wall":
-        distance_to_wall = min(abs(px - WALL_BOUNDS["min_x"]), abs(px - WALL_BOUNDS["max_x"]),
-                               abs(pz - WALL_BOUNDS["min_z"]), abs(pz - WALL_BOUNDS["max_z"]))
-        if distance_to_wall > WALL_ATTACH_TOLERANCE:
-            raise ValueError("Wall furniture must be attached to a wall")
+    normalized_rotation = {key: float(rotation[key]) for key in ("x", "y", "z")}
+    if py < 0 or py > ROOM_HEIGHT:
+        raise ValueError("Furniture must remain inside the room height")
     support = _load(definition.footprint_json, {}).get("support")
     if definition.placement_kind == "floor" and support == "surface":
-        if py < .2 or py > 2.7:
+        if py < ROOM_FLOOR_Y - .02 or py > 2.7:
             raise ValueError("This item must sit on a table, desk, stand, or counter — not the floor")
     elif definition.placement_kind == "floor" and (py < -.02 or py > .22):
         raise ValueError("Floor furniture must sit on the floor")
-    if definition.placement_kind == "wall" and py < .12:
-        raise ValueError("Wall furniture must be attached to a wall")
+    support_metadata = (
+        raw.get("support_host_instance_id"), raw.get("support_slot"),
+        raw.get("support_offset_x"), raw.get("support_offset_z"),
+        raw.get("support_local_rotation_y"),
+    )
+    if any(value is not None for value in support_metadata):
+        host_instance_id, support_slot = support_metadata[:2]
+        if (isinstance(host_instance_id, bool) or not isinstance(host_instance_id, int) or host_instance_id < 1 or
+                isinstance(support_slot, bool) or not isinstance(support_slot, int) or support_slot < 0):
+            raise ValueError("Nested furniture requires a valid support host and shelf slot")
+        numeric_metadata = support_metadata[2:]
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+               for value in numeric_metadata if value is not None):
+            raise ValueError("Nested furniture support values must be finite numbers")
+        result_metadata = {
+            "support_host_instance_id": host_instance_id,
+            "support_slot": support_slot,
+            "support_offset_x": float(raw.get("support_offset_x", 0)),
+            "support_offset_z": float(raw.get("support_offset_z", 0)),
+            "support_local_rotation_y": float(raw.get("support_local_rotation_y", 0)),
+        }
+    else:
+        result_metadata = {}
     content = raw.get("content") if isinstance(raw.get("content"), dict) else {}
     clean_content = {}
     if content.get("image_id") is not None:
@@ -135,7 +184,8 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     if "landscape" in content:
         clean_content["landscape"] = bool(content.get("landscape"))
     result = {"position": {"x": px, "y": py, "z": pz},
-              "rotation": {key: float(rotation[key]) for key in ("x", "y", "z")}}
+              "rotation": normalized_rotation}
+    result.update(result_metadata)
     if clean_content:
         result["content"] = clean_content
     return result
@@ -152,17 +202,146 @@ def _rotated_footprint(width: float, depth: float, yaw: float) -> tuple[float, f
     return cosine * width + sine * depth, sine * width + cosine * depth
 
 
-def _wall_plane(px: float, pz: float) -> str:
-    distances = {
-        "west": abs(px - WALL_BOUNDS["min_x"]), "east": abs(px - WALL_BOUNDS["max_x"]),
-        "north": abs(pz - WALL_BOUNDS["min_z"]), "south": abs(pz - WALL_BOUNDS["max_z"]),
+def _support_slots(definition: TCGDisplayItemDefinition) -> tuple[dict, ...]:
+    value = _load(definition.footprint_json, {})
+    slots = value.get("support_slots")
+    if isinstance(slots, list) and slots:
+        return tuple(slot for slot in slots if isinstance(slot, dict))
+    return tuple(SHELF_SUPPORT_SLOTS.get(definition.asset_id, ()))
+
+
+def _shelf_slot_boxes(definition: TCGDisplayItemDefinition, transform: dict,
+                      host_instance_id: int | None = None) -> list[dict]:
+    position = transform["position"]
+    rotation = transform["rotation"]
+    footprint = _load(definition.footprint_json, {})
+    default_width = float(footprint.get("width", .5))
+    default_depth = float(footprint.get("depth", .5))
+    boxes = []
+    yaw = float(rotation["y"])
+    cosine, sine = math.cos(yaw), math.sin(yaw)
+    for slot_index, slot in enumerate(_support_slots(definition)):
+        width = max(.05, float(slot.get("width", default_width)))
+        depth = max(.05, float(slot.get("depth", default_depth)))
+        extent_x, extent_z = _rotated_footprint(width, depth, yaw)
+        local_x, local_z = float(slot.get("x", 0)), float(slot.get("z", 0))
+        center_x = position["x"] + cosine * local_x - sine * local_z
+        center_z = position["z"] + sine * local_x + cosine * local_z
+        boxes.append({
+            "min_x": center_x - extent_x / 2,
+            "max_x": center_x + extent_x / 2,
+            "min_z": center_z - extent_z / 2,
+            "max_z": center_z + extent_z / 2,
+            "top": position["y"] + float(slot.get("y", 0)),
+            "host_instance_id": host_instance_id,
+            "slot_index": slot_index,
+        })
+    return boxes
+
+
+def _surface_host_for(definition: TCGDisplayItemDefinition, transform: dict,
+                      hosts: list[dict]) -> dict | None:
+    width, depth, _ = _dimensions(definition)
+    extent_x, extent_z = _rotated_footprint(width, depth, transform["rotation"]["y"])
+    position = transform["position"]
+    min_x, max_x = position["x"] - extent_x / 2, position["x"] + extent_x / 2
+    min_z, max_z = position["z"] - extent_z / 2, position["z"] + extent_z / 2
+    for host in hosts:
+        if abs(position["y"] - host["top"]) > .10:
+            continue
+        if min_x >= host["min_x"] and max_x <= host["max_x"] and min_z >= host["min_z"] and max_z <= host["max_z"]:
+            return host
+    return None
+
+
+def _support_slot(definition: TCGDisplayItemDefinition, slot_index: int) -> dict:
+    slots = _support_slots(definition)
+    if isinstance(slot_index, bool) or not isinstance(slot_index, int) or not 0 <= slot_index < len(slots):
+        raise ValueError("Nested furniture references an unavailable shelf slot")
+    return slots[slot_index]
+
+
+def _nested_transform(child_transform: dict, host_transform: dict,
+                      host_definition: TCGDisplayItemDefinition, host_instance_id: int,
+                      slot_index: int, *, infer_offset: bool = False) -> dict:
+    slot = _support_slot(host_definition, slot_index)
+    host_position = host_transform["position"]
+    host_rotation_y = float(host_transform["rotation"]["y"])
+    cosine, sine = math.cos(host_rotation_y), math.sin(host_rotation_y)
+    child_position = child_transform["position"]
+    child_rotation = child_transform["rotation"]
+    if infer_offset:
+        delta_x = child_position["x"] - host_position["x"]
+        delta_z = child_position["z"] - host_position["z"]
+        offset_x = cosine * delta_x + sine * delta_z
+        offset_z = -sine * delta_x + cosine * delta_z
+        local_rotation_y = float(child_rotation["y"]) - host_rotation_y
+    else:
+        offset_x = float(child_transform.get("support_offset_x", 0))
+        offset_z = float(child_transform.get("support_offset_z", 0))
+        local_rotation_y = float(child_transform.get("support_local_rotation_y", 0))
+    world_x = host_position["x"] + cosine * offset_x - sine * offset_z
+    world_z = host_position["z"] + sine * offset_x + cosine * offset_z
+    result = {
+        "position": {
+            "x": world_x,
+            "y": host_position["y"] + float(slot.get("y", 0)),
+            "z": world_z,
+        },
+        "rotation": {
+            "x": float(child_rotation["x"]),
+            "y": host_rotation_y + local_rotation_y,
+            "z": float(child_rotation["z"]),
+        },
+        "support_host_instance_id": int(host_instance_id),
+        "support_slot": int(slot_index),
+        "support_offset_x": offset_x,
+        "support_offset_z": offset_z,
+        "support_local_rotation_y": local_rotation_y,
     }
-    return min(distances, key=distances.get)
+    if child_transform.get("content"):
+        result["content"] = child_transform["content"]
+    return result
+
+
+def _overlap_box(left: dict, right: dict) -> bool:
+    return (left["min_x"] < right["max_x"] and left["max_x"] > right["min_x"] and
+            left["min_z"] < right["max_z"] and left["max_z"] > right["min_z"])
 
 
 def _is_manual_furniture(definition: TCGDisplayItemDefinition | None) -> bool:
     return bool(definition and definition.active and definition.placeable and
                 not definition.permanent_fixture and definition.asset_id in MANUAL_ASSET_IDS)
+
+
+def _wall_box(definition: TCGDisplayItemDefinition, transform: dict) -> dict:
+    width, _depth, height = _dimensions(definition)
+    yaw = float(transform["rotation"]["y"])
+    normal_x, normal_z = math.sin(yaw), math.cos(yaw)
+    if abs(normal_x) >= abs(normal_z):
+        axis, coordinate, tangent_size = "x", transform["position"]["x"], width
+        normal_sign = 1 if normal_x >= 0 else -1
+        tangent = transform["position"]["z"]
+    else:
+        axis, coordinate, tangent_size = "z", transform["position"]["z"], width
+        normal_sign = 1 if normal_z >= 0 else -1
+        tangent = transform["position"]["x"]
+    base_origin = definition.asset_id in WALL_BASE_ORIGIN_ASSETS
+    position_y = float(transform["position"]["y"])
+    return {
+        "axis": axis,
+        "coordinate": float(coordinate),
+        "normal_sign": normal_sign,
+        "tangent_min": tangent - tangent_size / 2,
+        "tangent_max": tangent + tangent_size / 2,
+        "vertical_min": position_y if base_origin else position_y - height / 2,
+        "vertical_max": position_y + height if base_origin else position_y + height / 2,
+    }
+
+
+def _same_wall_surface(left: dict, right: dict) -> bool:
+    return (left["axis"] == right["axis"] and left["normal_sign"] == right["normal_sign"] and
+            abs(left["coordinate"] - right["coordinate"]) <= .16)
 
 
 def _validate_placements(db: Session, placements: list[dict]) -> list[dict]:
@@ -175,56 +354,108 @@ def _validate_placements(db: Session, placements: list[dict]) -> list[dict]:
     ).all()} if instances else {}
     if set(instance_ids) != set(instances):
         raise ValueError("Every placement must reference an owned item instance")
-    normalized = []
-    floor_boxes = []
-    wall_boxes: dict[str, list[tuple[float, float, float, float]]] = {}
+    prepared = {}
     for item in placements:
         instance = instances[int(item["instance_id"])]
         definition = definitions.get(instance.definition_id)
-        if not _is_manual_furniture(definition):
+        if _is_manual_furniture(definition):
+            prepared[instance.id] = (instance, definition, _canonical_transform(item.get("transform"), definition))
+
+    shelf_boxes = {}
+    surface_hosts = list(AUTHORED_SURFACE_SLOTS)
+    for instance, definition, transform in prepared.values():
+        if definition.asset_id not in SHELF_ASSETS:
             continue
-        transform = _canonical_transform(item.get("transform"), definition)
+        width, depth, _ = _dimensions(definition)
+        extent_x, extent_z = _rotated_footprint(width, depth, transform["rotation"]["y"])
+        position = transform["position"]
+        shelf_boxes[instance.id] = {
+            "min_x": position["x"] - extent_x / 2, "max_x": position["x"] + extent_x / 2,
+            "min_z": position["z"] - extent_z / 2, "max_z": position["z"] + extent_z / 2,
+        }
+        surface_hosts.extend(_shelf_slot_boxes(definition, transform, instance.id))
+
+    # Surface items are persisted in world space for rendering, but their
+    # support relationship is persisted as well so a moving/rotating cabinet
+    # can carry its contents with it. Infer the relationship for older rows
+    # and newly placed items that arrive without the metadata.
+    for instance, definition, transform in list(prepared.values()):
+        if _load(definition.footprint_json, {}).get("support") != "surface":
+            continue
+        host_id = transform.get("support_host_instance_id")
+        slot_index = transform.get("support_slot")
+        if host_id is not None or slot_index is not None:
+            host_item = prepared.get(int(host_id)) if host_id is not None else None
+            if not host_item or host_item[1].asset_id not in SHELF_ASSETS:
+                raise ValueError("Nested display stand host is unavailable")
+            transform = _nested_transform(
+                transform, host_item[2], host_item[1], int(host_id), int(slot_index),
+            )
+        else:
+            host = _surface_host_for(definition, transform, surface_hosts)
+            if host and host.get("host_instance_id") is not None:
+                host_id = int(host["host_instance_id"])
+                host_item = prepared.get(host_id)
+                if not host_item:
+                    raise ValueError("Nested display stand host is unavailable")
+                transform = _nested_transform(
+                    transform, host_item[2], host_item[1], host_id, int(host["slot_index"]),
+                    infer_offset=True,
+                )
+        prepared[instance.id] = (instance, definition, transform)
+
+    normalized = []
+    floor_boxes = []
+    wall_boxes = []
+    for item in placements:
+        prepared_item = prepared.get(int(item["instance_id"]))
+        if not prepared_item:
+            continue
+        instance, definition, transform = prepared_item
         px, pz = transform["position"]["x"], transform["position"]["z"]
         width, depth, height = _dimensions(definition)
         extent_x, extent_z = _rotated_footprint(width, depth, transform["rotation"]["y"])
+        box = {
+            "min_x": px - extent_x / 2, "max_x": px + extent_x / 2,
+            "min_z": pz - extent_z / 2, "max_z": pz + extent_z / 2,
+        }
         if definition.placement_kind == "floor":
-            min_x, max_x = px - extent_x / 2, px + extent_x / 2
-            min_z, max_z = pz - extent_z / 2, pz + extent_z / 2
-            if min_x < ROOM_BOUNDS["min_x"] or max_x > ROOM_BOUNDS["max_x"] or min_z < ROOM_BOUNDS["min_z"] or max_z > ROOM_BOUNDS["max_z"]:
-                raise ValueError("Furniture footprint must remain inside the room")
+            min_x, max_x = box["min_x"], box["max_x"]
+            min_z, max_z = box["min_z"], box["max_z"]
             support = _load(definition.footprint_json, {}).get("support")
-            if support != "surface":
-                for zone_min_x, zone_max_x, zone_min_z, zone_max_z, label in SAFETY_ZONES:
-                    if min_x < zone_max_x and max_x > zone_min_x and min_z < zone_max_z and max_z > zone_min_z:
-                        raise ValueError(f"Furniture cannot obstruct the {label} safety area")
+            if support == "surface":
+                if not _surface_host_for(definition, transform, surface_hosts):
+                    raise ValueError("This item must sit on a shelf, table, desk, stand, or counter — not the floor")
+            else:
+                if not floor_footprint_supported(transform["position"], transform["rotation"]["y"], width, depth):
+                    raise ValueError("Furniture footprint must remain on the authored room floor")
+                if any(other_id != instance.id and _overlap_box(box, other_box)
+                       for other_id, other_box in shelf_boxes.items()):
+                    raise ValueError("Furniture cannot overlap another shelf")
                 for other_min_x, other_max_x, other_min_z, other_max_z in floor_boxes:
                     if min_x < other_max_x and max_x > other_min_x and min_z < other_max_z and max_z > other_min_z:
                         raise ValueError("Furniture cannot overlap another placed item")
                 floor_boxes.append((min_x, max_x, min_z, max_z))
         else:
-            plane = _wall_plane(px, pz)
-            vertical_min, vertical_max = transform["position"]["y"] - height / 2, transform["position"]["y"] + height / 2
-            if vertical_min < 0 or vertical_max > ROOM_BOUNDS["max_y"]:
-                raise ValueError("Wall furniture must remain fully within the wall height")
-            if plane in {"north", "south"}:
-                tangent_min, tangent_max = px - extent_x / 2, px + extent_x / 2
-                if tangent_min < WALL_BOUNDS["min_x"] or tangent_max > WALL_BOUNDS["max_x"]:
-                    raise ValueError("Wall furniture must remain fully within the wall")
-            else:
-                tangent_min, tangent_max = pz - extent_z / 2, pz + extent_z / 2
-                if tangent_min < WALL_BOUNDS["min_z"] or tangent_max > WALL_BOUNDS["max_z"]:
-                    raise ValueError("Wall furniture must remain fully within the wall")
-            if plane == "south" and vertical_min < 2.55 and vertical_max > .35:
-                for opening_min, opening_max in ((-4.55, -1.72), (1.72, 4.55)):
-                    if tangent_min < opening_max and tangent_max > opening_min:
-                        raise ValueError("Wall furniture cannot cover a window")
-            if plane == "west" and vertical_min < 2.5 and vertical_max > 0 and tangent_min < .9 and tangent_max > -.9:
-                raise ValueError("Wall furniture cannot cover the door")
-            for other_tangent_min, other_tangent_max, other_vertical_min, other_vertical_max in wall_boxes.setdefault(plane, []):
-                if (tangent_min < other_tangent_max and tangent_max > other_tangent_min and
-                        vertical_min < other_vertical_max and vertical_max > other_vertical_min):
+            base_origin = definition.asset_id in WALL_BASE_ORIGIN_ASSETS
+            if not wall_footprint_supported(
+                    transform["position"], transform["rotation"]["y"], width, depth, height,
+                    base_origin=base_origin):
+                raise ValueError("Wall furniture must be attached to an authored wall surface")
+            current_wall = _wall_box(definition, transform)
+            if definition.asset_id in SHELF_ASSETS and any(
+                other_id != instance.id and _overlap_box(box, other_box)
+                for other_id, other_box in shelf_boxes.items()
+            ):
+                raise ValueError("Wall furniture cannot overlap another shelf")
+            for other_wall in wall_boxes:
+                if (_same_wall_surface(current_wall, other_wall) and
+                        current_wall["tangent_min"] < other_wall["tangent_max"] and
+                        current_wall["tangent_max"] > other_wall["tangent_min"] and
+                        current_wall["vertical_min"] < other_wall["vertical_max"] and
+                        current_wall["vertical_max"] > other_wall["vertical_min"]):
                     raise ValueError("Wall furniture cannot overlap another wall item")
-            wall_boxes[plane].append((tangent_min, tangent_max, vertical_min, vertical_max))
+            wall_boxes.append(current_wall)
         normalized.append({"instance_id": instance.id, "transform": transform,
                            "snap_anchor": item.get("snap_anchor"), "placement_state": "placed"})
     return normalized
@@ -349,6 +580,8 @@ def seed_display_catalog(db: Session) -> None:
         if asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand"):
             footprint["support"] = "surface"
             footprint["slots"] = 9 if asset_id.startswith("graded_card_stand") else 1
+        if asset_id in SHELF_SUPPORT_SLOTS:
+            footprint["support_slots"] = list(SHELF_SUPPORT_SLOTS[asset_id])
         definition = db.query(TCGDisplayItemDefinition).filter_by(code=code).first()
         if not definition:
             db.add(TCGDisplayItemDefinition(
@@ -419,12 +652,63 @@ def reconcile_sparse_furniture(db: Session) -> dict:
     seed_display_catalog(db)
     placements = db.query(TCGRoomPlacement).order_by(TCGRoomPlacement.id).all()
     moved_ids = []
+    repaired_wall_ids = []
+    nested_support_ids = []
     for placement in placements:
         instance = db.get(TCGDisplayItemInstance, placement.instance_id)
         definition = db.get(TCGDisplayItemDefinition, instance.definition_id) if instance else None
-        if not definition or not definition.permanent_fixture:
+        # The version-1 migration used `permanent_fixture` to discard old
+        # aggregate-only room placements.  Do not repeat that cleanup when a
+        # later migration is repairing real, user-owned furniture instances.
+        if not definition or (existing is None and not definition.permanent_fixture):
             moved_ids.append(placement.instance_id)
             db.delete(placement)
+            continue
+        if definition.placement_kind != "wall":
+            continue
+        raw_transform = _load(placement.transform_json, {})
+        try:
+            canonical = _canonical_transform(raw_transform, definition)
+            width, depth, height = _dimensions(definition)
+            base_origin = definition.asset_id in WALL_BASE_ORIGIN_ASSETS
+            if not wall_footprint_supported(
+                    canonical["position"], canonical["rotation"]["y"], width, depth, height,
+                    base_origin=base_origin):
+                repaired_yaw = infer_wall_yaw(canonical["position"], width, depth, height, base_origin=base_origin)
+                if repaired_yaw is None:
+                    raise ValueError("Wall placement is not on an authored wall surface")
+                canonical["rotation"]["y"] = repaired_yaw
+                if not wall_footprint_supported(
+                        canonical["position"], repaired_yaw, width, depth, height, base_origin=base_origin):
+                    raise ValueError("Wall placement is not on an authored wall surface")
+            if canonical != raw_transform:
+                placement.transform_json = _dump(canonical)
+                placement.snap_anchor = "wall"
+                repaired_wall_ids.append(placement.instance_id)
+        except ValueError:
+            # A malformed legacy wall item cannot be placed safely. Keep the
+            # owned instance, but return it to inventory so it no longer
+            # blocks every later layout save.
+            moved_ids.append(placement.instance_id)
+            db.delete(placement)
+    # SessionLocal deliberately disables autoflush.  Flush the removals before
+    # validating the surviving layout, otherwise deleted legacy wall rows are
+    # still returned by this query and can make migration fail in a loop.
+    db.flush()
+    remaining = db.query(TCGRoomPlacement).filter_by(layout_id=1).order_by(TCGRoomPlacement.id).all()
+    if remaining:
+        normalized = _validate_placements(db, [_placement_dict(row) for row in remaining])
+        normalized_by_id = {int(item["instance_id"]): item["transform"] for item in normalized}
+        for placement in remaining:
+            transform = normalized_by_id.get(placement.instance_id)
+            if not transform or not transform.get("support_host_instance_id"):
+                continue
+            old_transform = _load(placement.transform_json, {})
+            if old_transform.get("support_host_instance_id") == transform["support_host_instance_id"] and \
+                    old_transform.get("support_slot") == transform.get("support_slot"):
+                continue
+            placement.transform_json = _dump(transform)
+            nested_support_ids.append(placement.instance_id)
     counts = {}
     for instance in db.query(TCGDisplayItemInstance).all():
         key = (instance.definition_id, instance.variant_key)
@@ -453,9 +737,11 @@ def reconcile_sparse_furniture(db: Session) -> dict:
     layout = _layout(db)
     layout.undo_json = "[]"
     layout.redo_json = "[]"
-    if moved_ids:
+    if moved_ids or repaired_wall_ids or nested_support_ids:
         layout.revision += 1
     report = {"version": FURNITURE_MIGRATION_VERSION, "moved_to_inventory": sorted(set(moved_ids)),
+              "repaired_wall_placements": sorted(set(repaired_wall_ids)),
+              "nested_support_placements": sorted(set(nested_support_ids)),
               "preserved_instances": len(set(moved_ids))}
     db.merge(TCGRoomFurnitureMigration(id=1, version=FURNITURE_MIGRATION_VERSION, report_json=_dump(report)))
     db.flush()
@@ -554,7 +840,7 @@ def furniture_inventory(db: Session) -> dict:
     ).order_by(TCGDisplayItemInstance.id).all() if definition_ids else []
     return {
         "revision": db.get(TCGRoomLayout, 1).revision,
-        "room_bounds": ROOM_BOUNDS,
+        "room_bounds": authored_room_bounds(),
         "permanent_fixtures": list(PERMANENT_FIXTURES),
         "catalog": [_definition_dict(row) for row in definitions],
         "owned_instances": [_instance_dict(row, placements.get(row.id)) for row in instances],
@@ -614,6 +900,12 @@ def _mutate_furniture(db: Session, instance_id: int, expected_revision: int, act
         if index is None:
             raise ValueError("Furniture is already in inventory")
         state["placements"].pop(index)
+        # A shelf cannot leave its nested display stands behind in world
+        # space. Return those child furniture instances to inventory with it.
+        state["placements"] = [
+            item for item in state["placements"]
+            if (item.get("transform") or {}).get("support_host_instance_id") != instance.id
+        ]
     else:
         raise ValueError("Unknown furniture placement action")
     result = save_room(db, {"expected_revision": expected_revision, **state})
@@ -895,6 +1187,7 @@ def open_parcel(db: Session, parcel_id: int) -> dict:
     if not parcel or parcel.status not in {"collected", "placed"}:
         raise ValueError("Booster packs must be collected before they can be opened")
     results = []
+    persisted_results = []
     try:
         packs = db.query(TCGParcelPack).filter_by(parcel_id=parcel.id).order_by(TCGParcelPack.line_id, TCGParcelPack.pack_index).all()
         for pack in packs:
@@ -909,16 +1202,23 @@ def open_parcel(db: Session, parcel_id: int) -> dict:
             )
             pack.opening_id = result["opening_id"]
             results.append({"opening_id": result["opening_id"], "product_id": line.product_id,
-                            "cards": [card["id"] for card in result["cards"]]})
+                            "cards": result["cards"]})
+            persisted_results.append({"opening_id": result["opening_id"], "product_id": line.product_id,
+                                      "cards": [card["id"] for card in result["cards"]]})
         now = datetime.utcnow()
-        parcel.status, parcel.opened_at, parcel.result_json = "opened", now, _dump(results)
+        parcel.status, parcel.opened_at, parcel.result_json = "opened", now, _dump(persisted_results)
         order = db.get(TCGOnlineOrder, parcel.order_id)
         order.status, order.opened_at = "opened", now
         db.commit()
         if results:
             from services.gamification import notify_action
             notify_action(db, "pack_opened", count=len(results), override_amount=75 * len(results))
-        return parcel_status(db, parcel.id)
+        payload = parcel_status(db, parcel.id)
+        # Keep the database record compact, but return the already-resolved
+        # card payload to the caller. The inventory UI can reveal immediately
+        # without a second round trip for every card in the opened pack.
+        payload["results"] = results
+        return payload
     except Exception:
         db.rollback()
         raise
@@ -950,7 +1250,7 @@ def room_bootstrap(db: Session) -> dict:
         "catalog": [_definition_dict(row) for row in definitions],
         "owned_instances": [_instance_dict(row, placements.get(row.id)) for row in instances],
         "permanent_fixtures": list(PERMANENT_FIXTURES),
-        "room_bounds": ROOM_BOUNDS,
+        "room_bounds": authored_room_bounds(),
         "assignments": [{"id": row.id, "display_instance_id": row.display_instance_id,
                          "physical_copy_id": row.physical_copy_id, "slot_key": row.slot_key} for row in assignments],
         "parcels": [parcel_status(db, row.id) for row in parcels],

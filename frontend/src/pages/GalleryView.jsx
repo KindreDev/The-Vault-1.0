@@ -52,6 +52,16 @@ const SORTS = [
   { value: 'file_size',  label: 'File Size' },
   { value: 'random',     label: 'Random' },
 ]
+const GALLERY_SORT_STORAGE_KEY = 'vault_galleryview_sort'
+
+function readSavedGallerySort() {
+  try {
+    const saved = localStorage.getItem(GALLERY_SORT_STORAGE_KEY)
+    return SORTS.some(option => option.value === saved) ? saved : 'filename'
+  } catch {
+    return 'filename'
+  }
+}
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -1796,9 +1806,10 @@ export default function GalleryView() {
   const qc = useQueryClient()
   const addXpToast = useVaultStore(s => s.addXpToast)
   const [viewerIdx, setViewerIdx] = useState(null)
-  const [sortBy, setSortBy] = useState('filename')
+  const initialSort = useRef(readSavedGallerySort()).current
+  const [sortBy, setSortBy] = useState(initialSort)
   const [mediaSearch, setMediaSearch] = useState('')
-  const [randomSeed, setRandomSeed] = useState(0)
+  const [randomSeed, setRandomSeed] = useState(() => initialSort === 'random' ? Math.random() : 0)
   const [renderLimit, setRenderLimit] = useState(GALLERY_RENDER_BATCH)
   const [isRenaming, setIsRenaming] = useState(false)
   const [editName, setEditName] = useState('')
@@ -1818,6 +1829,9 @@ export default function GalleryView() {
   useEffect(() => {
     try { localStorage.setItem('vault_galleryview_thumb_idx', String(thumbSizeIdx)) } catch {}
   }, [thumbSizeIdx])
+  useEffect(() => {
+    try { localStorage.setItem(GALLERY_SORT_STORAGE_KEY, sortBy) } catch {}
+  }, [sortBy])
   // Bulk select + extract
   const [bulkMode, setBulkMode]   = useState(() => new URLSearchParams(window.location.search).get('select') === 'true')
   const [selectedIds, setSelectedIds] = useState(new Set())

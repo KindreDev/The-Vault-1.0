@@ -55,6 +55,7 @@ MODEL_REPO = "briaai/RMBG-1.4"
 MODEL_FILE = "onnx/model.onnx"
 INPUT_SIZE = 1024          # RMBG-1.4's training resolution
 MASK_LONG_EDGE = 768       # stored size; masks are smooth and compress hard
+SCENE_LOWER_CROP_START = 0.28  # recover full-frame subjects missed by the square pass
 
 # Quality gates. Tuned to reject the failure modes that actually occur:
 # a mask that ate the whole frame, one that found almost nothing, and one
@@ -330,6 +331,101 @@ def generate_mask(image_path: str, out_path: str, *, force_cpu: bool = False) ->
     }
 
 
+def generate_scene_mask(image_path: str, out_path: str, *, force_cpu: bool = False,
+                        source_width: int | None = None,
+                        source_height: int | None = None,
+                        focal_x: float = 0.5, focal_y: float = 0.5,
+                        person_count: int | None = None) -> dict:
+    """Build the stricter Scene-card mask from original and mirrored mattes.
+
+    Scene cards use the helpers in ``scene_cards`` to remove detached blobs,
+    conservatively merge an independent mirrored extraction, and evaluate the
+    result against the card text zones.  It intentionally has its own pipeline
+    version because this artifact is not interchangeable with the generic
+    RMBG mask.
+    """
+    from services.scene_cards import (
+        SCENE_MASK_PIPELINE_VERSION,
+        clean_scene_matte,
+        combine_scene_mattes,
+        evaluate_scene_matte,
+        project_scene_matte,
+        scene_mask_quality,
+    )
+
+    src = PILImage.open(image_path)
+    src.thumbnail((MASK_LONG_EDGE, MASK_LONG_EDGE), PILImage.LANCZOS)
+    mirrored = src.transpose(PILImage.Transpose.FLIP_LEFT_RIGHT)
+
+    primary = clean_scene_matte(np.round(_raw_matte(src, force_cpu=force_cpu) * 255).astype(np.uint8))
+    primary_before_recovery = primary.copy()
+    lower_top = round(src.height * SCENE_LOWER_CROP_START)
+    lower_crop = src.crop((0, lower_top, src.width, src.height))
+    lower_raw = _raw_matte(lower_crop, force_cpu=force_cpu)
+    lower_clean = clean_scene_matte(np.round(lower_raw * 255).astype(np.uint8))
+    lower_mapped = np.asarray(
+        PILImage.fromarray(lower_clean, "L").resize(
+            (src.width, src.height - lower_top), PILImage.Resampling.BILINEAR
+        ),
+        dtype=np.uint8,
+    )
+    lower_recovery = np.zeros_like(primary)
+    lower_recovery[lower_top:, :] = lower_mapped
+    primary = clean_scene_matte(np.maximum(primary, lower_recovery))
+    secondary_mirrored = clean_scene_matte(
+        np.round(_raw_matte(mirrored, force_cpu=force_cpu) * 255).astype(np.uint8)
+    )
+    secondary = np.asarray(
+        PILImage.fromarray(secondary_mirrored, "L").transpose(
+            PILImage.Transpose.FLIP_LEFT_RIGHT
+        ),
+        dtype=np.uint8,
+    )
+    mirror_disagreement = float(
+        np.mean(np.abs(primary.astype(np.float32) - secondary.astype(np.float32))) / 255.0
+    )
+    matte, merge_metrics = combine_scene_mattes(primary, secondary)
+    source_width = source_width or src.width
+    source_height = source_height or src.height
+    evaluated_matte = project_scene_matte(
+        matte,
+        source_width=source_width,
+        source_height=source_height,
+        focal_x=focal_x,
+        focal_y=focal_y,
+    )
+    metrics = evaluate_scene_matte(
+        evaluated_matte,
+        person_count=person_count,
+        mirror_disagreement=mirror_disagreement,
+        cross_model_disagreement=merge_metrics["crossModelDisagreement"],
+    )
+    metrics.update(merge_metrics)
+    metrics["lowerCropRecovery"] = {
+        "startFraction": SCENE_LOWER_CROP_START,
+        "coverageBefore": round(float((primary_before_recovery >= 96).mean()), 6),
+        "coverageAfter": round(float((primary >= 96).mean()), 6),
+    }
+
+    rgba = np.zeros((*matte.shape, 4), dtype=np.uint8)
+    rgba[..., 0] = matte
+    rgba[..., 1] = (_edge_band(matte.astype(np.float32) / 255.0) * 255).astype(np.uint8)
+    rgba[..., 3] = 255
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    PILImage.fromarray(rgba, mode="RGBA").save(out_path, "PNG", optimize=True)
+
+    return {
+        "path": out_path,
+        "quality": scene_mask_quality(metrics),
+        "usable": bool(metrics["accepted"]),
+        "width": int(matte.shape[1]),
+        "height": int(matte.shape[0]),
+        "pipeline_version": SCENE_MASK_PIPELINE_VERSION,
+        "scene_metrics": metrics,
+        **metrics,
+    }
+
+
 def mask_path_for(image_id: int) -> str:
     return os.path.join(masks_dir(), f"{image_id}.png")
 
@@ -380,6 +476,22 @@ def card_source_image_ids(db) -> list:
     return [r[0] for r in rows]
 
 
+def scene_card_source_image_ids(db) -> set[int]:
+    """Return source images whose canonical card contract is Scene."""
+    from models import Card, CardType
+    rows = (db.query(Card.source_image_id)
+              .filter(Card.card_type == CardType.image,
+                      Card.source_image_id.isnot(None))
+              .distinct()
+              .all())
+    return {row[0] for row in rows}
+
+
+def is_scene_card_source(db, image_id: int) -> bool:
+    """Whether an image is backed by a Scene card."""
+    return image_id in scene_card_source_image_ids(db)
+
+
 def backfill_thread(db_factory, only_cards: bool = True, force: bool = False):
     """Generate every missing mask. Runs on the shared task queue."""
     from models import Image as ImageModel
@@ -388,9 +500,13 @@ def backfill_thread(db_factory, only_cards: bool = True, force: bool = False):
     _set(running=True, cancelled=False, progress=0, made=0, skipped=0,
          unusable=0, errors=0, message="Preparing…")
     try:
+        scene_source_ids = scene_card_source_image_ids(db)
         q = db.query(ImageModel).filter(ImageModel.is_video == False)  # noqa: E712
         if only_cards:
-            ids = card_source_image_ids(db)
+            # Scene sources are included even before a catalogue card has been
+            # pulled, so the Scene pipeline can prepare the published source
+            # rather than waiting for inventory ownership.
+            ids = set(card_source_image_ids(db)) | scene_source_ids
             if not ids:
                 _set(running=False, message="No cards have source images yet.")
                 return
@@ -400,7 +516,9 @@ def backfill_thread(db_factory, only_cards: bool = True, force: bool = False):
             q = q.filter(or_(
                 ImageModel.mask_path.is_(None),
                 ImageModel.mask_pipeline_version.is_(None),
-                ImageModel.mask_pipeline_version != MASK_PIPELINE_VERSION,
+                ~ImageModel.mask_pipeline_version.in_(
+                    (MASK_PIPELINE_VERSION, "scene-mask-hybrid-v2")
+                ),
             ))
 
         images = q.all()
@@ -411,7 +529,11 @@ def backfill_thread(db_factory, only_cards: bool = True, force: bool = False):
                 _set(message="Cancelled.")
                 break
             try:
-                info = ensure_mask(db, im, force=force, upgrade_stale=True)
+                info = (
+                    ensure_scene_mask(db, im, force=force)
+                    if im.id in scene_source_ids
+                    else ensure_mask(db, im, force=force, upgrade_stale=True)
+                )
                 if info is None:
                     _set(skipped=_state["skipped"] + 1)
                 elif not info.get("usable"):
@@ -444,18 +566,22 @@ def ensure_mask(db, image, force: bool = False, upgrade_stale: bool = False) -> 
     """
     if is_temporal_source(image):
         reason = "video-source" if getattr(image, "is_video", False) else "animated-image-source"
+        image.mask_path = None
+        image.mask_quality = None
         image.mask_status = "fallback"
         image.mask_failure_reason = reason
-        image.mask_pipeline_version = MASK_PIPELINE_VERSION
+        image.mask_pipeline_version = None
         image.mask_visual_mode = "flat"
         db.flush()
         return {"path": None, "quality": None, "usable": False,
                 "status": "fallback", "failure_reason": reason,
                 "pipeline_version": MASK_PIPELINE_VERSION, "visual_mode": "flat"}
     if not image.file_path or not os.path.exists(image.file_path):
+        image.mask_path = None
+        image.mask_quality = None
         image.mask_status = "fallback"
         image.mask_failure_reason = "source-file-missing"
-        image.mask_pipeline_version = MASK_PIPELINE_VERSION
+        image.mask_pipeline_version = None
         image.mask_visual_mode = "flat"
         db.flush()
         return {"path": None, "quality": None, "usable": False,
@@ -463,20 +589,29 @@ def ensure_mask(db, image, force: bool = False, upgrade_stale: bool = False) -> 
                 "pipeline_version": MASK_PIPELINE_VERSION, "visual_mode": "flat"}
 
     out = mask_path_for(image.id)
-    if not force and image.mask_path and os.path.exists(image.mask_path):
-        if upgrade_stale and image.mask_pipeline_version != MASK_PIPELINE_VERSION:
+    from services.scene_cards import SCENE_MASK_PIPELINE_VERSION
+
+    if image.mask_path and os.path.exists(image.mask_path):
+        # Scene and generic consumers share one canonical artifact. A Scene
+        # mask is valid for generic consumers; do not oscillate by regenerating
+        # it back to RMBG on every generic read.
+        if (upgrade_stale and image.mask_pipeline_version != MASK_PIPELINE_VERSION
+                and image.mask_pipeline_version != SCENE_MASK_PIPELINE_VERSION):
             info = upgrade_mask_channels(image.file_path, image.mask_path)
             image.mask_pipeline_version = info["pipeline_version"]
-        usable = (image.mask_quality or 0) >= MIN_QUALITY
-        image.mask_status = "usable" if usable else "fallback"
-        image.mask_failure_reason = None if usable else "quality-below-threshold"
-        image.mask_visual_mode = "layered" if usable else "flat"
-        db.flush()
-        return {"path": image.mask_path, "quality": image.mask_quality,
-                "usable": usable, "cached": True, "status": image.mask_status,
-                "failure_reason": image.mask_failure_reason,
-                "pipeline_version": image.mask_pipeline_version or "legacy",
-                "visual_mode": image.mask_visual_mode}
+        if (image.mask_pipeline_version == SCENE_MASK_PIPELINE_VERSION
+                or (not force and image.mask_pipeline_version == MASK_PIPELINE_VERSION)):
+            usable = (image.mask_quality or 0) >= MIN_QUALITY
+            image.mask_status = "usable" if usable else "fallback"
+            if image.mask_pipeline_version == MASK_PIPELINE_VERSION:
+                image.mask_failure_reason = None if usable else "quality-below-threshold"
+            image.mask_visual_mode = "layered" if usable else "flat"
+            db.flush()
+            return {"path": image.mask_path, "quality": image.mask_quality,
+                    "usable": usable, "cached": True, "status": image.mask_status,
+                    "failure_reason": image.mask_failure_reason,
+                    "pipeline_version": image.mask_pipeline_version,
+                    "visual_mode": image.mask_visual_mode}
 
     first_error = None
     try:
@@ -500,9 +635,11 @@ def ensure_mask(db, image, force: bool = False, upgrade_stale: bool = False) -> 
             detail = detail[:500]
             logger.exception("masking: CPU retry failed for image %s", image.id)
             logger.error("masking: image %s failure detail: %s", image.id, detail)
+            image.mask_path = None
+            image.mask_quality = None
             image.mask_status = "fallback"
             image.mask_failure_reason = f"generation-error: {detail}"
-            image.mask_pipeline_version = MASK_PIPELINE_VERSION
+            image.mask_pipeline_version = None
             image.mask_visual_mode = "flat"
             db.flush()
             return {"path": None, "quality": None, "usable": False,
@@ -521,4 +658,91 @@ def ensure_mask(db, image, force: bool = False, upgrade_stale: bool = False) -> 
     return {**info, "status": image.mask_status,
             "failure_reason": image.mask_failure_reason,
             "pipeline_version": image.mask_pipeline_version,
+            "visual_mode": image.mask_visual_mode}
+
+
+def ensure_scene_mask(db, image, force: bool = False) -> Optional[dict]:
+    """Prepare the Scene-card mask without changing generic mask semantics."""
+    from services.scene_cards import SCENE_MASK_PIPELINE_VERSION
+
+    def fallback(reason: str, *, detail: str | None = None) -> dict:
+        image.mask_path = None
+        image.mask_quality = None
+        image.mask_status = "fallback"
+        image.mask_failure_reason = reason
+        image.mask_pipeline_version = None
+        image.mask_visual_mode = "flat"
+        db.flush()
+        result = {"path": None, "quality": None, "usable": False,
+                  "status": "fallback", "failure_reason": reason,
+                  "pipeline_version": None,
+                  "visual_mode": "flat"}
+        if detail:
+            result["failure_detail"] = detail
+        return result
+
+    if is_temporal_source(image):
+        return fallback("video-source" if getattr(image, "is_video", False)
+                        else "animated-image-source")
+    if not image.file_path or not os.path.exists(image.file_path):
+        return fallback("source-file-missing")
+
+    if (not force and image.mask_path and os.path.exists(image.mask_path)
+            and image.mask_pipeline_version == SCENE_MASK_PIPELINE_VERSION):
+        usable = (image.mask_quality or 0) >= MIN_QUALITY
+        image.mask_status = "usable" if usable else "fallback"
+        image.mask_failure_reason = None if usable else "quality-below-threshold"
+        image.mask_visual_mode = "layered" if usable else "flat"
+        db.flush()
+        return {"path": image.mask_path, "quality": image.mask_quality,
+                "usable": usable, "cached": True, "status": image.mask_status,
+                "failure_reason": image.mask_failure_reason,
+                "pipeline_version": SCENE_MASK_PIPELINE_VERSION,
+                "visual_mode": image.mask_visual_mode}
+
+    out = mask_path_for(image.id)
+    try:
+        info = generate_scene_mask(
+            image.file_path,
+            out,
+            source_width=getattr(image, "width", None),
+            source_height=getattr(image, "height", None),
+            focal_x=getattr(image, "focal_x", None) if getattr(image, "focal_x", None) is not None else 0.5,
+            focal_y=getattr(image, "focal_y", None) if getattr(image, "focal_y", None) is not None else 0.5,
+            person_count=getattr(image, "person_count", None),
+        )
+    except Exception as first_error:
+        logger.exception("scene masking: primary inference failed for image %s", image.id)
+        reset_session()
+        try:
+            info = generate_scene_mask(
+                image.file_path,
+                out,
+                force_cpu=True,
+                source_width=getattr(image, "width", None),
+                source_height=getattr(image, "height", None),
+                focal_x=getattr(image, "focal_x", None) if getattr(image, "focal_x", None) is not None else 0.5,
+                focal_y=getattr(image, "focal_y", None) if getattr(image, "focal_y", None) is not None else 0.5,
+                person_count=getattr(image, "person_count", None),
+            )
+        except Exception as retry_error:
+            detail = (
+                f"primary={type(first_error).__name__}: {first_error}; "
+                f"retry={type(retry_error).__name__}: {retry_error}"
+            )[:500]
+            logger.exception("scene masking: CPU retry failed for image %s", image.id)
+            return fallback("generation-error", detail=detail)
+
+    image.mask_path = info["path"]
+    image.mask_quality = info["quality"]
+    image.mask_status = "usable" if info["usable"] else "fallback"
+    image.mask_failure_reason = None if info["usable"] else ",".join(
+        info.get("reasons") or ["scene-evaluation-rejected"]
+    )
+    image.mask_pipeline_version = SCENE_MASK_PIPELINE_VERSION
+    image.mask_visual_mode = "layered" if info["usable"] else "flat"
+    db.flush()
+    return {**info, "status": image.mask_status,
+            "failure_reason": image.mask_failure_reason,
+            "pipeline_version": SCENE_MASK_PIPELINE_VERSION,
             "visual_mode": image.mask_visual_mode}

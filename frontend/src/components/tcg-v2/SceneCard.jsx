@@ -74,14 +74,18 @@ export default function SceneCard({
   const metadata = sceneMetadata(recipe)
   const subjectName = recipe.snapshot.subjectName
   const subjectMaskUrl = packedMaskChannelUrl(packedMaskUrl, 'subject')
-  const isLayered = recipe.visualMode === 'layered' && Boolean(subjectMaskUrl)
+  const backgroundMaskUrl = packedMaskChannelUrl(packedMaskUrl, 'background')
+  const isLayered = recipe.visualMode === 'layered'
+    && Boolean(subjectMaskUrl && backgroundMaskUrl)
   const ariaLabel = `${recipe.rarity} Scene card, ${subjectName}, ${recipe.snapshot.creatorName}`
 
   return (
     <div className={`scene-card-v2 ${className}`} style={{ width }} onClick={onClick}
          role={onClick ? 'button' : 'img'} aria-label={ariaLabel}
          data-card-type="scene" data-rarity={recipe.rarity}
-         data-visual-mode={isLayered ? 'layered' : 'flat'}>
+         data-visual-mode={isLayered ? 'layered' : 'flat'}
+         data-mask-subject={subjectMaskUrl ? 'available' : 'missing'}
+         data-mask-background={backgroundMaskUrl ? 'available' : 'missing'}>
       <svg className="scene-card-v2__surface" viewBox="0 0 1024 1536" aria-hidden="true">
         <defs>
           <linearGradient id={ids.gradient} x1="0" y1="0" x2="1" y2="1">

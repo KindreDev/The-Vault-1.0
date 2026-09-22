@@ -44,16 +44,18 @@ export function PackedMaskDefs({ ids, packedMaskUrl, geometry }) {
   )
 }
 
-function MaskedFinish({ maskId = null, className, x, y, width, height }) {
+function MaskedFinish({ maskId = null, surface, className, x, y, width, height }) {
   return (
-    <foreignObject x={x} y={y} width={width} height={height}
-                   mask={maskId ? `url(#${maskId})` : undefined}
-                   className="tcg-v2-masked-finish-surface">
-      <div xmlns="http://www.w3.org/1999/xhtml"
-           className={`tcg-v2-masked-finish ${className}`}>
-        <span className="tcg-v2-masked-finish__texture" aria-hidden="true" />
-      </div>
-    </foreignObject>
+    <g mask={maskId ? `url(#${maskId})` : undefined}
+       data-mask-surface={surface}>
+      <foreignObject x={x} y={y} width={width} height={height}
+                     className="tcg-v2-masked-finish-surface">
+        <div xmlns="http://www.w3.org/1999/xhtml"
+             className={`tcg-v2-masked-finish ${className}`}>
+          <span className="tcg-v2-masked-finish__texture" aria-hidden="true" />
+        </div>
+      </foreignObject>
+    </g>
   )
 }
 
@@ -87,11 +89,13 @@ export function PackedFoilSurfaces({
          pointerEvents="none" aria-hidden="true">
         {layer !== 'subject' && (
           <MaskedFinish maskId={ids.backgroundMask}
+                        surface="background"
                         className="tcg-v2-masked-finish--full tcg-v2-masked-finish--background"
                         x={x} y={y} width={width} height={height} />
         )}
         {layer !== 'background' && (
-          <MaskedFinish maskId={ids.subjectMask} className="tcg-v2-masked-finish--subject"
+          <MaskedFinish maskId={ids.subjectMask} surface="subject"
+                        className="tcg-v2-masked-finish--subject"
                         x={x} y={y} width={width} height={height} />
         )}
       </g>
@@ -102,7 +106,8 @@ export function PackedFoilSurfaces({
     <g className={`tcg-v2-masked-finishes tcg-v2-masked-finishes--${rarity.toLowerCase()}`}
        pointerEvents="none" aria-hidden="true">
       {layer !== 'subject' && (
-        <MaskedFinish maskId={ids.backgroundMask} className="tcg-v2-masked-finish--background"
+        <MaskedFinish maskId={ids.backgroundMask} surface="background"
+                      className="tcg-v2-masked-finish--background"
                       x={x} y={y} width={width} height={height} />
       )}
     </g>

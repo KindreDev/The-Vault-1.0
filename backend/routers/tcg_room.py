@@ -61,6 +61,11 @@ class FurnitureTransform(BaseModel):
     position: Vector3
     rotation: Vector3
     content: FurnitureContent | None = None
+    support_host_instance_id: int | None = Field(default=None, ge=1)
+    support_slot: int | None = Field(default=None, ge=0)
+    support_offset_x: float | None = None
+    support_offset_z: float | None = None
+    support_local_rotation_y: float | None = None
 
 
 class Placement(BaseModel):

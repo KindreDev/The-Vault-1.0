@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Armchair, Box, Eye, Layers, PackageOpen, Search, Star, X } from 'lucide-react'
-import { tcgRoomApi, tcgV2Api } from '../../lib/api'
+import { imagesApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import PackOpening from '../PackOpening'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
 import { BoosterEnvelope } from '../tcg-workspace/PackBrowser'
+import CardFocusViewer from './CardFocusViewer'
+import { furnitureDisplayName, furniturePreviewAssetId, furniturePreviewMirrorX } from './roomLayout'
 import '../tcg-workspace/tcg-workspace.css'
 import '../tcg-workspace/tcg-workspace-refinements.css'
 
@@ -19,9 +21,9 @@ const FURNITURE_GROUPS = {
   poster_frame: 'Decor',
 }
 const FURNITURE_BLURB = {
-  glass_display_cabinet: 'A premium glass display cabinet for your most valued cards and collectibles.',
-  glass_display_case: 'A tall glass case for standing displays.',
-  floating_glass_cabinet: 'A wall-mounted glass cabinet.',
+  glass_display_cabinet: 'A free-standing glass cabinet. Card stands can sit inside its shelf levels.',
+  glass_display_case: 'A free-standing glass shelf. Card stands can sit inside its shelf levels.',
+  floating_glass_cabinet: 'A wall-mounted glass shelf. Card stands can sit inside its shelf levels.',
   card_display_stand_white: 'Holds 1 card. Sits on a table or shelf.',
   card_display_stand_black: 'Holds 1 card. Sits on a table or shelf.',
   graded_card_stand_white: 'Holds 9 cards, 3 per row. Sits on a table or shelf.',
@@ -38,7 +40,14 @@ function cardCode(item) {
 }
 
 function furnitureImage(assetId) {
-  return `/tcg-room/shop/${assetId}.png?v=20260913-preview2`
+  return `/tcg-room/shop/${furniturePreviewAssetId(assetId)}.png?v=20260913-preview2`
+}
+
+function vaultImageUrl(image) {
+  if (!image) return ''
+  if (image.thumb_url) return image.thumb_url
+  if (image.thumb_path) return `/thumbs/${String(image.thumb_path).split(/[\\/]/).pop()}`
+  return image.id ? `/api/images/${image.id}/file` : ''
 }
 
 function furnitureGroup(assetId) {
@@ -74,12 +83,83 @@ function detailValue(value, fallback = 'Unavailable') {
   return value === null || value === undefined || value === '' ? fallback : String(value)
 }
 
-function FurniturePreview({ item, className = '' }) {
-  const [missing, setMissing] = useState(false)
-  const src = furnitureImage(item.asset_id)
-  useEffect(() => setMissing(false), [src])
-  return <div className={`vault-inv__furniture-preview ${className} ${missing ? 'is-missing' : ''}`}>
-    {missing ? <span>Preview unavailable</span> : <img src={src} alt="" onError={() => setMissing(true)} />}
+function FurnitureCanvasPreview({ assetId }) {
+  const canvasRef = useRef(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !assetId) return undefined
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => {
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!context) return
+      const width = canvas.width
+      const height = canvas.height
+      context.clearRect(0, 0, width, height)
+      const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight)
+      const drawWidth = image.naturalWidth * scale
+      const drawHeight = image.naturalHeight * scale
+      if (furniturePreviewMirrorX(assetId)) {
+        context.save()
+        context.translate(width, 0)
+        context.scale(-1, 1)
+      }
+      context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight)
+      if (furniturePreviewMirrorX(assetId)) context.restore()
+      const pixels = context.getImageData(0, 0, width, height)
+      const { data } = pixels
+      const sample = index => [data[index], data[index + 1], data[index + 2]]
+      const corners = [sample(0), sample((width - 1) * 4), sample((height - 1) * width * 4), sample(((height * width) - 1) * 4)]
+      const background = corners.reduce((total, color) => total.map((value, index) => value + color[index]), [0, 0, 0]).map(value => value / corners.length)
+      const visited = new Uint8Array(width * height)
+      const queue = []
+      const push = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return
+        const index = y * width + x
+        if (visited[index]) return
+        visited[index] = 1
+        queue.push(index)
+      }
+      for (let x = 0; x < width; x += 1) { push(x, 0); push(x, height - 1) }
+      for (let y = 1; y < height - 1; y += 1) { push(0, y); push(width - 1, y) }
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const index = queue[cursor]
+        const pixel = index * 4
+        const distance = Math.hypot(data[pixel] - background[0], data[pixel + 1] - background[1], data[pixel + 2] - background[2])
+        if (distance > 34 || data[pixel + 3] === 0) continue
+        data[pixel + 3] = 0
+        const x = index % width
+        const y = Math.floor(index / width)
+        push(x - 1, y); push(x + 1, y); push(x, y - 1); push(x, y + 1)
+      }
+      context.putImageData(pixels, 0, 0)
+    }
+    image.src = furnitureImage(assetId)
+    return () => { image.onload = null }
+  }, [assetId])
+  return <canvas ref={canvasRef} width="260" height="180" aria-hidden="true" />
+}
+
+function FurniturePreview({ item, posterImageUrl = '', className = '' }) {
+  if (item?.asset_id === 'poster_frame') {
+    return <div className={`vault-inv__furniture-preview vault-inv__poster-preview ${className}`}>
+      <div className="vault-inv__poster-frame">
+        <div className="vault-inv__poster-paper">
+          {posterImageUrl ? <img src={posterImageUrl} alt="" /> : <span aria-hidden="true" />}
+        </div>
+      </div>
+    </div>
+  }
+  return <div className={`vault-inv__furniture-preview ${className}`}>
+    <FurnitureCanvasPreview assetId={item?.asset_id} />
+  </div>
+}
+
+function InventoryLoading({ label = 'Loading inventory…' }) {
+  return <div className="vault-inv__loading" role="status" aria-live="polite">
+    <span className="vault-inv__loading-spinner" aria-hidden="true" />
+    <strong>{label}</strong>
+    <small>Fetching your collection…</small>
   </div>
 }
 
@@ -106,6 +186,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   const [cardQuery, setCardQuery] = useState('')
   const [rarity, setRarity] = useState('')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [cardFocusOpen, setCardFocusOpen] = useState(false)
   const [cardDetailsOpen, setCardDetailsOpen] = useState(false)
   const [furnitureFilter, setFurnitureFilter] = useState('All')
   const [selectedFurniture, setSelectedFurniture] = useState(null)
@@ -118,6 +199,15 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   const releasesQuery = useQuery({
     queryKey: ['tcg-v2-releases'],
     queryFn: () => tcgV2Api.releases().then(response => response.data),
+    staleTime: 60_000,
+  })
+  const posterPhotosQuery = useQuery({
+    queryKey: ['room-inventory-poster-preview-photos'],
+    queryFn: () => imagesApi.list({ is_video: false, sort_by: 'random', limit: 4 }).then(response => {
+      const payload = response.data
+      return (payload?.images ?? (Array.isArray(payload) ? payload : [])).map(vaultImageUrl).filter(Boolean)
+    }),
+    enabled: tab === 'furniture',
     staleTime: 60_000,
   })
   const publishedReleases = (releasesQuery.data || []).filter(release => release.status === 'published')
@@ -139,6 +229,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   )
   const cardTotal = cardCatalog.data?.pages?.[0]?.total || catalogItems.length
   const collectionImages = useMemo(() => catalogItems.map(item => item.card?.thumb_url || item.card?.image_url || item.thumb_url || item.image_url).filter(Boolean).slice(0, 30), [catalogItems])
+  const posterImageUrl = posterPhotosQuery.data?.[0] || collectionImages[0] || ''
   const packVisual = (product = {}, id = 0) => <BoosterEnvelope pack={{
     ...product,
     id: String(id),
@@ -207,6 +298,8 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   const filteredFurniture = furniture.filter(item => furnitureFilter === 'All' || furnitureGroup(item.asset_id) === furnitureFilter)
   const activeFurniture = filteredFurniture.find(item => item.instance_id === selectedFurniture?.instance_id) || filteredFurniture[0] || null
   const busy = openParcel.isPending || openToken.isPending
+  const inventoryLoading = inventory.isLoading && !inventory.data
+  const cardsLoading = cardCatalog.isLoading && !cardCatalog.data
   const activeCard = catalogItems.find(item => item.card?.id === selectedCard?.card?.id) || catalogItems[0] || null
   const cardDetailQuery = useQuery({
     queryKey: ['tcg-room-card-detail', activeCard?.card?.id],
@@ -235,33 +328,36 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       <Star size={18} />
     </header>}
     <aside className="vault-inv__nav">
-      <button type="button" className={tab === 'cards' ? 'active' : ''} onClick={() => selectTab('cards')}><Layers size={18} /> Cards <span>{cardTotal || 0}</span></button>
-      <button type="button" className={tab === 'packs' ? 'active' : ''} onClick={() => selectTab('packs')}><PackageOpen size={18} /> Booster Packs <span>{packCount}</span></button>
-      <button type="button" className={tab === 'furniture' ? 'active' : ''} onClick={() => selectTab('furniture')}><Armchair size={18} /> Furniture <span>{furniture.length}</span></button>
+      <button type="button" className={tab === 'cards' ? 'active' : ''} onClick={() => selectTab('cards')}><Layers size={18} /> Cards <span>{cardsLoading ? '…' : cardTotal.toLocaleString()}</span></button>
+      <button type="button" className={tab === 'packs' ? 'active' : ''} onClick={() => selectTab('packs')}><PackageOpen size={18} /> Booster Packs <span>{inventoryLoading ? '…' : packCount}</span></button>
+      <button type="button" className={tab === 'furniture' ? 'active' : ''} onClick={() => selectTab('furniture')}><Armchair size={18} /> Furniture <span>{inventoryLoading ? '…' : furniture.length}</span></button>
     </aside>
     <div className="vault-inv__main">
-      {tab === 'cards' && <>
+      {inventoryLoading && <InventoryLoading />}
+      {!inventoryLoading && tab === 'cards' && <>
         <header className="vault-inv__toolbar">
-          <h2>Cards ({cardTotal})</h2>
+          <h2>Cards ({cardsLoading ? '…' : cardTotal.toLocaleString()})</h2>
           <label className="vault-inv__search"><Search size={16} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder="Search cards…" /></label>
           <select className="vault-inv__select" value={rarity} onChange={event => setRarity(event.target.value)} aria-label="Rarity">
             <option value="">Rarity</option>
             {RARITIES.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </header>
-        <div className="vault-inv__card-grid">
-          {catalogItems.map(item => {
-            const klass = String(item.rarity || item.card.rarity_class || 'C').toUpperCase()
-            return <button key={item.card.id} type="button" className={`vault-inv__card vault-inv__card--${klass} ${activeCard?.card?.id === item.card.id ? 'selected' : ''}`} onClick={() => setSelectedCard(item)}>
-              <span>{klass}</span>
-              <TCGV2CardFace card={item.card} width="100%" showEffects={false} />
-              <small>{item.identity?.display_name || item.card.display_name || cardCode(item)}</small>
-            </button>
-          })}
-        </div>
-        {cardCatalog.hasNextPage && <button type="button" className="vault-inv__more" disabled={cardCatalog.isFetchingNextPage} onClick={() => cardCatalog.fetchNextPage()}>{cardCatalog.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
+        {cardsLoading ? <InventoryLoading label="Loading cards…" /> : <>
+          <div className="vault-inv__card-grid">
+            {catalogItems.map(item => {
+              const klass = String(item.rarity || item.card.rarity_class || 'C').toUpperCase()
+              return <button key={item.card.id} type="button" className={`vault-inv__card vault-inv__card--${klass} ${activeCard?.card?.id === item.card.id ? 'selected' : ''}`} onClick={() => setSelectedCard(item)}>
+                <span>{klass}</span>
+                <TCGV2CardFace card={item.card} width="100%" showEffects={false} interactive={false} />
+                <small>{item.identity?.display_name || item.card.display_name || cardCode(item)}</small>
+              </button>
+            })}
+          </div>
+          {cardCatalog.hasNextPage && <button type="button" className="vault-inv__more" disabled={cardCatalog.isFetchingNextPage} onClick={() => cardCatalog.fetchNextPage()}>{cardCatalog.isFetchingNextPage ? 'Loading…' : 'Load more'}</button>}
+        </>}
       </>}
-      {tab === 'packs' && <>
+      {!inventoryLoading && tab === 'packs' && <>
         <header className="vault-inv__toolbar">
           <div><h2>Booster Packs</h2><p>Open packs, find rare cards, and expand your collection.</p></div>
         </header>
@@ -315,7 +411,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
         </div>
         {!tokens.length && !parcels.length && <div className="vault-inv__empty">No booster packs waiting. Order from the computer, then collect them from the crate.</div>}
       </>}
-      {tab === 'furniture' && <>
+      {!inventoryLoading && tab === 'furniture' && <>
         <header className="vault-inv__toolbar">
           <div><h2>Furniture ({furniture.length})</h2><p>Choose an owned item to inspect or place in your room.</p></div>
         </header>
@@ -325,8 +421,8 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
         <div className="vault-inv__furn-grid">
           {filteredFurniture.map(item => (
             <button key={item.instance_id} type="button" className={activeFurniture?.instance_id === item.instance_id ? 'selected' : ''} onClick={() => setSelectedFurniture(item)}>
-              <FurniturePreview item={item} />
-              <span>{item.name}</span>
+              <FurniturePreview item={item} posterImageUrl={posterImageUrl} />
+              <span>{furnitureDisplayName(item.name, item.asset_id, item.variant_key)}</span>
             </button>
           ))}
           {!filteredFurniture.length && <div className="vault-inv__empty">No furniture in this category.</div>}
@@ -334,7 +430,19 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       </>}
     </div>
     {tab === 'cards' && activeCard?.card && <aside className="vault-inv__detail vault-inv__detail--card">
-      <div className={`vault-inv__hero vault-inv__card--${rarityClass}`}>
+      <div
+        className={`vault-inv__hero vault-inv__card--${rarityClass}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Open selected card focus viewer"
+        onClick={() => setCardFocusOpen(true)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setCardFocusOpen(true)
+          }
+        }}
+      >
         <TCGV2CardFace card={activeCard.card} width="100%" showEffects />
       </div>
       <h3>{activeCard.identity?.display_name || activeCard.card.display_title || activeCard.card.display_name || cardCode(activeCard)}</h3>
@@ -382,8 +490,8 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       </div>
     </aside>}
     {tab === 'furniture' && activeFurniture && <aside className="vault-inv__detail">
-      <div className="vault-inv__detail-head"><h3>{activeFurniture.name}</h3><small>#{String(activeFurniture.instance_id).padStart(3, '0')}</small></div>
-      <FurniturePreview item={activeFurniture} className="vault-inv__detail-preview" />
+      <div className="vault-inv__detail-head"><h3>{furnitureDisplayName(activeFurniture.name, activeFurniture.asset_id, activeFurniture.variant_key)}</h3><small>#{String(activeFurniture.instance_id).padStart(3, '0')}</small></div>
+      <FurniturePreview item={activeFurniture} posterImageUrl={posterImageUrl} className="vault-inv__detail-preview" />
       <p>{FURNITURE_BLURB[activeFurniture.asset_id] || 'Owned furniture. Place it in your room when you are ready.'}</p>
       <div className="vault-inv__tags"><span>{furnitureGroup(activeFurniture.asset_id)}</span><span>{activeFurniture.status === 'placed' ? 'Placed' : 'In inventory'}</span></div>
       <p className="vault-inv__own">You own: 1</p>
@@ -394,5 +502,12 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     <button type="button" className="vault-inv__close" onClick={onClose} aria-label="Close inventory"><X size={18} /></button>
     <p className="vault-inv__hint"><kbd>Esc</kbd> Close</p>
     {openingLabel && <div className="vault-inv__busy">{openingLabel}</div>}
+    {cardFocusOpen && activeCard?.card && (
+      <CardFocusViewer
+        card={activeCard.card}
+        title={activeCard.identity?.display_name || activeCard.card.display_title || activeCard.card.display_name || cardCode(activeCard)}
+        onClose={() => setCardFocusOpen(false)}
+      />
+    )}
   </section>
 }
