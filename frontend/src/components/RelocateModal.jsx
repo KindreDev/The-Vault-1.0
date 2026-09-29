@@ -27,6 +27,7 @@ import {
 import { relocateApi, galleriesApi } from '../lib/api'
 import { useT } from '../i18n'
 import toast from 'react-hot-toast'
+import FolderPicker from './FolderPicker'
 
 const CLASH_OPTIONS = [
   { key: 'rename', label: 'Keep both',  hint: 'Moves it alongside as “Name (2)”' },
@@ -50,6 +51,7 @@ export default function RelocateModal({
   const [plan, setPlan]         = useState(null)
   const [strategy, setStrategy] = useState('rename')
   const [busy, setBusy]         = useState(false)
+  const [browseOpen, setBrowseOpen] = useState(false)
 
   const galleryIds = useMemo(() => galleries.map(g => g.id), [galleries])
   const imageIds   = useMemo(() => images.map(i => i.id), [images])
@@ -90,14 +92,13 @@ export default function RelocateModal({
     return all.filter(c => c.name.toLowerCase().includes(q) || (c.folder || '').toLowerCase().includes(q))
   }, [suggestion, search])
 
-  async function pickCustom() {
-    try {
-      const { data } = await galleriesApi.pickFolder()
-      setDest(data.path)
-      setPlan(null)
-    } catch (e) {
-      if (e?.response?.status !== 400) toast.error(t('Could not open the folder picker'))
-    }
+  function pickCustom() {
+    setBrowseOpen(true)
+  }
+
+  function selectBrowsedFolder(path) {
+    setDest(path)
+    setPlan(null)
   }
 
   async function runCheck() {
@@ -115,26 +116,31 @@ export default function RelocateModal({
   async function confirmMove() {
     setBusy(true)
     try {
+      const showErrors = errors => {
+        if (!errors?.length) return
+        const details = errors.slice(0, 3).map(item => `${item.name}: ${item.error}`)
+        const remaining = errors.length - details.length
+        toast.error(
+          `${t('{n} could not be moved').replace('{n}', errors.length)}\n${details.join('\n')}${remaining ? `\n+${remaining}` : ''}`,
+          { duration: 12000, style: { whiteSpace: 'pre-line', maxWidth: 600 } }
+        )
+      }
       if (isGalleries) {
         const { data } = await relocateApi.moveGalleries(galleryIds, dest, strategy)
         const parts = []
         if (data.moved)   parts.push(t('{n} moved').replace('{n}', data.moved))
         if (data.merged)  parts.push(t('{n} merged').replace('{n}', data.merged))
         if (data.skipped) parts.push(t('{n} left alone').replace('{n}', data.skipped))
-        toast.success(parts.join(' · ') || t('Nothing to move'))
-        if (data.errors?.length) {
-          toast.error(t('{n} could not be moved').replace('{n}', data.errors.length))
-        }
+        if (parts.length || !data.errors?.length) toast.success(parts.join(' · ') || t('Nothing to move'))
+        showErrors(data.errors)
       } else {
         const { data } = await relocateApi.moveImages(imageIds, dest)
-        toast.success(
+        if (data.moved) toast.success(
           t('{n} moved into {name}')
             .replace('{n}', data.moved)
             .replace('{name}', data.target_gallery?.name ?? '')
         )
-        if (data.errors?.length) {
-          toast.error(t('{n} could not be moved').replace('{n}', data.errors.length))
-        }
+        showErrors(data.errors)
       }
       qc.invalidateQueries({ queryKey: ['galleries'] })
       qc.invalidateQueries({ queryKey: ['images'] })
@@ -378,6 +384,7 @@ export default function RelocateModal({
           )}
         </div>
       </motion.div>
+      {browseOpen && <FolderPicker initialPath={dest || ''} onSelect={selectBrowsedFolder} onClose={() => setBrowseOpen(false)} />}
     </div>,
     document.body
   )

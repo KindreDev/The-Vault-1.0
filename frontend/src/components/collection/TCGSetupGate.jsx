@@ -1,7 +1,9 @@
 import React from 'react'
+import { LocalizedText, useT } from '../../i18n'
 import { Layers, Loader, Sparkles } from 'lucide-react'
 
 export default function TCGSetupGate({ status, loading, starting, onStart }) {
+  const t = useT()
   const waiting = status?.owned_cards_waiting ?? 0
   return (
     <div style={{ minHeight: '100vh', background: '#080810', padding: '48px 28px' }}>
@@ -15,8 +17,8 @@ export default function TCGSetupGate({ status, loading, starting, onStart }) {
             <Layers size={28} color="var(--c-accent-text)" />
           </div>
           <div>
-            <div style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}>Start your new card collection</div>
-            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 16, marginTop: 4 }}>Your existing collection stays safe.</div>
+            <div style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}><LocalizedText text={"Start your new card collection"} /></div>
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 16, marginTop: 4 }}><LocalizedText text={"Your existing collection stays safe."} /></div>
           </div>
         </div>
         {loading ? (
@@ -25,8 +27,8 @@ export default function TCGSetupGate({ status, loading, starting, onStart }) {
           <>
             <div style={{ color: 'rgba(255,255,255,0.76)', fontSize: 17, lineHeight: 1.65 }}>
               {waiting > 0
-                ? `The ${waiting.toLocaleString()} cards you already own will be kept as Legacy cards. They can be shown or hidden whenever you want, while every card minted from now on belongs to the new system.`
-                : 'No older cards were found. Your first mint will begin the new collection cleanly.'}
+                ? t('The {count} cards you already own will be kept as Legacy cards. They can be shown or hidden whenever you want, while every card minted from now on belongs to the new system.', { count: waiting.toLocaleString() })
+                : t('No older cards were found. Your first mint will begin the new collection cleanly.')}
             </div>
             <button type="button" onClick={onStart} disabled={starting} style={{
               marginTop: 30, minHeight: 52, padding: '0 24px', borderRadius: 14, cursor: starting ? 'wait' : 'pointer',

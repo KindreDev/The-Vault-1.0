@@ -7,6 +7,7 @@ import { useVaultStore } from '../../store/vault'
 import { companionApi, creatorsApi } from '../../lib/api'
 import { useAllCreators } from '../../hooks/useAllCreators'
 import { usePersonalMode } from '../../hooks/usePersonalMode'
+import { useT } from '../../i18n'
 import CompanionChat from './CompanionChat'
 import { GroupChat, GroupsPanel, hasPersonalModules } from './personalModules'
 
@@ -28,6 +29,7 @@ const clampPos = (p) => ({
 })
 
 export default function CompanionBubble() {
+  const t                  = useT()
   const companion          = useVaultStore(s => s.companion)
   const setOpen            = useVaultStore(s => s.setCompanionOpen)
   const setCompanionConfig = useVaultStore(s => s.setCompanionConfig)
@@ -166,7 +168,7 @@ export default function CompanionBubble() {
               boxShadow: '0 0 20px color-mix(in srgb, var(--c-accent) 40%, transparent)',
               touchAction: 'none',
             }}
-            title={`Chat with ${compName} — drag to move`}
+            title={`${t('Chat with')} ${compName} — ${t('drag to move')}`}
           >
             <Sparkles size={24} color="#fff" />
           </motion.button>
@@ -220,7 +222,7 @@ export default function CompanionBubble() {
               <button
                 onClick={() => { setOpen(false); navigate('/erika') }}
                 className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                title="Open full page"
+                title={t('Open full page')}
                 style={{ color: 'rgba(255,255,255,0.4)' }}
               >
                 <Maximize2 size={15} />
@@ -228,7 +230,7 @@ export default function CompanionBubble() {
               <button
                 onClick={() => setOpen(false)}
                 className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                title="Close"
+                title={t('Close')}
                 style={{ color: 'rgba(255,255,255,0.4)' }}
               >
                 <X size={15} />

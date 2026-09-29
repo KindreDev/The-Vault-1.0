@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -59,6 +60,7 @@ const panelAnim = {
 
 // ── Edit / merge modal ────────────────────────────────────────────────────────
 function EditModal({ tag, allTags, onClose, onSaved }) {
+  const t = useT()
   const qc = useQueryClient()
   const [name, setName]               = useState(tag.name)
   const [category, setCategory]       = useState(tag.category)
@@ -88,13 +90,13 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: catColor(tag.category) }} />
             <span className="text-[20px] font-semibold text-white truncate">{tag.name}</span>
-            <span className="text-[17px] text-[rgba(255,255,255,0.3)]">· {tag.use_count} uses</span>
+            <span className="text-[17px] text-[rgba(255,255,255,0.3)]"><LocalizedText text={"·"} after=" " />{tag.use_count}<LocalizedText text={"uses"} before=" " /></span>
           </div>
           <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
             onClick={onClose} className="text-[rgba(255,255,255,0.3)] hover:text-white"><X size={18} /></motion.button>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-[17px] text-[rgba(255,255,255,0.4)]">Name</label>
+          <label className="text-[17px] text-[rgba(255,255,255,0.4)]"><LocalizedText text={"Name"} /></label>
           <input value={name} onChange={e => setName(e.target.value)}
             className="w-full px-3 py-2 rounded-lg text-[18px] text-white border border-[rgba(255,255,255,0.1)] outline-none transition-colors"
             style={{ background: 'var(--c-surface)' }}
@@ -102,14 +104,14 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
             onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-[17px] text-[rgba(255,255,255,0.4)]">Category</label>
+          <label className="text-[17px] text-[rgba(255,255,255,0.4)]"><LocalizedText text={"Category"} /></label>
           <div className="relative">
             <select value={category} onChange={e => setCategory(e.target.value)}
               className="w-full px-3 py-2 rounded-lg text-[18px] text-white border border-[rgba(255,255,255,0.1)] outline-none appearance-none transition-colors"
               style={{ background: 'var(--c-surface)' }}
               onFocus={e => e.target.style.borderColor = accentTint(60)}
               onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}>
-              {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)] pointer-events-none" />
           </div>
@@ -122,16 +124,15 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
         <div className="border-t border-[rgba(255,255,255,0.06)]" />
         {!mergeMode ? (
           <button onClick={() => setMergeMode(true)} className="flex items-center gap-2 text-[17px] text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.75)] transition-colors">
-            <GitMerge size={16} /> Merge this tag into another…
-          </button>
+            <GitMerge size={16} /><LocalizedText text={"Merge this tag into another…"} before=" " after=" " /></button>
         ) : (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex flex-col gap-2 overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-[17px] text-[rgba(255,255,255,0.5)] flex items-center gap-2"><GitMerge size={16} /> Merge "{tag.name}" into:</span>
-              <button onClick={() => { setMergeMode(false); setMergeTarget(null); setMergeSearch('') }} className="text-[rgba(255,255,255,0.3)] hover:text-white text-[17px]">cancel</button>
+              <span className="text-[17px] text-[rgba(255,255,255,0.5)] flex items-center gap-2"><GitMerge size={16} /><LocalizedText text={"Merge \""} before=" " />{tag.name}<LocalizedText text={"\" into:"} /></span>
+              <button onClick={() => { setMergeMode(false); setMergeTarget(null); setMergeSearch('') }} className="text-[rgba(255,255,255,0.3)] hover:text-white text-[17px]"><LocalizedText text={"cancel"} /></button>
             </div>
             <input value={mergeSearch} onChange={e => { setMergeSearch(e.target.value); setMergeTarget(null) }}
-              placeholder="Search tags…"
+              placeholder={t("Search tags…")}
               className="w-full px-3 py-2 rounded-lg text-[18px] text-white border border-[rgba(255,255,255,0.1)] outline-none transition-colors"
               style={{ background: 'var(--c-surface)' }}
               onFocus={e => e.target.style.borderColor = accentTint(60)}
@@ -141,7 +142,7 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="rounded-lg border border-[rgba(255,255,255,0.08)] overflow-hidden" style={{ background: 'var(--c-surface)' }}>
                   {mergeOptions.length === 0
-                    ? <div className="px-3 py-2 text-[17px] text-[rgba(255,255,255,0.3)]">No matches</div>
+                    ? <div className="px-3 py-2 text-[17px] text-[rgba(255,255,255,0.3)]"><LocalizedText text={"No matches"} /></div>
                     : mergeOptions.map(t => (
                       <button key={t.id} onClick={() => { setMergeTarget(t); setMergeSearch(t.name) }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-[17px] text-left hover:bg-[rgba(255,255,255,0.05)] transition-colors"
@@ -169,8 +170,7 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
         )}
         {!confirmDel ? (
           <button onClick={() => setConfirmDel(true)} className="flex items-center gap-2 text-[17px] text-[rgba(255,255,255,0.3)] hover:text-[var(--c-pink)] transition-colors">
-            <Trash2 size={16} /> Delete tag ({tag.use_count} image{tag.use_count !== 1 ? 's' : ''} affected)
-          </button>
+            <Trash2 size={16} />{' '}{t('Delete tag ({count} images affected)', { count: tag.use_count })}</button>
         ) : (
           <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2">
             <motion.button whileTap={{ scale: 0.98 }} onClick={() => deleteMut.mutate()} disabled={deleteMut.isPending}
@@ -178,9 +178,7 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
               {deleteMut.isPending ? 'Deleting…' : 'Yes, delete'}
             </motion.button>
             <button onClick={() => setConfirmDel(false)}
-              className="flex-1 py-2 rounded-lg text-[18px] text-[rgba(255,255,255,0.5)] border border-[rgba(255,255,255,0.1)]">
-              Cancel
-            </button>
+              className="flex-1 py-2 rounded-lg text-[18px] text-[rgba(255,255,255,0.5)] border border-[rgba(255,255,255,0.1)]"><LocalizedText text={"Cancel"} before=" " after=" " /></button>
           </motion.div>
         )}
       </motion.div>
@@ -193,6 +191,7 @@ const PAGE_SIZE = 100
 const GLOBAL_THRESHOLD_PREVIEW = 0.35
 
 function VocabThresholdControl({ entry, onSave }) {
+  const t = useT()
   const [draft, setDraft] = useState(entry.confidence_threshold)
   const effective = draft ?? GLOBAL_THRESHOLD_PREVIEW
 
@@ -205,7 +204,7 @@ function VocabThresholdControl({ entry, onSave }) {
   }
 
   return (
-    <div className="flex items-center gap-2 flex-shrink-0" title="This tag overrides the global AI confidence threshold">
+    <div className="flex items-center gap-2 flex-shrink-0" title={t("This tag overrides the global AI confidence threshold")}>
       <input
         type="range"
         min="0"
@@ -221,21 +220,19 @@ function VocabThresholdControl({ entry, onSave }) {
       />
       <span className="w-[42px] text-right text-[16px] font-mono"
             style={{ color: draft == null ? 'rgba(255,255,255,0.35)' : 'var(--c-accent-text)' }}>
-        {Math.round(effective * 100)}%
-      </span>
+        {Math.round(effective * 100)}<LocalizedText text={"%"} after=" " /></span>
       {draft == null ? (
-        <span className="w-[48px] text-[16px] text-white/25">Global</span>
+        <span className="w-[48px] text-[16px] text-white/25"><LocalizedText text={"Global"} /></span>
       ) : (
         <button type="button" onClick={() => { setDraft(null); onSave(null) }}
-                className="w-[48px] text-[16px] text-white/40 hover:text-white transition-colors cursor-pointer">
-          Reset
-        </button>
+                className="w-[48px] text-[16px] text-white/40 hover:text-white transition-colors cursor-pointer"><LocalizedText text={"Reset"} before=" " after=" " /></button>
       )}
     </div>
   )
 }
 
 function AiTaggingSettingsModal({ onClose }) {
+  const t = useT()
   const qc = useQueryClient()
   const [model, setModel]           = useState('wd14')
   const [search, setSearch]         = useState('')
@@ -316,7 +313,7 @@ function AiTaggingSettingsModal({ onClose }) {
         <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0 border-b border-[rgba(255,255,255,0.06)]">
           <div className="flex items-center gap-2">
             <Settings size={18} style={{ color: ACCENT }} />
-            <span className="text-[20px] font-semibold text-white">AI Tagging Settings</span>
+            <span className="text-[20px] font-semibold text-white"><LocalizedText text={"AI Tagging Settings"} /></span>
           </div>
           <motion.button whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}
             onClick={onClose} className="text-[rgba(255,255,255,0.3)] hover:text-white"><X size={18} /></motion.button>
@@ -342,8 +339,7 @@ function AiTaggingSettingsModal({ onClose }) {
             {summary?.model_ready && (
               <motion.span key={`${model}-${summary.enabled}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="text-[16px] text-[rgba(255,255,255,0.4)]">
-                {summary.enabled.toLocaleString()} / {summary.total.toLocaleString()} tags enabled
-              </motion.span>
+                {summary.enabled.toLocaleString()}<LocalizedText text={"/"} before=" " after=" " />{summary.total.toLocaleString()}<LocalizedText text={"tags enabled"} before=" " after=" " /></motion.span>
             )}
           </AnimatePresence>
         </div>
@@ -353,8 +349,8 @@ function AiTaggingSettingsModal({ onClose }) {
             <motion.div key="not-ready" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col items-center justify-center gap-3 py-16 text-[rgba(255,255,255,0.3)]">
               <Download size={28} className="opacity-40" />
-              <span className="text-[18px]">{model === 'wd14' ? 'WD14' : 'JoyTag'} isn't downloaded yet</span>
-              <span className="text-[16px] text-[rgba(255,255,255,0.25)]">Download it from Settings → AI Tagging first</span>
+              <span className="text-[18px]">{model === 'wd14' ? 'WD14' : 'JoyTag'}<LocalizedText text={"isn't downloaded yet"} before=" " /></span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.25)]"><LocalizedText text={"Download it from Settings → AI Tagging first"} /></span>
             </motion.div>
           ) : (
             <motion.div key="ready" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -363,7 +359,7 @@ function AiTaggingSettingsModal({ onClose }) {
               <div className="flex items-center gap-3 px-6 pt-4 flex-shrink-0">
                 <div className="relative flex-1">
                   <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)]" />
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search raw tags…"
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("Search raw tags…")}
                     className="w-full pl-9 pr-8 py-2 rounded-xl text-[17px] text-white border border-[rgba(255,255,255,0.08)] outline-none transition-colors"
                     style={{ background: 'var(--c-surface)' }}
                     onFocus={e => e.target.style.borderColor = accentTint(40)}
@@ -378,22 +374,20 @@ function AiTaggingSettingsModal({ onClose }) {
                   <select value={category} onChange={e => setCategory(e.target.value)}
                     className="pl-3 pr-8 py-2 rounded-xl text-[16px] text-white border border-[rgba(255,255,255,0.08)] outline-none appearance-none"
                     style={{ background: 'var(--c-surface)' }}>
-                    <option value="">All categories</option>
-                    {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    <option value=""><LocalizedText text={"All categories"} /></option>
+                    {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)] pointer-events-none" />
                 </div>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
                   onClick={() => resetMut.mutate()} disabled={resetMut.isPending}
-                  title="Reset this model's tags to the shipped defaults"
+                  title={t("Reset this model's tags to the shipped defaults")}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[16px] transition-colors disabled:opacity-50 flex-shrink-0"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <motion.span animate={resetMut.isPending ? { rotate: 360 } : { rotate: 0 }}
                     transition={resetMut.isPending ? { repeat: Infinity, duration: 0.7, ease: 'linear' } : {}}>
                     <RotateCcw size={13} />
-                  </motion.span>
-                  Reset to defaults
-                </motion.button>
+                  </motion.span><LocalizedText text={"Reset to defaults"} before=" " after=" " /></motion.button>
               </div>
 
               {/* Bulk action bar */}
@@ -406,12 +400,12 @@ function AiTaggingSettingsModal({ onClose }) {
                     transition={{ duration: 0.18 }}
                     className="flex items-center gap-3 mx-6 px-3 py-2 rounded-xl flex-shrink-0 overflow-hidden"
                     style={{ background: accentTint(12), border: `1px solid ${accentTint(30)}` }}>
-                    <span className="text-[16px] whitespace-nowrap" style={{ color: ACCENT_TEXT }}>{selected.size} selected</span>
+                    <span className="text-[16px] whitespace-nowrap" style={{ color: ACCENT_TEXT }}>{selected.size}<LocalizedText text={"selected"} before=" " /></span>
                     <button onClick={() => bulkMut.mutate({ ids: [...selected], enabled: true })}
-                      className="text-[16px] text-[rgba(255,255,255,0.75)] hover:text-white transition-colors">Enable</button>
+                      className="text-[16px] text-[rgba(255,255,255,0.75)] hover:text-white transition-colors"><LocalizedText text={"Enable"} /></button>
                     <button onClick={() => bulkMut.mutate({ ids: [...selected], enabled: false })}
-                      className="text-[16px] text-[rgba(255,255,255,0.75)] hover:text-white transition-colors">Disable</button>
-                    <button onClick={clearSelection} className="ml-auto text-[16px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors">Clear</button>
+                      className="text-[16px] text-[rgba(255,255,255,0.75)] hover:text-white transition-colors"><LocalizedText text={"Disable"} /></button>
+                    <button onClick={clearSelection} className="ml-auto text-[16px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors"><LocalizedText text={"Clear"} /></button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -419,18 +413,14 @@ function AiTaggingSettingsModal({ onClose }) {
               {/* List */}
               <div className="flex-1 overflow-y-auto px-6 py-3 min-h-0">
                 {isLoading ? (
-                  <div className="flex items-center justify-center h-32 text-[rgba(255,255,255,0.3)] text-[17px]">Loading…</div>
+                  <div className="flex items-center justify-center h-32 text-[rgba(255,255,255,0.3)] text-[17px]"><LocalizedText text={"Loading…"} /></div>
                 ) : items.length === 0 ? (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    className="flex items-center justify-center h-32 text-[rgba(255,255,255,0.2)] text-[17px]">No tags found</motion.div>
+                    className="flex items-center justify-center h-32 text-[rgba(255,255,255,0.2)] text-[17px]"><LocalizedText text={"No tags found"} /></motion.div>
                 ) : (
                   <div className="flex flex-col gap-1">
-                    <div className="text-[16px] text-white/35 px-3 pb-2">
-                      Per-tag sliders override the global threshold from Settings → AI Tagging. Reset a tag to use the global value again.
-                    </div>
-                    <button onClick={selectAllOnPage} className="self-start text-[15px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors mb-1">
-                      Select all on page
-                    </button>
+                    <div className="text-[16px] text-white/35 px-3 pb-2"><LocalizedText text={"Per-tag sliders override the global threshold from Settings → AI Tagging. Reset a tag to use the global value again."} before=" " after=" " /></div>
+                    <button onClick={selectAllOnPage} className="self-start text-[15px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors mb-1"><LocalizedText text={"Select all on page"} before=" " after=" " /></button>
                     {items.map((entry, i) => (
                       <motion.div key={entry.id}
                         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -453,7 +443,7 @@ function AiTaggingSettingsModal({ onClose }) {
                               onSave={confidence_threshold => thresholdMut.mutate({ id: entry.id, confidence_threshold })}
                             />
                             {entry.is_builtin_default && (
-                              <span className="text-[13px] px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: accentTint(15), color: ACCENT_TEXT }}>default</span>
+                              <span className="text-[13px] px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: accentTint(15), color: ACCENT_TEXT }}><LocalizedText text={"default"} /></span>
                             )}
                             <button onClick={() => setEditRow(entry.id)} className="flex-shrink-0 text-[rgba(255,255,255,0.25)] hover:text-white transition-colors">
                               <Pencil size={13} />
@@ -478,17 +468,17 @@ function AiTaggingSettingsModal({ onClose }) {
 
               {/* Pagination */}
               <div className="flex items-center justify-between px-6 py-3 flex-shrink-0 border-t border-[rgba(255,255,255,0.06)]">
-                <span className="text-[15px] text-[rgba(255,255,255,0.3)]">{total.toLocaleString()} raw tags</span>
+                <span className="text-[15px] text-[rgba(255,255,255,0.3)]">{total.toLocaleString()}<LocalizedText text={"raw tags"} before=" " /></span>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                    className="text-[16px] text-[rgba(255,255,255,0.5)] hover:text-white transition-colors disabled:opacity-25">Prev</button>
+                    className="text-[16px] text-[rgba(255,255,255,0.5)] hover:text-white transition-colors disabled:opacity-25"><LocalizedText text={"Prev"} /></button>
                   <AnimatePresence mode="wait">
                     <motion.span key={page} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
                       transition={{ duration: 0.12 }}
-                      className="text-[16px] text-[rgba(255,255,255,0.4)]">{page} / {totalPages}</motion.span>
+                      className="text-[16px] text-[rgba(255,255,255,0.4)]">{page}<LocalizedText text={"/"} before=" " after=" " />{totalPages}</motion.span>
                   </AnimatePresence>
                   <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                    className="text-[16px] text-[rgba(255,255,255,0.5)] hover:text-white transition-colors disabled:opacity-25">Next</button>
+                    className="text-[16px] text-[rgba(255,255,255,0.5)] hover:text-white transition-colors disabled:opacity-25"><LocalizedText text={"Next"} /></button>
                 </div>
               </div>
             </motion.div>
@@ -500,6 +490,7 @@ function AiTaggingSettingsModal({ onClose }) {
 }
 
 function VocabEditRow({ entry, onCancel, onSave }) {
+  const t = useT()
   const [name, setName]         = useState(entry.normalized_name)
   const [category, setCategory] = useState(entry.category)
   return (
@@ -510,7 +501,7 @@ function VocabEditRow({ entry, onCancel, onSave }) {
       <select value={category} onChange={e => setCategory(e.target.value)}
         className="px-2 py-1 rounded text-[15px] text-white border border-[rgba(255,255,255,0.15)] outline-none"
         style={{ background: 'var(--c-surface)' }}>
-        {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        {CATS.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
       </select>
       <button onClick={() => onSave({ normalized_name: name.trim(), category })} disabled={!name.trim()}
         className="transition-colors disabled:opacity-30" style={{ color: ACCENT }}><Check size={16} /></button>
@@ -521,6 +512,7 @@ function VocabEditRow({ entry, onCancel, onSave }) {
 
 // ── Tag chip with inline count bar ────────────────────────────────────────────
 function TagChip({ tag, maxCount, onView, onEdit, onToggleFavorite }) {
+  const t = useT()
   const color = catColor(tag.category)
   const pct   = maxCount > 0 ? Math.round((tag.use_count / maxCount) * 100) : 0
   return (
@@ -541,12 +533,12 @@ function TagChip({ tag, maxCount, onView, onEdit, onToggleFavorite }) {
       {tag.source === 'ai' && <Sparkles size={11} className="opacity-0 group-hover:opacity-60 transition-opacity" style={{ color }} />}
       <button onClick={event => { event.stopPropagation(); onToggleFavorite(tag) }}
         className="transition-opacity"
-        title={tag.is_favorite ? 'Remove from favorite tags' : 'Favorite this tag for future mint rarity'}>
+        title={t(tag.is_favorite ? 'Remove from favorite tags' : 'Favorite this tag for future mint rarity')}>
         <Star size={14} fill={tag.is_favorite ? 'currentColor' : 'none'} style={{ color: tag.is_favorite ? '#f5c451' : 'rgba(255,255,255,0.3)' }} />
       </button>
       <button onClick={e => { e.stopPropagation(); onEdit(tag) }}
         className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
-        title="Edit tag">
+        title={t("Edit tag")}>
         <Pencil size={11} className="text-[rgba(255,255,255,0.4)] hover:text-white" />
       </button>
     </motion.div>
@@ -555,6 +547,7 @@ function TagChip({ tag, maxCount, onView, onEdit, onToggleFavorite }) {
 
 // ── Tag cloud ─────────────────────────────────────────────────────────────────
 function TagCloud({ tags, onView }) {
+  const t = useT()
   const counts = tags.map(t => t.use_count)
   const min    = Math.min(...counts) || 1
   const max    = Math.max(...counts) || 1
@@ -583,6 +576,7 @@ function TagCloud({ tags, onView }) {
 
 // ── Image panel (slides in from right) ───────────────────────────────────────
 function ImagePanel({ tag, allTags, onClose }) {
+  const t = useT()
   const navigate  = useNavigate()
   const qc        = useQueryClient()
   const [offset, setOffset]   = useState(0)
@@ -621,12 +615,11 @@ function ImagePanel({ tag, allTags, onClose }) {
             <div className="min-w-0">
               <div className="text-[20px] font-bold text-white truncate">{tag.name}</div>
               <div className="text-[15px]" style={{ color: `${color}cc` }}>
-                {CAT_MAP[tag.category]?.label ?? tag.category} · {total.toLocaleString()} images
-              </div>
+                {CAT_MAP[tag.category]?.label ?? tag.category}<LocalizedText text={"·"} before=" " after=" " />{total.toLocaleString()}<LocalizedText text={"images"} before=" " after=" " /></div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button onClick={() => setEditOpen(true)} title="Edit tag"
+            <button onClick={() => setEditOpen(true)} title={t("Edit tag")}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white hover:bg-[rgba(255,255,255,0.07)] transition-all">
               <Pencil size={15} />
             </button>
@@ -638,17 +631,14 @@ function ImagePanel({ tag, allTags, onClose }) {
         </div>
         {tag.source === 'ai' && (
           <div className="flex items-center gap-1 text-[14px]" style={{ color: accentTint(70) }}>
-            <Sparkles size={12} /> AI generated · hover images to remove wrong tags
-          </div>
+            <Sparkles size={12} /><LocalizedText text={"AI generated · hover images to remove wrong tags"} before=" " after=" " /></div>
         )}
       </div>
 
       {/* Image grid */}
       <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'thin' }}>
         {items.length === 0 && !isFetching ? (
-          <div className="flex flex-col items-center justify-center h-32 text-[rgba(255,255,255,0.2)] text-[17px]">
-            No images yet
-          </div>
+          <div className="flex flex-col items-center justify-center h-32 text-[rgba(255,255,255,0.2)] text-[17px]"><LocalizedText text={"No images yet"} before=" " after=" " /></div>
         ) : (
           <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             {items.map((img, i) => (
@@ -659,7 +649,7 @@ function ImagePanel({ tag, allTags, onClose }) {
                 {/* Main click → gallery */}
                 <button onClick={() => navigate(`/galleries/${img.gallery_id}`)}
                   className="absolute inset-0 w-full h-full"
-                  title={img.confidence ? `${Math.round(img.confidence * 100)}% confidence` : ''}>
+                  title={img.confidence ? t('{percent}% confidence', { percent: Math.round(img.confidence * 100) }) : ''}>
                   {img.thumb_path ? (
                     <img src={thumbUrl(img.thumb_path)} alt=""
                       className="w-full h-full object-cover transition-transform group-hover:scale-105" />
@@ -678,8 +668,7 @@ function ImagePanel({ tag, allTags, onClose }) {
                 {img.confidence && (
                   <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
                        style={{ background: `${color}cc`, color: '#fff' }}>
-                    {Math.round(img.confidence * 100)}%
-                  </div>
+                    {Math.round(img.confidence * 100)}<LocalizedText text={"%"} after=" " /></div>
                 )}
                 {img.cum_count > 0 && (
                   <div className="absolute bottom-1 left-1 px-1 py-0.5 rounded text-[11px] font-medium pointer-events-none"
@@ -691,7 +680,7 @@ function ImagePanel({ tag, allTags, onClose }) {
                 <button
                   onClick={e => { e.stopPropagation(); removeMut.mutate(img.id) }}
                   disabled={removeMut.isPending}
-                  title="Remove this tag from image"
+                  title={t("Remove this tag from image")}
                   className="absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
                   style={{ background: pinkTint(85) }}>
                   <X size={10} className="text-white" />
@@ -700,22 +689,18 @@ function ImagePanel({ tag, allTags, onClose }) {
             ))}
           </div>
         )}
-        {isFetching && <div className="text-center py-4 text-[rgba(255,255,255,0.3)] text-[17px]">Loading…</div>}
+        {isFetching && <div className="text-center py-4 text-[rgba(255,255,255,0.3)] text-[17px]"><LocalizedText text={"Loading…"} /></div>}
 
         {/* Pagination */}
         {total > LIMIT && (
           <div className="flex items-center justify-center gap-3 mt-4">
             <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - LIMIT))}
-              className="px-4 py-1.5 rounded-lg text-[17px] disabled:opacity-30 text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all">
-              ←
-            </button>
+              className="px-4 py-1.5 rounded-lg text-[17px] disabled:opacity-30 text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all"><LocalizedText text={"←"} before=" " after=" " /></button>
             <span className="text-[16px] text-[rgba(255,255,255,0.4)]">
-              {offset + 1}–{Math.min(offset + LIMIT, total)} of {total}
+              {offset + 1}<LocalizedText text={"–"} />{Math.min(offset + LIMIT, total)}<LocalizedText text={"of"} before=" " after=" " />{total}
             </span>
             <button disabled={offset + LIMIT >= total} onClick={() => setOffset(offset + LIMIT)}
-              className="px-4 py-1.5 rounded-lg text-[17px] disabled:opacity-30 text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all">
-              →
-            </button>
+              className="px-4 py-1.5 rounded-lg text-[17px] disabled:opacity-30 text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all"><LocalizedText text={"→"} before=" " after=" " /></button>
           </div>
         )}
       </div>
@@ -731,6 +716,7 @@ function ImagePanel({ tag, allTags, onClose }) {
 
 // ── Category overview card ────────────────────────────────────────────────────
 function CategoryCard({ cat, topTags, imageCount, samples, onSelect, onTagView }) {
+  const t = useT()
   const CatIcon = catIcon(cat.key)
   const imgs    = samples?.[cat.key] ?? []
 
@@ -747,10 +733,9 @@ function CategoryCard({ cat, topTags, imageCount, samples, onSelect, onTagView }
           <CatIcon size={18} style={{ color: cat.color }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[18px] font-bold" style={{ color: cat.color }}>{cat.label}</div>
+          <div className="text-[18px] font-bold" style={{ color: cat.color }}>{t(cat.label)}</div>
           <div className="text-[15px] text-[rgba(255,255,255,0.35)]">
-            {topTags.length} tags · {imageCount.toLocaleString()} images
-          </div>
+            {topTags.length}<LocalizedText text={"tags ·"} before=" " after=" " />{imageCount.toLocaleString()}<LocalizedText text={"images"} before=" " after=" " /></div>
         </div>
         <ChevronRight size={16} className="text-[rgba(255,255,255,0.2)] group-hover:text-[rgba(255,255,255,0.5)] transition-colors flex-shrink-0" />
       </div>
@@ -788,6 +773,7 @@ function CategoryCard({ cat, topTags, imageCount, samples, onSelect, onTagView }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function TagManager() {
+  const t = useT()
   const [selectedCat, setSelectedCat] = useState('all')
   const [search, setSearch]           = useState('')
   const [viewMode, setViewMode]       = useState('list')  // 'list' | 'cloud'
@@ -833,17 +819,16 @@ export default function TagManager() {
   const handleFavorite = tag => favoriteMut.mutate(tag)
 
   return (
-    <div className="flex h-full overflow-hidden" style={{ background: 'var(--c-bg)' }}>
+    <div className="vault-theme-tag-manager-page flex h-full overflow-hidden" style={{ background: 'var(--c-bg)' }}>
       {/* ── Left: main content ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-7 pb-4 flex-shrink-0">
           <div>
-            <h1 className="text-[28px] font-bold text-white">Tag Manager</h1>
+            <h1 className="text-[28px] font-bold text-white"><LocalizedText text={"Tag Manager"} /></h1>
             {stats && (
               <p className="text-[17px] text-[rgba(255,255,255,0.4)] mt-0.5">
-                {stats.total_tags.toLocaleString()} tags · {stats.total_tagged_images.toLocaleString()} tagged images
-              </p>
+                {stats.total_tags.toLocaleString()}<LocalizedText text={"tags ·"} before=" " after=" " />{stats.total_tagged_images.toLocaleString()}<LocalizedText text={"tagged images"} before=" " after=" " /></p>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -851,17 +836,14 @@ export default function TagManager() {
               onClick={() => setFavoritesOnly(value => !value)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-[16px] transition-colors"
               style={{ background: favoritesOnly ? 'rgba(245,196,81,0.16)' : 'rgba(255,255,255,0.05)', color: favoritesOnly ? '#f5c451' : 'rgba(255,255,255,0.55)', border: `1px solid ${favoritesOnly ? 'rgba(245,196,81,0.42)' : 'rgba(255,255,255,0.08)'}` }}>
-              <Star size={16} fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorite tags
-            </motion.button>
+              <Star size={16} fill={favoritesOnly ? 'currentColor' : 'none'} /><LocalizedText text={"Favorite tags"} before=" " after=" " /></motion.button>
             {/* AI Tagging Settings */}
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
               onClick={() => setShowAiSettings(true)}
-              title="Choose which raw AI-model tags get applied"
+              title={t("Choose which raw AI-model tags get applied")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[15px] transition-colors"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <Settings size={13} />
-              AI Tagging Settings
-            </motion.button>
+              <Settings size={13} /><LocalizedText text={"AI Tagging Settings"} before=" " after=" " /></motion.button>
             {/* View mode toggle */}
             <div className="relative flex rounded-xl overflow-hidden border border-[rgba(255,255,255,0.08)]">
               {[{ k: 'list', Icon: List }, { k: 'cloud', Icon: Cloud }].map(({ k, Icon }) => (
@@ -880,7 +862,7 @@ export default function TagManager() {
             {/* Search */}
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.3)]" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tags…"
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("Search tags…")}
                 className="pl-9 pr-8 py-2 rounded-xl text-[17px] text-white border border-[rgba(255,255,255,0.08)] outline-none w-56 transition-colors"
                 style={{ background: 'var(--c-card)' }}
                 onFocus={e => e.target.style.borderColor = accentTint(40)}
@@ -908,7 +890,7 @@ export default function TagManager() {
                          color: active ? c.color : 'rgba(255,255,255,0.4)',
                          border: `1px solid ${active ? c.color + '44' : 'rgba(255,255,255,0.07)'}` }}>
                 {c.key !== 'all' && <CIcon size={13} />}
-                {c.label}
+                {t(c.label)}
                 <span className="opacity-60 text-[14px]">{count}</span>
               </motion.button>
             )
@@ -922,7 +904,7 @@ export default function TagManager() {
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center h-48 text-[rgba(255,255,255,0.2)]">
                 <TagIcon size={32} className="mb-3 opacity-40" />
-                <span className="text-[18px]">No tags found</span>
+                <span className="text-[18px]"><LocalizedText text={"No tags found"} /></span>
               </motion.div>
 
             ) : viewMode === 'cloud' ? (
@@ -961,8 +943,8 @@ export default function TagManager() {
                       <div key={cat} className="mb-7">
                         <div className="flex items-center gap-2 mb-3">
                           <CIcon size={14} style={{ color: cfg.color }} />
-                          <span className="text-[16px] font-bold uppercase tracking-wide" style={{ color: cfg.color }}>{cfg.label}</span>
-                          <span className="text-[16px] text-[rgba(255,255,255,0.2)]">· {catTags.length}</span>
+                          <span className="text-[16px] font-bold uppercase tracking-wide" style={{ color: cfg.color }}>{t(cfg.label)}</span>
+                          <span className="text-[16px] text-[rgba(255,255,255,0.2)]"><LocalizedText text={"·"} after=" " />{catTags.length}</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {catTags.map(tag => (

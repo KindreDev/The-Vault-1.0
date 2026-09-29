@@ -85,7 +85,7 @@ export default function CreatorContextMenu({
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {creator.name}
           </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 1, textTransform: 'capitalize' }}>
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', marginTop: 1, textTransform: 'capitalize' }}>
             {creator.creator_type}
           </div>
         </div>

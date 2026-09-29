@@ -13,20 +13,24 @@ crowned. A dead period has no board, so it has no champion.
 Tiers ladder by how long the window was held, not by rank:
     day → epic · week → legendary · month → celestial
 """
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+import json
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from models import (
-    ActivityEvent, Card, Creator, Gallery, HofCrown, Image, SessionLog,
+    ActivityEvent, Card, Creator, Gallery, HofCategoryAward, HofCategoryProgress, HofCrown, Image, SessionLog,
     gallery_creators, image_creators,
 )
 from services import ranking
 from services.cards import generate_card
+from services.hof_cards import (
+    HOF_CROWN_BASELINE_RARITY, HOF_CROWN_PRINT_RARITY, prepare_hof_visual,
+)
 
-TIER = {"day": "epic", "week": "legendary", "month": "celestial"}
-ALLTIME_RARITY = "SR"
+TIER = {period: rarity for period, rarity in HOF_CROWN_BASELINE_RARITY.items() if period != "alltime"}
+ALLTIME_RARITY = HOF_CROWN_PRINT_RARITY["alltime"]
 
 # Nothing is crowned before this — the feature did not exist, and a new install
 # has no history here anyway, so the retroactive sweep is naturally a no-op for
@@ -72,6 +76,15 @@ def _completed_periods(period_type: str, since: datetime, now: datetime):
         out.append((KEYFN[period_type](s), s, e))
         start = e
     return out
+
+
+def _period_start_from_key(period_type: str, key: str) -> datetime:
+    if period_type == "day":
+        return datetime.strptime(key, "%Y-%m-%d")
+    if period_type == "week":
+        year, week = key.split("-W", 1)
+        return datetime.combine(date.fromisocalendar(int(year), int(week), 1), datetime.min.time())
+    return datetime.strptime(key, "%Y-%m")
 
 
 # ── Awarding ──────────────────────────────────────────────────────────────────
@@ -157,6 +170,9 @@ def award_period(db: Session, period_type: str, key: str, since, until) -> HofCr
         baseline_override=TIER[period_type],
     )
     crown.card_id = card.id
+    card.print_rarity = HOF_CROWN_PRINT_RARITY[period_type]
+    db.flush()
+    prepare_hof_visual(db, card)
     db.flush()
     return crown
 
@@ -200,13 +216,127 @@ def award_alltime_crown(db: Session, now: datetime | None = None) -> HofCrown | 
 
     card = generate_card(
         db, "hof", source_creator_id=winner_id,
-        source_image_id=crown.image_id, baseline_override="epic",
+        source_image_id=crown.image_id,
+        baseline_override=HOF_CROWN_BASELINE_RARITY["alltime"],
     )
     card.rarity_class = ALLTIME_RARITY
     card.print_rarity = ALLTIME_RARITY
     crown.card_id = card.id
     db.flush()
+    prepare_hof_visual(db, card)
+    db.flush()
     return crown
+
+
+def _linked_creator_for_image(db: Session, image: Image):
+    gallery = db.query(Gallery).filter(Gallery.id == image.gallery_id).first()
+    if gallery:
+        linked_creator = _linked_creator_for_gallery(db, gallery)
+        if linked_creator:
+            return linked_creator
+    row = db.query(image_creators.c.creator_id).filter(image_creators.c.image_id == image.id).first()
+    return row[0] if row else None
+
+
+def _linked_creator_for_gallery(db: Session, gallery: Gallery):
+    if gallery.creator_id:
+        return gallery.creator_id
+    row = db.query(gallery_creators.c.creator_id).filter(gallery_creators.c.gallery_id == gallery.id).first()
+    return row[0] if row else None
+
+
+def _category_scores(db: Session, category: str, since=None, until=None):
+    if category == "media":
+        if since is not None:
+            return ranking.score_all_images_in_period(db, since, until)
+        return {
+            image.id: {"score": ranking.image_score(image)}
+            for image in db.query(Image).all()
+            if ranking.image_score(image) > 0
+        }
+    if since is not None:
+        return ranking.score_all_galleries_in_period(db, since, until)
+    return ranking.score_all_galleries(db)
+
+
+def _create_category_award(db: Session, category: str, period_type: str, period_key: str,
+                           winner_id: int, score: int, field_size: int, won_at: datetime):
+    existing = db.query(HofCategoryAward).filter_by(
+        category_type=category, period_type=period_type, period_key=period_key,
+    ).first()
+    if existing:
+        return None
+    image_id = gallery_id = creator_id = None
+    if category == "media":
+        winner = db.query(Image).filter(Image.id == winner_id).first()
+        if not winner:
+            return None
+        image_id = winner.id
+        creator_id = _linked_creator_for_image(db, winner)
+    else:
+        winner = db.query(Gallery).filter(Gallery.id == winner_id).first()
+        if not winner:
+            return None
+        gallery_id = winner.id
+        creator_id = _linked_creator_for_gallery(db, winner)
+        image = (db.query(Image).filter(Image.gallery_id == winner.id)
+                 .order_by(Image.sort_order.asc(), Image.id.asc()).first())
+        image_id = image.id if image else None
+
+    award = HofCategoryAward(
+        category_type=category, period_type=period_type, period_key=period_key,
+        winner_id=winner_id, creator_id=creator_id, image_id=image_id,
+        gallery_id=gallery_id, won_at=won_at, score=int(score), field_size=field_size,
+    )
+    db.add(award)
+    db.flush()
+    card = generate_card(
+        db, "hof", source_creator_id=creator_id, source_image_id=image_id,
+        source_gallery_id=gallery_id, baseline_override=HOF_CROWN_BASELINE_RARITY[period_type],
+    )
+    print_rarity = HOF_CROWN_PRINT_RARITY[period_type]
+    card.print_rarity = print_rarity
+    if period_type == "alltime":
+        card.rarity_class = print_rarity
+    award.card_id = card.id
+    db.flush()
+    prepare_hof_visual(db, card)
+    recipe = json.loads(card.visual_recipe)
+    recipe["snapshot"]["awardCategory"] = category
+    card.visual_recipe = json.dumps(recipe, separators=(",", ":"), sort_keys=True)
+    db.flush()
+    return award
+
+
+def award_category_period(db: Session, category: str, period_type: str, key: str, since, until):
+    scores = _category_scores(db, category, since, until)
+    order = ranking.ranked_ids(scores)
+    if not order:
+        return None
+    winner_id = order[0]
+    return _create_category_award(
+        db, category, period_type, key, winner_id, scores[winner_id]["score"],
+        len(order), until - timedelta(seconds=1),
+    )
+
+
+def award_category_alltime(db: Session, category: str, now: datetime):
+    scores = _category_scores(db, category)
+    order = ranking.ranked_ids(scores)
+    if not order:
+        return None
+    winner_id = order[0]
+    latest = (db.query(HofCategoryAward)
+              .filter(HofCategoryAward.category_type == category,
+                      HofCategoryAward.period_type == "alltime")
+              .order_by(HofCategoryAward.won_at.desc(), HofCategoryAward.id.desc()).first())
+    if latest and latest.winner_id == winner_id:
+        return None
+    key = now.isoformat(timespec="microseconds")
+    return _create_category_award(
+        db, category, "alltime", key, winner_id, scores[winner_id]["score"],
+        len(order), now,
+    )
 
 
 def award_due_crowns(db: Session, now: datetime | None = None) -> int:
@@ -219,6 +349,8 @@ def award_due_crowns(db: Session, now: datetime | None = None) -> int:
     """
     now = now or datetime.now()
     minted = 1 if award_alltime_crown(db, now=now) else 0
+    for category in ("media", "gallery"):
+        minted += int(bool(award_category_alltime(db, category, now)))
 
     first_session = db.query(func.min(SessionLog.logged_at)).scalar()
     first_event   = db.query(func.min(ActivityEvent.logged_at)).scalar()
@@ -239,6 +371,25 @@ def award_due_crowns(db: Session, now: datetime | None = None) -> int:
         for key, s, e in _completed_periods(period_type, start, now):
             if award_period(db, period_type, key, s, e):
                 minted += 1
+        for category in ("media", "gallery"):
+            progress = (db.query(HofCategoryProgress)
+                        .filter_by(category_type=category, period_type=period_type).first())
+            category_start = (
+                _bounds(period_type, _period_start_from_key(period_type, progress.last_period_key))[1]
+                if progress else history_start
+            )
+            for key, s, e in _completed_periods(period_type, category_start, now):
+                if award_category_period(db, category, period_type, key, s, e):
+                    minted += 1
+                if progress is None:
+                    progress = HofCategoryProgress(
+                        category_type=category, period_type=period_type, last_period_key=key,
+                    )
+                    db.add(progress)
+                else:
+                    progress.last_period_key = key
+                    progress.checked_at = now
+                db.flush()
 
     if minted:
         db.commit()

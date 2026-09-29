@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Images, Users, Play, ListMusic,
   Columns3, Gamepad2, Trophy, Star, Map, CreditCard,
   ScanLine, Tag, Settings, Flame, Box, Film, Video, Cpu, ScrollText, Layers,
   CheckCircle2, ChevronDown, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
-  Sparkles, Newspaper, Compass, Waves,
+  Sparkles, Newspaper, Compass, Waves, LoaderCircle, X,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
@@ -13,6 +13,7 @@ import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
 import { gamiApi, companionApi, recapApi } from '../../lib/api'
 import { useT } from '../../i18n'
+import { deviceService } from '../../services/device'
 
 const NAV = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -89,11 +90,12 @@ function xpProgress(totalXp, level) {
   return Math.min(100, Math.max(0, ((totalXp - current) / (next - current)) * 100))
 }
 
-function NavItem({ to, icon: Icon, label, badge, connected = false }) {
+function NavItem({ to, icon: Icon, label, badge, connected = false, onContextMenu, trailing }) {
   const t = useT()
   return (
     <NavLink
       to={to}
+      onContextMenu={onContextMenu}
       className={({ isActive }) =>
         `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-[10px] text-[20px] transition-all duration-150 cursor-pointer active:scale-95 ${connected ? 'device-connected-nav' : ''}
          ${connected
@@ -106,9 +108,9 @@ function NavItem({ to, icon: Icon, label, badge, connected = false }) {
     >
       <Icon size={20} />
       <span className="flex-1">{t(label)}</span>
-      {connected && (
+      {trailing || (connected && (
         <CheckCircle2 size={19} strokeWidth={2.4} aria-label={t('Connected')} />
-      )}
+      ))}
       {badge > 0 && (
         <span className="text-[15px] font-medium px-2 py-0.5 rounded-full flex-shrink-0"
               style={{ background: 'color-mix(in srgb, var(--c-accent) 35%, transparent)', color: 'var(--c-accent-text)' }}>
@@ -121,7 +123,42 @@ function NavItem({ to, icon: Icon, label, badge, connected = false }) {
 
 function DeviceNavItem() {
   const status = useDeviceStore(s => s.status)
-  return <NavItem to="/device-control" icon={Cpu} label="Device Control" connected={status === 'connected'} />
+  const [quickState, setQuickState] = useState('idle')
+  const resetTimer = useRef(null)
+
+  useEffect(() => () => clearTimeout(resetTimer.current), [])
+
+  const handleContextMenu = event => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (quickState !== 'idle') return
+
+    setQuickState('connecting')
+    deviceService.quickToggleConnection({ timeoutMs: 3000 })
+      .then(() => setQuickState('idle'))
+      .catch(() => {
+        setQuickState('failed')
+        clearTimeout(resetTimer.current)
+        resetTimer.current = setTimeout(() => setQuickState('idle'), 3000)
+      })
+  }
+
+  const trailing = quickState === 'failed'
+    ? <X size={20} strokeWidth={2.6} aria-label="Quick connection failed" />
+    : quickState === 'connecting'
+    ? <LoaderCircle size={19} className="animate-spin" aria-label="Connecting" />
+    : null
+
+  return (
+    <NavItem
+      to="/device-control"
+      icon={Cpu}
+      label="Device Control"
+      connected={status === 'connected'}
+      onContextMenu={handleContextMenu}
+      trailing={trailing}
+    />
+  )
 }
 
 function CollapsibleSection({ label, children, defaultOpen = true }) {
@@ -291,7 +328,7 @@ export default function Sidebar() {
               <div className="px-4 pt-3 pb-1">
                 <img
                   src={`/api/gamification/profile/avatar?v=${avatarBust}`}
-                  alt="avatar"
+                  alt={t('Profile avatar')}
                   style={{
                     width: 46, height: 46, borderRadius: '50%', objectFit: 'cover',
                     border: `2px solid ${levelColor}55`,
@@ -305,7 +342,7 @@ export default function Sidebar() {
             <div className="px-4 pb-3" style={{ paddingTop: profile.avatar_path ? 0 : 12 }}>
               <div className="flex justify-between text-[17px] text-[rgba(255,255,255,0.4)] mb-1">
                 <span className="font-medium truncate" style={{ color: levelColor }}>
-                  Lv {profile.level} — {profile.selected_title || profile.level_title}
+                  {t('Lv')} {profile.level} — {t(profile.selected_title || profile.level_title)}
                 </span>
               </div>
               <div className="h-[3px] rounded-full bg-[rgba(255,255,255,0.07)] mb-2 overflow-hidden">
@@ -318,7 +355,7 @@ export default function Sidebar() {
                   <span className="flex items-center gap-1.5 ml-auto px-2 py-0.5 rounded-full text-[#EF9F27]"
                         style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)' }}>
                     <Flame size={14} className="streak-flame" />
-                    {profile.streak_days}d
+                    {profile.streak_days}{t('d')}
                   </span>
                 )}
               </div>

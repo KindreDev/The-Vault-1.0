@@ -44,15 +44,21 @@ export function resolveTCGV2CardFace(card) {
   if (!visual?.recipe) return null
 
   const artUrl = visual.art_url || card.image_url || card.art_url || null
-  if (!artUrl) return null
+  const placeholderFace = type === 'hall-of-fame' && (
+    visual.recipe.source?.kind === 'placeholder' || visual.readiness === 'placeholder'
+  )
+  if (!artUrl && !placeholderFace) return null
 
   const signatureUrl = visual.signature_url || card.signature_url || null
   const signatureUrls = Array.isArray(visual.signature_urls)
     ? visual.signature_urls.filter(Boolean)
     : (signatureUrl ? [signatureUrl] : [])
 
-  const liveRarity = ['C', 'R', 'SR', 'SPR', 'UR'].includes(card.rarity_class)
-    ? card.rarity_class
+  const printRarity = card.is_legacy ? null : (card.print_rarity || card.printRarity)
+  const liveRarity = ['C', 'R', 'SR', 'SPR', 'UR'].includes(printRarity)
+    ? printRarity
+    : ['C', 'R', 'SR', 'SPR', 'UR'].includes(card.rarity_class)
+      ? card.rarity_class
     : visual.recipe.rarity
   const recipe = liveRarity && liveRarity !== visual.recipe.rarity
     ? { ...visual.recipe, rarity: liveRarity }
@@ -62,6 +68,9 @@ export function resolveTCGV2CardFace(card) {
     type,
     recipe,
     artUrl,
+    mediaType: visual.media_type || visual.mediaType || card.media_type || null,
+    posterUrl: visual.poster_url || visual.posterUrl || card.poster_url || null,
+    previewUrl: visual.preview_url || visual.previewUrl || card.preview_url || null,
     stackArtUrls: visual.stack_art_urls || [],
     packedMaskUrl: visual.mask_url || card.mask_url || null,
     signatureUrl,

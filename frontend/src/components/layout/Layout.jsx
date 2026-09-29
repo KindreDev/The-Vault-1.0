@@ -11,8 +11,11 @@ import { useHotkeys } from '../../hooks/useHotkeys'
 import { deviceService } from '../../services/device'
 import { imagesApi } from '../../lib/api'
 import FunscriptPlayerDock from '../FunscriptPlayerDock'
+import ThemePackLayer from './ThemePackLayer'
+import { useT } from '../../i18n'
 
 export default function Layout() {
+  const t = useT()
   const sessionActive          = useVaultStore(s => s.sessionActive)
   const showGoonBorder         = useVaultStore(s => s.showGoonBorder)
   const applyStoredPalette     = useVaultStore(s => s.applyStoredPalette)
@@ -106,9 +109,10 @@ export default function Layout() {
           data-no-fade="true"
         />
       )}
-      <div className="flex h-screen overflow-hidden relative z-[1]" style={{ background: 'var(--c-bg)' }}>
+      <div className="vault-app-shell flex h-screen overflow-hidden relative z-[1]" style={{ background: 'var(--c-bg)' }}>
       {!multiPanelFullscreen && <Sidebar />}
-      <main className={`flex-1 min-w-0 bg-[var(--c-bg)] ${isPlaylistsPage ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <main className={`vault-main flex-1 min-w-0 bg-[var(--c-bg)] ${isPlaylistsPage ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <ThemePackLayer />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={pageKey}
@@ -125,7 +129,7 @@ export default function Layout() {
                 <div className="flex items-center justify-center h-full" style={{ background: '#0e0e0e', minHeight: '100%' }}>
                   <div className="flex flex-col gap-3 items-center" style={{ opacity: 0.45, color: '#fff' }}>
                     <span style={{ letterSpacing: '.18em', fontSize: 13 }}>THE VAULT</span>
-                    <strong style={{ fontSize: 18 }}>Loading</strong>
+                    <strong style={{ fontSize: 18 }}>{t('Loading')}</strong>
                   </div>
                 </div>
               }>

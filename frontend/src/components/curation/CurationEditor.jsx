@@ -105,8 +105,8 @@ export default function CurationEditor({ draft, patch, gallery }) {
     <div className="flex flex-col gap-5 p-4 overflow-y-auto"
          style={{ width: 400, flexShrink: 0, borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
 
-      {/* ── Folder name — renames on disk when saved ─────────────────────── */}
-      <Section icon={FolderPen} title={t('Folder name')} hint={t('renames on disk')}>
+      {/* ── One gallery name — it is also the directory name on disk ─────── */}
+      <Section icon={FolderPen} title={t('Name on disk')} hint={t('also changes the Vault name')}>
         <input value={draft.folder_name}
                onChange={e => patch({ folder_name: e.target.value })}
                style={FIELD} spellCheck={false} />
@@ -114,13 +114,6 @@ export default function CurationEditor({ draft, patch, gallery }) {
              className="truncate" title={gallery.parent_path}>
           {gallery.parent_path}
         </div>
-      </Section>
-
-      {/* ── Display name ─────────────────────────────────────────────────── */}
-      <Section icon={AlignLeft} title={t('Display name')}>
-        <input value={draft.name}
-               onChange={e => patch({ name: e.target.value })}
-               style={FIELD} />
       </Section>
 
       {/* ── Creators ─────────────────────────────────────────────────────── */}

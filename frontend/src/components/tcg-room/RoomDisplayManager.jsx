@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -65,6 +66,7 @@ async function loadPosterPage(skip, query) {
 }
 
 export default function RoomDisplayManager({ context, bootstrap, instanceId = null }) {
+  const t = useT()
   const qc = useQueryClient()
   const [selectedInstance, setSelectedInstance] = useState(instanceId)
   const [selectedSlot, setSelectedSlot] = useState('0')
@@ -174,13 +176,13 @@ export default function RoomDisplayManager({ context, bootstrap, instanceId = nu
     mutationFn: copyId => tcgRoomApi.assignDisplay({ instance_id: selectedInstance, copy_id: copyId, slot_key: selectedSlot }),
     onSuccess: async () => {
       await refresh()
-      toast.success('Card placed in the stand')
+      toast.success(t("Card placed in the stand"))
       const filled = new Set((bootstrap?.assignments || []).filter(item => item.display_instance_id === selectedInstance).map(item => item.slot_key))
       filled.add(selectedSlot)
       const next = slots.find(slot => !filled.has(slot) && !(slot === '0' && filled.has('primary')))
       if (next) setSelectedSlot(next)
     },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not mount that physical copy'),
+    onError: error => toast.error(error.response?.data?.detail || t("Could not mount that physical copy")),
   })
   const setPoster = useMutation({
     mutationFn: imageId => {
@@ -194,9 +196,9 @@ export default function RoomDisplayManager({ context, bootstrap, instanceId = nu
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] })
       qc.invalidateQueries({ queryKey: ['tcg-room-furniture'] })
-      toast.success('Poster updated')
+      toast.success(t("Poster updated"))
     },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not update the poster'),
+    onError: error => toast.error(error.response?.data?.detail || t("Could not update the poster")),
   })
   const assignment = (bootstrap?.assignments || []).find(item => item.display_instance_id === selectedInstance && (item.slot_key === selectedSlot || (selectedSlot === '0' && item.slot_key === 'primary')))
   const mountedCopy = asList(allCopies).find(copy => copy.id === assignment?.physical_copy_id)
@@ -206,21 +208,21 @@ export default function RoomDisplayManager({ context, bootstrap, instanceId = nu
     ? (posterContent.image_id ? 1 : 0)
     : (bootstrap.assignments || []).filter(item => item.display_instance_id === selectedInstance).length
   return <div className="tcg-room-display-manager">
-    <header><SquareStack size={24} /><div><strong>{selectedDef?.name || (posterMode ? 'Wall poster' : 'Card stand')}</strong><span>{posterMode ? 'Search your Vault and click a photo.' : `${filledCount}/${slotCount} cards · walk to another stand to manage it.`}</span></div></header>
-    {!selectedInstance && <div className="tcg-room-empty"><strong>{posterMode ? 'No poster selected' : 'No stand selected'}</strong><span>Walk up to one and press E.</span></div>}
+    <header><SquareStack size={24} /><div><strong>{selectedDef?.name || t(posterMode ? 'Wall poster' : 'Card stand')}</strong><span>{posterMode ? t('Search your Vault and click a photo.') : t('{current}/{total} cards · walk to another stand to manage it.', { current: filledCount, total: slotCount })}</span></div></header>
+    {!selectedInstance && <div className="tcg-room-empty"><strong>{t(posterMode ? 'No poster selected' : 'No stand selected')}</strong><span><LocalizedText text={"Walk up to one and press E."} /></span></div>}
     {posterMode && selectedInstance && <>
-      <label className="tcg-room-display-manager__search"><Search size={18} /><input value={photoSearch} onChange={event => setPhotoSearch(event.target.value)} placeholder="Search tags or filename" /></label>
-      <div className="tcg-room-display-manager__count">{photos.length.toLocaleString()} of {photoTotal.toLocaleString()} photos</div>
+      <label className="tcg-room-display-manager__search"><Search size={18} /><input value={photoSearch} onChange={event => setPhotoSearch(event.target.value)} placeholder={t("Search tags or filename")} /></label>
+      <div className="tcg-room-display-manager__count">{photos.length.toLocaleString()}<LocalizedText text={"of"} before={" "} after={" "} />{photoTotal.toLocaleString()}<LocalizedText text={"photos"} before={" "} /></div>
       <div className="tcg-room-display-manager__cards">{photos.map(image => (
         <button key={image.id} disabled={setPoster.isPending} onClick={() => setPoster.mutate(image.id)}>
           <img src={vaultThumb(image)} alt="" loading="lazy" />
-          {image.id === posterContent.image_id && <small>On the wall</small>}
+          {image.id === posterContent.image_id && <small><LocalizedText text={"On the wall"} /></small>}
         </button>
       ))}
       <div ref={photoSentinel} className="tcg-room-display-manager__more" />
       </div>
-      {photoLibrary.isFetchingNextPage && <div className="tcg-room-display-manager__count">Loading more…</div>}
-      {!photos.length && !photoLibrary.isFetching && !photoLibrary.hasNextPage && <div className="tcg-room-empty"><strong>No photos match</strong><span>Try a tag or part of a filename.</span></div>}
+      {photoLibrary.isFetchingNextPage && <div className="tcg-room-display-manager__count"><LocalizedText text={"Loading more…"} /></div>}
+      {!photos.length && !photoLibrary.isFetching && !photoLibrary.hasNextPage && <div className="tcg-room-empty"><strong><LocalizedText text={"No photos match"} /></strong><span><LocalizedText text={"Try a tag or part of a filename."} /></span></div>}
     </>}
     {!posterMode && selectedInstance && slotCount > 1 && <div className="tcg-room-display-manager__slots">{slots.map(slot => {
       const filled = (bootstrap.assignments || []).some(item => item.display_instance_id === selectedInstance && (item.slot_key === slot || (slot === '0' && item.slot_key === 'primary')))
@@ -230,25 +232,25 @@ export default function RoomDisplayManager({ context, bootstrap, instanceId = nu
       const box = event.currentTarget.getBoundingClientRect()
       setTilt({ x: ((event.clientY - box.top) / box.height - .5) * -24, y: ((event.clientX - box.left) / box.width - .5) * 28 })
     }}>
-      <div style={{ transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}><TCGV2CardFace card={inspecting} width={280} showEffects /></div>
-      <button className="secondary" onClick={() => setInspecting(null)}>Put back</button>
+      <div style={{ transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}><TCGV2CardFace card={inspecting} width={280} showEffects videoPresentation="full" /></div>
+      <button className="secondary" onClick={() => setInspecting(null)}><LocalizedText text={"Put back"} /></button>
     </div>}
     {!posterMode && selectedInstance && !inspecting && <>
       <h3>{assignment ? `Slot ${Number(selectedSlot) + 1}` : `Empty slot ${Number(selectedSlot) + 1}`}</h3>
-      {mountedCard && <button className="secondary" onClick={() => setInspecting(mountedCard)}>Hold and inspect foil</button>}
-      <label className="tcg-room-display-manager__search"><Search size={18} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder="Search your cards" /></label>
+      {mountedCard && <button className="secondary" onClick={() => setInspecting(mountedCard)}><LocalizedText text={"Hold and inspect foil"} /></button>}
+      <label className="tcg-room-display-manager__search"><Search size={18} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder={t("Search your cards")} /></label>
       <div className="tcg-room-display-manager__rarities">{['', 'C', 'R', 'SR', 'SPR', 'UR'].map(value => (
         <button key={value || 'all'} type="button" className={rarity === value ? 'selected' : ''} onClick={() => setRarity(value)}>{value || 'All'}</button>
       ))}</div>
-      <div className="tcg-room-display-manager__count">{browseCards.length.toLocaleString()} loaded{(cardCatalog.data?.pages?.[0]?.total) ? ` · ${cardCatalog.data.pages[0].total.toLocaleString()} owned` : ''}</div>
+      <div className="tcg-room-display-manager__count">{browseCards.length.toLocaleString()}<LocalizedText text={"loaded"} before={" "} />{(cardCatalog.data?.pages?.[0]?.total) ? ` · ${cardCatalog.data.pages[0].total.toLocaleString()} owned` : ''}</div>
       <div className="tcg-room-display-manager__cards">{browseCards.map(row => (
         <button key={row.copy.id} disabled={assign.isPending} onClick={() => assign.mutate(row.copy.id)}>{row.card ? <TCGV2CardFace card={row.card} width="100%" showEffects={false} /> : <span>{row.code}</span>}<small>{row.code}</small></button>
       ))}
       <div ref={cardSentinel} className="tcg-room-display-manager__more" />
       </div>
-      {cardCatalog.isFetchingNextPage && <div className="tcg-room-display-manager__count">Loading more…</div>}
-      {!browseCards.length && !cardCatalog.isFetching && !cardCatalog.hasNextPage && <div className="tcg-room-empty"><strong>No matching cards</strong><span>Open packs first, or clear the search.</span></div>}
-      {assignment && <button className="secondary" onClick={() => tcgRoomApi.assignDisplay({ instance_id: selectedInstance, copy_id: null, slot_key: selectedSlot }).then(refresh)}>Remove from stand</button>}
+      {cardCatalog.isFetchingNextPage && <div className="tcg-room-display-manager__count"><LocalizedText text={"Loading more…"} /></div>}
+      {!browseCards.length && !cardCatalog.isFetching && !cardCatalog.hasNextPage && <div className="tcg-room-empty"><strong><LocalizedText text={"No matching cards"} /></strong><span><LocalizedText text={"Open packs first, or clear the search."} /></span></div>}
+      {assignment && <button className="secondary" onClick={() => tcgRoomApi.assignDisplay({ instance_id: selectedInstance, copy_id: null, slot_key: selectedSlot }).then(refresh)}><LocalizedText text={"Remove from stand"} /></button>}
     </>}
   </div>
 }

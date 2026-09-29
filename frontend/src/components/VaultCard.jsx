@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import './VaultCard.css'
 
 // ── Rarity constants ──────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ const SPR_TWINKLE_OPACITY = 0.4
 
 // ── Flame particle canvas (Legendary) ─────────────────────────────────────────
 function FlameCanvas({ width = 220, height = 320 }) {
+  const t = useT()
   const canvasRef = useRef(null)
   const animRef   = useRef(null)
   const particles = useRef([])
@@ -137,6 +139,7 @@ function FlameCanvas({ width = 220, height = 320 }) {
 
 // ── Sparkle spans (Relic gold / Cosmic white) ─────────────────────────────────
 function Sparkles({ count = 14, color = '#FFD700', size = [6, 16] }) {
+  const t = useT()
   const spans = Array.from({ length: count }, (_, i) => ({
     top:   `${Math.random() * 90}%`,
     left:  `${Math.random() * 90}%`,
@@ -171,13 +174,14 @@ function Sparkles({ count = 14, color = '#FFD700', size = [6, 16] }) {
 
 // ── Trophy icons (1 per year collecting creator) ───────────────────────────────
 function Trophies({ createdAt }) {
+  const t = useT()
   if (!createdAt) return null
   const years = Math.max(1, new Date().getFullYear() - new Date(createdAt).getFullYear() + 1)
   const count = Math.min(years, 5)
   return (
     <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
       {Array.from({ length: count }, (_, i) => (
-        <span key={i} style={{ fontSize: 10, color: '#FFD700', lineHeight: 1 }}>🏆</span>
+        <span key={i} style={{ fontSize: 16, color: '#FFD700', lineHeight: 1 }}>🏆</span>
       ))}
     </div>
   )
@@ -196,6 +200,7 @@ function VaultCard({
   hideLabel = false,
   cursorTrack = false,   // per-pixel cursor-tracked holo (opened viewer only; grids stay static+tilt for perf)
 }) {
+  const t = useT()
   const [isHovered, setIsHovered] = useState(false)
   const [imgLoaded, setImgLoaded] = useState(false)
   const showEffects = forceEffects !== undefined ? forceEffects : (width > 300 || isHovered)
@@ -522,9 +527,7 @@ function VaultCard({
                           fontSize: Math.min(10, Math.max(7, width * 0.028)),
                           fontStyle: 'italic',
                           color: 'rgba(255,255,255,0.42)', margin: '1px 0',
-                        }}>
-                          as
-                        </div>
+                        }}><LocalizedText text={"as"} before=" " after=" " /></div>
                         <div style={{
                           fontSize: fs, fontWeight: 600,
                           color: nameColor, letterSpacing: '0.05em',
@@ -555,9 +558,7 @@ function VaultCard({
                 <div style={{
                   fontSize: Math.min(11, Math.max(8, width * 0.032)), fontStyle: 'italic',
                   color: 'rgba(255,255,255,0.45)', margin: '1px 0',
-                }}>
-                  as
-                </div>
+                }}><LocalizedText text={"as"} before=" " after=" " /></div>
                 <div style={{
                   fontSize: Math.min(20, Math.max(11, width * 0.062)), fontWeight: 800,
                   color: nameColor, letterSpacing: '0.04em',
@@ -603,9 +604,7 @@ function VaultCard({
                     <div style={{
                       fontSize: Math.min(16, Math.max(9, width * 0.057)), fontStyle: 'italic',
                       color: 'rgba(255,255,255,0.5)', margin: '2px auto',
-                    }}>
-                      in
-                    </div>
+                    }}><LocalizedText text={"in"} before=" " after=" " /></div>
                     <div style={{
                       fontSize: Math.min(20, Math.max(11, width * 0.071)), fontWeight: 700,
                       color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em',
@@ -853,12 +852,12 @@ function VaultCard({
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               {isPrestige ? (
-                <span className="vc-prestige-label" style={{ fontSize: Math.max(9, width * 0.05) }}>✦ PRESTIGE</span>
+                <span className="vc-prestige-label" style={{ fontSize: Math.max(9, width * 0.05) }}><LocalizedText text={"✦ PRESTIGE"} /></span>
               ) : foil && (
                 <span style={{
                   animation: 'rainbow-text 3s linear infinite',
                   fontWeight: 800, letterSpacing: '0.14em',
-                }}>✨FOIL</span>
+                }}><LocalizedText text={"✨FOIL"} /></span>
               )}
               {subLabel}
             </div>

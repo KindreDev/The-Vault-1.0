@@ -152,7 +152,9 @@ export default function PlacementSession({ arranging, bootstrap, preview, onHove
           onSelectInstance?.(row.instance_id)
         }}>
         <boxGeometry args={[footprint.width || .5, footprint.height || .5, footprint.depth || .5]} />
-        <meshBasicMaterial transparent opacity={0} />
+        {/* Keep the hitbox raycastable without allowing its invisible volume to
+            write depth or color over the furniture meshes while placement mode is open. */}
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
       </mesh>
     })}
   </group>

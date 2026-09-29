@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { ChevronDown } from 'lucide-react'
 
 export function FormDropdown({ value, onChange, options, placeholder = "Select...", isSearchable = false }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const ref = useRef(null)
@@ -30,7 +32,7 @@ export function FormDropdown({ value, onChange, options, placeholder = "Select..
       <button type="button" onMouseDown={() => setOpen(o => !o)}
               className="w-full flex items-center justify-between rounded-[8px] px-3 py-2 cursor-pointer outline-none text-left"
               style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.2)' }}>
-        <span className="truncate flex-1">{selected ? selected.label : placeholder}</span>
+        <span className="truncate flex-1">{selected ? t(selected.label) : t(placeholder)}</span>
         <ChevronDown size={14} className="text-[rgba(255,255,255,0.3)] ml-2 flex-shrink-0" />
       </button>
       {open && (
@@ -42,7 +44,7 @@ export function FormDropdown({ value, onChange, options, placeholder = "Select..
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search..."
+                placeholder={t('Search...')}
                 onMouseDown={e => e.stopPropagation()}
                 className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[6px] px-2 py-1 text-[12px] text-white outline-none placeholder-[rgba(255,255,255,0.3)]"
               />
@@ -50,13 +52,13 @@ export function FormDropdown({ value, onChange, options, placeholder = "Select..
           )}
           <div className="overflow-y-auto flex-1" style={{ maxHeight: '180px' }}>
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-2.5 text-[11px] text-[rgba(255,255,255,0.3)] text-center">No results found</div>
+              <div className="px-3 py-2.5 text-[11px] text-[rgba(255,255,255,0.3)] text-center"><LocalizedText text={"No results found"} /></div>
             ) : (
               filteredOptions.map((o, i) => (
                 <button key={i} type="button" onMouseDown={() => { onChange(o.value); setOpen(false) }}
                         className="w-full text-left px-3 py-2.5 cursor-pointer hover:bg-[rgba(255,255,255,0.05)] flex items-center"
                         style={{ color: String(value) === String(o.value) ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)' }}>
-                  {o.label}
+                  {t(o.label)}
                 </button>
               ))
             )}

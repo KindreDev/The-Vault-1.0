@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { X, Tag, UserPlus } from 'lucide-react'
-import { imagesApi } from '../lib/api'
+import { X, Tag, UserPlus, Loader2 } from 'lucide-react'
+import { imagesApi, creatorsApi } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { useAllCreators } from '../hooks/useAllCreators'
 import TagAutocompleteInput from './TagAutocompleteInput'
@@ -12,6 +13,7 @@ const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
 }
+const CREATOR_TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
 
 /**
  * Turn an axios error into something a human can read.
@@ -57,8 +59,7 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
   return (
     <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
       <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2 flex items-center gap-1">
-        <Tag size={16} /> Tags
-      </div>
+        <Tag size={16} /><LocalizedText text={"Tags"} before=" " after=" " /></div>
       <div className="flex flex-wrap gap-1 mb-2">
         {tags.map(t => (
           <span key={t.id ?? t.name} className="flex items-center gap-0.5 text-[16px] pl-1.5 pr-1 py-0.5 rounded-full"
@@ -72,7 +73,7 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
             </button>
           </span>
         ))}
-        {tags.length === 0 && <div className="text-[16px] text-[rgba(255,255,255,0.2)]">No tags</div>}
+        {tags.length === 0 && <div className="text-[16px] text-[rgba(255,255,255,0.2)]"><LocalizedText text={"No tags"} /></div>}
       </div>
       <TagAutocompleteInput
         size="sm"
@@ -92,12 +93,14 @@ export function TagPanel({ imageId, tags, onTagsChanged }) {
 //   hasImageCreators     — true = creators list is the image's own; false = inherited from gallery
 //   onCreatorsChanged    — setter for the local creators array
 //   onHasImageCreatorsChanged — setter for the hasImageCreators flag
-export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, fileCreatorIds, galleryCreatorIds, onCreatorsChanged, onHasImageCreatorsChanged, onFileCreatorIdsChanged }) {
+export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, fileCreatorIds, galleryCreatorIds, onCreatorsChanged, onHasImageCreatorsChanged, onFileCreatorIdsChanged, allowCreate = false }) {
   const [addOpen, setAddOpen] = useState(false)
   const [search, setSearch]   = useState('')
+  const [creating, setCreating] = useState(false)
   const wrapperRef = useRef(null)
   const navigate   = useNavigate()
   const qc         = useQueryClient()
+  const t           = useT()
 
   const fileCrIds = fileCreatorIds ?? []
   const galCrIds  = galleryCreatorIds ?? []
@@ -116,6 +119,10 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
     const ids = new Set(creators.map(c => c.id))
     return allCreators.filter(c => !ids.has(c.id) && c.name.toLowerCase().includes(search.toLowerCase()))
   }, [allCreators, creators, search])
+
+  const canCreate = allowCreate
+    && search.trim().length >= 2
+    && !allCreators.some(c => c.name?.toLowerCase() === search.trim().toLowerCase())
 
   useEffect(() => {
     const h = (e) => { if (wrapperRef.current && !wrapperRef.current.contains(e.target)) { setAddOpen(false); setSearch('') } }
@@ -147,7 +154,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
         setCreators(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c])
         setFileIds(prev => prev.includes(creatorId) ? prev : [...prev, creatorId])
         setHasFileCreators(true)
-        toast.success(`${c.name} assigned to this file`)
+        toast.success(t('{name} assigned to this file', { name: c.name }))
         // Patch the grid behind the viewer rather than invalidating it — the
         // list this came from costs about a second to refetch, and we already
         // know precisely what changed.
@@ -159,8 +166,38 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       // there immediately, not only after a full page reload.
       invalidate()
     },
-    onError: (err) => toast.error(`Failed: ${errText(err)}`)
+    onError: (err) => toast.error(t('Failed: {details}', { details: errText(err) }))
   })
+
+  // File curation can create a missing creator without leaving the run. The
+  // creator is persisted first, then assigned through the same file-level path
+  // as an existing creator so the new relationship is immediately usable.
+  const createCreator = async (type) => {
+    const name = search.trim()
+    if (!canCreate || !imageId || creating) return
+    setCreating(true)
+    try {
+      const r = await creatorsApi.create({ name, creator_type: type })
+      const c = r.data
+      await imagesApi.addCreator(imageId, c.id)
+      qc.setQueryData(['creators-all', 5000], current => {
+        const list = Array.isArray(current) ? current : []
+        return list.some(item => item.id === c.id) ? list : [...list, c]
+      })
+      setCreators(prev => prev.some(item => item.id === c.id) ? prev : [...prev, c])
+      setFileIds(prev => prev.includes(c.id) ? prev : [...prev, c.id])
+      setHasFileCreators(true)
+      patchCachedCreators(qc, [imageId], c)
+      toast.success(t('Created {name}', { name }))
+      setAddOpen(false)
+      setSearch('')
+      invalidate()
+    } catch (err) {
+      toast.error(t('Could not create that creator') + `: ${errText(err)}`)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   // Remove creator from file-level assignment
   const removeFileMutation = useMutation({
@@ -176,7 +213,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       }
       invalidate()
     },
-    onError: (err) => toast.error(`Failed: ${errText(err)}`)
+    onError: (err) => toast.error(t('Failed: {details}', { details: errText(err) }))
   })
 
   // Clear ALL file-level assignments on this image
@@ -186,7 +223,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       setHasFileCreators(false)
       setFileIds([])
       qc.invalidateQueries({ queryKey: ['gallery-images'] })
-      toast.success('File assignments cleared')
+      toast.success(t('File assignments cleared'))
       invalidate()
     },
   })
@@ -208,11 +245,11 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       {isFileLevelCreator(c) ? (
         <button type="button" onMouseDown={() => removeFileMutation.mutate(c.id)}
                 className="cursor-pointer text-[rgba(255,255,255,0.25)] hover:text-white"
-                title="Remove file assignment">
+                title={t("Remove file assignment")}>
           <X size={9} />
         </button>
       ) : (
-        <span className="text-[7px] ml-0.5" style={{ color: 'rgba(255,255,255,0.18)' }} title="Inherited from gallery">◆</span>
+        <span className="text-[7px] ml-0.5" style={{ color: 'rgba(255,255,255,0.18)' }} title={t("Inherited from gallery")}>◆</span>
       )}
     </div>
   )
@@ -222,14 +259,12 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
 
       {/* Header */}
       <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2 flex items-center gap-1">
-        <UserPlus size={16} />
-        Creators
-      </div>
+        <UserPlus size={16} /><LocalizedText text={"Creators"} before=" " after=" " /></div>
 
       {/* Unified creator list — gallery-inherited (◆) + file-level (×) shown together */}
       <div className="flex flex-wrap gap-1 mb-1.5">
         {nonChars.map(c => <CreatorChip key={c.id} c={c} />)}
-        {nonChars.length === 0 && <span className="text-[16px] text-[rgba(255,255,255,0.2)]">None</span>}
+        {nonChars.length === 0 && <span className="text-[16px] text-[rgba(255,255,255,0.2)]"><LocalizedText text={"None"} /></span>}
       </div>
 
       {/* Action buttons */}
@@ -238,16 +273,14 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
                 className="inline-flex items-center gap-1 text-[16px] px-1 py-0.5 rounded-full cursor-pointer whitespace-nowrap"
                 style={{ background: addOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)',
                          color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-          <UserPlus size={15} /> Assign creator
-        </button>
+          <UserPlus size={15} /><LocalizedText text={"Assign creator"} before=" " after=" " /></button>
         {hasImageCreators && (
           <button type="button" onMouseDown={() => clearFileMutation.mutate()}
                   className="inline-flex items-center gap-1 text-[16px] px-1 py-0.5 rounded-full cursor-pointer whitespace-nowrap"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)',
                            border: '0.5px solid rgba(255,255,255,0.08)' }}
-                  title="Clear all file-level assignments">
-            <X size={15} /> Clear
-          </button>
+                  title={t("Clear all file-level assignments")}>
+            <X size={15} /><LocalizedText text={"Clear"} before=" " after=" " /></button>
         )}
       </div>
 
@@ -255,7 +288,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       {addOpen && (
         <div className="mt-1">
           <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Search creators…"
+                 placeholder={t("Search creators…")}
                  className="w-full px-2 py-1.5 rounded-[6px] text-[16px] outline-none mb-1"
                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)',
                           border: '0.5px solid rgba(255,255,255,0.1)' }} />
@@ -270,7 +303,25 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
                 {c.name}
               </button>
             ))}
-            {filtered.length === 0 && <div className="px-2 py-2 text-[16px] text-[rgba(255,255,255,0.25)] text-center">None found</div>}
+            {filtered.length === 0 && !canCreate && <div className="px-2 py-2 text-[16px] text-[rgba(255,255,255,0.25)] text-center"><LocalizedText text={"None found"} /></div>}
+            {canCreate && (
+              <div className="px-2 py-2.5 flex flex-col gap-2"
+                   style={{ borderTop: filtered.length ? '0.5px solid rgba(255,255,255,0.09)' : 'none', background: 'color-mix(in srgb, var(--c-green) 7%, transparent)' }}>
+                <div className="flex items-center gap-2 text-[16px]" style={{ color: 'var(--c-green-text)' }}>
+                  {creating ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                  {t('Create')} “{search.trim()}” {t('as')}…
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {CREATOR_TYPES.map(type => (
+                    <button key={type} type="button" onMouseDown={() => createCreator(type)} disabled={creating}
+                            className="px-2 py-1 rounded-full cursor-pointer disabled:opacity-40 text-[16px]"
+                            style={{ background: 'color-mix(in srgb, var(--c-green) 16%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 32%, transparent)' }}>
+                      {t(type)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -278,7 +329,7 @@ export function CreatorPanel({ imageId, galleryId, creators, hasImageCreators, f
       {/* Characters section */}
       {chars.length > 0 && (
         <>
-          <div className="text-[16px] text-[rgba(255,255,255,0.2)] mt-2.5 mb-1">Also features</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.2)] mt-2.5 mb-1"><LocalizedText text={"Also features"} /></div>
           <div className="flex flex-wrap gap-1">
             {chars.map(c => <CreatorChip key={c.id} c={c} />)}
           </div>

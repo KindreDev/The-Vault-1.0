@@ -334,6 +334,23 @@
   background: var(--c-accent-fill);
   color: var(--c-accent-text);
 }
+.tcgws-legacy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  border-color: var(--c-amber-line, var(--tcg-line)) !important;
+  color: var(--c-amber-text, var(--tcg-muted)) !important;
+}
+.tcgws-legacy-toggle i {
+  font-size: 14px;
+  font-style: normal;
+  opacity: .8;
+}
+.tcgws-legacy-toggle.active {
+  background: var(--c-amber-fill, var(--c-accent-fill)) !important;
+  color: var(--c-amber-text, var(--c-accent-text)) !important;
+}
 
 .tcgws-loading {
   align-content: center;

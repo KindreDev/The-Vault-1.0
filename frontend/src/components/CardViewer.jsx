@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, RotateCcw, Crosshair, TrendingUp } from 'lucide-react'
@@ -21,6 +22,7 @@ const LEVEL_CXP_STEP = { common: 100, epic: 400, legendary: 1200, celestial: 300
 const MAX_LEVEL = 10
 
 export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
+  const t = useT()
   const [phase, setPhase]           = useState('start')
   const [is3D, setIs3D]             = useState(false)
   const [rotX, setRotX]             = useState(0)
@@ -188,7 +190,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             setIs3D(false)
             qc.invalidateQueries({ queryKey: ['card-inventory'] })
             qc.invalidateQueries({ queryKey: ['forge-materials'] })
-            toast.success('Prestige crafted! ✨')
+            toast.success(t("Prestige crafted! ✨"))
           }, 700)
         }, 500)
       }, 900)
@@ -204,21 +206,21 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
       qc.invalidateQueries({ queryKey: ['economy-balance'] })
       qc.invalidateQueries({ queryKey: ['profile'] })
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
-      toast.success('✦ Prestige crafted')
+      toast.success(t("✦ Prestige crafted"))
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Craft failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Craft failed")),
   })
 
   // ── Fuse-all mutation
   const fuseAllMutation = useMutation({
     mutationFn: () => cardsApi.fuseAll(inventoryId).then(r => r.data),
     onSuccess: (data) => {
-      toast.success(`Fused ${data.fused_count} dupes → +${data.cxp_gained.toLocaleString()} CXP`)
+      toast.success(t('Fused {count} dupes → +{cxp} CXP', { count: data.fused_count, cxp: data.cxp_gained.toLocaleString() }))
       setCardData(prev => ({ ...prev, cxp: data.new_cxp }))
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
       qc.invalidateQueries({ queryKey: ['fuseable', inventoryId] })
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Fuse failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Fuse failed")),
   })
 
   // ── Fuseable query (only when viewer is open and inventoryId known)
@@ -258,7 +260,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
 
   const handleFed = useCallback((data) => {
     setCardData(prev => ({ ...prev, cxp: data.new_cxp, level: undefined }))
-    if (data.evolution_ready) toast.success('Max level reached! ✨')
+    if (data.evolution_ready) toast.success(t("Max level reached! ✨"))
     qc.invalidateQueries({ queryKey: ['forge-materials'] })
   }, [qc])
 
@@ -329,20 +331,20 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
           background: !is3D ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.06)',
           color: !is3D ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
           border: !is3D ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
-        }}>2D View</button>
+        }}><LocalizedText text={"2D View"} /></button>
         <button onClick={() => setIs3D(true)} style={{
           padding: '6px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
           background: is3D ? 'color-mix(in srgb, var(--c-accent) 30%, transparent)' : 'rgba(255,255,255,0.06)',
           color: is3D ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
           border: is3D ? '1px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
-        }}>3D View</button>
+        }}><LocalizedText text={"3D View"} /></button>
         {is3D && (
           <button onClick={() => setAutoSpin(s => !s)} style={{
             padding: '6px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
             background: autoSpin ? 'color-mix(in srgb, var(--c-amber) 25%, transparent)' : 'rgba(255,255,255,0.06)',
             color: autoSpin ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.5)',
             border: autoSpin ? '1px solid color-mix(in srgb, var(--c-amber) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.1)',
-          }}>↻ Auto-spin</button>
+          }}><LocalizedText text={"↻ Auto-spin"} /></button>
         )}
         <button onClick={handleClose} style={{
           marginLeft: 8, background: 'rgba(255,255,255,0.06)',
@@ -399,7 +401,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             <div style={{
               ...(is3D ? { backfaceVisibility: 'hidden', transform: `translateZ(${DEPTH / 2}px)` } : {}),
             }}>
-              <TCGV2CardFace card={cardData} width={vaultW} showEffects={true}
+              <TCGV2CardFace card={cardData} width={vaultW} showEffects={true} videoPresentation="full"
                 fallback={<VaultCard card={cardData} width={vaultW} forceEffects={true} disableTilt={true} fullRes={fullResReady} cursorTrack={true} />} />
             </div>
 
@@ -448,9 +450,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
               borderRadius: 18,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center', pointerEvents: 'none' }}>
-                Click to set focal point
-              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center', pointerEvents: 'none' }}><LocalizedText text={"Click to set focal point"} before={" "} after={" "} /></div>
             </div>
           )}
 
@@ -512,9 +512,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
           transition: 'opacity 0.3s ease 0.15s',
           display: 'flex', flexDirection: 'column', gap: 10,
         }}>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Fuseable Dupes
-          </div>
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}><LocalizedText text={"Fuseable Dupes"} before={" "} after={" "} /></div>
 
           {fuseableItems.map(f => (
             <div key={f.inventory_id} style={{
@@ -529,9 +527,8 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>
                   {f.quantity > 1 ? `×${f.quantity} ` : ''}{f.rarity}
                 </div>
-                <div style={{ fontSize: 10, color: '#6EE7C3', fontWeight: 700 }}>
-                  +{f.total_cxp.toLocaleString()} CXP
-                </div>
+                <div style={{ fontSize: 16, color: '#6EE7C3', fontWeight: 700 }}>
+                  +{f.total_cxp.toLocaleString()}<LocalizedText text={"CXP"} before={" "} after={" "} /></div>
               </div>
             </div>
           ))}
@@ -560,9 +557,9 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
       {/* Level / CXP bar */}
       {isOpen && !isEvolving && (
         <div style={{ width: CARD_W, opacity: isOpen ? 1 : 0, transition: 'opacity 0.25s ease' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-            <span>LV {cardLevel}{atMaxCxp ? ' · MAX' : ` · CXP ${currentCxp.toLocaleString()} / ${(cxpThreshold ?? 0).toLocaleString()}`}</span>
-            {atMaxCxp && <span style={{ color: cfg.badge, fontWeight: 700 }}>✨ MAX LEVEL</span>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
+            <span><LocalizedText text={"LV"} after={" "} />{cardLevel}{atMaxCxp ? ' · MAX' : ` · CXP ${currentCxp.toLocaleString()} / ${(cxpThreshold ?? 0).toLocaleString()}`}</span>
+            {atMaxCxp && <span style={{ color: cfg.badge, fontWeight: 700 }}><LocalizedText text={"✨ MAX LEVEL"} /></span>}
           </div>
           <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
             <div style={{
@@ -594,8 +591,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
             background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)',
             border: '0.5px solid rgba(255,255,255,0.1)',
           }}>
-            <RotateCcw size={11} /> Reset
-          </button>
+            <RotateCcw size={11} /><LocalizedText text={"Reset"} before={" "} after={" "} /></button>
         )}
 
         {/* Level Up — opens feed panel */}
@@ -617,8 +613,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
               transition: 'background 0.15s ease, color 0.15s ease, border 0.15s ease',
             }}
           >
-            <TrendingUp size={11} /> Level Up
-          </button>
+            <TrendingUp size={11} /><LocalizedText text={"Level Up"} before={" "} after={" "} /></button>
         )}
 
         {/* Catalyst → craft foil (rarity is fixed; foil is the upgrade now) */}
@@ -636,8 +631,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
               boxShadow: '0 0 16px rgba(255,215,0,0.25)',
               opacity: catalystMutation.isPending ? 0.5 : 1,
             }}
-          >
-            ✨ Make Prestige <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: 10 }}>(1 ⚗️)</span>
+          ><LocalizedText text={"✨ Make Prestige"} before={" "} after={" "} /><span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: 16 }}>(1 ⚗️)</span>
           </button>
         )}
 
@@ -665,9 +659,8 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
                 boxShadow: canCraft ? '0 0 16px rgba(200,120,255,0.3)' : 'none',
                 opacity: craftPrestigeMutation.isPending ? 0.5 : 1,
               }}
-            >
-              ✦ Craft Prestige{' '}
-              <span style={{ color: canCraft ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)', fontWeight: 400, fontSize: 10 }}>
+            ><LocalizedText text={"✦ Craft Prestige"} before={" "} />{' '}
+              <span style={{ color: canCraft ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)', fontWeight: 400, fontSize: 16 }}>
                 {canCraft
                   ? `(${dupesNeeded} copies + ${creditsNeeded} cr)`
                   : `Needs ${dupesNeeded} copies + ${creditsNeeded} cr (you have ${quantity})`}
@@ -678,9 +671,7 @@ export default function CardViewer({ card, inventoryId, onClose, sourceRect }) {
       </div>
 
       {is3D && isOpen && !isEvolving && (
-        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
-          Click &amp; drag to rotate
-        </div>
+        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"Click & drag to rotate"} before={" "} after={" "} /></div>
       )}
     </div>,
     document.body

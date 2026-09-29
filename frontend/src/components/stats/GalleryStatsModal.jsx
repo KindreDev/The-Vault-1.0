@@ -10,12 +10,14 @@ import {
   Clock, Eye, Tag as TagIcon, Film, HardDrive, ArrowUpRight,
 } from 'lucide-react'
 import { galleriesApi } from '../../lib/api'
+import { useT } from '../../i18n'
 import {
   StatsModalShell, LoadingBody, Panel, Stat, Standout, TagChip,
   fmtDuration, fmtDate, num,
 } from './StatsKit'
 
 export default function GalleryStatsModal({ galleryId, onClose }) {
+  const t = useT()
   const navigate = useNavigate()
   const open = !!galleryId
 
@@ -53,7 +55,7 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                   <Trophy size={16} style={{ color: 'var(--c-amber-text)' }} />
                   <span style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase',
                                  letterSpacing: '0.12em', color: 'var(--c-amber-text)' }}>
-                    {d.rank ? `#${d.rank} of ${num(d.total_galleries_ranked)} galleries` : 'Gallery'}
+                    {d.rank ? t('#{rank} of {count} galleries', { rank: d.rank, count: num(d.total_galleries_ranked) }) : t('Gallery')}
                   </span>
                 </div>
                 <h2 style={{ fontSize: 34, fontWeight: 800, color: 'rgba(255,255,255,0.96)', lineHeight: 1.1 }}>
@@ -75,7 +77,7 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                 <div className="flex items-end gap-6 flex-wrap mt-1">
                   <div className="flex flex-col">
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                      <Clock size={15} /> Time spent here
+                      <Clock size={15} /> {t('Time spent here')}
                     </span>
                     <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-accent-text)', lineHeight: 1.1 }}>
                       {fmtDuration(d.view_seconds) || '—'}
@@ -83,7 +85,7 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                   </div>
                   <div className="flex flex-col">
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                      <Droplets size={15} /> Os
+                      <Droplets size={15} /> {t('Os')}
                     </span>
                     <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-pink-text)', lineHeight: 1.1 }}>
                       {num(d.cum_count)}
@@ -92,7 +94,7 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                   {d.edge_count > 0 && (
                     <div className="flex flex-col">
                       <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                        <Waves size={15} /> Edges
+                        <Waves size={15} /> {t('Edges')}
                       </span>
                       <span style={{ fontSize: 30, fontWeight: 800, color: '#A89FE8', lineHeight: 1.1 }}>
                         {num(d.edge_count)}
@@ -101,8 +103,8 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                   )}
                 </div>
                 <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, maxWidth: 620 }}>
-                  Holds <b style={{ color: 'var(--c-accent-text)' }}>{d.share_of_total_time}%</b> of all your viewing time
-                  and <b style={{ color: 'var(--c-pink-text)' }}>{d.share_of_total_cum}%</b> of your lifetime Os.
+                  {t('Holds')} <b style={{ color: 'var(--c-accent-text)' }}>{d.share_of_total_time}%</b> {t('of all your viewing time')}
+                  {t('and')} <b style={{ color: 'var(--c-pink-text)' }}>{d.share_of_total_cum}%</b> {t('of your lifetime Os.')}
                 </div>
               </div>
             </div>
@@ -148,8 +150,8 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                 <div className="rounded-[10px] px-4 py-3 mt-3"
                      style={{ background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 22%, transparent)' }}>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
-                    <b style={{ color: 'var(--c-amber-text)' }}>{num(d.points_to_first)} points</b> behind “{d.leader_name}”
-                    {' '}— about <b style={{ color: 'var(--c-amber-text)' }}>{Math.ceil(d.points_to_first / 120)} more Os</b>.
+                    <b style={{ color: 'var(--c-amber-text)' }}>{num(d.points_to_first)} {t('points')}</b> {t('behind')} “{d.leader_name}”
+                    {' '}— {t('about')} <b style={{ color: 'var(--c-amber-text)' }}>{Math.ceil(d.points_to_first / 120)} {t('more Os')}</b>.
                   </div>
                 </div>
               )}
@@ -187,7 +189,7 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                             onClick={() => go(`/galleries/${d.id}?openImage=${d.longest_watched.id}`)} />
                 )}
                 {!d.most_gooned && !d.most_viewed && (
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>Nothing stands out yet</div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>{t('Nothing stands out yet')}</div>
                 )}
               </div>
             </Panel>
@@ -202,14 +204,14 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
                 <Stat label="Gallery rating" value={d.rating ? d.rating : '—'} accent="var(--c-amber-text)" />
                 <Stat label="Favourites" value={num(d.favorite_count)} />
                 <Stat label="AI tagged" value={`${d.tagged_pct ?? 0}%`}
-                      sub={`${num(d.ai_tagged_count)} files`} />
+                      sub={t('{count} files', { count: num(d.ai_tagged_count) })} />
                 <Stat label="Added" value={fmtDate(d.first_added_at || d.created_at)} />
                 <Stat label="Last opened" value={fmtDate(d.last_viewed_at)} />
               </div>
               {d.top_tags?.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                    <TagIcon size={14} /> Most common tags
+                    <TagIcon size={14} /> {t('Most common tags')}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {d.top_tags.map(t => (
@@ -221,12 +223,12 @@ export default function GalleryStatsModal({ galleryId, onClose }) {
             </Panel>
           </div>
 
-          <button onClick={() => go(`/galleries/${d.id}`)}
+            <button onClick={() => go(`/galleries/${d.id}`)}
                   className="w-full mt-4 py-3 rounded-[10px] cursor-pointer transition-colors hover:bg-white/10"
                   style={{ fontSize: 17, fontWeight: 600, color: 'var(--c-accent-text)',
                            background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)',
                            border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
-            Open gallery →
+            {t('Open gallery')} →
           </button>
         </>
       )}

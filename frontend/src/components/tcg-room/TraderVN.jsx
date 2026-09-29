@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CalendarDays, HeartHandshake, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react'
@@ -9,6 +10,7 @@ const ACTION_BY_TAB = { cards: 'browse', sell: 'sell', trade: 'trade', requests:
 const getError = error => error?.response?.data?.detail || error?.message || 'The saved trader state could not be updated.'
 
 export default function TraderVN({ onClose }) {
+  const t = useT()
   const [tab, setTab] = useState('dialogue')
   const [selected, setSelected] = useState([])
   const [target, setTarget] = useState('')
@@ -65,24 +67,24 @@ export default function TraderVN({ onClose }) {
     onClose()
   }
 
-  if (visitQuery.isLoading) return <main className="trader-vn trader-vn--loading"><LoaderCircle className="spin" /><strong>Opening this week’s visit…</strong><span>The saved visitor and conversation are not being rerolled.</span></main>
-  if (visitQuery.isError || !visit) return <main className="trader-vn trader-vn--loading"><strong>Visitor unavailable</strong><p>{getError(visitQuery.error)}</p><button onClick={() => visitQuery.refetch()}><RefreshCw /> Retry</button><button onClick={onClose}><ArrowLeft /> Return to room</button></main>
+  if (visitQuery.isLoading) return <main className="trader-vn trader-vn--loading"><LoaderCircle className="spin" /><strong><LocalizedText text={"Opening this week’s visit…"} /></strong><span><LocalizedText text={"The saved visitor and conversation are not being rerolled."} /></span></main>
+  if (visitQuery.isError || !visit) return <main className="trader-vn trader-vn--loading"><strong><LocalizedText text={"Visitor unavailable"} /></strong><p>{getError(visitQuery.error)}</p><button onClick={() => visitQuery.refetch()}><RefreshCw /><LocalizedText text={"Retry"} before={" "} /></button><button onClick={onClose}><ArrowLeft /><LocalizedText text={"Return to room"} before={" "} /></button></main>
 
   const trader = visit.trader
   const gate = traderGate(visit)
   return <main className="trader-vn" data-trader={trader.id}>
     <div className="trader-vn__backdrop" aria-hidden="true" />
-    <header className="trader-vn__topbar"><button onClick={close}><ArrowLeft /> Return to room</button><div><CalendarDays /><span>{visit.week_key} · saved weekly visitor</span></div><button onClick={refresh}><RefreshCw /> Refresh</button></header>
+    <header className="trader-vn__topbar"><button onClick={close}><ArrowLeft /><LocalizedText text={"Return to room"} before={" "} /></button><div><CalendarDays /><span>{visit.week_key}<LocalizedText text={"· saved weekly visitor"} before={" "} /></span></div><button onClick={refresh}><RefreshCw /><LocalizedText text={"Refresh"} before={" "} /></button></header>
     <aside className="trader-vn__portrait">
       <div className="trader-vn__placeholder" data-portrait={trader.id}><span>{trader.name.split(' ').map(word => word[0]).join('')}</span></div>
-      <div className="trader-vn__identity"><span className="eyebrow">WEEKLY VISITOR</span><h1>{trader.name}</h1><strong>Adult · Age {trader.age}</strong><p>{trader.personality}</p></div>
-      <div className="trader-vn__manifest"><ShieldCheck /><span>Replaceable temporary portrait</span><small>Final local artwork will be supplied later.</small></div>
+      <div className="trader-vn__identity"><span className="eyebrow"><LocalizedText text={"WEEKLY VISITOR"} /></span><h1>{trader.name}</h1><strong><LocalizedText text={"Adult · Age"} after={" "} />{trader.age}</strong><p>{trader.personality}</p></div>
+      <div className="trader-vn__manifest"><ShieldCheck /><span><LocalizedText text={"Replaceable temporary portrait"} /></span><small><LocalizedText text={"Final local artwork will be supplied later."} /></small></div>
     </aside>
     <section className="trader-vn__desk">
-      <nav aria-label="Trader views">{TRADER_TABS.map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => chooseTab(id)}>{label}</button>)}</nav>
-      <div className="trader-vn__status"><HeartHandshake /><span><strong>{gate.locked ? 'Conversation-only preview' : 'Trading active'}</strong>{visit.requests_remaining} requests remaining · visit seed frozen</span></div>
-      {error && <div className="trader-vn__error" role="alert"><strong>That did not go through.</strong><span>{error}</span><button onClick={() => setError('')}>Dismiss</button></div>}
-      {!error && stateError && <div className="trader-vn__error" role="alert"><strong>Some saved details did not load.</strong><span>{getError(stateError)}</span><button onClick={refresh}>Retry</button></div>}
+      <nav aria-label={t("Trader views")}>{TRADER_TABS.map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => chooseTab(id)}>{label}</button>)}</nav>
+      <div className="trader-vn__status"><HeartHandshake /><span><strong>{gate.locked ? 'Conversation-only preview' : 'Trading active'}</strong>{visit.requests_remaining}<LocalizedText text={"requests remaining · visit seed frozen"} before={" "} /></span></div>
+      {error && <div className="trader-vn__error" role="alert"><strong><LocalizedText text={"That did not go through."} /></strong><span>{error}</span><button onClick={() => setError('')}><LocalizedText text={"Dismiss"} /></button></div>}
+      {!error && stateError && <div className="trader-vn__error" role="alert"><strong><LocalizedText text={"Some saved details did not load."} /></strong><span>{getError(stateError)}</span><button onClick={refresh}><LocalizedText text={"Retry"} /></button></div>}
       {busy && <div className="trader-vn__busy"><LoaderCircle className="spin" /><span>{busy}…</span></div>}
       <div className="trader-vn__content">
         {tab === 'dialogue' && <DialogueView visit={visit} messages={dialogueQuery.data} onDialogue={action => run('Saving response', () => tcgTradersApi.respond(visitId, action))} />}

@@ -46,16 +46,15 @@ export function PackedMaskDefs({ ids, packedMaskUrl, geometry }) {
 
 function MaskedFinish({ maskId = null, surface, className, x, y, width, height }) {
   return (
-    <g mask={maskId ? `url(#${maskId})` : undefined}
-       data-mask-surface={surface}>
-      <foreignObject x={x} y={y} width={width} height={height}
-                     className="tcg-v2-masked-finish-surface">
-        <div xmlns="http://www.w3.org/1999/xhtml"
-             className={`tcg-v2-masked-finish ${className}`}>
-          <span className="tcg-v2-masked-finish__texture" aria-hidden="true" />
-        </div>
-      </foreignObject>
-    </g>
+    <foreignObject x={x} y={y} width={width} height={height}
+                   mask={maskId ? `url(#${maskId})` : undefined}
+                   data-mask-surface={surface}
+                   className="tcg-v2-masked-finish-surface">
+      <div xmlns="http://www.w3.org/1999/xhtml"
+           className={`tcg-v2-masked-finish ${className}`}>
+        <span className="tcg-v2-masked-finish__texture" aria-hidden="true" />
+      </div>
+    </foreignObject>
   )
 }
 
@@ -64,6 +63,7 @@ export function PackedFoilSurfaces({
   hasMask,
   showEffects,
   rarity,
+  starsOnly = false,
   x = 0,
   y = 0,
   width = 1024,
@@ -71,13 +71,14 @@ export function PackedFoilSurfaces({
   layer = 'all',
 }) {
   if (!showEffects || !ids || !['R', 'SR', 'SPR', 'UR'].includes(rarity)) return null
+  const groupClass = `tcg-v2-masked-finishes tcg-v2-masked-finishes--${rarity.toLowerCase()}${starsOnly ? ' tcg-v2-masked-finishes--stars-only' : ''}`
 
   if (!hasMask) {
     if (layer !== 'all') return null
     return (
-      <g className={`tcg-v2-masked-finishes tcg-v2-masked-finishes--${rarity.toLowerCase()}`}
+      <g className={groupClass}
          pointerEvents="none" aria-hidden="true">
-        <MaskedFinish className={`tcg-v2-masked-finish--full${hasMask ? '' : ' tcg-v2-masked-finish--fallback'}`}
+        <MaskedFinish className={`tcg-v2-masked-finish--full${hasMask ? '' : ' tcg-v2-masked-finish--fallback'}${starsOnly ? ' tcg-v2-masked-finish--stars-only' : ''}`}
                       x={x} y={y} width={width} height={height} />
       </g>
     )
@@ -85,7 +86,7 @@ export function PackedFoilSurfaces({
 
   if (['SPR', 'UR'].includes(rarity)) {
     return (
-      <g className={`tcg-v2-masked-finishes tcg-v2-masked-finishes--${rarity.toLowerCase()}`}
+      <g className={groupClass}
          pointerEvents="none" aria-hidden="true">
         {layer !== 'subject' && (
           <MaskedFinish maskId={ids.backgroundMask}
@@ -103,7 +104,7 @@ export function PackedFoilSurfaces({
   }
 
   return (
-    <g className={`tcg-v2-masked-finishes tcg-v2-masked-finishes--${rarity.toLowerCase()}`}
+    <g className={groupClass}
        pointerEvents="none" aria-hidden="true">
       {layer !== 'subject' && (
         <MaskedFinish maskId={ids.backgroundMask} surface="background"

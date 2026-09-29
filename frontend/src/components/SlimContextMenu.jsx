@@ -74,7 +74,7 @@ export default function SlimContextMenu({ title, subtitle, position, onClose, it
             {title}
           </div>
           {subtitle && (
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 1 }}>{subtitle}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', marginTop: 1 }}>{subtitle}</div>
           )}
         </div>
 

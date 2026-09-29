@@ -5,6 +5,17 @@ import { useVaultStore } from '../store/vault.js'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
+export const themePacksApi = {
+  list: () => api.get('/theme-packs'),
+  get: id => api.get(`/theme-packs/${encodeURIComponent(id)}`),
+  import: file => {
+    const data = new FormData()
+    data.append('file', file)
+    return api.post('/theme-packs/import', data, { timeout: 120000 })
+  },
+  remove: id => api.delete(`/theme-packs/${encodeURIComponent(id)}`),
+}
+
 // A preview or viewer can still have an open media handle when a disk
 // mutation is clicked. Release every browser media pipeline before the
 // request; the backend also retries briefly for the handle-close race.
@@ -22,8 +33,20 @@ function releaseMediaBeforeDiskMutation() {
 // ordinary API errors still fall back to their response detail or message.
 export function apiErrorMessage(error, fallback = 'Request failed') {
   const detail = error?.response?.data?.detail
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map(item => {
+        if (typeof item === 'string') return item
+        if (!item || typeof item !== 'object') return ''
+        return item.msg || item.message || item.detail || item.code || ''
+      })
+      .filter(Boolean)
+      .map(String)
+    if (messages.length) return messages.join(' · ')
+  }
   if (detail && typeof detail === 'object') {
     if (detail.message) return String(detail.message)
+    if (detail.msg) return String(detail.msg)
     if (detail.code) return String(detail.code).replaceAll('_', ' ')
   }
   if (typeof detail === 'string' && detail.trim()) return detail
@@ -141,6 +164,13 @@ export const galleriesApi = {
 // Physically moves folders and files on the drive. `suggest` and `plan` are
 // read-only — nothing touches the disk until moveGalleries / moveImages.
 export const relocateApi = {
+  directories:   async (path = '') => {
+    const response = await api.get('/relocate/directories', { params: { path } })
+    if (typeof response.data?.path !== 'string' || !Array.isArray(response.data?.folders)) {
+      throw new Error('Folder browser is unavailable. Restart The Vault and try again.')
+    }
+    return response
+  },
   suggest:       (galleryIds)     => api.post('/relocate/suggest', { gallery_ids: galleryIds }),
   plan:          (galleryIds, destRoot) =>
                     api.post('/relocate/plan', { gallery_ids: galleryIds, dest_root: destRoot }),

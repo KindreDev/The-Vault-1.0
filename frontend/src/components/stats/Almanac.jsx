@@ -62,6 +62,7 @@ function Tile({ label, value, sub, accent = 'rgba(255,255,255,0.92)' }) {
 
 /** Dual-series year chart: bars for galleries, a line-ish overlay for depth. */
 function YearChart({ years }) {
+  const t = useT()
   if (!years?.length) return null
   const maxG = Math.max(1, ...years.map(y => y.galleries))
   const maxD = Math.max(1, ...years.map(y => y.files_per_gallery))
@@ -78,12 +79,12 @@ function YearChart({ years }) {
               </div>
               <div className="w-full relative flex items-end justify-center" style={{ height: 150 }}>
                 <div className="w-full rounded-t-[4px]"
-                     title={`${y.year}: ${num(y.galleries)} galleries, ${num(y.files)} files`}
+                     title={t('{year}: {galleries} galleries, {files} files', { year: y.year, galleries: num(y.galleries), files: num(y.files) })}
                      style={{ height: Math.max(3, gh),
                               background: 'linear-gradient(to top, var(--c-accent), var(--c-accent-text))' }} />
                 {/* Depth marker — files per gallery, on its own scale */}
                 <div className="absolute left-0 right-0"
-                     title={`${y.files_per_gallery} files per gallery`}
+                     title={t('{count} files per gallery', { count: num(y.files_per_gallery) })}
                      style={{ bottom: Math.max(2, dh), height: 2, background: 'var(--c-green-text)' }} />
               </div>
               <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{`'${String(y.year).slice(2)}`}</div>
@@ -92,8 +93,8 @@ function YearChart({ years }) {
         })}
       </div>
       <div className="flex items-center gap-4 mt-3">
-        <span style={{ fontSize: 16, color: 'var(--c-accent-text)' }}>▮ galleries acquired</span>
-        <span style={{ fontSize: 16, color: 'var(--c-green-text)' }}>▬ files per gallery (depth)</span>
+        <span style={{ fontSize: 16, color: 'var(--c-accent-text)' }}>▮ {t('galleries acquired')}</span>
+        <span style={{ fontSize: 16, color: 'var(--c-green-text)' }}>▬ {t('files per gallery (depth)')}</span>
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
@@ -43,22 +44,24 @@ function cardImage(card) {
 
 function cardFace(card, className = '') {
   return <div className={className}>
-    <TCGV2CardFace card={card} width="100%" showEffects={true}
+    <TCGV2CardFace card={card} width="100%" showEffects={true} videoPresentation="full"
       fallback={<VaultCard card={card} width={320} forceEffects={true} />} />
   </div>
 }
 
 function PhaseLabel({ phase, currentIndex, cardCount }) {
-  if (phase === 'entry' || phase === 'tear') return <><Sparkles size={18} /> Tear the top seam to open</>
-  if (phase === 'extract') return <><PackageOpen size={18} /> Cards are coming out</>
-  if (phase === 'fade') return <><PackageOpen size={18} /> Finishing the opening</>
-  if (phase === 'pile') return <><Layers3 size={18} /> Your pack is ready</>
-  if (phase === 'flip') return <><Layers3 size={18} /> Turning the pile</>
-  if (phase === 'reveal') return <>Card {currentIndex + 1} of {cardCount}</>
-  return <><Sparkles size={18} /> Pack complete</>
+  const t = useT()
+  if (phase === 'entry' || phase === 'tear') return <><Sparkles size={18} /><LocalizedText text={"Tear the top seam to open"} before={" "} /></>
+  if (phase === 'extract') return <><PackageOpen size={18} /><LocalizedText text={"Cards are coming out"} before={" "} /></>
+  if (phase === 'fade') return <><PackageOpen size={18} /><LocalizedText text={"Finishing the opening"} before={" "} /></>
+  if (phase === 'pile') return <><Layers3 size={18} /><LocalizedText text={"Your pack is ready"} before={" "} /></>
+  if (phase === 'flip') return <><Layers3 size={18} /><LocalizedText text={"Turning the pile"} before={" "} /></>
+  if (phase === 'reveal') return t('Card {current} of {total}', { current: currentIndex + 1, total: cardCount })
+  return <><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></>
 }
 
 function TearTrack({ progress, onProgress, onComplete }) {
+  const t = useT()
   const trackRef = useRef(null)
   const latestProgress = useRef(progress)
   const completed = useRef(false)
@@ -109,7 +112,7 @@ function TearTrack({ progress, onProgress, onComplete }) {
     ref={trackRef}
     className={`pack-opening__tear-track${dragging ? ' is-dragging' : ''}`}
     role="slider"
-    aria-label="Tear across the top seam"
+    aria-label={t("Tear across the top seam")}
     aria-valuemin="0"
     aria-valuemax="100"
     aria-valuenow={Math.round(progress * 100)}
@@ -122,16 +125,17 @@ function TearTrack({ progress, onProgress, onComplete }) {
     onPointerCancel={handleUp}
     onKeyDown={handleKeyDown}
   >
-    <span className="pack-opening__tear-label">Move across the seal</span>
+    <span className="pack-opening__tear-label"><LocalizedText text={"Move across the seal"} /></span>
   </div>
 }
 
 function BoosterEnvelope({ product, collage, phase, tearProgress, onTearProgress, onTearComplete }) {
+  const t = useT()
   const wrapperSrc = product.wrapper_src || WRAPPER_ASSETS[product.product_kind] || WRAPPER_ASSETS.permanent
   const isTorn = phase !== 'entry'
   const identity = product.wrapper_identity || {}
   return <div className={`pack-opening__envelope pack-opening__envelope--${phase}`} data-wrapper={identity.code || product.code || product.product_kind}>
-    {!isTorn && <img className="pack-opening__envelope-whole" src={wrapperSrc} alt={`${product.name || 'Booster'} wrapper`} />}
+    {!isTorn && <img className="pack-opening__envelope-whole" src={wrapperSrc} alt={t('{name} wrapper', { name: product.name || t('Booster') })} />}
     {isTorn && <>
       <div className="pack-opening__envelope-piece pack-opening__envelope-body" aria-hidden="true"><img src={wrapperSrc} alt="" /></div>
       <div className="pack-opening__envelope-piece pack-opening__envelope-top" aria-hidden="true"><img src={wrapperSrc} alt="" /></div>
@@ -155,7 +159,8 @@ function ExtractionCards({ count, phase }) {
 }
 
 function PackPile({ count, phase, firstCard, onTurn }) {
-  return <button type="button" className={`pack-opening__pile pack-opening__pile--${phase}`} onClick={onTurn} aria-label="Turn over the card pile" title="Turn over the card pile">
+  const t = useT()
+  return <button type="button" className={`pack-opening__pile pack-opening__pile--${phase}`} onClick={onTurn} aria-label={t("Turn over the card pile")} title={t("Turn over the card pile")}>
     <span className="pack-opening__pile-shadow" aria-hidden="true" />
     <div className="pack-opening__pile-shell">
       <div className="pack-opening__pile-back" aria-hidden="true">
@@ -163,11 +168,12 @@ function PackPile({ count, phase, firstCard, onTurn }) {
       </div>
       <div className="pack-opening__pile-front" aria-hidden="true">{firstCard && cardFace(firstCard)}</div>
     </div>
-    <span className="pack-opening__pile-caption">Click to turn over</span>
+    <span className="pack-opening__pile-caption"><LocalizedText text={"Click to turn over"} /></span>
   </button>
 }
 
 function RevealStack({ cards, currentIndex, onAdvance }) {
+  const t = useT()
   const gestureRef = useRef(null)
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -229,7 +235,7 @@ function RevealStack({ cards, currentIndex, onAdvance }) {
           key={`top-${currentIndex}`}
           role="button"
           tabIndex={0}
-          aria-label="Swipe card left or right to reveal the next card"
+          aria-label={t("Swipe card left or right to reveal the next card")}
           aria-grabbed={isDragging}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -252,6 +258,7 @@ function GridCard({ card }) {
 }
 
 export default function PackOpening({ packs, onCollect, onSkip }) {
+  const t = useT()
   const [packIdx, setPackIdx] = useState(0)
   const [phase, setPhase] = useState('entry')
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -321,11 +328,11 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
   const currentCard = currentPack[currentIndex]
   const sceneClass = `pack-opening__pack-scene pack-opening__pack-scene--${phase}`
 
-  return createPortal(<div className="pack-opening" role="dialog" aria-modal="true" aria-label="Booster pack opening">
+  return createPortal(<div className="pack-opening" role="dialog" aria-modal="true" aria-label={t("Booster pack opening")}>
     <div className="pack-opening__backdrop" aria-hidden="true" />
     <header className="pack-opening__header">
-      <div><span className="pack-opening__eyebrow"><PhaseLabel phase={phase} currentIndex={currentIndex} cardCount={currentPack.length} /></span>{safePacks.length > 1 && <span className="pack-opening__pack-count">Pack {packIdx + 1} of {safePacks.length}</span>}</div>
-      {!packComplete && <button type="button" className="pack-opening__skip" onClick={skipAnimation}><FastForward size={18} /> Skip animation</button>}
+      <div><span className="pack-opening__eyebrow"><PhaseLabel phase={phase} currentIndex={currentIndex} cardCount={currentPack.length} /></span>{safePacks.length > 1 && <span className="pack-opening__pack-count"><LocalizedText text={"Pack"} after={" "} />{packIdx + 1}<LocalizedText text={"of"} before={" "} after={" "} />{safePacks.length}</span>}</div>
+      {!packComplete && <button type="button" className="pack-opening__skip" onClick={skipAnimation}><FastForward size={18} /><LocalizedText text={"Skip animation"} before={" "} /></button>}
     </header>
     <main className={`pack-opening__stage pack-opening__stage--${phase}`}>
       {(phase === 'entry' || phase === 'tear' || phase === 'extract' || phase === 'fade') && <div className={sceneClass}>
@@ -334,12 +341,12 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
       </div>}
       {phase === 'pile' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={turnPile} />}
       {phase === 'flip' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={() => {}} />}
-      {phase === 'reveal' && currentCard && <section className="pack-opening__reveal-stage" aria-label={`Card ${currentIndex + 1} of ${currentPack.length}`}><div className="pack-opening__reveal-hint">Throw the top card left or right to reveal what is underneath</div><div className="pack-opening__reveal-frame"><RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} /></div></section>}
-      {packComplete && <section className="pack-opening__complete" aria-label="Pack cards"><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /> Pack complete</span><h1>Cards from this pack</h1></div><span>{currentPack.length} cards</span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} />)}</div></section>}
+      {phase === 'reveal' && currentCard && <section className="pack-opening__reveal-stage" aria-label={t('Card {current} of {total}', { current: currentIndex + 1, total: currentPack.length })}><div className="pack-opening__reveal-hint"><LocalizedText text={"Throw the top card left or right to reveal what is underneath"} /></div><div className="pack-opening__reveal-frame"><RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} /></div></section>}
+      {packComplete && <section className="pack-opening__complete" aria-label={t("Pack cards")}><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></span><h1><LocalizedText text={"Cards from this pack"} /></h1></div><span>{currentPack.length}<LocalizedText text={"cards"} before={" "} /></span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} />)}</div></section>}
     </main>
     <footer className="pack-opening__footer">
-      {packComplete && packsLeft > 0 && <button type="button" className="pack-opening__primary" onClick={advanceToNext}><PackageOpen size={19} /> Open next pack <span>({packsLeft} remaining)</span></button>}
-      {packComplete && packsLeft === 0 && <button type="button" className="pack-opening__primary pack-opening__primary--collect" onClick={onCollect}><Sparkles size={19} /> Add to Collection</button>}
+      {packComplete && packsLeft > 0 && <button type="button" className="pack-opening__primary" onClick={advanceToNext}><PackageOpen size={19} /><LocalizedText text={"Open next pack"} before={" "} after={" "} /><span>{t('({count} remaining)', { count: packsLeft })}</span></button>}
+      {packComplete && packsLeft === 0 && <button type="button" className="pack-opening__primary pack-opening__primary--collect" onClick={onCollect}><Sparkles size={19} /><LocalizedText text={"Add to Collection"} before={" "} /></button>}
     </footer>
   </div>, document.body)
 }

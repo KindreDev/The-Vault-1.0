@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { LocalizedText } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Plus, Star, X, User, Loader, LayoutGrid, Filter } from 'lucide-react'
@@ -245,7 +246,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
             </span>
           )}
           {age !== null && (
-            <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{age}y</span>
+            <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{age}<LocalizedText text={"y"} /></span>
           )}
           <span className="text-[13px] ml-auto" style={{ color: 'rgba(255,255,255,0.45)' }}>
             {(creator.image_count ?? 0).toLocaleString()} {t('photos')}
@@ -342,7 +343,7 @@ function CharacterSearch({ onSelect }) {
             <div className="flex gap-1.5 mt-1 flex-wrap">
               {picked.source_label && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.source_label}</span>}
               {picked.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{picked.gender}</span>}
-              {picked.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm} cm</span>}
+              {picked.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{picked.height_cm}<LocalizedText text={"cm"} before=" " /></span>}
               {picked.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {picked.age}</span>}
             </div>
           </div>
@@ -403,7 +404,7 @@ function CharacterSearch({ onSelect }) {
                     <div className="flex gap-1.5 mt-1 flex-wrap">
                       <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.source_label}</span>
                       {char.gender    && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)' }}>{char.gender}</span>}
-                      {char.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm} cm</span>}
+                      {char.height_cm && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{char.height_cm}<LocalizedText text={"cm"} before=" " /></span>}
                       {char.age       && <span className="text-[16px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>{t('Age')} {char.age}</span>}
                     </div>
                   </div>
@@ -454,7 +455,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
       return creatorsApi.create(payload).then(r => r.data)
     },
     onSuccess: (data) => {
-      toast.success(`${data.name} added! +50 XP`)
+      toast.success(t('{name} added! +50 XP', { name: data.name }))
       qc.invalidateQueries({ queryKey: ['creators'], refetchType: 'all' })
       qc.invalidateQueries({ queryKey: ['favorites'], refetchType: 'all' })
       qc.invalidateQueries({ queryKey: ['profile'] })
@@ -806,7 +807,7 @@ export default function CreatorList() {
   const totalPages = Math.max(1, Math.ceil((creatorPage?.total ?? 0) / perPage))
 
   return (
-    <div className="p-5 pb-16">
+    <div className="vault-theme-creators-page p-5 pb-16">
       {/* Header */}
       <div className="vault-control-row vault-filter-toolbar flex items-center gap-3 mb-4 flex-wrap">
         <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
@@ -911,7 +912,7 @@ export default function CreatorList() {
               type="range" min={160} max={345} step={5} value={cardSize}
               onChange={e => setCardSize(Number(e.target.value))}
               className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]"
-              title={`Card size: ${cardSize}px`}
+              title={t('Card size: {size}px', { size: cardSize })}
             />
           </div>
 
@@ -1015,7 +1016,7 @@ export default function CreatorList() {
           onDelete={async () => {
             try {
               await creatorsApi.delete(creatorCtxMenu.creator.id)
-              toast.success(`${creatorCtxMenu.creator.name} deleted`)
+              toast.success(t('{name} deleted', { name: creatorCtxMenu.creator.name }))
               qc.invalidateQueries({ queryKey: ['creators'] })
             } catch { toast.error(t('Delete failed')) }
           }}

@@ -1,8 +1,9 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { PackageOpen } from 'lucide-react'
-import { tcgRoomApi, tcgV2Api } from '../../lib/api'
+import { apiErrorMessage, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import PackOpening from '../PackOpening'
 
 const WRAPPERS = {
@@ -36,6 +37,7 @@ function packLines(parcel) {
 }
 
 export default function RoomParcelPanel({ parcels, onCollected }) {
+  const t = useT()
   const qc = useQueryClient()
   const [tearing, setTearing] = useState(false)
   const [openedPacks, setOpenedPacks] = useState(null)
@@ -60,7 +62,7 @@ export default function RoomParcelPanel({ parcels, onCollected }) {
     onSuccess: async (response, variables) => {
       await refresh()
       if (variables.kind === 'unpack') {
-        toast.success('Packs moved to inventory')
+        toast.success(t("Packs moved to inventory"))
         onCollected?.()
         return
       }
@@ -69,23 +71,30 @@ export default function RoomParcelPanel({ parcels, onCollected }) {
           const products = new Map((response.data.contents || []).map(line => [line.product_id, line.product]))
           const packs = await Promise.all((response.data.results || []).map(async result => ({
             product: products.get(result.product_id) || {},
-            cards: await Promise.all(result.cards.map(id => tcgV2Api.cardDetail(id).then(cardResponse => cardResponse.data.card))),
+            // The room endpoint now returns the fully serialized card payload
+            // from the authoritative V2 opener. Older responses may still
+            // contain ids, so keep the fallback hydration for those only.
+            cards: await Promise.all((result.cards || []).map(card => (
+              card && typeof card === 'object'
+                ? card
+                : tcgV2Api.cardDetail(card).then(cardResponse => cardResponse.data.card)
+            ))),
           })))
           setRevealError('')
           setOpenedPacks(packs)
           qc.invalidateQueries({ queryKey: ['tcg-room-copies'] })
           qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] })
         } catch (error) {
-          setRevealError(error.response?.data?.detail || 'The packs opened, but the reveal could not load.')
+          setRevealError(apiErrorMessage(error, 'The packs opened, but the reveal could not load.'))
         }
       }
     },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not open the booster packs'),
+    onError: error => toast.error(apiErrorMessage(error, t("Could not open the booster packs"))),
   })
   const beginTear = () => { setTearing(true); tearTimer.current = window.setTimeout(() => action.mutate({ kind: 'open', id: parcel.id }), 1100) }
   const cancelTear = () => { window.clearTimeout(tearTimer.current); setTearing(false) }
   if (openedPacks) return <PackOpening packs={openedPacks} onCollect={() => setOpenedPacks(null)} onSkip={() => setOpenedPacks(null)} />
-  if (!parcel) return <div className="tcg-room-empty"><PackageOpen size={28} /><strong>No booster packs waiting</strong><span>Ordered packs show up here when they arrive.</span></div>
+  if (!parcel) return <div className="tcg-room-empty"><PackageOpen size={28} /><strong><LocalizedText text={"No booster packs waiting"} /></strong><span><LocalizedText text={"Ordered packs show up here when they arrive."} /></span></div>
   const waiting = activeParcels.flatMap(packLines)
   return <div className="tcg-room-parcel">
     <div className="tcg-room-parcel__packs">

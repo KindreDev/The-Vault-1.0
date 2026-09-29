@@ -13,6 +13,9 @@ import toast from 'react-hot-toast'
 import { imagesApi } from './api'
 import { useVaultStore } from '../store/vault'
 import queryClient from './queryClient'
+import { translate } from '../i18n'
+
+const tr = (key, params) => translate(useVaultStore.getState().locale, key, params)
 
 export async function logEdgeNow() {
   const s = useVaultStore.getState()
@@ -26,8 +29,8 @@ export async function logEdgeNow() {
 
     const n = data?.images_credited ?? 0
     toast(n > 0
-      ? `🌊 Edge held · counted on ${n} ${n === 1 ? 'file' : 'files'}`
-      : '🌊 Edge held')
+      ? tr('🌊 Edge held · counted on {count} files', { count: n })
+      : tr('🌊 Edge held'))
 
     // The lifetime totals on the profile and stats pages just moved.
     for (const key of ['profile', 'ses-stats', 'images-list', 'gallery-images']) {
@@ -36,7 +39,7 @@ export async function logEdgeNow() {
     return data
   } catch (err) {
     console.error('Log edge failed:', err)
-    toast.error('Could not log that edge')
+    toast.error(tr('Could not log that edge'))
     return null
   }
 }

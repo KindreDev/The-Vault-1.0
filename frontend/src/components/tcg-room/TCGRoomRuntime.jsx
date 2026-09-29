@@ -1,8 +1,9 @@
+import { LocalizedText, useT } from '../../i18n'
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Box, CircleHelp, DoorOpen, Home, PackageOpen, Settings2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cardsApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
+import { apiErrorMessage, cardsApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import RoomScene from './RoomScene'
 import RoomDeviceSurface from './RoomDeviceSurface'
 import RoomParcelPanel from './RoomParcelPanel'
@@ -18,7 +19,7 @@ class RoomCanvasBoundary extends Component {
   state = { error: null }
   static getDerivedStateFromError(error) { return { error } }
   render() {
-    if (this.state.error) return <div className="tcg-room__fatal"><strong>The room renderer stopped</strong><p>{this.state.error.message}</p><button onClick={() => window.location.reload()}>Reload room</button></div>
+    if (this.state.error) return <div className="tcg-room__fatal"><strong><LocalizedText text={"The room renderer stopped"} /></strong><p>{this.state.error.message}</p><button onClick={() => window.location.reload()}><LocalizedText text={"Reload room"} /></button></div>
     return this.props.children
   }
 }
@@ -36,14 +37,15 @@ function isTextEntryTarget(target) {
 }
 
 function PerformanceOverlay({ metrics, quality, visibleCards, loadedAssets }) {
+  const t = useT()
   if (!import.meta.env.DEV) return null
   const fps = metrics.frameMs > 0 ? 1000 / metrics.frameMs : 0
-  return <aside className="tcg-room__perf" aria-label="Collection Room renderer performance">
-    <strong>ROOM PERF <kbd>F3</kbd></strong>
+  return <aside className="tcg-room__perf" aria-label={t("Collection Room renderer performance")}>
+    <strong><LocalizedText text={"ROOM PERF"} after={" "} /><kbd><LocalizedText text={"F3"} /></kbd></strong>
     <span>{metrics.frameMs ? `${metrics.frameMs.toFixed(1)} ms` : '—'} · {fps ? `${fps.toFixed(0)} FPS` : '—'}</span>
-    <span>{metrics.calls.toLocaleString()} draw calls · {metrics.triangles.toLocaleString()} triangles</span>
-    <span>{metrics.textures.toLocaleString()} textures · {metrics.geometries.toLocaleString()} geometries</span>
-    <span>{quality.toUpperCase()} · {visibleCards.toLocaleString()} cards · {loadedAssets.toLocaleString()} assets</span>
+    <span>{metrics.calls.toLocaleString()}<LocalizedText text={"draw calls ·"} before={" "} after={" "} />{metrics.triangles.toLocaleString()}<LocalizedText text={"triangles"} before={" "} /></span>
+    <span>{metrics.textures.toLocaleString()}<LocalizedText text={"textures ·"} before={" "} after={" "} />{metrics.geometries.toLocaleString()}<LocalizedText text={"geometries"} before={" "} /></span>
+    <span>{quality.toUpperCase()} · {visibleCards.toLocaleString()}<LocalizedText text={"cards ·"} before={" "} after={" "} />{loadedAssets.toLocaleString()}<LocalizedText text={"assets"} before={" "} /></span>
   </aside>
 }
 
@@ -200,7 +202,7 @@ export default function TCGRoomRuntime({ version }) {
     readySeen.current = readyIds
   }, [parcels])
 
-  if (isError) return <main className="tcg-room tcg-room--fallback"><div className="tcg-room__fatal"><strong>Room state unavailable</strong><p>{error?.response?.data?.detail || 'The collection room could not load its saved state.'}</p><button onClick={() => refetch()}>Retry</button><button onClick={() => navigate('/collection')}>Exit room</button></div></main>
+  if (isError) return <main className="tcg-room tcg-room--fallback"><div className="tcg-room__fatal"><strong><LocalizedText text={"Room state unavailable"} /></strong><p>{apiErrorMessage(error, 'The collection room could not load its saved state.')}</p><button onClick={() => refetch()}><LocalizedText text={"Retry"} /></button><button onClick={() => navigate('/collection')}><LocalizedText text={"Exit room"} /></button></div></main>
 
   return <main className={`tcg-room ${proofCardId ? 'tcg-room--proof' : ''}${sceneReady ? '' : ' tcg-room--booting'}`} style={{ background: '#12111a' }}>
     <div style={{ position: 'absolute', inset: 0, visibility: sceneReady ? 'visible' : 'hidden' }}>
@@ -211,54 +213,55 @@ export default function TCGRoomRuntime({ version }) {
     {sceneReady && focusKind !== 'computer' && <div className="vault-hud">
       <div className="vault-hud__brand">
         <img src="/logo.png" alt="" />
-        <div><strong>THE VAULT</strong><small>TCG MINIGAME</small></div>
-        <button type="button" className="vault-hud__exit" onClick={() => { document.exitPointerLock?.(); setPaused(true); setConfirmExit(true) }}><ArrowLeft size={16} /> Exit Room</button>
+        <div><strong><LocalizedText text={"THE VAULT"} /></strong><small><LocalizedText text={"TCG MINIGAME"} /></small></div>
+        <button type="button" className="vault-hud__exit" onClick={() => { document.exitPointerLock?.(); setPaused(true); setConfirmExit(true) }}><ArrowLeft size={16} /><LocalizedText text={"Exit Room"} before={" "} /></button>
       </div>
-      <div className="vault-hud__title">COLLECTION ROOM - {version}</div>
+      <div className="vault-hud__title"><LocalizedText text={"COLLECTION ROOM -"} after={" "} />{version}</div>
       <div className="vault-hud__actions">
-        <button type="button" onClick={() => openInventory('cards')}><Home size={16} /> Room Menu</button>
-        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setSettingsOpen(true) }}><Settings2 size={16} /> Settings</button>
-        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setHelpOpen(true) }}><CircleHelp size={16} /> Controls</button>
+        <button type="button" onClick={() => openInventory('cards')}><Home size={16} /><LocalizedText text={"Room Menu"} before={" "} /></button>
+        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setSettingsOpen(true) }}><Settings2 size={16} /><LocalizedText text={"Settings"} before={" "} /></button>
+        <button type="button" onClick={() => { document.exitPointerLock?.(); setPaused(true); setHelpOpen(true) }}><CircleHelp size={16} /><LocalizedText text={"Controls"} before={" "} /></button>
       </div>
       {(!inventoryOpen || inventoryTab === 'packs') && !focused && !arranging && <div className="vault-hud__summary">
-        <h3>Inventory Summary</h3>
+        <h3><LocalizedText text={"Inventory Summary"} /></h3>
         <div>
-          <article><PackageOpen size={18} /><strong>{Number(ownedCatalog?.total || 0).toLocaleString()}</strong><span>Total Cards</span></article>
-          <article><Box size={18} /><strong>{Number((inventorySummary?.counts?.pack_tokens || 0) + (inventorySummary?.parcels || []).reduce((sum, row) => sum + Number(row.pack_count || 0), 0) + parcels.filter(parcel => ['mailed', 'ready'].includes(parcel.status)).reduce((sum, parcel) => sum + (parcel.contents || []).reduce((inner, line) => inner + Number(line.quantity || 0), 0), 0)).toLocaleString()}</strong><span>Unopened Packs</span></article>
-          <article><Home size={18} /><strong>{Number(inventorySummary?.counts?.furniture || furniture?.owned_instances?.length || 0).toLocaleString()}</strong><span>Furniture Items</span></article>
+          <article><PackageOpen size={18} /><strong>{Number(ownedCatalog?.total || 0).toLocaleString()}</strong><span><LocalizedText text={"Total Cards"} /></span></article>
+          <article><Box size={18} /><strong>{Number((inventorySummary?.counts?.pack_tokens || 0) + (inventorySummary?.parcels || []).reduce((sum, row) => sum + Number(row.pack_count || 0), 0) + parcels.filter(parcel => ['mailed', 'ready'].includes(parcel.status)).reduce((sum, parcel) => sum + (parcel.contents || []).reduce((inner, line) => inner + Number(line.quantity || 0), 0), 0)).toLocaleString()}</strong><span><LocalizedText text={"Unopened Packs"} /></span></article>
+          <article><Home size={18} /><strong>{Number(inventorySummary?.counts?.furniture || furniture?.owned_instances?.length || 0).toLocaleString()}</strong><span><LocalizedText text={"Furniture Items"} /></span></article>
         </div>
       </div>}
     </div>}
-    {sceneReady && !paused && promptTarget?.copy && <button className="tcg-room__prompt" onClick={interact}><kbd>E</kbd><span><strong>{promptTarget.copy[0]}</strong><small>{promptTarget.copy[1]}</small></span></button>}
-    {sceneReady && paused && !focused && !arranging && !inventoryOpen && !confirmExit && !helpOpen && !settingsOpen && <button type="button" className="vault-hud__resume" onClick={() => setPaused(false)}>Click to explore · WASD · E interact · I inventory · Tab placement</button>}
-    {confirmExit && <section className="tcg-room__exit-confirm" role="dialog" aria-modal="true" aria-labelledby="room-exit-title"><div><h2 id="room-exit-title">Leave your room?</h2><p>Your layout is saved. Closing a menu or pressing Escape never exits the room.</p><button className="primary" onClick={() => navigate('/collection')}>Yes, exit to collection</button><button onClick={() => { setConfirmExit(false); setPaused(false) }}>No, return to room</button></div></section>}
+    {sceneReady && !paused && promptTarget?.copy && <button className="tcg-room__prompt" onClick={interact}><kbd><LocalizedText text={"E"} /></kbd><span><strong>{promptTarget.copy[0]}</strong><small>{promptTarget.copy[1]}</small></span></button>}
+    {sceneReady && paused && !focused && !arranging && !inventoryOpen && !confirmExit && !helpOpen && !settingsOpen && <button type="button" className="vault-hud__resume" onClick={() => setPaused(false)}><LocalizedText text={"Click to explore · WASD · E interact · I inventory · Tab placement"} /></button>}
+    {confirmExit && <section className="tcg-room__exit-confirm" role="dialog" aria-modal="true" aria-labelledby="room-exit-title"><div><h2 id="room-exit-title"><LocalizedText text={"Leave your room?"} /></h2><p><LocalizedText text={"Your layout is saved. Closing a menu or pressing Escape never exits the room."} /></p><button className="primary" onClick={() => navigate('/collection')}><LocalizedText text={"Yes, exit to collection"} /></button><button onClick={() => { setConfirmExit(false); setPaused(false) }}><LocalizedText text={"No, return to room"} /></button></div></section>}
     {inventoryOpen && <RoomInventory initialTab={inventoryTab} onTabChange={setInventoryTab} onClose={() => { setInventoryOpen(false); setPaused(false) }} onPlaceFurniture={openFurniturePlacement} />}
     {arranging && <RoomLayoutPanel bootstrap={roomData} initialInstanceId={placementInstanceId} worldSample={worldSample} onPreview={setPlacementPreview} onConfirmReady={fn => { confirmPlacement.current = fn }} onLockReady={fn => { lockPlacement.current = fn || (() => {}) }} onDeselectReady={fn => { deselectPlacement.current = fn }} onActionsReady={actions => { returnPlacement.current = actions?.returnToInventory || (() => {}); rotatePlacement.current = actions?.rotate || (() => {}) }} onExit={closePanel} />}
     {focused?.interactive === 'card-inspect' && focused.card && <section className="tcg-room__card-inspector" onMouseMove={event => {
       const box = event.currentTarget.getBoundingClientRect()
       setInspectTilt({ x: ((event.clientY - box.top) / box.height - .5) * -18, y: ((event.clientX - box.left) / box.width - .5) * 24 })
     }}>
-      <button className="close" onClick={closePanel}><X size={22} /> Put card back</button>
+      <button className="close" onClick={closePanel}><X size={22} /><LocalizedText text={"Put card back"} before={" "} /></button>
       <div className="tcg-room__card-inspector-art" style={{ transform: `rotateX(${inspectTilt.x}deg) rotateY(${inspectTilt.y}deg)` }}>
-        <TCGV2CardFace card={focused.card} width={Math.min(520, Math.max(300, window.innerWidth * .38))} showEffects />
+        <TCGV2CardFace card={focused.card} width={Math.min(520, Math.max(300, window.innerWidth * .38))}
+                       showEffects interactive disablePointerTilt idleEffects videoPresentation="full" />
       </div>
       <strong>{focused.card.display_name || focused.card.name || 'Card inspection'}</strong>
-      <span>Move your pointer across the card to rotate it · Esc to put it back</span>
+      <span><LocalizedText text={"Move your pointer across the card to rotate it · Esc to put it back"} /></span>
     </section>}
     {focused && !['door', 'card-inspect'].includes(focusKind) && <section className={`tcg-room__focus-panel ${focusKind === 'computer' ? 'tcg-room__computer-screen' : ''} ${focusKind === 'binder' ? 'wide' : ''}`}>
-      <button className="close" onClick={closePanel}><X size={22} /> Return to room</button>
+      <button className="close" onClick={closePanel}><X size={22} /><LocalizedText text={"Return to room"} before={" "} /></button>
       {focusKind !== 'computer' && <><h2>{focused?.copy?.[0] || 'Room interaction'}</h2><p>{focused?.copy?.[1]}</p></>}
       {focusKind === 'computer' && <RoomDeviceSurface roomBootstrap={roomData} />}
       {['mail', 'parcel'].includes(focusKind) && <RoomParcelPanel parcels={parcels} context={focusKind} suggestedSurface={focused?.parcelAnchor} onCollected={() => openInventory('packs')} />}
       {focusKind === 'pile' && <RoomCopyManager context="pile" />}
       {['display', 'poster'].includes(focusKind) && <RoomDisplayManager context={focusKind} bootstrap={roomData} instanceId={focused?.instanceId} />}
     </section>}
-    {doorTransition && <section className="tcg-room__door-transition"><DoorOpen size={44} /><span>VISIT TRADER</span><strong>Approaching the door…</strong><p>Your room is staying exactly where you left it.</p></section>}
+    {doorTransition && <section className="tcg-room__door-transition"><DoorOpen size={44} /><span><LocalizedText text={"VISIT TRADER"} /></span><strong><LocalizedText text={"Approaching the door…"} /></strong><p><LocalizedText text={"Your room is staying exactly where you left it."} /></p></section>}
     {traderOpen && <TraderVN onClose={closeTrader} />}
-    {readyParcel && <div className="tcg-room__delivery"><Box size={22} /><span><strong>Delivery arrived</strong>Packs are on the table.</span></div>}
-    {carriedCopies.length > 0 && <div className="tcg-room__held tcg-room__held--cards" aria-label={`Carrying ${carriedCopies.length} physical cards`}><span>{carriedCopies.length}</span><strong>physical cards held</strong></div>}
+    {readyParcel && <div className="tcg-room__delivery"><Box size={22} /><span><strong><LocalizedText text={"Delivery arrived"} /></strong><LocalizedText text={"Packs are on the table."} /></span></div>}
+    {carriedCopies.length > 0 && <div className="tcg-room__held tcg-room__held--cards" aria-label={`Carrying ${carriedCopies.length} physical cards`}><span>{carriedCopies.length}</span><strong><LocalizedText text={"physical cards held"} /></strong></div>}
     {perfOpen && <PerformanceOverlay metrics={metrics} quality={quality} visibleCards={visibleCardCount} loadedAssets={loadedAssets} />}
-    {helpOpen && <section className="vault-hud__modal" role="dialog" aria-labelledby="room-controls-title"><div><h2 id="room-controls-title">Controls</h2><dl className="vault-hud__controls-list">
+    {helpOpen && <section className="vault-hud__modal" role="dialog" aria-labelledby="room-controls-title"><div><h2 id="room-controls-title"><LocalizedText text={"Controls"} /></h2><dl className="vault-hud__controls-list">
       {[
         ['WASD', 'Movement'],
         ['Mouse', 'Look'],
@@ -272,10 +275,10 @@ export default function TCGRoomRuntime({ version }) {
         ['C', 'Crouch'],
         ['Esc', 'Close'],
       ].map(([key, label]) => <div key={key}><dt>{key}</dt><dd>{label}</dd></div>)}
-    </dl><button type="button" onClick={() => { setHelpOpen(false); setPaused(false) }}>Close</button></div></section>}
-    {settingsOpen && <section className="vault-hud__modal" role="dialog"><div><h2>Settings</h2><label>Graphics quality<select value={quality} onChange={event => setQuality(event.target.value)}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><button type="button" onClick={() => { setSettingsOpen(false); setPaused(false) }}>Close</button></div></section>}
-    {proofCard && <aside className="tcg-room__proof-card"><strong>{proofCard.dev_fixture ? 'DEV-only visual fixture' : 'Persisted physical card proof'}</strong><span>Copy {proofCard.copy.id} · Card {proofCard.preview.card_id}</span><span>{proofCard.preview.card_type} · {proofCard.preview.rarity} · packed mask {proofCard.card?.mask_url ? 'loaded' : 'not required'}</span></aside>}
-    {proofCard?.card && <aside className="tcg-room__proof-reference"><strong>Authoritative 2D reference</strong><TCGV2CardFace card={proofCard.card} width={250} showEffects={false} /></aside>}
-    {sceneReady && !data && <div className="tcg-room__loading">Loading saved room state...</div>}
+    </dl><button type="button" onClick={() => { setHelpOpen(false); setPaused(false) }}><LocalizedText text={"Close"} /></button></div></section>}
+    {settingsOpen && <section className="vault-hud__modal" role="dialog"><div><h2><LocalizedText text={"Settings"} /></h2><label><LocalizedText text={"Graphics quality"} /><select value={quality} onChange={event => setQuality(event.target.value)}><option value="high"><LocalizedText text={"High"} /></option><option value="medium"><LocalizedText text={"Medium"} /></option><option value="low"><LocalizedText text={"Low"} /></option></select></label><button type="button" onClick={() => { setSettingsOpen(false); setPaused(false) }}><LocalizedText text={"Close"} /></button></div></section>}
+    {proofCard && <aside className="tcg-room__proof-card"><strong>{proofCard.dev_fixture ? 'DEV-only visual fixture' : 'Persisted physical card proof'}</strong><span><LocalizedText text={"Copy"} after={" "} />{proofCard.copy.id}<LocalizedText text={"· Card"} before={" "} after={" "} />{proofCard.preview.card_id}</span><span>{proofCard.preview.card_type} · {proofCard.preview.rarity}<LocalizedText text={"· packed mask"} before={" "} after={" "} />{proofCard.card?.mask_url ? 'loaded' : 'not required'}</span></aside>}
+    {proofCard?.card && <aside className="tcg-room__proof-reference"><strong><LocalizedText text={"Authoritative 2D reference"} /></strong><TCGV2CardFace card={proofCard.card} width={250} showEffects={false} /></aside>}
+    {sceneReady && !data && <div className="tcg-room__loading"><LocalizedText text={"Loading saved room state..."} /></div>}
   </main>
 }

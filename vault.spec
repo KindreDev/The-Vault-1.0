@@ -13,6 +13,7 @@ BACKEND_DIR   = os.path.join(ROOT, 'backend')
 FRONTEND_DIST = os.path.join(ROOT, 'frontend', 'dist')
 MOBILE_PWA_DIST = os.path.join(ROOT, 'frontend-mobile', 'dist-pwa')
 FFMPEG_EXE    = os.path.join(ROOT, 'tools', 'ffmpeg.exe')
+FFPROBE_EXE   = os.path.join(ROOT, 'tools', 'ffprobe.exe')
 
 # Build the datas list — always include the frontend, bundle ffmpeg if present
 _datas = [(FRONTEND_DIST, 'frontend/dist')]
@@ -44,6 +45,11 @@ if os.path.isfile(FFMPEG_EXE):
     print(f"[vault.spec] Bundling ffmpeg.exe ({os.path.getsize(FFMPEG_EXE)//1024//1024} MB)")
 else:
     print("[vault.spec] WARNING: tools/ffmpeg.exe not found — video thumbnails won't work in the bundle")
+if os.path.isfile(FFPROBE_EXE):
+    _datas.append((FFPROBE_EXE, '.'))
+    print(f"[vault.spec] Bundling ffprobe.exe ({os.path.getsize(FFPROBE_EXE)//1024//1024} MB)")
+else:
+    print("[vault.spec] WARNING: tools/ffprobe.exe not found — browser video conversion will be slower")
 
 # GPU DLLs (cuDNN / cuBLAS / CUDA runtime) are NOT bundled in the installer.
 # They are ~1.6 GB and only needed by users with NVIDIA GPUs.

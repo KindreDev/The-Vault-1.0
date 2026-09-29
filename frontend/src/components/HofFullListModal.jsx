@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Eye, Droplets, Clock, TrendingUp, ArrowUp, ArrowDown, Loader2, Waves, Heart } from 'lucide-react'
+import { LocalizedText, useT } from '../i18n'
 
 const PAGE_SIZE = 30
 
@@ -54,6 +55,7 @@ function Thumb({ item }) {
 }
 
 function Movement({ change }) {
+  const t = useT()
   if (!change) return null
   const up = change > 0
   const color = up ? 'var(--c-green)' : 'var(--c-pink)'
@@ -61,7 +63,7 @@ function Movement({ change }) {
   return (
     <span className="flex items-center gap-0.5 flex-shrink-0"
           style={{ fontSize: 16, fontWeight: 700, color }}
-          title={`${up ? 'Climbed' : 'Dropped'} ${Math.abs(change)} place${Math.abs(change) === 1 ? '' : 's'}`}>
+          title={t(up ? 'Climbed {count} places' : 'Dropped {count} places', { count: Math.abs(change) })}>
       <Icon size={14} /> {Math.abs(change)}
     </span>
   )
@@ -76,6 +78,7 @@ export default function HofFullListModal({
   onRowClick,       // (item) => void
   onClose,
 }) {
+  const t = useT()
   const [items, setItems]     = useState([])
   const [loading, setLoading] = useState(false)
   const [done, setDone]       = useState(false)
@@ -211,13 +214,13 @@ export default function HofFullListModal({
                     )}
                     {item.total_edges > 0 && (
                       <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#A89FE8' }}
-                            title="Edges">
+                            title={t('Edges')}>
                         <Waves size={13} /> {item.total_edges.toLocaleString()}
                       </span>
                     )}
                     {item.session_count > 0 && (
                       <span className="flex items-center gap-1" style={{ fontSize: 16, color: '#F4C0D1' }}
-                            title="Sessions logged">
+                            title={t('Sessions logged')}>
                         <Heart size={13} /> {item.session_count.toLocaleString()}
                       </span>
                     )}
@@ -228,9 +231,8 @@ export default function HofFullListModal({
                     )}
                     {item.avg_dwell_seconds > 0 && (
                       <span className="flex items-center gap-1" style={{ fontSize: 16, color: 'var(--c-green-text)' }}
-                            title="Average time you linger on one of her photos">
-                        <TrendingUp size={13} /> {item.avg_dwell_seconds}s
-                      </span>
+                            title={t('Average time you linger on one of her photos')}>
+                        <TrendingUp size={13} /> {item.avg_dwell_seconds}<LocalizedText text={"s"} after=" " /></span>
                     )}
                   </span>
                 </button>
@@ -246,17 +248,14 @@ export default function HofFullListModal({
                         className="px-4 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/10"
                         style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)',
                                  background: 'rgba(255,255,255,0.04)',
-                                 border: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  Load more
-                </button>
+                                 border: '0.5px solid rgba(255,255,255,0.1)' }}><LocalizedText text={"Load more"} before=" " after=" " /></button>
               )}
               {done && items.length > 0 && (
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)' }}>
-                  That's all {items.length}
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"That's all"} before=" " after=" " />{items.length}
                 </span>
               )}
               {done && items.length === 0 && (
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>Nothing here yet</span>
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}><LocalizedText text={"Nothing here yet"} /></span>
               )}
             </div>
           </div>

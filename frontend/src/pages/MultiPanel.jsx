@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useT, LocalizedText } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, X, Heart, Search, Video, Images,
@@ -95,17 +96,17 @@ function distributeItems(queue, panelCount, mode, manualAssignments, perPanelShu
 // slider, and stealing hover so those controls hid the moment you reached for
 // them. A row can't collide with anything inside the player.
 function PanelPlaylistBar({ panelIdx, label, count, shuffled, onLoad, onClear, onToggleShuffle }) {
+  const t = useT()
   if (count === 0) {
     // Empty panel: PanelCell only shows a static placeholder here, so a centred
     // overlay is safe. pointer-events stay off except on the button itself.
     return (
       <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 pointer-events-none">
-        <div className="text-[13px] text-[rgba(255,255,255,0.3)]">Panel {panelIdx + 1}</div>
+        <div className="text-[13px] text-[rgba(255,255,255,0.3)]"><LocalizedText text={"Panel"} after={" "} />{panelIdx + 1}</div>
         <button onMouseDown={onLoad}
                 className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-          <ListMusic size={13} /> Load playlist
-        </button>
+          <ListMusic size={13} /><LocalizedText text={"Load playlist"} before={" "} after={"\n        "} /></button>
       </div>
     )
   }
@@ -119,17 +120,17 @@ function PanelPlaylistBar({ panelIdx, label, count, shuffled, onLoad, onClear, o
       </span>
       <span className="text-[12px] flex-shrink-0 tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>{count}</span>
       <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
-        <button onMouseDown={onToggleShuffle} title={shuffled ? 'Playing shuffled' : 'Playing in order'}
+        <button onMouseDown={onToggleShuffle} title={t(shuffled ? 'Playing shuffled' : 'Playing in order')}
                 className="p-1 rounded-[5px] cursor-pointer hover:bg-[rgba(255,255,255,0.1)]"
                 style={{ color: shuffled ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.35)' }}>
           <Shuffle size={12} />
         </button>
-        <button onMouseDown={onLoad} title="Load a different playlist"
+        <button onMouseDown={onLoad} title={t("Load a different playlist")}
                 className="p-1 rounded-[5px] cursor-pointer hover:bg-[rgba(255,255,255,0.1)]"
                 style={{ color: 'rgba(255,255,255,0.4)' }}>
           <ListMusic size={12} />
         </button>
-        <button onMouseDown={onClear} title="Clear this panel"
+        <button onMouseDown={onClear} title={t("Clear this panel")}
                 className="p-1 rounded-[5px] cursor-pointer hover:bg-[color-mix(in_srgb,_var(--c-pink)_15%,_transparent)]"
                 style={{ color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)' }}>
           <X size={12} />
@@ -304,6 +305,7 @@ function ResizableGrid({
 // along with the viewer setup (panel count + playback mode) so a saved session
 // comes back exactly as it was left.
 function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manualAssignments = {}, targetPanel = null }) {
+  const t = useT()
   const qc = useQueryClient()
   const [name, setName]           = useState('')
   const [renamingId, setRenaming] = useState(null)
@@ -337,10 +339,10 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
     setBusy(true)
     try {
       await panelPlaylistsApi.create(payload(nm))
-      toast.success(`Saved “${nm}”`)
+      toast.success(t('Saved “{name}”', { name: nm }))
       setName('')
       refresh()
-    } catch { toast.error('Could not save playlist') }
+    } catch { toast.error(t("Could not save playlist")) }
     setBusy(false)
   }
 
@@ -349,9 +351,9 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
     setBusy(true)
     try {
       await panelPlaylistsApi.update(pl.id, payload(pl.name))
-      toast.success(`Updated “${pl.name}”`)
+      toast.success(t('Updated “{name}”', { name: pl.name }))
       refresh()
-    } catch { toast.error('Could not update playlist') }
+    } catch { toast.error(t("Could not update playlist")) }
     setBusy(false)
   }
 
@@ -367,7 +369,7 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
         : `Loaded “${pl.name}”`
       )
       onClose()
-    } catch { toast.error('Could not load playlist') }
+    } catch { toast.error(t("Could not load playlist")) }
     setBusy(false)
   }
 
@@ -378,7 +380,7 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
       await panelPlaylistsApi.rename(pl.id, nm)
       setRenaming(null)
       refresh()
-    } catch { toast.error('Could not rename') }
+    } catch { toast.error(t("Could not rename")) }
   }
 
   const handleDelete = async (pl) => {
@@ -386,8 +388,8 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
       await panelPlaylistsApi.delete(pl.id)
       setConfirm(null)
       refresh()
-      toast.success(`Deleted “${pl.name}”`)
-    } catch { toast.error('Could not delete') }
+      toast.success(t('Deleted “{name}”', { name: pl.name }))
+    } catch { toast.error(t("Could not delete")) }
   }
 
   return (
@@ -413,19 +415,18 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
         {/* Save current queue — hidden when picking a playlist for one panel */}
         {targetPanel === null && (
         <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.07)]">
-          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2">Save current queue</div>
+          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2"><LocalizedText text={"Save current queue"} /></div>
           <div className="flex items-center gap-2">
             <input value={name} onChange={e => setName(e.target.value)}
                    onKeyDown={e => e.key === 'Enter' && handleSaveNew()}
-                   placeholder={queue.length ? 'Playlist name…' : 'Queue is empty'}
+                   placeholder={t(queue.length ? 'Playlist name…' : 'Queue is empty')}
                    disabled={!queue.length}
                    className="flex-1 px-3 py-2 rounded-[8px] outline-none text-[16px] disabled:opacity-40"
                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', border: '0.5px solid rgba(255,255,255,0.12)' }} />
             <button onMouseDown={handleSaveNew} disabled={!name.trim() || !queue.length || busy}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-[14px] font-medium cursor-pointer disabled:opacity-30"
                     style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 45%, transparent)' }}>
-              <Save size={13} /> Save
-            </button>
+              <Save size={13} /><LocalizedText text={"Save"} before={" "} after={"\n            "} /></button>
           </div>
           <div className="text-[13px] text-[rgba(255,255,255,0.28)] mt-1.5">
             {galleryMode === 'per-panel'
@@ -437,13 +438,11 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
 
         {/* Saved playlists */}
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2">Saved</div>
+          <div className="text-[13px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider mb-2"><LocalizedText text={"Saved"} /></div>
           {isLoading ? (
-            <div className="text-[14px] text-[rgba(255,255,255,0.3)] py-6 text-center">Loading…</div>
+            <div className="text-[14px] text-[rgba(255,255,255,0.3)] py-6 text-center"><LocalizedText text={"Loading…"} /></div>
           ) : playlists.length === 0 ? (
-            <div className="text-[14px] text-[rgba(255,255,255,0.28)] py-8 text-center">
-              No saved playlists yet.<br />Queue some media, name it above, and hit Save.
-            </div>
+            <div className="text-[14px] text-[rgba(255,255,255,0.28)] py-8 text-center"><LocalizedText text={"No saved playlists yet."} before={"\n              "} /><br /><LocalizedText text={"Queue some media, name it above, and hit Save."} after={"\n            "} /></div>
           ) : (
             <div className="flex flex-col gap-1.5">
               {playlists.map(pl => (
@@ -478,12 +477,12 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
                           <span className="text-[15px] text-[rgba(255,255,255,0.85)] truncate">{pl.name}</span>
                           {pl.is_autosave && (
                             <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                  style={{ background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)' }}>auto</span>
+                                  style={{ background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)' }}><LocalizedText text={"auto"} /></span>
                           )}
                         </div>
                       )}
                       <div className="text-[13px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                        {pl.gallery_count} galler{pl.gallery_count === 1 ? 'y' : 'ies'} · {pl.image_count} file{pl.image_count === 1 ? '' : 's'}
+                        {pl.gallery_count}<LocalizedText text={"galler"} before={" "} />{pl.gallery_count === 1 ? 'y' : 'ies'} · {pl.image_count}<LocalizedText text={"file"} before={" "} />{pl.image_count === 1 ? '' : 's'}
                         {pl.panels_used?.length > 0
                           ? ` · arrangement across ${pl.panels_used.length} panel${pl.panels_used.length === 1 ? '' : 's'}`
                           : ` · ${LAYOUTS[pl.layout_idx]?.label ?? '?'} panels · ${pl.gallery_mode}`}
@@ -494,10 +493,10 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onMouseDown={() => handleDelete(pl)}
                                 className="px-2 py-1 rounded-[6px] text-[13px] cursor-pointer"
-                                style={{ background: 'color-mix(in srgb, var(--c-pink) 25%, transparent)', color: '#F4C0D1' }}>Delete</button>
+                                style={{ background: 'color-mix(in srgb, var(--c-pink) 25%, transparent)', color: '#F4C0D1' }}><LocalizedText text={"Delete"} /></button>
                         <button onMouseDown={() => setConfirm(null)}
                                 className="px-2 py-1 rounded-[6px] text-[13px] cursor-pointer"
-                                style={{ color: 'rgba(255,255,255,0.4)' }}>Cancel</button>
+                                style={{ color: 'rgba(255,255,255,0.4)' }}><LocalizedText text={"Cancel"} /></button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -507,11 +506,10 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
                                   : 'Replace the current queue with this playlist'}
                                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-[7px] text-[13px] font-medium cursor-pointer disabled:opacity-40"
                                 style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-                          <Play size={11} /> Load
-                        </button>
+                          <Play size={11} /><LocalizedText text={"Load"} before={" "} after={"\n                        "} /></button>
                         {targetPanel === null && (
                           <button onMouseDown={() => handleLoad(pl, 'append')} disabled={busy}
-                                  title="Add this playlist to the end of the current queue"
+                                  title={t('Add this playlist to the end of the current queue')}
                                   className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                                   style={{ color: 'rgba(255,255,255,0.45)' }}>
                             <Plus size={13} />
@@ -519,20 +517,20 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
                         )}
                         {targetPanel === null && (
                           <button onMouseDown={() => handleOverwrite(pl)} disabled={!queue.length || busy}
-                                  title="Overwrite with the current queue"
+                                  title={t('Overwrite with the current queue')}
                                   className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-25"
                                   style={{ color: 'rgba(255,255,255,0.45)' }}>
                             <Save size={13} />
                           </button>
                         )}
                         <button onMouseDown={() => { setRenaming(pl.id); setRenameVal(pl.name) }}
-                                title={pl.is_autosave ? 'Rename — also keeps it from being auto-overwritten' : 'Rename'}
+                                title={t(pl.is_autosave ? 'Rename — also keeps it from being auto-overwritten' : 'Rename')}
                                 className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                                 style={{ color: 'rgba(255,255,255,0.45)' }}>
                           <Pencil size={13} />
                         </button>
                         <button onMouseDown={() => setConfirm(pl.id)}
-                                title="Delete"
+                                title={t('Delete')}
                                 className="p-1.5 rounded-[6px] cursor-pointer hover:bg-[color-mix(in_srgb,_var(--c-pink)_12%,_transparent)]"
                                 style={{ color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)' }}>
                           <Trash2 size={13} />
@@ -552,6 +550,7 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
 
 // ── Add Media Modal ───────────────────────────────────────────────────────────
 function AddMediaModal({ onClose }) {
+  const t = useT()
   const [tab, setTab]         = useState('galleries')
   const [search, setSearch]   = useState('')
   const [galleryId, setGalleryId] = useState(null)
@@ -588,24 +587,24 @@ function AddMediaModal({ onClose }) {
   const atMax = queue.length >= MAX
 
   const handleAddImage = (img) => {
-    if (atMax) { toast.error(`Max ${MAX} items reached`); return }
+    if (atMax) { toast.error(t('Max {count} items reached', { count: MAX })); return }
     const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
-    if (!ok) toast.error('Already in queue or queue full')
-    else toast.success('Added to Playlists')
+    if (!ok) toast.error(t("Already in queue or queue full"))
+    else toast.success(t("Added to Playlists"))
   }
 
   const handleAddGallery = async (e, g) => {
     e.stopPropagation()
-    if (atMax) { toast.error(`Max ${MAX} items reached`); return }
+    if (atMax) { toast.error(t('Max {count} items reached', { count: MAX })); return }
     
     setLoadingGalId(g.id)
     try {
       const res = await galleriesApi.images(g.id)
       const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
-      if (!ok) toast.error('Already in queue or queue full')
-      else toast.success('Added gallery to Playlists')
+      if (!ok) toast.error(t("Already in queue or queue full"))
+      else toast.success(t("Added gallery to Playlists"))
     } catch (err) {
-      toast.error('Failed to load gallery images')
+      toast.error(t("Failed to load gallery images"))
     } finally {
       setLoadingGalId(null)
     }
@@ -623,8 +622,7 @@ function AddMediaModal({ onClose }) {
           {galleryId ? (
             <button onMouseDown={() => { setGalleryId(null); setSearch('') }}
                     className="text-[11px] cursor-pointer text-[rgba(255,255,255,0.45)] hover:text-white flex items-center gap-1">
-              <ChevronDown size={12} className="rotate-90" /> Back
-            </button>
+              <ChevronDown size={12} className="rotate-90" /><LocalizedText text={"Back"} before={" "} after={"\n            "} /></button>
           ) : (
             <div className="flex gap-1">
               {[{ id: 'galleries', icon: Images, label: 'Galleries' },
@@ -644,10 +642,10 @@ function AddMediaModal({ onClose }) {
                style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
             <Search size={11} className="text-[rgba(255,255,255,0.3)]" />
             <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                   placeholder="Search…"
+                   placeholder={t("Search…")}
                    className="bg-transparent text-[11px] outline-none text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-full" />
           </div>
-          <span className="text-[10px] text-[rgba(255,255,255,0.35)]">{queue.length}/{MAX}</span>
+          <span className="text-[16px] text-[rgba(255,255,255,0.35)]">{queue.length}/{MAX}</span>
           <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white ml-1"><X size={15} /></button>
         </div>
         
@@ -676,7 +674,7 @@ function AddMediaModal({ onClose }) {
                       {loadingGalId === g.id ? (
                         <span className="w-3 h-3 border-2 border-[rgba(255,255,255,0.3)] border-t-white rounded-full animate-spin" />
                       ) : inQ ? (
-                        <span className="text-[10px] text-white">✓</span>
+                        <span className="text-[16px] text-white">✓</span>
                       ) : (
                         <Plus size={12} color="#fff" />
                       )}
@@ -710,7 +708,7 @@ function AddMediaModal({ onClose }) {
               })}
             </div>
           )}
-          {atMax && <div className="text-center text-[11px] py-3" style={{ color: '#F4C0D1' }}>Queue full ({MAX}/{MAX})</div>}
+          {atMax && <div className="text-center text-[11px] py-3" style={{ color: '#F4C0D1' }}><LocalizedText text={"Queue full ("} />{MAX}/{MAX})</div>}
         </div>
       </div>
     </div>
@@ -724,6 +722,7 @@ function AddMediaModal({ onClose }) {
 // onto another tile reorders playback (left → right); dragging one onto a panel
 // still pins it there.
 function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const [collapseLocked, setCollapseLocked] = useState(false)
   const [dragIdx, setDragIdx]   = useState(null)
@@ -843,7 +842,7 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
               <button onClick={(e) => { e.stopPropagation(); onRemove(item.id) }}
                       className="absolute top-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"
                      style={{ width: isExpanded ? 22 : 16, height: isExpanded ? 22 : 16, background: 'color-mix(in srgb, var(--c-pink) 90%, transparent)', borderBottomLeftRadius: '4px' }}
-                      title="Remove from queue">
+                      title={t("Remove from queue")}>
                 <X size={isExpanded ? 14 : 10} color="#fff" />
               </button>
               <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none tabular-nums"
@@ -874,7 +873,7 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
 
       <button onMouseDown={onClear} className="flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer ml-1"
               style={{ width: isExpanded ? 34 : 26, height: isExpanded ? 34 : 26, background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)', transition: 'width 180ms ease, height 180ms ease' }}
-              title="Clear all">
+              title={t("Clear all")}>
         <Trash2 size={isExpanded ? 15 : 11} color="#F4C0D1" />
       </button>
       </div>
@@ -882,8 +881,8 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
       <button type="button"
               onMouseDown={toggleExpanded}
               aria-expanded={isExpanded}
-              aria-label={isExpanded ? 'Collapse queue strip' : 'Expand queue strip'}
-              title={isExpanded ? 'Collapse queue strip' : 'Expand queue strip'}
+              aria-label={t(isExpanded ? 'Collapse queue strip' : 'Expand queue strip')}
+              title={t(isExpanded ? 'Collapse queue strip' : 'Expand queue strip')}
               className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full cursor-pointer z-20"
               style={{
                 width: 28, height: 28,
@@ -901,6 +900,7 @@ function QueueStrip({ queue, manualAssignments, onRemove, onClear, onReorder }) 
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MultiPanel() {
+  const t = useT()
   const queue            = useVaultStore(s => s.multiViewerQueue)
   const removeFromViewer = useVaultStore(s => s.removeFromMultiViewer)
   const clearViewer      = useVaultStore(s => s.clearMultiViewer)
@@ -1200,7 +1200,7 @@ export default function MultiPanel() {
     // The whole wall
     wall_next_all:    () => eachPanel(p => p.next()),
     wall_prev_all:    () => eachPanel(p => p.prev()),
-    wall_shuffle_all: () => { eachPanel(p => p.shuffle()); toast('🔀 Wall shuffled', { id: 'wall' }) },
+    wall_shuffle_all: () => { eachPanel(p => p.shuffle()); toast(t('🔀 Wall shuffled'), { id: 'wall' }) },
     wall_pause_all:   () => {
       // One state for the whole wall rather than flipping each panel into the
       // opposite of whatever it happened to be — a half-paused wall from a
@@ -1208,7 +1208,7 @@ export default function MultiPanel() {
       const p = focusedPanel()
       const next = p ? !p.isPlaying() : true
       eachPanel(api => api.setPlaying(next))
-      toast(next ? '▶ Wall playing' : '⏸ Wall paused', { id: 'wall' })
+      toast(next ? t('▶ Wall playing') : t('⏸ Wall paused'), { id: 'wall' })
     },
     wall_focus_next: () => {
       const idxs = livePanelIdxs()
@@ -1224,7 +1224,7 @@ export default function MultiPanel() {
       setDeviceSyncPanel(prev => {
         const cur = prev == null ? -1 : idxs.indexOf(prev)
         const next = idxs[(cur + 1) % idxs.length]
-        toast(`⚡ Device on panel ${next + 1}`, { id: 'wall-device' })
+        toast(t('⚡ Device on panel {number}', { number: next + 1 }), { id: 'wall-device' })
         return next
       })
     },
@@ -1299,7 +1299,7 @@ export default function MultiPanel() {
       <div className="flex items-center gap-2 px-3"
            style={{ height: 44, borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#111', flexShrink: 0 }}>
 
-        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1">Playlists</span>
+        <span className="text-[12px] font-medium text-[rgba(255,255,255,0.7)] mr-1"><LocalizedText text={"Playlists"} /></span>
 
         {/* Layout picker */}
         <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-[8px]"
@@ -1315,20 +1315,18 @@ export default function MultiPanel() {
           ))}
         </div>
 
-        <span className="text-[10px] text-[rgba(255,255,255,0.3)] tabular-nums">{queue.length}/{MAX}</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.3)] tabular-nums">{queue.length}/{MAX}</span>
 
         <button onMouseDown={() => setShowAdd(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
-          <Plus size={12} /> Add media
-        </button>
+          <Plus size={12} /><LocalizedText text={"Add media"} before={" "} after={"\n        "} /></button>
 
         <button onMouseDown={() => setShowPlaylists(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
                 style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.12)' }}
-                title="Save or load a playlist">
-          <ListMusic size={12} /> Playlists
-        </button>
+                title={t("Save or load a playlist")}>
+          <ListMusic size={12} /><LocalizedText text={"Playlists"} before={" "} after={"\n        "} /></button>
 
         {/* Options Menu */}
         <div ref={menuRef} className="relative">
@@ -1340,30 +1338,20 @@ export default function MultiPanel() {
           {showMenu && (
             <div className="absolute top-full left-0 mt-1 rounded-[10px] overflow-hidden shadow-2xl z-50 w-48 animate-menu-pop"
                  style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-              <div className="px-3 py-2 text-[10px] text-[rgba(255,255,255,0.4)] border-b border-[rgba(255,255,255,0.06)] uppercase tracking-wider">
-                Gallery Playback
-              </div>
+              <div className="px-3 py-2 text-[16px] text-[rgba(255,255,255,0.4)] border-b border-[rgba(255,255,255,0.06)] uppercase tracking-wider"><LocalizedText text={"Gallery Playback"} before={"\n                "} after={"\n              "} /></div>
               <button onMouseDown={() => { changeGalleryMode('grouped'); setShowMenu(false) }}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                       style={{ color: galleryMode === 'grouped' ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'grouped' ? 'var(--c-accent)' : 'transparent' }} />
-                Keep grouped in panel
-              </button>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'grouped' ? 'var(--c-accent)' : 'transparent' }} /><LocalizedText text={"Keep grouped in panel"} before={"\n                "} after={"\n              "} /></button>
               <button onMouseDown={() => { changeGalleryMode('shuffled'); setShowMenu(false) }}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                       style={{ color: galleryMode === 'shuffled' ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'shuffled' ? 'var(--c-accent)' : 'transparent' }} />
-                Shuffle with all media
-              </button>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: galleryMode === 'shuffled' ? 'var(--c-accent)' : 'transparent' }} /><LocalizedText text={"Shuffle with all media"} before={"\n                "} after={"\n              "} /></button>
               <button onMouseDown={() => { changeGalleryMode('per-panel'); setShowMenu(false) }}
                       className="w-full flex items-start gap-2 px-3 py-2.5 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
                       style={{ color: galleryMode === 'per-panel' ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
                 <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: galleryMode === 'per-panel' ? 'var(--c-accent)' : 'transparent' }} />
-                <span className="text-left">
-                  Per-panel playlists
-                  <span className="block text-[10px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                    Each panel plays its own
-                  </span>
+                <span className="text-left"><LocalizedText text={"Per-panel playlists"} before={"\n                  "} after={"\n                  "} /><span className="block text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5"><LocalizedText text={"Each panel plays its own"} before={"\n                    "} after={"\n                  "} /></span>
                 </span>
               </button>
             </div>
@@ -1379,9 +1367,7 @@ export default function MultiPanel() {
               style={showDevicePanel
                 ? { background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
                 : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-              <Sliders size={12} />
-              Device
-            </button>
+              <Sliders size={12} /><LocalizedText text={"Device"} before={"\n              "} after={"\n            "} /></button>
             {showDevicePanel && (
               <div className="absolute top-full right-0 mt-1.5 z-[200]" style={{ width: 260 }}>
                 <DeviceControls />
@@ -1448,7 +1434,7 @@ export default function MultiPanel() {
                 : 'Session logged ❤️')
             } else {
               startSession()
-              toast.success('Session started ❤️')
+              toast.success(t("Session started ❤️"))
             }
           }}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
@@ -1460,7 +1446,7 @@ export default function MultiPanel() {
                   className="cursor-pointer p-1.5 rounded-[6px] transition-colors"
                   style={{ color: isFullscreen ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
                            background: isFullscreen ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'transparent' }}
-                  title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}>
+                  title={t(isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen')}>
             {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
           </button>
         </div>
@@ -1474,28 +1460,23 @@ export default function MultiPanel() {
       {/* Empty state — skipped in per-panel mode, where empty panels are the
           entry point for loading a playlist into each one. */}
       {queue.length === 0 && galleryMode !== 'per-panel' ? (
-        <div className="flex-1 flex items-center justify-center flex-col gap-4">
+        <div className="vault-theme-playlists-empty flex-1 flex items-center justify-center flex-col gap-4">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
                style={{ background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
             <LayoutGrid size={28} style={{ color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
           </div>
           <div className="text-center">
-            <div className="text-[15px] font-medium text-[rgba(255,255,255,0.6)] mb-1">No media queued</div>
-            <div className="text-[12px] text-[rgba(255,255,255,0.25)] mb-4">
-              Add media here, or use the <span style={{ color: 'var(--c-accent-text)' }}>⊞ Send to Playlists</span> button<br/>
-              while browsing Images and Videos.
-            </div>
+            <div className="text-[15px] font-medium text-[rgba(255,255,255,0.6)] mb-1"><LocalizedText text={"No media queued"} /></div>
+            <div className="text-[12px] text-[rgba(255,255,255,0.25)] mb-4"><LocalizedText text={"Add media here, or use the"} before={"\n              "} after={" "} /><span style={{ color: 'var(--c-accent-text)' }}><LocalizedText text={"⊞ Send to Playlists"} /></span><LocalizedText text={"button"} before={" "} /><br/><LocalizedText text={"while browsing Images and Videos."} before={"\n              "} after={"\n            "} /></div>
             <div className="flex items-center gap-2 justify-center">
               <button onMouseDown={() => setShowAdd(true)}
                       className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] cursor-pointer"
                       style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-                <Plus size={14} /> Add media
-              </button>
+                <Plus size={14} /><LocalizedText text={"Add media"} before={" "} after={"\n              "} /></button>
               <button onMouseDown={() => setShowPlaylists(true)}
                       className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] cursor-pointer"
                       style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.14)' }}>
-                <ListMusic size={14} /> Load a playlist
-              </button>
+                <ListMusic size={14} /><LocalizedText text={"Load a playlist"} before={" "} after={"\n              "} /></button>
             </div>
           </div>
         </div>

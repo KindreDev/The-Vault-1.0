@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -11,9 +12,12 @@ import { ratingHandlers } from '../lib/viewerActions'
 import toast from 'react-hot-toast'
 import { Heart } from 'lucide-react'
 import { rememberVideoElementVolume, restoreVideoVolume } from '../lib/videoVolume'
+import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ images, startIdx, onClose }) {
+  const t = useT()
+  const loopVideo = useVideoLoop()
   const [idx, setIdx] = useState(startIdx)
   const img = images[idx]
   const registerVisible   = useVaultStore(s => s.registerVisible)
@@ -74,7 +78,7 @@ function Lightbox({ images, startIdx, onClose }) {
     },
     video_restart:     withVideo(v => { v.currentTime = 0; v.play().catch(() => {}) }),
     video_mute:        withVideo(v => { v.muted = !v.muted }),
-    video_loop:        withVideo(v => { v.loop = !v.loop }),
+    video_loop:        withVideo(() => saveVideoLoop(!getSavedVideoLoop())),
     video_volume_up:   withVideo(v => { v.volume = Math.min(1, v.volume + 0.05); v.muted = false }),
     video_volume_down: withVideo(v => { v.volume = Math.max(0, v.volume - 0.05) }),
     video_rate_up:     withVideo(v => { v.playbackRate = Math.min(4, v.playbackRate + 0.25) }),
@@ -117,7 +121,7 @@ function Lightbox({ images, startIdx, onClose }) {
       <div className="flex-1 flex items-center justify-center relative min-h-0"
            onClick={e => e.stopPropagation()}>
         {img.is_video
-          ? <video ref={videoRef} src={`/api/images/${img.id}/file`} controls autoPlay
+          ? <video ref={videoRef} src={`/api/images/${img.id}/file`} controls autoPlay loop={loopVideo}
                    onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
                    onVolumeChange={rememberVideoElementVolume}
                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
@@ -147,6 +151,7 @@ function Lightbox({ images, startIdx, onClose }) {
 
 // ── Image card ────────────────────────────────────────────────────────────────
 function ImageCard({ img, onClick }) {
+  const t = useT()
   const [failed, setFailed] = useState(false)
   const thumbUrl = img.thumb_path
     ? `/thumbs/${img.thumb_path.replace(/\\/g, '/').split('/thumbs/').pop()}`
@@ -168,10 +173,8 @@ function ImageCard({ img, onClick }) {
           </div>
       }
       {img.is_video && (
-        <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium"
-             style={{ background: 'rgba(0,0,0,0.7)', color: 'rgba(255,255,255,0.7)' }}>
-          VID
-        </div>
+        <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[16px] font-medium"
+             style={{ background: 'rgba(0,0,0,0.7)', color: 'rgba(255,255,255,0.7)' }}><LocalizedText text={"VID"} before=" " after=" " /></div>
       )}
     </div>
   )
@@ -193,15 +196,15 @@ export default function PlaylistView() {
   const deleteMut = useMutation({
     mutationFn: () => playlistsApi.delete(id),
     onSuccess: () => {
-      toast.success('Playlist deleted')
+      toast.success(t('Playlist deleted'))
       qc.invalidateQueries({ queryKey: ['playlists'] })
       navigate('/dashboard')
     },
-    onError: () => toast.error('Failed to delete playlist'),
+    onError: () => toast.error(t('Failed to delete playlist')),
   })
 
   const handleDelete = () => {
-    if (window.confirm(`Delete "${data?.name}"? This cannot be undone.`)) {
+    if (window.confirm(t('Delete "{name}"? This cannot be undone.', { name: data?.name }))) {
       deleteMut.mutate()
     }
   }
@@ -209,7 +212,7 @@ export default function PlaylistView() {
   if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center" style={{ minHeight: '60vh' }}>
-        <div className="text-[rgba(255,255,255,0.3)]">Loading playlist…</div>
+        <div className="text-[rgba(255,255,255,0.3)]"><LocalizedText text={"Loading playlist…"} /></div>
       </div>
     )
   }
@@ -217,10 +220,8 @@ export default function PlaylistView() {
   if (isError || !data) {
     return (
       <div className="p-6">
-        <div className="text-[rgba(255,255,255,0.4)]">Playlist not found.</div>
-        <button onClick={() => navigate('/dashboard')} className="mt-3 text-[var(--c-accent)] cursor-pointer">
-          ← Back to dashboard
-        </button>
+        <div className="text-[rgba(255,255,255,0.4)]"><LocalizedText text={"Playlist not found."} /></div>
+        <button onClick={() => navigate('/dashboard')} className="mt-3 text-[var(--c-accent)] cursor-pointer"><LocalizedText text={"← Back to dashboard"} before=" " after=" " /></button>
       </div>
     )
   }
@@ -242,8 +243,7 @@ export default function PlaylistView() {
           )}
         </div>
         <div className="text-[13px] text-[rgba(255,255,255,0.35)] flex items-center gap-1.5 flex-shrink-0">
-          <Images size={13} /> {images.length} items
-        </div>
+          <Images size={13} /> {images.length}<LocalizedText text={"items"} before=" " after=" " /></div>
         {/* Thumb size slider */}
         <div className="flex items-center gap-2">
           <input type="range" min={100} max={280} step={10} value={thumbSize}
@@ -253,16 +253,13 @@ export default function PlaylistView() {
         <button onMouseDown={handleDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
-          <Trash2 size={12} /> Delete
-        </button>
+          <Trash2 size={12} /><LocalizedText text={"Delete"} before=" " after=" " /></button>
       </div>
 
       {/* Empty state */}
       {images.length === 0 && (
         <div className="rounded-[12px] p-10 text-center text-[rgba(255,255,255,0.25)]"
-             style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-          No images in this playlist
-        </div>
+             style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}><LocalizedText text={"No images in this playlist"} before=" " after=" " /></div>
       )}
 
       {/* Grid */}

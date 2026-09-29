@@ -66,7 +66,7 @@ async function idbDelete(key) {
 export const PALETTES = [
   {
     id: 'vault',    label: 'Vault',
-    accent: 'var(--c-accent)', pink: '#D4537E', amber: '#BA7517', green: '#1D9E75',
+    accent: '#7F77DD', pink: '#D4537E', amber: '#BA7517', green: '#1D9E75',
     bg: '#0e0e0e', surface: '#141414', card: '#1e1e1e',
   },
   {
@@ -170,6 +170,12 @@ export const FONTS = [
     googleFont: 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap' },
 ]
 
+export const themePackFontOption = (packId, label) => ({
+  id: `pack:${packId}`,
+  label: label || 'Theme font',
+  family: `"VaultPack-${packId}", system-ui, sans-serif`,
+})
+
 function applyFont(f) {
   if (f.googleFont && !document.getElementById(`gf-${f.id}`)) {
     const link = document.createElement('link')
@@ -202,10 +208,19 @@ function applyAnimSpeed(speed) {
 }
 
 const savedPaletteId = localStorage.getItem('vault_palette') || 'vault'
-const initialPalette = PALETTES.find(p => p.id === savedPaletteId) || PALETTES[0]
+function savedPackPalette() {
+  if (!savedPaletteId.startsWith('pack:')) return null
+  try {
+    const parsed = JSON.parse(localStorage.getItem('vault_custom_palette') || 'null')
+    return parsed?.id === savedPaletteId ? parsed : null
+  } catch { return null }
+}
+const initialPalette = PALETTES.find(p => p.id === savedPaletteId) || savedPackPalette() || PALETTES[0]
 
 const savedFontId      = localStorage.getItem('vault_font') || 'system'
-const initialFont      = FONTS.find(f => f.id === savedFontId) || FONTS[0]
+const initialFont      = FONTS.find(f => f.id === savedFontId) ||
+  (savedFontId === initialPalette.id && savedFontId.startsWith('pack:')
+    ? themePackFontOption(savedFontId.slice(5), 'Theme font') : FONTS[0])
 const savedAnimSpeed   = localStorage.getItem('vault_anim_speed') || 'full'
 const savedVaultName   = localStorage.getItem('vault_name') || 'The Vault'
 const savedConfetti    = localStorage.getItem('vault_confetti') !== 'false'
@@ -519,7 +534,9 @@ export const useVaultStore = create((set, get) => ({
   // Color palette
   palette: initialPalette,
   setPalette: (p) => {
+    if (get().font.id.startsWith('pack:') && get().font.id !== p.id) get().setFont(FONTS[0])
     localStorage.setItem('vault_palette', p.id)
+    if (p.id.startsWith('pack:')) localStorage.setItem('vault_custom_palette', JSON.stringify(p))
     applyPalette(p)
     // Re-entering Glass resets the body to its fallback colour first. Reload
     // the persisted image so switching themes does not make the selection

@@ -464,9 +464,10 @@ class TaggerStatus(BaseModel):
     items_per_second: Optional[float] = None
 
 class TaggerStartRequest(BaseModel):
-    scope: str = "library"               # "library" | "folder" | "creator"
+    scope: str = "library"               # "library" | "folder" | "creator" | "image"
     folder_path: Optional[str] = None
     creator_id: Optional[int] = None
+    image_id: Optional[int] = None
     threshold: float = 0.35
     retag: bool = False                  # re-tag already-tagged images
     model_override: Optional[str] = None # "wd14" | "joytag" | None (auto)

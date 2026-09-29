@@ -52,7 +52,6 @@ IMAGE_SNOOZE_DAYS           = 14
 # cosmetic ones (no cover) by roughly 5x — that ordering is the whole product.
 W_NO_CREATOR    = 40
 W_JUNK_NAME     = 30
-W_NO_GAL_TAGS   = 25
 W_NO_IMG_TAGS   = 15
 W_NO_RATING     = 12
 W_NEVER_VIEWED  = 12
@@ -96,21 +95,24 @@ def _sql_debt_score():
         exists(select(gallery_creators.c.gallery_id)
                .where(gallery_creators.c.gallery_id == Gallery.id)),
     )
-    has_gal_tags = exists(select(gallery_tags.c.gallery_id)
-                          .where(gallery_tags.c.gallery_id == Gallery.id))
     has_img_tags = exists(
         select(image_tags.c.image_id)
         .select_from(image_tags.join(Image, Image.id == image_tags.c.image_id))
         .where(Image.gallery_id == Gallery.id)
     )
+    has_auto_cover = exists(
+        select(Image.id).where(
+            Image.gallery_id == Gallery.id,
+            Image.thumb_path.isnot(None),
+        )
+    )
 
     return (
         case((has_creator, 0), else_=W_NO_CREATOR)
-        + case((has_gal_tags, 0), else_=W_NO_GAL_TAGS)
         + case((has_img_tags, 0), else_=W_NO_IMG_TAGS)
         + case((func.coalesce(Gallery.rating, 0) > 0, 0), else_=W_NO_RATING)
         + case((func.coalesce(Gallery.view_count, 0) > 0, 0), else_=W_NEVER_VIEWED)
-        + case((Gallery.cover_path.isnot(None), 0), else_=W_NO_COVER)
+        + case((or_(Gallery.cover_path.isnot(None), Gallery.cover_thumb.isnot(None), has_auto_cover), 0), else_=W_NO_COVER)
     )
 
 
@@ -145,6 +147,27 @@ def _python_score(g: Gallery, sql_score: float) -> float:
     if _is_junk_name(folder_name) or _is_junk_name(g.name):
         score += W_JUNK_NAME
     return score
+
+
+def _cover_image_id(db: Session, g: Gallery):
+    """Find the effective manual or automatic cover image, if one exists."""
+    cover_thumb_name = os.path.basename(str(g.cover_thumb or ""))
+    fallback_id = None
+    for image_id, file_path, thumb_path in db.query(
+        Image.id, Image.file_path, Image.thumb_path,
+    ).filter(
+        Image.gallery_id == g.id,
+    ).order_by(Image.sort_order, Image.id).all():
+        if g.cover_path and file_path == g.cover_path and os.path.isfile(file_path):
+            return image_id
+        if thumb_path and os.path.isfile(thumb_path):
+            if cover_thumb_name and os.path.basename(thumb_path) == cover_thumb_name:
+                return image_id
+            # Old/partially migrated rows may have a usable automatic cover
+            # without either cover field populated. The first valid thumbnail
+            # is the same fallback the scanner uses.
+            fallback_id = fallback_id or image_id
+    return fallback_id
 
 
 # ── Queue ─────────────────────────────────────────────────────────────────────
@@ -360,21 +383,21 @@ def gallery_payload(db: Session, g: Gallery, lane: str = None, all_images: bool 
     folder_name = os.path.basename((g.folder_path or "").rstrip("/\\"))
     beloved_ids = set(beloved_creator_ids(db))
     beloved = [c for c in creators if c.id in beloved_ids]
+    cover_image_id = _cover_image_id(db, g)
+    has_cover = bool((g.cover_path and os.path.isfile(g.cover_path)) or cover_image_id is not None)
 
     # The reasons list is what makes the run feel intelligent rather than random:
     # the UI shows exactly why this gallery was pulled up.
     reasons = []
     if not creators:
         reasons.append("no creator assigned")
-    if not (g.tags or []):
-        reasons.append("no gallery tags")
     if _is_junk_name(folder_name):
         reasons.append("folder name needs work")
     if not (g.rating or 0):
         reasons.append("unrated")
     if not (g.view_count or 0):
         reasons.append("never opened")
-    if not g.cover_path:
+    if not has_cover:
         reasons.append("no cover set")
 
     return {
@@ -389,6 +412,7 @@ def gallery_payload(db: Session, g: Gallery, lane: str = None, all_images: bool 
         "is_favorite": bool(g.is_favorite),
         "cover_thumb": g.cover_thumb,
         "cover_path": g.cover_path,
+        "cover_image_id": cover_image_id,
         "image_count": g.image_count or total_images,
         "files_total": total_images,
         "files_shown": len(images),
@@ -524,15 +548,19 @@ def image_payload(db: Session, img: Image, score: float = None):
     if not creators:
         reasons.append("no creator assigned")
     if not (img.tags or []):
-        reasons.append("no file tags")
+        reasons.append("no tags")
     if not (img.rating or 0):
         reasons.append("unrated")
     if not (img.view_count or 0):
         reasons.append("never opened")
+    if not reasons:
+        reasons.append("due for a curation refresh")
 
     return {
         "id": img.id,
         "filename": img.filename,
+        "file_path": img.file_path,
+        "directory_path": os.path.dirname(img.file_path) if img.file_path else None,
         "gallery_id": img.gallery_id,
         "gallery_name": img.gallery.name if img.gallery else None,
         "is_video": bool(img.is_video),
@@ -597,11 +625,7 @@ def debt_summary(db: Session):
 
 # ── Applying a curation ───────────────────────────────────────────────────────
 def _rename_folder(db: Session, g: Gallery, new_name: str):
-    """Rename the folder on disk and re-point every image path at it.
-
-    The display name only follows the folder when it was already mirroring it —
-    a deliberately-set custom name is never clobbered by a rename.
-    """
+    """Rename the folder and keep the Vault gallery name identical to it."""
     new_name = (new_name or "").strip()
     if not new_name or any(c in new_name for c in ("/", "\\", "\x00")) or new_name in (".", ".."):
         raise ValueError("Invalid folder name")
@@ -613,6 +637,7 @@ def _rename_folder(db: Session, g: Gallery, new_name: str):
     parent = os.path.dirname(old_path)
     new_path = os.path.join(parent, new_name)
     if os.path.normpath(new_path) == os.path.normpath(old_path):
+        g.name = new_name
         return False
     if os.path.exists(new_path):
         raise ValueError(f"A folder named '{new_name}' already exists alongside it")
@@ -625,8 +650,7 @@ def _rename_folder(db: Session, g: Gallery, new_name: str):
         if img.funscript_path and (img.funscript_path == old_path or img.funscript_path.startswith(old_path + os.sep) or img.funscript_path.startswith(old_path + '/')):
             img.funscript_path = new_path + img.funscript_path[len(old_path):]
 
-    if g.name == os.path.basename(old_path):
-        g.name = new_name
+    g.name = new_name
     g.folder_path = new_path
     return True
 
@@ -688,15 +712,12 @@ def save(db: Session, gallery_id: int, payload: dict, mark_curated: bool = True)
 
     folder_name = payload.get("folder_name")
     if folder_name is not None:
-        current = os.path.basename((g.folder_path or "").rstrip("/\\"))
-        if folder_name.strip() and folder_name.strip() != current:
+        if folder_name.strip():
+            old_display_name = g.name
             if _rename_folder(db, g, folder_name):
                 fixes.append("renamed")
-
-    if payload.get("name") is not None and payload["name"].strip() and payload["name"] != g.name:
-        g.name = payload["name"].strip()
-        if "renamed" not in fixes:
-            fixes.append("renamed")
+            elif g.name != old_display_name:
+                fixes.append("renamed")
 
     if "creator_ids" in payload and _apply_creators(db, g, payload["creator_ids"]):
         fixes.append("creators")

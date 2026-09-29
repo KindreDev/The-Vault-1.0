@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { AnimatePresence, motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useVaultStore } from '../store/vault'
@@ -53,6 +54,7 @@ function ScanLine() {
 
 // ── Main overlay ──────────────────────────────────────────────────────────────
 export default function LevelUpOverlay() {
+  const t = useT()
   const levelUpData       = useVaultStore(s => s.levelUpData)
   const dismissLevelUp    = useVaultStore(s => s.dismissLevelUp)
   const avatarBust        = useVaultStore(s => s.avatarBust)
@@ -124,9 +126,7 @@ export default function LevelUpOverlay() {
               transition={{ duration: 0.55, delay: 0.25 }}
               className="text-xs font-black tracking-[0.35em] uppercase"
               style={{ color: 'color-mix(in srgb, var(--c-accent) 80%, transparent)' }}
-            >
-              ✦ Level Up ✦
-            </motion.div>
+            ><LocalizedText text={"✦ Level Up ✦"} before=" " after=" " /></motion.div>
 
             {/* Avatar + particle burst */}
             <div className="relative flex items-center justify-center" style={{ width: 140, height: 140 }}>
@@ -153,7 +153,7 @@ export default function LevelUpOverlay() {
               >
                 <img
                   src={gamiApi.avatarUrl(avatarBust)}
-                  alt="avatar"
+                  alt={t('Profile avatar')}
                   className="w-full h-full object-cover"
                   onError={e => {
                     e.target.style.display = 'none'
@@ -208,9 +208,7 @@ export default function LevelUpOverlay() {
               animate={{ opacity: 0.45 }}
               transition={{ delay: 1.2 }}
               style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}
-            >
-              Click anywhere to continue
-            </motion.div>
+            ><LocalizedText text={"Click anywhere to continue"} before=" " after=" " /></motion.div>
           </motion.div>
         </motion.div>
       )}

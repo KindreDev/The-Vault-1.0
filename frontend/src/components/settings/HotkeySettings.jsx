@@ -119,10 +119,10 @@ export default function HotkeySettings() {
         {/* How far a seek key moves. */}
         <div className="flex flex-wrap items-center gap-5 mt-4 pt-3.5"
              style={{ borderTop: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <StepField label={t('Seek step')}
+          <StepField label={t('Seek step')} unit={t('s')}
                      value={hotkeySettings.seekStep}
                      onChange={v => setHotkeySetting('seekStep', v)} />
-          <StepField label={t('Long seek step')}
+          <StepField label={t('Long seek step')} unit={t('s')}
                      value={hotkeySettings.seekStepBig}
                      onChange={v => setHotkeySetting('seekStepBig', v)} />
         </div>
@@ -154,7 +154,7 @@ export default function HotkeySettings() {
                 onClick={() => setOpenGroups(o => ({ ...o, [group.name]: true }))}
                 className="px-4 py-3 rounded-[8px] text-[16px] text-white/40 cursor-pointer transition-colors hover:bg-white/5"
                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-                {summarise(actions, hotkeys)}
+                {summarise(actions, hotkeys, t)}
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -185,7 +185,7 @@ export default function HotkeySettings() {
                             border: `1px solid ${isCapturing ? 'var(--c-accent)' : conflicted ? 'color-mix(in srgb, var(--c-amber) 50%, transparent)' : 'rgba(255,255,255,0.1)'}`,
                             color: isCapturing ? 'var(--c-accent-text)' : binding ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
                           }}>
-                          {isCapturing ? t('Press a key…') : bindingToDisplay(binding)}
+                          {isCapturing ? t('Press a key…') : binding ? bindingToDisplay(binding) : t('Unbound')}
                         </button>
                         {binding && !isCapturing && (
                           <button
@@ -218,16 +218,16 @@ export default function HotkeySettings() {
 }
 
 // Folded-group summary: "1 … 0 → ★1–★10 · ` clears" without listing ten rows.
-function summarise(actions, hotkeys) {
+function summarise(actions, hotkeys, t) {
   const shown = actions
     .map(a => hotkeys[a.id])
     .filter(Boolean)
     .map(bindingToDisplay)
-  if (!shown.length) return 'All unbound — click to set them'
-  return `${shown.join('  ')}   ·   click to change`
+  if (!shown.length) return t('All unbound — click to set them')
+  return `${shown.join('  ')}   ·   ${t('click to change')}`
 }
 
-function StepField({ label, value, onChange }) {
+function StepField({ label, value, onChange, unit }) {
   return (
     <label className="flex items-center gap-2.5">
       <span className="text-[16px] text-white/50">{label}</span>
@@ -240,7 +240,7 @@ function StepField({ label, value, onChange }) {
         className="w-[70px] px-2.5 py-1.5 rounded-[7px] text-[16px] text-center"
         style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }}
       />
-      <span className="text-[16px] text-white/30">s</span>
+      <span className="text-[16px] text-white/30">{unit}</span>
     </label>
   )
 }

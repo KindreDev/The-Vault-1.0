@@ -1,4 +1,4 @@
-import { Component, useCallback, useMemo, useRef } from 'react'
+import { Component, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 
 import CharacterCard from './CharacterCard'
 import CollabCard from './CollabCard'
@@ -52,17 +52,20 @@ class CardFaceBoundary extends Component {
  * Routes a persisted card payload into its approved TCG V2 face.
  * It does not infer missing metadata, generate signatures, or alter recipes.
  */
-export default function TCGV2CardFace({
+const TCGV2CardFace = forwardRef(function TCGV2CardFace({
   card,
   width = 360,
   showEffects = false,
   interactive = showEffects,
+  videoPresentation = 'preview',
+  disablePointerTilt = false,
+  idleEffects = false,
   signatureUrl = null,
   className = '',
   onClick,
   fallback = null,
   onRenderError,
-}) {
+}, ref) {
   const shellRef = useRef(null)
   const shellStyle = useMemo(() => ({
     width: typeof width === 'number' ? `${width}px` : width,
@@ -73,8 +76,10 @@ export default function TCGV2CardFace({
   const setRestingLight = useCallback(() => {
     const element = shellRef.current
     if (!element) return
-    element.style.setProperty('--tcg-tilt-x', '0deg')
-    element.style.setProperty('--tcg-tilt-y', '0deg')
+    if (!disablePointerTilt) {
+      element.style.setProperty('--tcg-tilt-x', '0deg')
+      element.style.setProperty('--tcg-tilt-y', '0deg')
+    }
     element.style.setProperty('--tcg-pointer-x', '50%')
     element.style.setProperty('--tcg-pointer-y', '50%')
     element.style.setProperty('--tcg-pointer-from-top', '.5')
@@ -95,7 +100,7 @@ export default function TCGV2CardFace({
     element.style.setProperty('--tcg-frame-x', '50%')
     element.style.setProperty('--tcg-frame-y', '50%')
     element.style.setProperty('--tcg-pointer-distance', '0')
-    element.style.setProperty('--tcg-card-opacity', '0')
+    element.style.setProperty('--tcg-card-opacity', idleEffects ? '1' : '0')
     element.style.setProperty('--tcg-frame-hue', '0deg')
     element.style.setProperty('--tcg-sr-brightness', '.36')
     element.style.setProperty('--tcg-sr-opacity', '.24')
@@ -104,16 +109,21 @@ export default function TCGV2CardFace({
     element.style.setProperty('--tcg-effect-opacity', '.55')
     element.style.setProperty('--tcg-gallery-left-opacity', '0')
     element.style.setProperty('--tcg-gallery-right-opacity', '0')
-  }, [])
-  const onPointerMove = useCallback(event => {
+  }, [disablePointerTilt, idleEffects])
+  useEffect(() => {
+    if (idleEffects) setRestingLight()
+  }, [idleEffects, setRestingLight])
+  const updatePointerVfx = useCallback((clientX, clientY, normalizedPosition = null) => {
     const element = shellRef.current
     if (!element) return
     const rect = element.getBoundingClientRect()
     if (!rect.width || !rect.height) return
-    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
-    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
-    element.style.setProperty('--tcg-tilt-x', `${((y - 0.5) * 28.57).toFixed(2)}deg`)
-    element.style.setProperty('--tcg-tilt-y', `${((0.5 - x) * 28.57).toFixed(2)}deg`)
+    const x = Math.min(1, Math.max(0, normalizedPosition?.x ?? (clientX - rect.left) / rect.width))
+    const y = Math.min(1, Math.max(0, normalizedPosition?.y ?? (clientY - rect.top) / rect.height))
+    if (!disablePointerTilt) {
+      element.style.setProperty('--tcg-tilt-x', `${((y - 0.5) * 28.57).toFixed(2)}deg`)
+      element.style.setProperty('--tcg-tilt-y', `${((0.5 - x) * 28.57).toFixed(2)}deg`)
+    }
     element.style.setProperty('--tcg-pointer-x', `${(x * 100).toFixed(2)}%`)
     element.style.setProperty('--tcg-pointer-y', `${(y * 100).toFixed(2)}%`)
     element.style.setProperty('--tcg-pointer-from-top', y.toFixed(3))
@@ -144,7 +154,14 @@ export default function TCGV2CardFace({
     element.style.setProperty('--tcg-effect-opacity', `${(0.45 + distance * 0.38).toFixed(3)}`)
     element.style.setProperty('--tcg-gallery-left-opacity', `${Math.max(0, (0.42 - x) / 0.42).toFixed(3)}`)
     element.style.setProperty('--tcg-gallery-right-opacity', `${Math.max(0, (x - 0.58) / 0.42).toFixed(3)}`)
-  }, [])
+  }, [disablePointerTilt])
+  const onPointerMove = useCallback(event => {
+    updatePointerVfx(event.clientX, event.clientY)
+  }, [updatePointerVfx])
+  useImperativeHandle(ref, () => ({
+    updatePointerVfx,
+    resetPointerVfx: setRestingLight,
+  }), [setRestingLight, updatePointerVfx])
   const face = resolveTCGV2CardFace(card)
   if (!face) return fallback
 
@@ -157,7 +174,15 @@ export default function TCGV2CardFace({
   const sceneVisualMode = face.type === 'scene'
     ? String(face.recipe?.visualMode || face.visualMode || card?.mask_visual_mode || '').toLowerCase()
     : ''
-  const isLayeredFace = sceneVisualMode === 'layered' && Boolean(face.packedMaskUrl)
+  // SceneCard deliberately renders Common without its layered subject mask.
+  // Match that decision here so the ordinary card glare is mounted as well.
+  const isLayeredFace = sceneVisualMode === 'layered'
+    && face.recipe?.rarity !== 'C'
+    && Boolean(face.packedMaskUrl)
+  // Commons keep the simple physical light reflection on hover even when
+  // rarity foil effects are turned off. Their glare is the only VFX this
+  // pointer tracking can affect while the effects preference is disabled.
+  const tracksCommonLight = face.recipe?.rarity === 'C'
   const resetKey = `${card?.id ?? 'card'}:${face.type}:${face.recipe?.templateId ?? ''}`
 
   return (
@@ -167,14 +192,18 @@ export default function TCGV2CardFace({
          data-mask-override={card?.presentation_override?.mask ? 'true' : 'false'}
          data-mask-mode={isLayeredFace ? 'layered' : 'flat'}
          data-effects={showEffects ? 'on' : 'off'}
-         onPointerMove={interactive ? onPointerMove : undefined}
-         onPointerLeave={interactive ? setRestingLight : undefined}>
+         onPointerMove={interactive || tracksCommonLight ? onPointerMove : undefined}
+         onPointerLeave={interactive || tracksCommonLight ? setRestingLight : undefined}>
       <div className="tcg-v2-card-stage">
         <CardFaceBoundary fallback={fallback} onRenderError={onRenderError} resetKey={resetKey}>
           <SignatureOverrideContext.Provider value={card?.presentation_override || null}>
             <Renderer
               recipe={face.recipe}
               artUrl={face.artUrl}
+              mediaType={face.mediaType}
+              posterUrl={face.posterUrl}
+              previewUrl={face.previewUrl}
+              videoPresentation={videoPresentation}
               stackArtUrls={face.stackArtUrls}
               packedMaskUrl={face.packedMaskUrl}
               signatureUrl={signatureUrl || face.signatureUrl}
@@ -195,4 +224,6 @@ export default function TCGV2CardFace({
       </div>
     </div>
   )
-}
+})
+
+export default TCGV2CardFace

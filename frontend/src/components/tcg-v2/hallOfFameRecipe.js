@@ -22,6 +22,11 @@ function positiveId(value, field) {
   return result
 }
 
+function optionalPositiveId(value, field) {
+  if (value == null || value === '') return null
+  return positiveId(value, field)
+}
+
 function freezeDeep(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
   Object.values(value).forEach(freezeDeep)
@@ -33,13 +38,16 @@ export function createHallOfFameRecipe(input) {
   if (!HOF_RARITIES.includes(rarity)) throw new Error(`Unsupported Hall of Fame rarity: ${rarity}`)
   const snapshot = input.snapshot || {}
   const source = input.source || {}
+  const sourceKind = ['image', 'avatar', 'placeholder'].includes(source.kind) ? source.kind : 'image'
   const recipe = {
     schema: 'vault.hall-of-fame-card-recipe', version: 2,
     cardType: 'hall-of-fame', templateId: 'hall-of-fame-honor-materials-v2', rarity,
     snapshot: {
-      creatorId: positiveId(snapshot.creatorId, 'creator ID'),
+      creatorId: optionalPositiveId(snapshot.creatorId, 'creator ID'),
       creatorName: required(snapshot.creatorName, 'creator name'),
       creatorTypeLabel: required(snapshot.creatorTypeLabel, 'creator type'),
+      awardCategory: ['creator', 'media', 'gallery', 'legacy'].includes(snapshot.awardCategory)
+        ? snapshot.awardCategory : 'legacy',
       galleryName: String(snapshot.galleryName || '').trim() || null,
       boardLabel: required(snapshot.boardLabel, 'board label'),
       periodType: periodType(snapshot.periodType, snapshot.boardLabel),
@@ -48,7 +56,12 @@ export function createHallOfFameRecipe(input) {
       mintedAt: required(snapshot.mintedAt, 'mint timestamp'),
     },
     source: {
-      kind: 'image', imageId: positiveId(source.imageId, 'source image ID'),
+      kind: sourceKind,
+      imageId: sourceKind === 'image' ? positiveId(source.imageId, 'source image ID') : null,
+      creatorId: sourceKind === 'avatar' || sourceKind === 'placeholder'
+        ? optionalPositiveId(source.creatorId, 'source creator ID') : null,
+      historicalImageId: source.historicalImageId == null
+        ? null : positiveId(source.historicalImageId, 'historical image ID'),
       width: Number(source.width), height: Number(source.height),
       focalX: Math.min(1, Math.max(0, Number(source.focalX ?? 0.5))),
       focalY: Math.min(1, Math.max(0, Number(source.focalY ?? 0.2))),
@@ -58,9 +71,14 @@ export function createHallOfFameRecipe(input) {
       'frame', 'ornaments', 'rarity', 'text', 'signature',
     ]),
   }
-  if (!Number.isFinite(recipe.source.width) || recipe.source.width <= 0 ||
+  const validSource = recipe.source.kind === 'image'
+    ? Boolean(recipe.source.imageId)
+    : Boolean(
+      recipe.source.creatorId && recipe.source.creatorId === recipe.snapshot.creatorId
+    ) || (recipe.source.kind === 'placeholder' && recipe.snapshot.awardCategory !== 'creator')
+  if (!validSource || !Number.isFinite(recipe.source.width) || recipe.source.width <= 0 ||
       !Number.isFinite(recipe.source.height) || recipe.source.height <= 0) {
-    throw new Error('Hall of Fame recipe requires real source dimensions')
+    throw new Error('Hall of Fame recipe requires a valid image, avatar, or placeholder source')
   }
   return freezeDeep(recipe)
 }

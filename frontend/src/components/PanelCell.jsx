@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer, Zap } from 'lucide-react'
 import InlineVideoPlayer from './InlineVideoPlayer'
 import { imagesApi } from '../lib/api'
@@ -12,6 +13,7 @@ const PanelCell = forwardRef(function PanelCell({
   items, onRemoveItem, panelIndex, isFullscreen = false,
   deviceConnected = false, deviceSynced = false, onToggleDeviceSync,
 }, ref) {
+  const t = useT()
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
   const setFocusedSurface = useVaultStore(s => s.setFocusedSurface)
@@ -168,8 +170,8 @@ const PanelCell = forwardRef(function PanelCell({
       <div className="flex items-center justify-center h-full"
            style={{ background: '#0a0a0a', border: '0.5px solid rgba(255,255,255,0.06)' }}>
         <div className="text-center">
-          <div className="text-[rgba(255,255,255,0.15)] text-[11px] mb-1">Panel {panelIndex + 1}</div>
-          <div className="text-[rgba(255,255,255,0.08)] text-[10px]">No media assigned</div>
+          <div className="text-[rgba(255,255,255,0.15)] text-[11px] mb-1">{t('Panel {index}', { index: panelIndex + 1 })}</div>
+          <div className="text-[rgba(255,255,255,0.08)] text-[16px]"><LocalizedText text={"No media assigned"} /></div>
         </div>
       </div>
     )
@@ -349,8 +351,7 @@ const PanelCell = forwardRef(function PanelCell({
                 <button onMouseDown={(e) => { e.stopPropagation(); setShowSpeed(s => !s) }}
                         className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-[13px] cursor-pointer"
                         style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
-                  <Timer size={14} />{speed}s
-                </button>
+                  <Timer size={14} />{speed}<LocalizedText text={"s"} after=" " /></button>
                 {showSpeed && (
                   <div className="absolute bottom-full mb-1 left-0 rounded-[7px] overflow-hidden shadow-xl z-30"
                        style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)', minWidth: 52 }}>
@@ -359,8 +360,7 @@ const PanelCell = forwardRef(function PanelCell({
                               onMouseDown={(e) => { e.stopPropagation(); setSpeed(s); setShowSpeed(false) }}
                               className="w-full text-left px-2.5 py-1 text-[14px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                               style={{ color: s === speed ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)' }}>
-                        {s}s
-                      </button>
+                        {s}<LocalizedText text={"s"} after=" " /></button>
                     ))}
                   </div>
                 )}

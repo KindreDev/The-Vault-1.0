@@ -1,4 +1,5 @@
 /**
+import { LocalizedText } from '../../i18n'
  * Filter bar for the card collection.
  *
  * Lives outside Collection.jsx because that page is already far past the size
@@ -12,10 +13,12 @@
  * a row on, and they are changed far less often.
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { useT } from '../../i18n'
 import { ChevronDown, Check, Search, X, Filter } from 'lucide-react'
 
 // ── Shared dropdown (moved here from Collection.jsx) ─────────────────────────
 export function VaultDropdown({ value, onChange, options, colorMap }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -98,6 +101,7 @@ function Chip({ label, active, dot, onClick, title }) {
 
 // ── Creator picker — searchable, because a collection spans a lot of names ───
 function CreatorPicker({ value, creators, onChange }) {
+  const t = useT()
   const [open, setOpen]     = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef(null)
@@ -137,7 +141,7 @@ function CreatorPicker({ value, creators, onChange }) {
               autoFocus
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search creators…"
+              placeholder={t('Search creators…')}
               className="w-full px-2 py-1.5 rounded-[6px] text-[12px] outline-none"
               style={{
                 background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)',
@@ -148,9 +152,7 @@ function CreatorPicker({ value, creators, onChange }) {
             <button type="button"
                     onMouseDown={() => { onChange(''); setOpen(false); setSearch('') }}
                     className="w-full text-left px-3 py-2 text-[12px] cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
-                    style={{ color: !selected ? 'color-mix(in srgb, var(--c-accent) 80%, white)' : 'rgba(255,255,255,0.7)' }}>
-              All creators
-            </button>
+                    style={{ color: !selected ? 'color-mix(in srgb, var(--c-accent) 80%, white)' : 'rgba(255,255,255,0.7)' }}><LocalizedText text={"All creators"} before={"\n              "} after={"\n            "} /></button>
             {filtered.map(c => (
               <button key={c.id} type="button"
                       onMouseDown={() => { onChange(String(c.id)); setOpen(false); setSearch('') }}
@@ -167,9 +169,7 @@ function CreatorPicker({ value, creators, onChange }) {
               </button>
             ))}
             {filtered.length === 0 && (
-              <div className="px-3 py-3 text-[12px] text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                No creators found
-              </div>
+              <div className="px-3 py-3 text-[12px] text-center" style={{ color: 'rgba(255,255,255,0.25)' }}><LocalizedText text={"No creators found"} before={"\n                "} after={"\n              "} /></div>
             )}
           </div>
         </div>
@@ -180,6 +180,7 @@ function CreatorPicker({ value, creators, onChange }) {
 
 // ── The bar ──────────────────────────────────────────────────────────────────
 export default function CollectionFilters({
+
   search, onSearchChange,
   rarity, onRarityChange, rarityOptions, rarityColors,
   rarityClass, onRarityClassChange, classOptions,
@@ -189,6 +190,7 @@ export default function CollectionFilters({
   hasActiveFilters, onReset,
   trailing,
 }) {
+  const t = useT()
   // Typing is local and debounced — pushing every keystroke into the URL would
   // refetch the whole inventory per character.
   const [draft, setDraft] = useState(search ?? '')
@@ -212,7 +214,7 @@ export default function CollectionFilters({
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape') { setDraft(''); onSearchChange('') } }}
-            placeholder="Search cards…"
+            placeholder={t('Search cards…')}
             className="w-full rounded-full text-[13px] outline-none"
             style={{
               padding: '7px 26px 7px 28px',
@@ -243,9 +245,7 @@ export default function CollectionFilters({
                     padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
                     background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)',
                     border: '0.5px solid rgba(255,255,255,0.07)',
-                  }}>
-            Reset
-          </button>
+                  }}><LocalizedText text={"Reset"} before={"\n            "} after={"\n          "} /></button>
         )}
 
         {trailing}
@@ -268,7 +268,7 @@ export default function CollectionFilters({
           <Chip key={o.value}
                 label={o.label}
                 active={rarityClass === o.value}
-                title={o.value === 'All' ? 'Any scarcity class' : `Scarcity class ${o.value}`}
+                title={t(o.value === 'All' ? 'Any scarcity class' : 'Scarcity class {class}', { class: o.value })}
                 onClick={() => onRarityClassChange(o.value)} />
         ))}
       </div>

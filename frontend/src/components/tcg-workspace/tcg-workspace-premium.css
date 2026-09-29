@@ -5,6 +5,7 @@
   --tcg-glass: color-mix(in srgb, var(--c-surface) 88%, transparent);
   --tcg-glass-strong: color-mix(in srgb, var(--c-card) 92%, transparent);
   isolation: isolate;
+  padding-top: 40px;
 }
 
 .tcgws-topbar {
@@ -12,6 +13,9 @@
   top: auto;
   min-height: 116px;
   padding: 22px 28px;
+  margin: 0 24px;
+  border: 1px solid var(--tcg-line);
+  border-radius: var(--tcg-radius);
   background: linear-gradient(180deg, color-mix(in srgb, var(--c-surface) 96%, transparent), color-mix(in srgb, var(--c-bg) 94%, transparent));
 }
 
@@ -135,8 +139,8 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--tcg-radius);
-  background: linear-gradient(145deg, #171922, #0e0f13);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, .24);
+  background: transparent;
+  box-shadow: none;
 }
 
 .tcgws-card-render > .tcg-v2-card-shell {
@@ -145,14 +149,7 @@
 }
 
 .tcgws-card-loading-underlay {
-  position: absolute;
-  inset: 8%;
-  z-index: 0;
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, .18), transparent 32%),
-    linear-gradient(145deg, rgba(127, 119, 221, .26), rgba(212, 83, 126, .18));
-  filter: blur(24px);
+  display: none;
 }
 
 .tcgws-card-loading-cover {
@@ -183,8 +180,8 @@
 
 .tcgws-card-tile:hover .tcgws-card-meta,
 .tcgws-card-tile.selected .tcgws-card-meta {
-  border-color: var(--tcg-line);
-  background: color-mix(in srgb, var(--c-card) 68%, transparent);
+  border-color: transparent;
+  background: transparent;
 }
 
 .tcgws-card-flags b,

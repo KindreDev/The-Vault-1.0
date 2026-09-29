@@ -1,4 +1,5 @@
 /**
+import { LocalizedText, useT } from '../i18n'
  * "Did you finish?" — shown when Settings → Session is set to ask.
  *
  * Ending a session counts a climax against everything on screen, which is right
@@ -57,15 +58,10 @@ export default function SessionEndPrompt() {
           padding: '18px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)',
         }}>
           <Droplets size={17} style={{ color: 'var(--c-pink)', flexShrink: 0 }} />
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
-            Ending session
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}><LocalizedText text={"Ending session"} before=" " after=" " /></div>
         </div>
 
-        <div style={{ padding: '18px 24px', fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}>
-          Did you finish? Counting it adds to the cum counter on everything
-          currently on screen.
-        </div>
+        <div style={{ padding: '18px 24px', fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}><LocalizedText text={"Did you finish? Counting it adds to the cum counter on everything currently on screen."} before=" " after=" " /></div>
 
         <div style={{
           display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap',
@@ -80,25 +76,19 @@ export default function SessionEndPrompt() {
             }}
             onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.8)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}
-          >
-            Keep going
-          </button>
+          ><LocalizedText text={"Keep going"} before=" " after=" " /></button>
           <button
             onClick={() => answerClimaxPrompt('no')}
             style={btn('var(--c-accent)')}
             onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 30%, transparent)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 18%, transparent)' }}
-          >
-            End, no climax
-          </button>
+          ><LocalizedText text={"End, no climax"} before=" " after=" " /></button>
           <button
             onClick={() => answerClimaxPrompt('yes')}
             style={btn('var(--c-pink)')}
             onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-pink) 30%, transparent)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-pink) 18%, transparent)' }}
-          >
-            💦 Count it
-          </button>
+          ><LocalizedText text={"💦 Count it"} before=" " after=" " /></button>
         </div>
       </div>
     </div>,

@@ -337,18 +337,30 @@ def start_ai_tag(req: TaggerStartRequest):
     elif req.scope == "creator":
         if not req.creator_id:
             raise HTTPException(400, "creator_id required when scope=creator")
+    elif req.scope == "image":
+        if not req.image_id:
+            raise HTTPException(400, "image_id required when scope=image")
+        db_image = SessionLocal()
+        try:
+            target = db_image.get(Image, req.image_id)
+            if not target or not target.file_path:
+                raise HTTPException(404, "File not found")
+        finally:
+            db_image.close()
 
     scope_label = req.scope
     if req.scope == "folder" and req.folder_path:
         scope_label = f"folder: {os.path.basename(req.folder_path)}"
     elif req.scope == "creator" and req.creator_id:
         scope_label = f"creator {req.creator_id}"
+    elif req.scope == "image" and req.image_id:
+        scope_label = f"file {req.image_id}"
 
     db = SessionLocal()
     try:
         job = ai_tagger.create_tag_job(
             db, req.scope, req.folder_path, req.threshold,
-            req.retag, req.model_override, req.creator_id,
+            req.retag, req.model_override, req.creator_id, req.image_id,
         )
         job_id = job.id
     finally:

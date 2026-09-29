@@ -277,7 +277,7 @@ def score_all_creators_in_period(db: Session, since, until=None) -> dict:
     return out
 
 
-def score_all_galleries_in_period(db: Session, since) -> dict:
+def score_all_galleries_in_period(db: Session, since, until=None) -> dict:
     """score_all_galleries() restricted to events since `since`."""
     totals = {}
 
@@ -287,6 +287,7 @@ def score_all_galleries_in_period(db: Session, since) -> dict:
     for gid, kind, total in (
         db.query(ActivityEvent.gallery_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
           .filter(ActivityEvent.logged_at >= since,
+                  *((ActivityEvent.logged_at < until,) if until is not None else ()),
                   ActivityEvent.gallery_id.isnot(None),
                   ActivityEvent.kind.in_(tuple(_GALLERY_KIND_FIELD)))
           .group_by(ActivityEvent.gallery_id, ActivityEvent.kind).all()
@@ -298,6 +299,7 @@ def score_all_galleries_in_period(db: Session, since) -> dict:
         db.query(Image.gallery_id, func.sum(ActivityEvent.amount))
           .join(ActivityEvent, ActivityEvent.image_id == Image.id)
           .filter(ActivityEvent.logged_at >= since,
+                  *((ActivityEvent.logged_at < until,) if until is not None else ()),
                   ActivityEvent.kind == "seconds",
                   Image.gallery_id.isnot(None))
           .group_by(Image.gallery_id).all()
@@ -308,7 +310,8 @@ def score_all_galleries_in_period(db: Session, since) -> dict:
         gid: int(n or 0)
         for gid, n in db.query(SessionLog.gallery_id, func.count(SessionLog.id))
                         .filter(SessionLog.gallery_id.isnot(None),
-                                SessionLog.logged_at >= since)
+                                SessionLog.logged_at >= since,
+                                *((SessionLog.logged_at < until,) if until is not None else ()))
                         .group_by(SessionLog.gallery_id).all()
     }
     for gid in sess_map:
@@ -334,13 +337,14 @@ def score_all_galleries_in_period(db: Session, since) -> dict:
     return out
 
 
-def score_all_images_in_period(db: Session, since) -> dict:
+def score_all_images_in_period(db: Session, since, until=None) -> dict:
     """{image_id: {...components..., "score": int}} inside a window, using the
     file-level weights (a cum tap dominates, passive watch time barely counts)."""
     totals = {}
     for iid, kind, total in (
         db.query(ActivityEvent.image_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
           .filter(ActivityEvent.logged_at >= since,
+                  *((ActivityEvent.logged_at < until,) if until is not None else ()),
                   ActivityEvent.image_id.isnot(None),
                   ActivityEvent.kind.in_(("view", "seconds", "cum", "edge")))
           .group_by(ActivityEvent.image_id, ActivityEvent.kind).all()

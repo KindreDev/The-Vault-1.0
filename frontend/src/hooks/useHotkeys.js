@@ -14,6 +14,7 @@
 import { useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useVaultStore } from '../store/vault'
+import { translate } from '../i18n'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { deviceService } from '../services/device'
 import { companionApi, imagesApi, sessionsApi } from '../lib/api'
@@ -22,6 +23,8 @@ import {
 } from '../lib/hotkeys'
 import { startSessionNow, finishSessionNow } from '../lib/session'
 import { logEdgeNow } from '../lib/edges'
+
+const t = (key, params) => translate(useVaultStore.getState().locale, key, params)
 
 const IGNORE_TYPING = new Set(
   HOTKEY_ACTIONS.filter(a => a.ignoreTypingGuard).map(a => a.id)
@@ -87,7 +90,7 @@ function toggleCompanionBubble() {
   const next = !s.companion.hidden
   s.setCompanionHidden(next)
   if (next) s.setCompanionOpen(false)
-  toast(next ? 'Erika bubble hidden' : 'Erika bubble shown')
+  toast(next ? t('Erika bubble hidden') : t('Erika bubble shown'))
 }
 
 async function toggleCompanion() {
@@ -97,9 +100,9 @@ async function toggleCompanion() {
     const res = await companionApi.updateConfig({ enabled: next })
     if (res?.data) s.setCompanionConfig(res.data)
     else s.setCompanionEnabled(next)
-    toast(next ? 'Erika enabled' : 'Erika disabled')
+    toast(next ? t('Erika enabled') : t('Erika disabled'))
   } catch {
-    toast.error('Could not update Erika')
+    toast.error(t('Could not update Erika'))
   }
 }
 
@@ -115,7 +118,7 @@ function emergencyStop() {
   const { status } = useDeviceStore.getState()
   if (status !== 'connected') return
   deviceService.stop()
-  toast('⏹ Device stopped')
+  toast(t('⏹ Device stopped'))
 }
 
 function toggleEdgeMode() {
@@ -123,45 +126,45 @@ function toggleEdgeMode() {
   const next = !s.edgeModeEnabled
   deviceService.setEdgeMode(next)
   if (next && s.status !== 'connected') {
-    toast('Edge Mode set — it arms when a device connects')
+    toast(t('Edge Mode set — it arms when a device connects'))
     return
   }
-  toast(next ? '🌊 Edge Mode armed' : 'Edge Mode off')
+  toast(next ? t('🌊 Edge Mode armed') : t('Edge Mode off'))
 }
 
 function toggleGoonMode() {
   const s = useDeviceStore.getState()
   if (s.status !== 'connected') {
-    toast('No device connected')
+    toast(t('No device connected'))
     return
   }
   if (s.mode === 'freestyle') {
     deviceService.stopFreestyle()
-    toast('Goon Mode off')
+    toast(t('Goon Mode off'))
   } else {
     deviceService.startFreestyle()
-    toast('😵‍💫 Goon Mode on')
+    toast(t('😵‍💫 Goon Mode on'))
   }
 }
 
 function triggerFinisher() {
   const { finisherPatternName } = useDeviceStore.getState()
   if (!finisherPatternName) {
-    toast('No finisher pattern set')
+    toast(t('No finisher pattern set'))
     return
   }
   // Armed only while a script is loaded, or while it is already running so the
   // key can also end it.
   if (!deviceService.isFinisherActive() && !deviceService.hasFunscriptLoaded()) return
   const started = deviceService.toggleFinisher(finisherPatternName)
-  toast(started ? `🏁 Finisher: ${finisherPatternName}` : 'Finisher stopped')
+  toast(started ? t('🏁 Finisher: {pattern}', { pattern: finisherPatternName }) : t('Finisher stopped'))
 }
 
 function logCum(imageId = null) {
   const s = useVaultStore.getState()
   const target = imageId ?? s.getFocusedImageId()
   if (!target) {
-    toast('Nothing on screen to log')
+    toast(t('Nothing on screen to log'))
     return
   }
   imagesApi.cum(target, {})
@@ -171,7 +174,7 @@ function logCum(imageId = null) {
       // Let the open viewer move its counter without a refetch.
       s.pingCount(target, r.data?.cum_count)
     })
-    .catch(() => toast('Could not log that'))
+    .catch(() => toast(t('Could not log that')))
 }
 
 // Second (third, fourth…) orgasm on the file that earned the last one. By the
@@ -180,7 +183,7 @@ function logCum(imageId = null) {
 function logCumRepeat() {
   const { lastCumImageId } = useVaultStore.getState()
   if (!lastCumImageId) {
-    toast('No previous 💦 to repeat')
+    toast(t('No previous 💦 to repeat'))
     return
   }
   logCum(lastCumImageId)
@@ -190,7 +193,7 @@ async function logSession() {
   const s = useVaultStore.getState()
   const imageId = s.getFocusedImageId()
   if (!imageId) {
-    toast('Nothing on screen to log')
+    toast(t('Nothing on screen to log'))
     return
   }
   try {
@@ -202,9 +205,9 @@ async function logSession() {
       gallery_id: img?.gallery_id ?? null,
     })
     s.addXpToast(`+${data?.xp_earned ?? 25} XP`)
-    toast.success('Session logged ❤️')
+    toast.success(t('Session logged ❤️'))
   } catch {
-    toast.error('Could not log that session')
+    toast.error(t('Could not log that session'))
   }
 }
 
@@ -217,14 +220,16 @@ function nudgeIntensity(delta) {
   const s = useDeviceStore.getState()
   const next = Math.max(0.1, Math.min(5.0, Math.round((s.intensity + delta) * 10) / 10))
   s.setIntensity(next)
-  toast(`⚡ Intensity ${Math.round(next * 100)}%`, { id: 'device-intensity' })
+  toast(t('⚡ Intensity {percent}%', { percent: Math.round(next * 100) }), { id: 'device-intensity' })
 }
 
 function nudgeDepth(delta) {
   const s = useDeviceStore.getState()
   const next = Math.max(0, Math.min(1, Math.round((s.glansShift + delta) * 10) / 10))
   s.setGlansShift(next)
-  toast(`↕ Stroke ${next === 0 ? 'full range' : `shifted ${Math.round(next * 100)}% up`}`,
+  toast(next === 0
+    ? t('↕ Stroke full range')
+    : t('↕ Stroke shifted {percent}% up', { percent: Math.round(next * 100) }),
         { id: 'device-depth' })
 }
 
@@ -242,12 +247,12 @@ function cyclePattern(dir) {
     : next.startsWith('saved_')
       ? next.slice(6)
       : (PRESETS.find(p => p.id === next)?.name ?? next)
-  toast(`🎛 ${label}`, { id: 'device-pattern' })
+  toast(t('🎛 {pattern}', { pattern: label }), { id: 'device-pattern' })
 }
 
 function toggleRamp() {
   const s = useDeviceStore.getState()
   const next = !s.rampEnabled
   s.setRampEnabled(next)
-  toast(next ? '📈 Ramp mode on' : 'Ramp mode off')
+  toast(next ? t('📈 Ramp mode on') : t('Ramp mode off'))
 }

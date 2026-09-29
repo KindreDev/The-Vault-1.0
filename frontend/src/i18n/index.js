@@ -8,6 +8,7 @@
 // the way a blind find-and-replace would. Adding a new language = drop in one
 // more JSON file below and register it in LANGUAGES + DICTS. Nothing else.
 
+import { createElement, Fragment } from 'react'
 import { useVaultStore } from '../store/vault'
 import en from './en.json'
 import zhCN from './zh-CN.json'
@@ -27,11 +28,14 @@ const DICTS = {
 export const DEFAULT_LOCALE = 'en'
 
 // Pure translate — usable outside React (e.g. constants, non-component code).
-export function translate(locale, key) {
+export function translate(locale, key, params = {}) {
   if (key == null) return key
   const dict = DICTS[locale]
   if (!dict) return key
-  return dict[key] ?? key
+  const translated = dict[key] ?? key
+  return Object.entries(params).reduce((text, [name, value]) =>
+    text.replaceAll(`{${name}}`, String(value ?? '')),
+  translated)
 }
 
 // React hook — returns a t() bound to the active locale. Subscribing to the
@@ -39,5 +43,11 @@ export function translate(locale, key) {
 // language, with no page reload needed.
 export function useT() {
   const locale = useVaultStore(s => s.locale)
-  return (key) => translate(locale, key)
+  return (key, params) => translate(locale, key, params)
+}
+
+// Render one dictionary-backed phrase and subscribe to locale changes. The fragment adds no DOM wrapper.
+export function LocalizedText({ text, params, before = '', after = '' }) {
+  const t = useT()
+  return createElement(Fragment, null, before, t(text, params), after)
 }

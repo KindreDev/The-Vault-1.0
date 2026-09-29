@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -173,6 +174,7 @@ function validate(definition, value, placed, definitions, instances, selectedId)
 }
 
 export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceId = null, worldSample = null, onConfirmReady, onLockReady, onDeselectReady, onActionsReady, onExit }) {
+  const t = useT()
   const qc = useQueryClient()
   const room = bootstrap?.room || { revision: 0, placements: [] }
   const definitions = useMemo(() => new Map((bootstrap?.catalog || []).filter(item => item.asset_id && ['floor', 'wall'].includes(item.placement_kind)).map(item => [item.id, item])), [bootstrap])
@@ -222,10 +224,10 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
     return () => onDeselectReady?.(() => {})
   }, [onDeselectReady, selectedId, draft, locked, pinned])
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }), qc.invalidateQueries({ queryKey: ['tcg-room-furniture'] })])
-  const handleError = error => { if (error.response?.status === 409) { finish(); refresh(); toast.error('The room changed elsewhere. Latest layout loaded; choose the item again.') } else toast.error(error.response?.data?.detail || 'Could not update the room') }
+  const handleError = error => { if (error.response?.status === 409) { finish(); refresh(); toast.error(t("The room changed elsewhere. Latest layout loaded; choose the item again.")) } else toast.error(error.response?.data?.detail || t("Could not update the room")) }
   const commit = useMutation({
     mutationFn: () => existing ? tcgRoomApi.moveFurniture(selectedId, { expected_revision: room.revision, transform: draft, snap_anchor: definition.placement_kind }) : tcgRoomApi.placeFurniture(selectedId, { expected_revision: room.revision, transform: draft, snap_anchor: definition.placement_kind }),
-    onSuccess: () => { finish(); refresh(); toast.success(existing ? 'Furniture moved' : 'Furniture placed') }, onError: handleError,
+    onSuccess: () => { finish(); refresh(); toast.success(existing ? t("Furniture moved") : t("Furniture placed")) }, onError: handleError,
   })
   commitRef.current = { commit, invalid, draft, locked }
   useEffect(() => {
@@ -235,8 +237,8 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
       current.commit.mutate()
     })
   }, [onConfirmReady])
-  const storeItem = useMutation({ mutationFn: id => tcgRoomApi.returnFurniture(id, room.revision), onSuccess: () => { finish(); refresh(); toast.success('Returned to Furniture Inventory') }, onError: handleError })
-  const history = useMutation({ mutationFn: kind => kind === 'undo' ? tcgRoomApi.undoLayout(room.revision) : tcgRoomApi.redoLayout(room.revision), onSuccess: () => { finish(); refresh(); toast.success('Layout updated') }, onError: handleError })
+  const storeItem = useMutation({ mutationFn: id => tcgRoomApi.returnFurniture(id, room.revision), onSuccess: () => { finish(); refresh(); toast.success(t("Returned to Furniture Inventory")) }, onError: handleError })
+  const history = useMutation({ mutationFn: kind => kind === 'undo' ? tcgRoomApi.undoLayout(room.revision) : tcgRoomApi.redoLayout(room.revision), onSuccess: () => { finish(); refresh(); toast.success(t("Layout updated")) }, onError: handleError })
   useEffect(() => {
     const lock = () => {
       const current = commitRef.current
@@ -277,11 +279,11 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
       </button>
       })}</div>
       <div className="placement-mode__rail-actions">
-        <button type="button" disabled={history.isPending} onClick={() => history.mutate('undo')} title="Undo"><Undo2 size={18} /><span>Undo</span></button>
-        <button type="button" disabled={history.isPending} onClick={() => history.mutate('redo')} title="Redo"><Redo2 size={18} /><span>Redo</span></button>
-        <button type="button" onClick={onExit} title="Done"><X size={18} /><span>Done</span></button>
+        <button type="button" disabled={history.isPending} onClick={() => history.mutate('undo')} title={t("Undo")}><Undo2 size={18} /><span><LocalizedText text={"Undo"} /></span></button>
+        <button type="button" disabled={history.isPending} onClick={() => history.mutate('redo')} title={t("Redo")}><Redo2 size={18} /><span><LocalizedText text={"Redo"} /></span></button>
+        <button type="button" onClick={onExit} title={t("Done")}><X size={18} /><span><LocalizedText text={"Done"} /></span></button>
       </div>
     </div>
-    <span className="placement-mode__context-hint">{locked ? 'Locked · Use Place to commit or Return to cancel' : 'Click the scene to lock the item · Right click deselects · Hold right mouse to look'}</span>
+    <span className="placement-mode__context-hint">{locked ? 'Locked · Use Place to commit or Return to cancel' : 'Click a furniture item below to select it · Click the scene to lock its position · Right-click to deselect · Hold right mouse button to look around'}</span>
   </div>
 }

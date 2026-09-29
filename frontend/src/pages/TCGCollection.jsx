@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -23,6 +24,7 @@ import '../components/tcg-workspace/tcg-workspace-premium.css'
 const COLLECTION_VIEWS = new Set(['cards', 'missing', 'duplicates', 'creators', 'characters', 'hof', 'bond'])
 
 function PackPreparingOverlay() {
+  const t = useT()
   const [stage, setStage] = useState(0)
   const stages = ['Preparing cards', 'Building foil masks', 'Sealing your pack']
 
@@ -34,16 +36,17 @@ function PackPreparingOverlay() {
   return <div className="tcgws-pack-preparing" role="status" aria-live="polite">
     <div className="tcgws-pack-preparing__panel">
       <div className="tcgws-pack-preparing__icon"><LoaderCircle size={34} /></div>
-      <span className="tcgws-pack-preparing__eyebrow"><Sparkles size={17} /> Opening a booster</span>
+      <span className="tcgws-pack-preparing__eyebrow"><Sparkles size={17} /><LocalizedText text={"Opening a booster"} before={" "} /></span>
       <h2>{stages[stage]}</h2>
-      <p>Your cards are being prepared. This can take a moment for foil masks.</p>
-      <div className="tcgws-pack-preparing__progress" aria-label="Preparing booster" role="progressbar"><i /></div>
-      <span className="tcgws-pack-preparing__note"><PackageOpen size={16} /> Please keep this window open</span>
+      <p><LocalizedText text={"Your cards are being prepared. This can take a moment for foil masks."} /></p>
+      <div className="tcgws-pack-preparing__progress" aria-label={t("Preparing booster")} role="progressbar"><i /></div>
+      <span className="tcgws-pack-preparing__note"><PackageOpen size={16} /><LocalizedText text={"Please keep this window open"} before={" "} /></span>
     </div>
   </div>
 }
 
 export default function TCGCollection() {
+  const t = useT()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const qc = useQueryClient()
@@ -96,7 +99,7 @@ export default function TCGCollection() {
   const settingsMutation = useMutation({
     mutationFn: value => tcgV2Api.updateSettings({ advanced_mode: value }),
     onSuccess: response => { qc.setQueryData(['tcg-v2-summary'], old => ({ ...old, settings: response.data })); if (response.data.advanced_mode) setShowSettings(true) },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not update Advanced Mode'),
+    onError: error => toast.error(error.response?.data?.detail || t("Could not update Advanced Mode")),
   })
   const openPack = useMutation({
     mutationFn: ({ pack, selectedReleaseId }) => tcgV2Api.openPack(pack.id, { selected_release_id: selectedReleaseId, use_token: pack.tokens > 0 }),
@@ -118,17 +121,17 @@ export default function TCGCollection() {
       })))
       qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-summary'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-packs'] })
     },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not open booster'),
+    onError: error => toast.error(error.response?.data?.detail || t("Could not open booster")),
   })
 
   useScrollLock(openPack.isPending)
 
-  if (isLoading) return <div className="tcgws-loading"><i /><strong>Opening the card vault</strong><span>Loading releases, sets, and your collection...</span></div>
-  if (summaryError || !summary) return <div className="tcgws-loading tcgws-load-error"><strong>TCG workspace unavailable</strong><span>{summaryFailure?.response?.data?.detail || 'The collection service did not return a valid workspace summary.'}</span><button onClick={() => retrySummary()}>Retry</button></div>
-  const title = TCG_VIEWS.find(item => item.id === view)?.label || 'Card Collection'
+  if (isLoading) return <div className="tcgws-loading"><i /><strong><LocalizedText text={"Opening the card vault"} /></strong><span><LocalizedText text={"Loading releases, sets, and your collection..."} /></span></div>
+  if (summaryError || !summary) return <div className="tcgws-loading tcgws-load-error"><strong><LocalizedText text={"TCG workspace unavailable"} /></strong><span>{summaryFailure?.response?.data?.detail || 'The collection service did not return a valid workspace summary.'}</span><button onClick={() => retrySummary()}><LocalizedText text={"Retry"} /></button></div>
+  const title = t(TCG_VIEWS.find(item => item.id === view)?.label || 'Card Collection')
   return <div className="tcgws-root">
     <main className="tcgws-main">
-      <header className="tcgws-topbar"><div><span>THE VAULT / CARD COLLECTION</span><h1>{title}</h1></div><TCGSummaryBar summary={summary} /></header>
+      <header className="tcgws-topbar"><div><span><LocalizedText text={"THE VAULT / CARD COLLECTION"} /></span><h1>{title}</h1></div><TCGSummaryBar summary={summary} /></header>
       <TCGNavigation view={view} onView={next => next === 'room' ? navigate('/collection/room') : setView(next)} advanced={summary?.settings.advanced_mode} onAdvanced={() => settingsMutation.mutate(!summary?.settings.advanced_mode)} />
       <div className="tcgws-content">
         {(view === 'releases' || view === 'sets') && <ReleaseBrowser releases={releases} sets={sets} releaseId={releaseId} setId={setId} onRelease={setRelease} onSet={setSelectedSet} onOpenCard={setSelectedCard} setsOnly={view === 'sets'} advanced={summary.settings.advanced_mode} generationMode={summary.settings.release_generation_mode} />}

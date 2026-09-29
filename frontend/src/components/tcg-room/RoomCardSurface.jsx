@@ -1,3 +1,4 @@
+import { LocalizedText } from '../../i18n'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Html, useTexture } from '@react-three/drei'
@@ -70,11 +71,37 @@ function embeddedAsset(url) {
   return embeddedAssetCache.get(url)
 }
 
+async function waitForImageDecode(src) {
+  const image = new Image()
+  image.decoding = 'async'
+  image.src = src
+  try {
+    await image.decode()
+    return
+  } catch {
+    // Some WebView2 builds reject decode() even after the image has loaded.
+    // Do not wait forever for an onload event that already happened.
+    if (image.complete) return
+  }
+  await new Promise(resolve => {
+    image.onload = resolve
+    image.onerror = resolve
+  })
+}
+
 async function inlineSvgImages(svg) {
   await Promise.all([...svg.querySelectorAll('image[href]')].map(async node => {
     const href = node.getAttribute('href')
     if (!href || href.startsWith('data:') || href.startsWith('#')) return
     node.setAttribute('href', await embeddedAsset(href))
+  }))
+}
+
+async function waitForSvgImages(svg) {
+  await Promise.all([...svg.querySelectorAll('image[href]')].map(async node => {
+    const href = node.getAttribute('href')
+    if (!href || href.startsWith('#')) return
+    await waitForImageDecode(href)
   }))
 }
 
@@ -134,9 +161,33 @@ async function rasterTexture(svg, { opaque = false, resolution = 1024, anisotrop
   // Runtime shine surfaces use CSS-backed foreignObjects. The room shader
   // recreates those effects from the separated masks, and keeping them in the
   // baked face can taint the canvas and make protected cards render black.
-  svg.querySelectorAll('foreignObject').forEach(node => node.remove())
+  // HOF video artwork is the one exception: a 3D texture cannot animate, so
+  // preserve its explicit poster frame instead of leaving the card face empty.
+  svg.querySelectorAll('foreignObject').forEach(node => {
+    const video = node.querySelector('video')
+    const poster = video?.getAttribute('poster')
+    if (!poster) {
+      node.remove()
+      return
+    }
+    const image = document.createElementNS('http://www.w3.org/2000/svg', 'image')
+    for (const attribute of ['x', 'y', 'width', 'height']) {
+      const value = node.getAttribute(attribute)
+      if (value != null) image.setAttribute(attribute, value)
+    }
+    image.setAttribute('href', absoluteAssetUrl(poster))
+    image.setAttribute('preserveAspectRatio', 'xMidYMid slice')
+    image.setAttribute('data-effect-layer', node.getAttribute('data-effect-layer') || 'photograph')
+    node.replaceWith(image)
+  })
   absoluteSvgAssets(svg)
   await inlineSvgImages(svg)
+  // The SVG clone now contains data URLs, but the browser can still begin
+  // rasterizing before those replacement images have decoded. That race is
+  // especially visible with animated WebP HOF previews: the room gets a
+  // valid card shell with a black face. Wait for the final embedded assets,
+  // not only the detached React source node, before creating the texture.
+  await waitForSvgImages(svg)
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
   style.textContent = await readableStyleSheetText(svg)
   svg.prepend(style)
@@ -166,7 +217,10 @@ function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, re
     host.setAttribute('aria-hidden', 'true')
     document.body.appendChild(host)
     const root = createRoot(host)
-    root.render(<TCGV2CardFace card={card} width={resolution} showEffects={false} />)
+    // A physical room card is a baked texture, not a live video surface.
+    // Use the reliable poster frame here; the full inspector still receives
+    // videoPresentation="full" and plays the original video.
+    root.render(<TCGV2CardFace card={card} width={resolution} showEffects={false} videoPresentation="poster" />)
     const timer = window.setTimeout(async () => {
       await document.fonts?.ready
       const source = host.querySelector('svg')
@@ -180,9 +234,7 @@ function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, re
       await Promise.all(embeddedImages.map(async imageNode => {
         const href = imageNode.getAttribute('href') || imageNode.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
         if (!href || href.startsWith('#')) return
-        const probe = new Image()
-        probe.src = absoluteAssetUrl(href)
-        try { await probe.decode() } catch { await new Promise(resolve => { probe.onload = resolve; probe.onerror = resolve }) }
+        await waitForImageDecode(absoluteAssetUrl(href))
       }))
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       Promise.all([
@@ -421,7 +473,7 @@ export function RoomCardPreparation({ item, position, rotation }) {
   return <group position={position} rotation={rotation}>
     <mesh><boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, .005]} /><meshStandardMaterial color="#251d2e" roughness={.8} /></mesh>
     <Html transform position={[0, 0, .008]} center distanceFactor={1.2} className="tcg-room-card-preparing">
-      <span>{item.preview?.rarity || 'R+'}</span><strong>Preparing foil</strong>
+      <span>{item.preview?.rarity || 'R+'}</span><strong><LocalizedText text={"Preparing foil"} /></strong>
     </Html>
   </group>
 }

@@ -9,6 +9,7 @@ import React, { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
+import { useT } from '../../i18n'
 
 export const fmtDuration = (secs) => {
   if (!secs || secs <= 0) return null
@@ -30,19 +31,21 @@ export const fmtDate = (iso) => {
 }
 
 export function Stat({ label, value, sub, accent = 'rgba(255,255,255,0.92)', big = false }) {
+  const t = useT()
   return (
     <div className="rounded-[10px] px-4 py-3 flex flex-col gap-0.5"
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{label}</div>
+      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t(label)}</div>
       <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, color: accent, lineHeight: 1.1, letterSpacing: '-0.01em' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t(sub)}</div>}
     </div>
   )
 }
 
 export function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)', children }) {
+  const t = useT()
   return (
     <div className="rounded-[14px] p-5"
          style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
@@ -52,8 +55,8 @@ export function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)',
           <Icon size={17} style={{ color: accent }} />
         </div>
         <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{subtitle}</div>}
+          <div style={{ fontSize: 19, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{t(title)}</div>
+          {subtitle && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t(subtitle)}</div>}
         </div>
       </div>
       {children}
@@ -63,6 +66,7 @@ export function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)',
 
 /** A clickable "best of" row with a thumbnail. */
 export function Standout({ label, accent, thumb, title, meta, onClick }) {
+  const t = useT()
   return (
     <button onClick={onClick}
             className="w-full flex items-center gap-3 p-2 rounded-[10px] text-left cursor-pointer transition-colors hover:bg-white/[0.05]"
@@ -72,7 +76,7 @@ export function Standout({ label, accent, thumb, title, meta, onClick }) {
                style={{ width: 52, height: 52, objectFit: 'cover' }} />
         : <div className="rounded-[7px] flex-shrink-0" style={{ width: 52, height: 52, background: 'rgba(255,255,255,0.05)' }} />}
       <div className="min-w-0 flex-1">
-        <div style={{ fontSize: 15, color: accent, fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 16, color: accent, fontWeight: 600 }}>{t(label)}</div>
         <div className="truncate" style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)' }}>{title}</div>
         {meta && <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }}>{meta}</div>}
       </div>
@@ -82,10 +86,11 @@ export function Standout({ label, accent, thumb, title, meta, onClick }) {
 
 /** Tag chip — AI tags purple, manual tags white, per the design rules. */
 export function TagChip({ name, source, confidence, count }) {
+  const t = useT()
   const ai = source === 'ai'
   return (
     <span className="px-2.5 py-1 rounded-full inline-flex items-center gap-1.5"
-          title={confidence != null ? `AI confidence ${Math.round(confidence * 100)}%` : undefined}
+          title={confidence != null ? t('AI confidence {percent}%', { percent: Math.round(confidence * 100) }) : undefined}
           style={{
             fontSize: 16,
             background: ai ? 'color-mix(in srgb, var(--c-accent) 16%, transparent)' : 'rgba(255,255,255,0.07)',
@@ -100,6 +105,7 @@ export function TagChip({ name, source, confidence, count }) {
 
 /** Shared modal shell: portal, backdrop, Escape, scroll container. */
 export function StatsModalShell({ open, onClose, children, maxWidth = 1080 }) {
+  const t = useT()
   useEffect(() => {
     if (!open) return
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
@@ -125,7 +131,7 @@ export function StatsModalShell({ open, onClose, children, maxWidth = 1080 }) {
           style={{ maxWidth, background: '#141414',
                    border: '0.5px solid rgba(255,255,255,0.1)',
                    boxShadow: '0 30px 90px rgba(0,0,0,0.7)' }}>
-          <button onClick={onClose}
+          <button onClick={onClose} aria-label={t('Close statistics')}
                   className="absolute top-4 right-4 z-10 p-2 rounded-full cursor-pointer transition-colors hover:bg-white/10"
                   style={{ background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.6)' }}>
             <X size={18} />
@@ -139,10 +145,11 @@ export function StatsModalShell({ open, onClose, children, maxWidth = 1080 }) {
 }
 
 export function LoadingBody() {
+  const t = useT()
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-20">
       <div className="skeleton" style={{ width: 160, height: 16, borderRadius: 8 }} />
-      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>Crunching the numbers…</div>
+      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('Crunching the numbers…')}</div>
     </div>
   )
 }

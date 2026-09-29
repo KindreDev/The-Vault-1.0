@@ -1,17 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useT, LocalizedText } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Zap, Flame, Trophy, Pencil, Check, X, ChevronDown, Camera, Crosshair } from 'lucide-react'
 import { gamiApi, economyApi, cardsApi, galleriesApi, sessionsApi } from '../lib/api'
 import toast from 'react-hot-toast'
 
-function fmtMs(ms) {
+function fmtMs(ms, t) {
   if (!ms) return '—'
   const h = Math.floor(ms / 3600000)
   const m = Math.floor((ms % 3600000) / 60000)
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m`
-  return '<1m'
+  if (h > 0) return t('{hours}h {minutes}m', { hours: h, minutes: m })
+  if (m > 0) return t('{minutes}m', { minutes: m })
+  return t('<1m')
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -81,15 +82,15 @@ function xpProgress(totalXp, level) {
   return Math.min(100, ((totalXp - current) / (next - current)) * 100)
 }
 
-function fmtTime(ts) {
+function fmtTime(ts, t) {
   if (!ts) return '—'
   const d = new Date(ts)
   const diff = Date.now() - d.getTime()
   const h = Math.floor(diff / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
-  if (h > 24) return `${Math.floor(h / 24)}d ago`
-  if (h > 0)  return `${h}h ago`
-  return `${m}m ago`
+  if (h > 24) return t('{count}d ago', { count: Math.floor(h / 24) })
+  if (h > 0)  return t('{count}h ago', { count: h })
+  return t('{count}m ago', { count: m })
 }
 
 const SOURCE_LABELS = {
@@ -127,6 +128,7 @@ const SHIMMER_STYLE = `
 `
 
 export default function Profile() {
+  const t = useT()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const fileInputRef = useRef(null)
@@ -182,7 +184,7 @@ export default function Profile() {
       qc.invalidateQueries({ queryKey: ['profile'] })
       if ('username' in vars) setEditingName(false)
     },
-    onError: () => toast.error('Update failed'),
+    onError: () => toast.error(t('Update failed')),
   })
 
   const avatarMutation = useMutation({
@@ -190,15 +192,15 @@ export default function Profile() {
     onSuccess: () => {
       setAvatarBust(Date.now())
       qc.invalidateQueries({ queryKey: ['profile'] })
-      toast.success('Profile picture updated')
+      toast.success(t("Profile picture updated"))
     },
-    onError: () => toast.error('Upload failed'),
+    onError: () => toast.error(t('Upload failed')),
   })
 
   const craftMutation = useMutation({
     mutationFn: () => cardsApi.craftCatalyst().then(r => r.data),
     onSuccess: () => {
-      toast.success('⚗️ Catalyst Token crafted!')
+      toast.success(t("⚗️ Catalyst Token crafted!"))
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || 'Need 150 shards'),
@@ -219,9 +221,7 @@ export default function Profile() {
   }, [titleOpen])
 
   if (!profile) return (
-    <div style={{ minHeight: '100vh', background: '#080810', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)' }}>
-      Loading…
-    </div>
+    <div style={{ minHeight: '100vh', background: '#080810', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Loading…"} before={"\n      "} after={"\n    "} /></div>
   )
 
   const isMaxLevel    = profile.level >= 100
@@ -253,8 +253,7 @@ export default function Profile() {
         onClick={() => navigate(-1)}
         style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 24, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: 12 }}
       >
-        <ArrowLeft size={13} /> Back
-      </button>
+        <ArrowLeft size={13} /><LocalizedText text={"Back"} before={" "} after={"\n      "} /></button>
 
       {/* ── Hero card ──────────────────────────────────────────────────────── */}
       <div style={{
@@ -310,7 +309,7 @@ export default function Profile() {
               {avatarUrl
                 ? <img
                     src={avatarUrl}
-                    alt="avatar"
+                    alt={t("avatar")}
                     style={{
                       width: '100%', height: '100%', objectFit: 'cover',
                       objectPosition: `${(profile.avatar_focal_x ?? 0.5) * 100}% ${(profile.avatar_focal_y ?? 0.5) * 100}%`,
@@ -327,7 +326,7 @@ export default function Profile() {
                   flexDirection: 'column', gap: 4,
                 }}>
                   <Crosshair size={28} style={{ color: '#fff' }} />
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', textAlign: 'center', lineHeight: 1.3 }}>Click to set<br/>focal point</span>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', textAlign: 'center', lineHeight: 1.3 }}><LocalizedText text={"Click to set"} /><br/><LocalizedText text={"focal point"} /></span>
                 </div>
               )}
             </div>
@@ -337,7 +336,7 @@ export default function Profile() {
               {/* Upload button */}
               <button
                 onClick={() => { setFocalMode(false); fileInputRef.current?.click() }}
-                title="Change photo"
+                title={t("Change photo")}
                 style={{
                   width: 30, height: 30, borderRadius: '50%',
                   background: 'rgba(14,14,20,0.92)', border: `1px solid ${titleStyle.color}66`,
@@ -351,7 +350,7 @@ export default function Profile() {
               {avatarUrl && (
                 <button
                   onClick={() => setFocalMode(v => !v)}
-                  title="Adjust position"
+                  title={t("Adjust position")}
                   style={{
                     width: 30, height: 30, borderRadius: '50%',
                     background: focalMode ? `${titleStyle.color}33` : 'rgba(14,14,20,0.92)',
@@ -380,8 +379,7 @@ export default function Profile() {
 
           {/* ── Name, Title, XP ───────────────────────────────────────────── */}
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>
-              Level {profile.level}{isMaxLevel ? ' — MAX' : ''}
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}><LocalizedText text={"Level"} before={"\n              "} after={" "} />{profile.level}{isMaxLevel ? ' — MAX' : ''}
             </div>
 
             {/* Username edit */}
@@ -439,7 +437,7 @@ export default function Profile() {
                   className={titleStyle.shimmer ? 'title-shimmer' : ''}
                   style={titleStyle.shimmer ? { fontSize: 14, fontWeight: 600 } : { fontSize: 14, fontWeight: 600, color: titleStyle.color }}
                 >
-                  {displayTitle}
+                  {t(displayTitle)}
                 </span>
                 <ChevronDown size={12} style={{ color: titleStyle.color, transition: 'transform 0.2s', transform: titleOpen ? 'rotate(180deg)' : 'none' }} />
               </button>
@@ -481,7 +479,7 @@ export default function Profile() {
                         >
                           {title}
                         </span>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 8 }}>Lv {tlvl}</span>
+                        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', marginLeft: 8 }}><LocalizedText text={"Lv"} after={" "} />{tlvl}</span>
                       </button>
                     )
                   })}
@@ -491,8 +489,8 @@ export default function Profile() {
 
             {/* XP bar */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 5 }}>
-                <span>{profile.total_xp.toLocaleString()} XP</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: 'rgba(255,255,255,0.3)', marginBottom: 5 }}>
+                <span>{profile.total_xp.toLocaleString()}<LocalizedText text={"XP"} before={" "} /></span>
                 <span>
                   {isMaxLevel
                     ? '✦ Max Level — XP → Credits'
@@ -511,14 +509,10 @@ export default function Profile() {
                 }} />
               </div>
               {profile.level >= 50 && !isMaxLevel && (
-                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 3 }}>
-                  ✦ CXP bonus: +{Math.min(profile.level - 50, 50)}% (level 50+ perk)
-                </div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 3 }}><LocalizedText text={"✦ CXP bonus: +"} before={"\n                  "} />{Math.min(profile.level - 50, 50)}<LocalizedText text={"% (level 50+ perk)"} after={"\n                "} /></div>
               )}
               {isMaxLevel && (
-                <div style={{ fontSize: 9, color: '#FFD700aa', marginTop: 3 }}>
-                  ✦ CXP bonus: +50% max — all XP gains convert to Vault Credits
-                </div>
+                <div style={{ fontSize: 9, color: '#FFD700aa', marginTop: 3 }}><LocalizedText text={"✦ CXP bonus: +50% max — all XP gains convert to Vault Credits"} before={"\n                  "} after={"\n                "} /></div>
               )}
             </div>
           </div>
@@ -532,7 +526,7 @@ export default function Profile() {
             }}>
               <Flame size={18} style={{ color: '#FA9835' }} />
               <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-amber-text)' }}>{profile.streak_days}</div>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Day streak</div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}><LocalizedText text={"Day streak"} /></div>
             </div>
           )}
         </div>
@@ -554,7 +548,7 @@ export default function Profile() {
           }}>
             <div style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: s.color, marginBottom: 2 }}>{s.value}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
           </div>
         ))}
 
@@ -565,9 +559,7 @@ export default function Profile() {
           border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)',
           display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
         }}>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-            Craft Token
-          </div>
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}><LocalizedText text={"Craft Token"} before={"\n            "} after={"\n          "} /></div>
           <button
             onClick={() => craftMutation.mutate()}
             disabled={craftMutation.isPending || shards < 150}
@@ -597,13 +589,13 @@ export default function Profile() {
         const when = (() => {
           const diff = Date.now() - new Date(ts).getTime()
           const d = Math.floor(diff / 86400000)
-          if (d === 0) return 'Today'
-          if (d === 1) return 'Yesterday'
-          return DAYS[new Date(ts).getDay()]
+          if (d === 0) return t('Today')
+          if (d === 1) return t('Yesterday')
+          return t(DAYS[new Date(ts).getDay()])
         })()
         const dur = last.duration_sec ? (last.duration_sec >= 3600
-          ? `${Math.floor(last.duration_sec / 3600)}h ${Math.floor((last.duration_sec % 3600) / 60)}m`
-          : `${Math.floor(last.duration_sec / 60)}m`) : null
+          ? t('{hours}h {minutes}m', { hours: Math.floor(last.duration_sec / 3600), minutes: Math.floor((last.duration_sec % 3600) / 60) })
+          : t('{count}m', { count: Math.floor(last.duration_sec / 60) })) : null
 
         // Collect all unique creator names from the 5 most recent sessions
         const allCreators = [...new Set(sessions.map(s => s.creator_name).filter(Boolean))]
@@ -627,11 +619,9 @@ export default function Profile() {
           }}>
             <span style={{ fontSize: 22, flexShrink: 0 }}>🎮</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>
-                Last session · {when}
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}><LocalizedText text={"Last session ·"} before={"\n                "} after={" "} />{when}
               </div>
-              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
-                You {summary}
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}><LocalizedText text={"You"} before={"\n                "} after={" "} />{summary}
               </div>
               {last.gallery_name && (
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
@@ -641,8 +631,7 @@ export default function Profile() {
             </div>
             {last.xp_earned > 0 && (
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', flexShrink: 0 }}>
-                +{last.xp_earned} XP
-              </div>
+                +{last.xp_earned}<LocalizedText text={"XP"} before={" "} after={"\n              "} /></div>
             )}
           </div>
         )
@@ -655,18 +644,17 @@ export default function Profile() {
         border: '0.5px solid color-mix(in srgb, var(--c-pink) 10%, transparent)',
       }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13 }}>💧</span> Gooning & Activity
-        </div>
+          <span style={{ fontSize: 13 }}>💧</span><LocalizedText text={"Gooning & Activity"} before={" "} after={"\n        "} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 10 }}>
           {[
             { icon: '❤️', label: 'Sessions logged',  value: (vaultStats?.total_sessions ?? 0).toLocaleString(),              color: 'var(--c-pink)' },
             { icon: '💧', label: 'Total Os',          value: (vaultStats?.total_cum_count ?? 0).toLocaleString(),             color: 'var(--c-pink)', cumStat: true },
-            { icon: '⏱️', label: 'Time gooning',      value: fmtMs(vaultStats?.session_total_ms ?? 0),                       color: 'var(--c-pink)' },
-            { icon: '⚡', label: 'Longest session',   value: fmtMs((vaultStats?.longest_session_sec ?? 0) * 1000),            color: 'var(--c-accent)' },
+            { icon: '⏱️', label: 'Time gooning',      value: fmtMs(vaultStats?.session_total_ms ?? 0, t),                       color: 'var(--c-pink)' },
+            { icon: '⚡', label: 'Longest session',   value: fmtMs((vaultStats?.longest_session_sec ?? 0) * 1000, t),            color: 'var(--c-accent)' },
             { icon: '🔥', label: 'Current streak',    value: `${profile.streak_days ?? 0}d`,                                 color: '#FA9835' },
             { icon: '🏆', label: 'Best streak',       value: `${profile.streak_best ?? 0}d`,                                 color: '#FA9835' },
-            { icon: '📆', label: 'Peak month',        value: vaultStats?.most_active_month ? MONTHS[vaultStats.most_active_month - 1] : '—', color: 'var(--c-accent-text)' },
-            { icon: '📅', label: 'Peak day',          value: (vaultStats?.most_active_day != null) ? DAYS[vaultStats.most_active_day] : '—', color: 'var(--c-accent-text)' },
+            { icon: '📆', label: 'Peak month',        value: vaultStats?.most_active_month ? t(MONTHS[vaultStats.most_active_month - 1]) : '—', color: 'var(--c-accent-text)' },
+            { icon: '📅', label: 'Peak day',          value: (vaultStats?.most_active_day != null) ? t(DAYS[vaultStats.most_active_day]) : '—', color: 'var(--c-accent-text)' },
           ].map(s => (
             <div key={s.label} className={s.cumStat ? 'vault-cum-stat' : ''} style={{
               borderRadius: 10, padding: '12px 14px',
@@ -675,7 +663,7 @@ export default function Profile() {
             }}>
               <div style={{ fontSize: 16, marginBottom: 4 }}>{s.icon}</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.color, marginBottom: 2 }}>{s.value}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</div>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -686,18 +674,17 @@ export default function Profile() {
         {/* XP log */}
         <div style={{ borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Zap size={13} style={{ color: 'var(--c-accent)' }} /> XP Events
-          </div>
+            <Zap size={13} style={{ color: 'var(--c-accent)' }} /><LocalizedText text={"XP Events"} before={" "} after={"\n          "} /></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {recentXP.length === 0 ? (
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>No XP events yet</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"No XP events yet"} /></div>
             ) : recentXP.map((e, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
                 <div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{SOURCE_LABELS[e.reason] || e.reason}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.earned_at)}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{t(SOURCE_LABELS[e.reason] || e.reason)}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.earned_at, t)}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-accent)' }}>+{e.amount} XP</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-accent)' }}>+{e.amount}<LocalizedText text={"XP"} before={" "} /></div>
               </div>
             ))}
           </div>
@@ -706,16 +693,15 @@ export default function Profile() {
         {/* Credit log */}
         <div style={{ borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Trophy size={13} style={{ color: 'var(--c-amber-text)' }} /> Credit Events
-          </div>
+            <Trophy size={13} style={{ color: 'var(--c-amber-text)' }} /><LocalizedText text={"Credit Events"} before={" "} after={"\n          "} /></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {recentCredit.length === 0 ? (
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>No credits earned yet — log sessions!</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"No credits earned yet — log sessions!"} /></div>
             ) : recentCredit.map((e, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
                 <div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{SOURCE_LABELS[e.source] || e.source}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.logged_at)}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{t(SOURCE_LABELS[e.source] || e.source)}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>{fmtTime(e.logged_at, t)}</div>
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-amber-text)' }}>+{e.amount} 💰</div>
               </div>

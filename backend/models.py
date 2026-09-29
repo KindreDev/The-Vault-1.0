@@ -1137,7 +1137,9 @@ class BondMilestone(Base):
     __tablename__ = "bond_milestones"
 
     id             = Column(Integer, primary_key=True, index=True)
-    card_id        = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    # Nullable only so a pre-launch catalogue reset can preserve authenticated
+    # threshold/crossing history while replacing the linked non-legacy card.
+    card_id        = Column(Integer, ForeignKey("cards.id"), nullable=True, index=True)
     image_id       = Column(Integer, ForeignKey("images.id"), nullable=False, index=True)
     threshold      = Column(Integer, nullable=False)
     recorded_count = Column(Integer, nullable=False)
@@ -1641,6 +1643,43 @@ class HofCrown(Base):
     )
 
 
+class HofCategoryAward(Base):
+    """A permanent Media or Gallery Hall of Fame win and its unique card."""
+    __tablename__ = "hof_category_awards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category_type = Column(String, nullable=False, index=True)  # media | gallery
+    period_type = Column(String, nullable=False, index=True)
+    period_key = Column(String, nullable=False, index=True)
+    winner_id = Column(Integer, nullable=False, index=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), nullable=True, index=True)
+    image_id = Column(Integer, ForeignKey("images.id"), nullable=True)
+    gallery_id = Column(Integer, ForeignKey("galleries.id"), nullable=True)
+    won_at = Column(DateTime, default=func.now())
+    score = Column(Integer, default=0)
+    field_size = Column(Integer, default=0)
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("category_type", "period_type", "period_key", name="uq_hof_category_period"),
+    )
+
+
+class HofCategoryProgress(Base):
+    """Sweep cursor, including periods whose category board had no winner."""
+    __tablename__ = "hof_category_progress"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category_type = Column(String, nullable=False)
+    period_type = Column(String, nullable=False)
+    last_period_key = Column(String, nullable=False)
+    checked_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("category_type", "period_type", name="uq_hof_category_progress"),
+    )
+
+
 # ── Engagement event log ──────────────────────────────────────────────────────
 class ActivityEvent(Base):
     """One row per engagement action, with the timestamp the counters throw away.
@@ -1780,6 +1819,7 @@ class AITagJob(Base):
     scope          = Column(String, default="library")
     folder_path    = Column(String, nullable=True)
     creator_id     = Column(Integer, nullable=True)
+    image_id       = Column(Integer, nullable=True)
     threshold      = Column(Float, default=0.35)
     retag          = Column(Boolean, default=False)
     model_override = Column(String, nullable=True)

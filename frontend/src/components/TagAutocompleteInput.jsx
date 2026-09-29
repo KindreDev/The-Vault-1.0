@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Tag as TagIcon, Plus, X } from 'lucide-react'
@@ -33,6 +34,7 @@ export default function TagAutocompleteInput({
   size = 'md',
   autoFocus = false,
 }) {
+  const t = useT()
   const [input, setInput]   = useState('')
   const [open, setOpen]     = useState(false)
   const [cursor, setCursor] = useState(0)
@@ -181,7 +183,7 @@ export default function TagAutocompleteInput({
         )}
         <button type="button" onMouseDown={() => commit(q)} disabled={!q}
                 className="cursor-pointer flex-shrink-0 disabled:opacity-25"
-                style={{ color: 'var(--c-accent-text)' }} title="Add tag">
+                style={{ color: 'var(--c-accent-text)' }} title={t('Add tag')}>
           <Plus size={sm ? 11 : 13} />
         </button>
       </div>
@@ -212,10 +214,9 @@ export default function TagAutocompleteInput({
               {tag.__create ? (
                 <>
                   <Plus size={12} style={{ color: 'var(--c-green)', flexShrink: 0 }} />
-                  <span style={{ fontSize: 18 }} className="flex-1 truncate">
-                    Create <strong>{tag.name}</strong>
+                  <span style={{ fontSize: 18 }} className="flex-1 truncate"><LocalizedText text={"Create"} before=" " after=" " /><strong>{tag.name}</strong>
                   </span>
-                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0">new</span>
+                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }} className="flex-shrink-0"><LocalizedText text={"new"} /></span>
                 </>
               ) : (
                 <>

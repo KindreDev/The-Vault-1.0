@@ -75,7 +75,10 @@ export default function SceneCard({
   const subjectName = recipe.snapshot.subjectName
   const subjectMaskUrl = packedMaskChannelUrl(packedMaskUrl, 'subject')
   const backgroundMaskUrl = packedMaskChannelUrl(packedMaskUrl, 'background')
-  const isLayered = recipe.visualMode === 'layered'
+  // Common cards keep their ordinary photograph/frame treatment. The
+  // subject outline is the premium masking treatment and should only exist
+  // on rarities that actually carry VFX.
+  const isLayered = recipe.rarity !== 'C' && recipe.visualMode === 'layered'
     && Boolean(subjectMaskUrl && backgroundMaskUrl)
   const ariaLabel = `${recipe.rarity} Scene card, ${subjectName}, ${recipe.snapshot.creatorName}`
 

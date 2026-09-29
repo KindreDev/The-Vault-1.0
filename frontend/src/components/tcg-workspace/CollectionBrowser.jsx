@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CheckSquare2, ChevronDown, ChevronLeft, ChevronRight, Filter, FolderInput, Search, X } from 'lucide-react'
@@ -61,7 +62,7 @@ function Select({ value, onChange, options, label, searchable = false }) {
     {open && <div className="tcgws-filter-menu" id={listId} role="listbox" aria-label={label}>
       {searchable && <label className="tcgws-filter-search"><Search size={16} aria-hidden="true" /><input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${label.toLocaleLowerCase()}`} /></label>}
       {visibleOptions.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onClick={() => choose(option)}><span>{option.label}</span>{option.value === value && <Check size={16} aria-hidden="true" />}</button>)}
-      {!visibleOptions.length && <span className="tcgws-filter-empty">No matches</span>}
+      {!visibleOptions.length && <span className="tcgws-filter-empty"><LocalizedText text={"No matches"} /></span>}
     </div>}
   </div>
 }
@@ -100,6 +101,7 @@ function sortRows(rows, sort) {
 }
 
 export default function CollectionBrowser({ entries, inventory, view, hasLegacyCards = false, classifications, values, releases = [], sets = [], filterOptions = {}, onOpen, total, page = 0, pageSize = 100, onPage, onFilters, serverFiltered = false, loading = false, disableLayoutAnimation = false }) {
+  const t = useT()
   const [query, setQuery] = useState('')
   const [rarity, setRarity] = useState('All')
   const [type, setType] = useState('All')
@@ -118,8 +120,8 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
   const selectionAnchor = useRef(null)
   const qc = useQueryClient()
   const { data: binders = [] } = useQuery({ queryKey: ['tcg-v2-binders'], queryFn: () => tcgV2Api.binders().then(response => response.data) })
-  const collectionScopes = useMemo(() => hasLegacyCards ? [...COLLECTION_SCOPES, ['legacy', 'Legacy']] : COLLECTION_SCOPES, [hasLegacyCards])
   const legacyScope = scope === 'legacy'
+  const defaultScope = view === 'cards' ? 'owned' : view
   useEffect(() => {
     const nextScope = view === 'cards' ? 'owned' : view
     setScope(current => current === nextScope ? current : nextScope)
@@ -128,11 +130,11 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
   }, [view])
   useEffect(() => {
     if (legacyScope && !hasLegacyCards) {
-      setScope('owned')
+      setScope(defaultScope)
       setSelected(new Set())
       selectionAnchor.current = null
     }
-  }, [legacyScope, hasLegacyCards])
+  }, [legacyScope, hasLegacyCards, defaultScope])
   useEffect(() => {
     const scopeType = scope === 'creators' ? 'creator' : scope === 'characters' ? 'character' : scope === 'hof' ? 'hall-of-fame' : scope === 'bond' ? 'bond' : undefined
     const timer = setTimeout(() => onFilters?.({
@@ -183,13 +185,13 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
     mutationFn: binderId => tcgV2Api.addBinderCards(binderId, [...selected]),
     onSuccess: (_, binderId) => {
       const binder = binders.find(item => item.id === binderId)
-      toast.success(`${selected.size} ${selected.size === 1 ? 'card' : 'cards'} placed in ${binder?.name || 'binder'}`)
+      toast.success(t('{count} cards placed in {binder}', { count: selected.size, binder: binder?.name || t('binder') }))
       setSelected(new Set())
       setMenu(null)
       qc.invalidateQueries({ queryKey: ['tcg-v2-binders'] })
       qc.invalidateQueries({ queryKey: ['tcg-v2-binder', binderId] })
     },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not place cards in binder'),
+    onError: error => toast.error(error.response?.data?.detail || t("Could not place cards in binder")),
   })
 
   const selectCard = (event, cardId, index) => {
@@ -222,7 +224,8 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
     setMenu({ x: Math.min(event.clientX, window.innerWidth - 300), y: Math.min(event.clientY, window.innerHeight - 260) })
   }
 
-  const reset = () => { setQuery(''); setRarity('All'); setType('All'); setExposure('All'); setIntensity('All'); setRelease('All'); setSet('All'); setCreator('All'); setCharacter('All'); setBinder('All'); setSort('collector_number'); setScope('owned') }
+  const reset = () => { setQuery(''); setRarity('All'); setType('All'); setExposure('All'); setIntensity('All'); setRelease('All'); setSet('All'); setCreator('All'); setCharacter('All'); setBinder('All'); setSort('collector_number'); setScope(defaultScope) }
+  const searchHelp = t('Search by name, creator, gallery, card ID, printed code or number, rarity, type, exposure, or intensity')
   const availableSets = release === 'All' ? sets : sets.filter(item => item.release_id === Number(release))
   const creatorOptions = [{ value: 'All', label: 'All creators' }, ...(filterOptions.creators || []).map(item => ({ value: String(item.id), label: item.name }))]
   const characterOptions = [{ value: 'All', label: 'All characters' }, ...(filterOptions.characters || []).map(item => ({ value: String(item.id), label: item.name }))]
@@ -236,39 +239,42 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
     : null
   return (
     <section className="tcgws-browser" aria-busy={loading}>
-      <div className="tcgws-collection-scopes" role="tablist" aria-label="Collection scope">
-        {collectionScopes.map(([id, label]) => <button key={id} role="tab" aria-selected={scope === id} className={scope === id ? 'active' : ''} onClick={() => { setScope(id); onPage?.(0) }}>{label}</button>)}
-        <button className={`tcgws-select-mode${selectionMode ? ' active' : ''}`} onClick={() => { setSelectionMode(value => !value); if (selectionMode) setSelected(new Set()) }}><CheckSquare2 size={18} /> Select cards</button>
+      <div className="tcgws-collection-scopes" role="tablist" aria-label={t("Collection scope")}>
+        {COLLECTION_SCOPES.map(([id, label]) => <button key={id} role="tab" aria-selected={scope === id} className={scope === id ? 'active' : ''} onClick={() => { setScope(id); onPage?.(0) }}>{t(label)}</button>)}
+        {hasLegacyCards && <button type="button" className={`tcgws-legacy-toggle${legacyScope ? ' active' : ''}`} aria-pressed={legacyScope} title={t("Show legacy cards")} onClick={() => { setScope(legacyScope ? defaultScope : 'legacy'); onPage?.(0) }}>
+          <span>{t('Legacy cards')}</span><i>{legacyScope ? t('On') : t('Off')}</i>
+        </button>}
+        <button className={`tcgws-select-mode${selectionMode ? ' active' : ''}`} onClick={() => { setSelectionMode(value => !value); if (selectionMode) setSelected(new Set()) }}><CheckSquare2 size={18} /><LocalizedText text={"Select cards"} before={" "} /></button>
       </div>
       <div className="tcgws-toolbar">
-        <label className="tcgws-search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search cards" /></label>
-        <div className="tcgws-filter-label"><Filter size={17} /> Filters</div>
-        {!legacyScope && <Select label="Rarity" value={rarity} onChange={setRarity} options={optionList(RARITIES)} />}
-        {!legacyScope && <Select label="Type" value={type} onChange={setType} options={optionList(TYPES, TYPE_LABELS)} />}
-        {!legacyScope && <Select label="Exposure" value={exposure} onChange={setExposure} options={optionList(['All', ...(values?.exposure || [])])} />}
-        {!legacyScope && <Select label="Sexual intensity" value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])])} />}
-        {!legacyScope && <Select label="Creator" value={creator} onChange={setCreator} options={creatorOptions} searchable />}
-        {!legacyScope && <Select label="Character" value={character} onChange={setCharacter} options={characterOptions} searchable />}
-        <Select label="Binder" value={binder} onChange={setBinder} options={binderOptions} searchable />
+        <label className="tcgws-search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search names, IDs, codes…")} aria-label={searchHelp} title={searchHelp} /></label>
+        <div className="tcgws-filter-label"><Filter size={17} /><LocalizedText text={"Filters"} before={" "} /></div>
+        {!legacyScope && <Select label={t("Rarity")} value={rarity} onChange={setRarity} options={optionList(RARITIES)} />}
+        {!legacyScope && <Select label={t("Type")} value={type} onChange={setType} options={optionList(TYPES, TYPE_LABELS)} />}
+        {!legacyScope && <Select label={t("Exposure")} value={exposure} onChange={setExposure} options={optionList(['All', ...(values?.exposure || [])])} />}
+        {!legacyScope && <Select label={t("Sexual intensity")} value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])])} />}
+        {!legacyScope && <Select label={t("Creator")} value={creator} onChange={setCreator} options={creatorOptions} searchable />}
+        {!legacyScope && <Select label={t("Character")} value={character} onChange={setCharacter} options={characterOptions} searchable />}
+        <Select label={t("Binder")} value={binder} onChange={setBinder} options={binderOptions} searchable />
         {/*
         <Select label="Release" value={release} onChange={value => { setRelease(value); setSet('All') }}><option>All</option>{releases.map(item => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</Select>
         <Select label="Set" value={set} onChange={setSet}><option>All</option>{availableSets.map(item => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</Select>
         */}
-        {!legacyScope && <Select label="Release" value={release} onChange={value => { setRelease(value); setSet('All') }} options={[{ value: 'All', label: 'All' }, ...releases.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
-        {!legacyScope && <Select label="Set" value={set} onChange={setSet} options={[{ value: 'All', label: 'All' }, ...availableSets.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
-        <Select label="Sort by (loaded page)" value={sort} onChange={setSort} options={SORT_OPTIONS} />
-        <button className="tcgws-icon-btn" onClick={reset} title="Clear filters"><X size={18} /></button>
+        {!legacyScope && <Select label={t("Release")} value={release} onChange={value => { setRelease(value); setSet('All') }} options={[{ value: 'All', label: 'All' }, ...releases.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
+        {!legacyScope && <Select label={t("Set")} value={set} onChange={setSet} options={[{ value: 'All', label: 'All' }, ...availableSets.map(item => ({ value: String(item.id), label: `${item.name} - ${item.code}` }))]} />}
+        <Select label={t("Sort by (loaded page)")} value={sort} onChange={setSort} options={SORT_OPTIONS.map(option => ({ ...option, label: t(option.label) }))} />
+        <button className="tcgws-icon-btn" onClick={reset} title={t("Clear filters")}><X size={18} /></button>
       </div>
-      <div className="tcgws-result-count">{Number(total ?? filtered.length).toLocaleString()} {Number(total ?? filtered.length) === 1 ? 'printing' : 'printings'}</div>
-      {selected.size > 0 && <div className="tcgws-selection-bar"><CheckSquare2 size={20} /><strong>{selected.size} selected</strong><span>Shift-click selects a range. Right-click a card to place the selection.</span><button onClick={event => setMenu({ x: event.clientX, y: event.clientY + 12 })}><FolderInput size={18} /> Add to binder</button><button className="tcgws-icon-btn" title="Clear selection" onClick={() => setSelected(new Set())}><X size={18} /></button></div>}
-      {loading && <div className="tcgws-collection-loading" role="status"><i aria-hidden="true" /> Updating collection...</div>}
-      {loading && filtered.length === 0 ? <div className="tcgws-card-skeletons" aria-label="Loading cards">{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</div> : null}
-      {!loading && filtered.length === 0 ? <div className="tcgws-empty-results"><strong>No cards match these filters</strong><span>Try clearing one of the filters to widen the collection.</span></div> : null}
+      <div className="tcgws-result-count">{Number(total ?? filtered.length).toLocaleString()} {t(Number(total ?? filtered.length) === 1 ? 'printing' : 'printings')}</div>
+      {selected.size > 0 && <div className="tcgws-selection-bar"><CheckSquare2 size={20} /><strong>{selected.size}<LocalizedText text={"selected"} before={" "} /></strong><span><LocalizedText text={"Shift-click selects a range. Right-click a card to place the selection."} /></span><button onClick={event => setMenu({ x: event.clientX, y: event.clientY + 12 })}><FolderInput size={18} /><LocalizedText text={"Add to binder"} before={" "} /></button><button className="tcgws-icon-btn" title={t("Clear selection")} onClick={() => setSelected(new Set())}><X size={18} /></button></div>}
+      {loading && <div className="tcgws-collection-loading" role="status"><i aria-hidden="true" /><LocalizedText text={"Updating collection..."} before={" "} /></div>}
+      {loading && filtered.length === 0 ? <div className="tcgws-card-skeletons" aria-label={t("Loading cards")}>{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</div> : null}
+      {!loading && filtered.length === 0 ? <div className="tcgws-empty-results"><strong><LocalizedText text={"No cards match these filters"} /></strong><span><LocalizedText text={"Try clearing one of the filters to widen the collection."} /></span></div> : null}
       {grouped ? <div className="tcgws-grouped-collection">{grouped.map(([name, cards]) => <section key={name}><header><h2>{name}</h2><span>{cards.length} {cards.length === 1 ? 'printing' : 'printings'}</span></header><div className="tcgws-card-grid">{cards.map((row, index) => <CardTile key={row.id || row.card?.id || index} card={row.card} missing={!row.owned} quantity={row.quantity} number={row.display_number} identity={row.identity || row} classification={row.card ? classifications?.[row.card.id] : null} onOpen={row.card ? () => onOpen(row.card) : null} disableLayoutAnimation={disableLayoutAnimation} />)}</div></section>)}</div> : <div className="tcgws-card-grid">
         {filtered.map((row, index) => <CardTile key={row.id || row.card?.id || index} card={row.card} missing={!row.owned} quantity={row.quantity} number={row.display_number} identity={row.identity || row} classification={row.card ? classifications?.[row.card.id] : null} onOpen={row.card ? () => onOpen(row.card) : null} selected={selected.has(row.card?.id)} onSelect={row.card ? event => selectCard(event, row.card.id, index) : null} onContextMenu={row.card ? event => openBinderMenu(event, row.card.id, index) : null} disableLayoutAnimation={disableLayoutAnimation} />)}
       </div>}
-      {Number(total || 0) > pageSize && <nav className="tcgws-pagination" aria-label="Collection pages"><button disabled={page === 0} onClick={() => onPage?.(page - 1)}><ChevronLeft size={18} /> Previous</button><span>Page {page + 1} of {Math.ceil(total / pageSize)}</span><button disabled={(page + 1) * pageSize >= total} onClick={() => onPage?.(page + 1)}>Next <ChevronRight size={18} /></button></nav>}
-      {menu && <><button className="tcgws-context-dismiss" aria-label="Close binder menu" onClick={() => setMenu(null)} /><div className="tcgws-binder-context" style={{ left: menu.x, top: menu.y }}><header><FolderInput size={18} /><div><strong>Add to binder</strong><span>{selected.size} selected</span></div></header>{binders.length ? binders.map(binder => <button key={binder.id} disabled={placeCards.isPending} onClick={() => placeCards.mutate(binder.id)}><strong>{binder.name}</strong><span>{binder.card_count} cards</span></button>) : <p>Create a binder from the Binders view first.</p>}</div></>}
+      {Number(total || 0) > pageSize && <nav className="tcgws-pagination" aria-label={t("Collection pages")}><button disabled={page === 0} onClick={() => onPage?.(page - 1)}><ChevronLeft size={18} /><LocalizedText text={"Previous"} before={" "} /></button><span><LocalizedText text={"Page"} after={" "} />{page + 1}<LocalizedText text={"of"} before={" "} after={" "} />{Math.ceil(total / pageSize)}</span><button disabled={(page + 1) * pageSize >= total} onClick={() => onPage?.(page + 1)}><LocalizedText text={"Next"} after={" "} /><ChevronRight size={18} /></button></nav>}
+      {menu && <><button className="tcgws-context-dismiss" aria-label={t("Close binder menu")} onClick={() => setMenu(null)} /><div className="tcgws-binder-context" style={{ left: menu.x, top: menu.y }}><header><FolderInput size={18} /><div><strong><LocalizedText text={"Add to binder"} /></strong><span>{selected.size}<LocalizedText text={"selected"} before={" "} /></span></div></header>{binders.length ? binders.map(binder => <button key={binder.id} disabled={placeCards.isPending} onClick={() => placeCards.mutate(binder.id)}><strong>{binder.name}</strong><span>{binder.card_count}<LocalizedText text={"cards"} before={" "} /></span></button>) : <p><LocalizedText text={"Create a binder from the Binders view first."} /></p>}</div></>}
     </section>
   )
 }

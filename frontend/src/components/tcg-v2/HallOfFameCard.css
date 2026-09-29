@@ -8,7 +8,84 @@
 }
 
 .hall-of-fame-card-v2[role='button'] { cursor: pointer; }
-.hall-of-fame-card-v2__surface { display: block; width: 100%; height: 100%; overflow: visible; }
+.hall-of-fame-card-v2__surface {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.hall-of-fame-card-v2__video-layer {
+  position: absolute;
+  z-index: 0;
+  inset: .7%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 5.5% / 3.6%;
+  background: #05070c;
+}
+.hall-of-fame-card-v2__video-poster,
+.hall-of-fame-card-v2__video,
+.hall-of-fame-card-v2__video-status {
+  position: absolute;
+  inset: 0;
+}
+.hall-of-fame-card-v2__video-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.hall-of-fame-card-v2__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.hall-of-fame-card-v2__video.is-ready { opacity: 1; }
+.hall-of-fame-card-v2__video-status {
+  z-index: 2;
+  inset: auto 10% 9%;
+  display: inline-flex;
+  width: max-content;
+  max-width: 80%;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 999px;
+  background: rgba(5,7,12,.78);
+  color: rgba(255,255,255,.88);
+  font-size: 16px;
+  line-height: 1.2;
+  text-align: center;
+  transform: translateX(-50%);
+  left: 50%;
+}
+.hall-of-fame-card-v2__video-status--error {
+  border-color: rgba(255,150,120,.48);
+  color: #ffd1c4;
+}
+.hall-of-fame-card-v2__video-spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255,255,255,.28);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: hall-of-fame-video-spin .78s linear infinite;
+}
+@keyframes hall-of-fame-video-spin {
+  to { transform: rotate(360deg); }
+}
 
 .hall-of-fame-card-v2__identity text {
   font-family: Georgia, 'Times New Roman', serif;
@@ -24,3 +101,219 @@
 .hall-of-fame-card-v2__title { font-size: 48px; font-weight: 700; letter-spacing: .08em; }
 .hall-of-fame-card-v2__metadata { font-size: 40px; font-weight: 700; letter-spacing: .055em; }
 .hall-of-fame-card-v2__ornaments { opacity: .94; }
+
+/* Metal Signature is layered over the existing image foil. Video and GIF
+   faces retain the saved star-field foil branch in TCGV2CardFace.css. */
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] {
+  --hof-video-highlight-opacity: .56;
+  --hof-video-highlight-mid-opacity: .46;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"] {
+  --hof-video-highlight-opacity: .96;
+  --hof-video-highlight-mid-opacity: .82;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="R"] {
+  --hof-video-metal-dark: #4A2416;
+  --hof-video-metal-mid: #B7673F;
+  --hof-video-metal-light: #F4C69A;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="SR"] {
+  --hof-video-metal-dark: #3D4650;
+  --hof-video-metal-mid: #AEBAC6;
+  --hof-video-metal-light: #F6FAFF;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="UR"] {
+  --hof-video-metal-dark: #60400F;
+  --hof-video-metal-mid: #C4932F;
+  --hof-video-metal-light: #FFF0A2;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="SPR"] {
+  --hof-video-metal-dark: #51445E;
+  --hof-video-metal-mid: #D9C6EF;
+  --hof-video-metal-light: #AEE7E4;
+}
+
+.hall-of-fame-card-v2[data-media-type="video"][data-video-foil="metal-signature"] .tcg-v2-masked-finishes,
+.hall-of-fame-card-v2[data-media-type="video"][data-video-foil="metal-signature"] [data-effect-layer="rarity"] .tcg-v2-rarity-foil,
+.hall-of-fame-card-v2[data-media-type="gif"][data-video-foil="metal-signature"] .tcg-v2-masked-finishes,
+.hall-of-fame-card-v2[data-media-type="gif"][data-video-foil="metal-signature"] [data-effect-layer="rarity"] .tcg-v2-rarity-foil {
+  display: none !important;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__creator {
+  fill: var(--hof-video-metal-gradient);
+  stroke: var(--hof-video-pointer-gradient);
+  stroke-width: 5px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .9));
+  transition: filter 160ms ease;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__identity text:not(.hall-of-fame-card-v2__creator) {
+  fill: var(--hof-video-metal-gradient);
+  stroke: var(--hof-video-pointer-gradient);
+  stroke-width: 2px;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .78));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__honor path {
+  stroke: var(--hof-video-metal-gradient);
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__honor path:first-child {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--hof-video-metal-light) 52%, transparent));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__metal-ribbon {
+  fill: var(--hof-video-metal-gradient);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .48));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__metal-ribbon-highlight {
+  opacity: .62;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__ornament-metal-highlight {
+  mix-blend-mode: screen;
+  opacity: .86;
+  pointer-events: none;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"] .hall-of-fame-card-v2__metal-ribbon-highlight {
+  opacity: .9;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__frame {
+  stroke: var(--hof-video-metal-gradient);
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--hof-video-metal-light) 56%, transparent));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__frame-highlight {
+  opacity: .24;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"] .hall-of-fame-card-v2__frame-highlight {
+  opacity: .62;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__inner-frame {
+  stroke: var(--hof-video-metal-gradient);
+  opacity: .92;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__inner-frame-highlight {
+  opacity: .42;
+  pointer-events: none;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="R"] .hall-of-fame-card-v2__rarity-art {
+  filter: sepia(.72) saturate(1.65) hue-rotate(338deg) contrast(1.12) brightness(1.05)
+    drop-shadow(0 0 4px rgba(227, 151, 98, .62));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="SR"] .hall-of-fame-card-v2__rarity-art {
+  filter: grayscale(1) brightness(1.32) contrast(1.12)
+    drop-shadow(0 0 4px rgba(220, 236, 250, .72));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="UR"] .hall-of-fame-card-v2__rarity-art {
+  filter: sepia(.95) saturate(2.25) hue-rotate(355deg) contrast(1.12) brightness(1.08)
+    drop-shadow(0 0 4px rgba(255, 221, 111, .72));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-rarity="SPR"] .hall-of-fame-card-v2__rarity-art {
+  filter: saturate(1.35) brightness(1.18) contrast(1.08)
+    drop-shadow(0 0 5px rgba(205, 190, 255, .8));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"] .hall-of-fame-card-v2__rarity-highlight {
+  opacity: .44;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.hall-of-fame-card-v2__metal-ribbon-highlight,
+.hall-of-fame-card-v2__rarity-highlight {
+  opacity: 0;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"] .hall-of-fame-card-v2__rarity-highlight {
+  opacity: .94;
+}
+
+/* Silver and higher HOF print rarities get a more reflective Metal Signature
+   across every metal element, while bronze keeps its existing softer finish. */
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) {
+  --hof-video-highlight-opacity: .84;
+  --hof-video-highlight-mid-opacity: .74;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) {
+  --hof-video-highlight-opacity: 1;
+  --hof-video-highlight-mid-opacity: .94;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__metal-ribbon-highlight {
+  opacity: .84;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__metal-ribbon {
+  filter: brightness(1.12) saturate(1.2) drop-shadow(0 1px 2px rgba(0, 0, 0, .48));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__ornament-metal-highlight {
+  opacity: 1;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__ornaments {
+  opacity: .99;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__identity text {
+  filter: brightness(1.12) saturate(1.16) drop-shadow(0 1px 2px rgba(0, 0, 0, .82));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__honor path {
+  filter: brightness(1.12) saturate(1.18);
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__frame {
+  filter: brightness(1.1) saturate(1.16) drop-shadow(0 0 4px color-mix(in srgb, var(--hof-video-metal-light) 78%, transparent));
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__frame-highlight {
+  opacity: .54;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__inner-frame-highlight {
+  opacity: .62;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__rarity-highlight {
+  opacity: .68;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__metal-ribbon-highlight {
+  opacity: 1;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__frame-highlight {
+  opacity: .84;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__inner-frame-highlight {
+  opacity: .78;
+}
+
+.hall-of-fame-card-v2[data-video-foil="metal-signature"][data-video-presentation="full"]:is([data-rarity="SR"], [data-rarity="UR"], [data-rarity="SPR"]) .hall-of-fame-card-v2__rarity-highlight {
+  opacity: 1;
+}

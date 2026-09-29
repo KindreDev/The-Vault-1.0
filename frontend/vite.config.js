@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },
       '/thumbs': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },
+      '/theme-packs': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },
       '/masks': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },
       '/foil-maps': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },
     }

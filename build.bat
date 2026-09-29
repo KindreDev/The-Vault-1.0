@@ -22,8 +22,8 @@ if %errorlevel% neq 0 (
     pause & exit /b 1
 )
 
-REM Step 1 - Get FFmpeg
-echo [1/5] Checking for FFmpeg...
+REM Step 1 - Get FFmpeg and FFprobe
+echo [1/5] Checking for FFmpeg and FFprobe...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0get_ffmpeg.ps1"
 if %errorlevel% neq 0 (
     echo.
@@ -31,7 +31,7 @@ if %errorlevel% neq 0 (
     echo   Manual fix:
     echo     1. Go to https://www.gyan.dev/ffmpeg/builds/
     echo     2. Download ffmpeg-release-essentials.zip
-    echo     3. Extract ffmpeg.exe into the tools\ folder here
+    echo     3. Extract ffmpeg.exe and ffprobe.exe into the tools\ folder here
     echo     4. Re-run build.bat
     echo.
     pause & exit /b 1

@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { X, CheckSquare, Square, TrendingUp } from 'lucide-react'
 import VaultCard, { RARITY_CONFIG } from './VaultCard'
@@ -24,6 +25,7 @@ function calcCxp(card) {
 }
 
 export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed }) {
+  const t = useT()
   const [selected, setSelected]   = useState(new Set())
   const [scrollTop, setScrollTop] = useState(0)
   const [flashId, setFlashId]     = useState(null)
@@ -74,7 +76,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
       onFed(data)
       onClose()
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Feed failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Feed failed")),
   })
 
   const toggle = useCallback((id) => {
@@ -222,11 +224,8 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
       }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-accent-text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <TrendingUp size={14} /> Level Up
-          </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
-            Sacrifice cards for CXP
-          </div>
+            <TrendingUp size={14} /><LocalizedText text={"Level Up"} before={" "} after={" "} /></div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}><LocalizedText text={"Sacrifice cards for CXP"} before={" "} after={" "} /></div>
         </div>
         <button
           onClick={onClose}
@@ -249,7 +248,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
             display: 'flex', justifyContent: 'space-between',
             fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8,
           }}>
-            <span>CXP {currentCxp.toLocaleString()} / {threshold.toLocaleString()}</span>
+            <span><LocalizedText text={"CXP"} after={" "} />{currentCxp.toLocaleString()} / {threshold.toLocaleString()}</span>
             {totals.apply > 0 && (
               <span style={{
                 color: isFull && nextCfg ? nextCfg.badge : '#6EE7C3',
@@ -294,17 +293,14 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
           </div>
 
           {totals.overflow > 0 && (
-            <div style={{ fontSize: 10, color: 'var(--c-amber-text)', marginTop: 6 }}>
-              {totals.overflow.toLocaleString()} overflow → +{totals.credits} Credits
-            </div>
+            <div style={{ fontSize: 16, color: 'var(--c-amber-text)', marginTop: 6 }}>
+              {totals.overflow.toLocaleString()}<LocalizedText text={"overflow → +"} before={" "} />{totals.credits}<LocalizedText text={"Credits"} before={" "} after={" "} /></div>
           )}
         </div>
       )}
 
       {threshold === null && (
-        <div style={{ padding: '8px 16px', fontSize: 10, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
-          Max rarity — all CXP converts to Credits
-        </div>
+        <div style={{ padding: '8px 16px', fontSize: 16, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}><LocalizedText text={"Max rarity — all CXP converts to Credits"} before={" "} after={" "} /></div>
       )}
 
       {/* Select All bar */}
@@ -325,20 +321,16 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
           {allSelected ? <CheckSquare size={13} color="#6EE7C3" /> : <Square size={13} />}
           {allSelected ? 'Deselect All' : 'Select All'}
         </button>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
           {selected.size}/{allItems.length}
         </span>
       </div>
 
       {/* Virtualised list — flex:1 so it fills remaining space; footer is always visible */}
       {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
-          Loading…
-        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12 }}><LocalizedText text={"Loading…"} before={" "} after={" "} /></div>
       ) : allItems.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
-          No other cards in collection
-        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12 }}><LocalizedText text={"No other cards in collection"} before={" "} after={" "} /></div>
       ) : (
         <div
           ref={listRef}
@@ -396,12 +388,12 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
                       }}>
                         {item.rarity}
                       </div>
-                      <div style={{ fontSize: 10, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ fontSize: 16, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
                         {item.card_type === 'bond' && (
-                          <span style={{ color: 'var(--c-pink)', fontWeight: 700 }}>BOND ×1.5</span>
+                          <span style={{ color: 'var(--c-pink)', fontWeight: 700 }}><LocalizedText text={"BOND ×1.5"} /></span>
                         )}
                         {item.card_type === 'variant' && (
-                          <span style={{ color: '#c9a84c', fontWeight: 700 }}>VARIANT ×2</span>
+                          <span style={{ color: '#c9a84c', fontWeight: 700 }}><LocalizedText text={"VARIANT ×2"} /></span>
                         )}
                         {item.quantity > 1 && (
                           <span style={{ color: 'rgba(255,255,255,0.28)' }}>×{item.quantity}</span>
@@ -418,7 +410,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
                       }}>
                         +{cxpGain.toLocaleString()}
                       </div>
-                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 2 }}>CXP</div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 2 }}><LocalizedText text={"CXP"} /></div>
                     </div>
                   </div>
                 )
@@ -431,8 +423,7 @@ export default function CardFeedPanel({ targetCard, inventoryId, onClose, onFed 
       {/* Footer */}
       <div style={{ padding: '10px 14px 14px', borderTop: '0.5px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
         {selected.size > 0 && totals.credits > 0 && (
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 8, textAlign: 'center' }}>
-            Overflow → <span style={{ color: 'var(--c-amber-text)' }}>+{totals.credits} Credits</span>
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)', marginBottom: 8, textAlign: 'center' }}><LocalizedText text={"Overflow →"} before={" "} after={" "} /><span style={{ color: 'var(--c-amber-text)' }}>+{totals.credits}<LocalizedText text={"Credits"} before={" "} /></span>
           </div>
         )}
         <button

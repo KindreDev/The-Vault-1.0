@@ -1,10 +1,11 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { CreditCard, Gem, Search, SlidersHorizontal } from 'lucide-react'
-import { imagesApi, tcgRoomApi } from '../../lib/api'
+import { Coins, Gem } from 'lucide-react'
+import { apiErrorMessage, imagesApi, tcgRoomApi } from '../../lib/api'
 
-const ASSET_PRESENTATION = {
+export const ASSET_PRESENTATION = {
   card_display_stand_white: 'Stands',
   card_display_stand_black: 'Stands',
   graded_card_stand_white: 'Stands',
@@ -13,6 +14,15 @@ const ASSET_PRESENTATION = {
   glass_display_cabinet: 'Cabinets',
   floating_glass_cabinet: 'Cabinets',
   poster_frame: 'Wall decor',
+}
+
+export function getFurnitureDefinitions(catalog = []) {
+  const seen = new Set()
+  return catalog.filter(item => {
+    if (!item.asset_id || !['floor', 'wall'].includes(item.placement_kind) || !ASSET_PRESENTATION[item.asset_id] || seen.has(item.asset_id)) return false
+    seen.add(item.asset_id)
+    return true
+  })
 }
 
 function furnitureDescription(definition) {
@@ -46,7 +56,7 @@ function ProductVisual({ definition }) {
   if (definition.asset_id === 'poster_frame') {
     const shots = photos.filter(img => vaultThumb(img)).slice(0, 3)
     return <div className="furniture-store__visual furniture-store__visual--poster_frame">
-      <span>Your photos</span>
+      <span><LocalizedText text={"Your photos"} /></span>
       <div className="furniture-store__poster-stack">
         {(shots.length ? shots : [null, null, null]).map((img, index) => (
           <figure key={img?.id || index} className="furniture-store__poster" style={{ transform: `rotate(${(index - 1) * 6}deg)` }}>
@@ -54,7 +64,7 @@ function ProductVisual({ definition }) {
           </figure>
         ))}
       </div>
-      <small>Vault photo poster</small>
+      <small><LocalizedText text={"Vault photo poster"} /></small>
     </div>
   }
   return <div className={`furniture-store__visual furniture-store__visual--${definition.asset_id}`}>
@@ -62,27 +72,17 @@ function ProductVisual({ definition }) {
   </div>
 }
 
-export default function RoomFixtureShop({ bootstrap, wallet }) {
+export default function RoomFixtureShop({ bootstrap, query = '', category = 'all', sort = 'featured' }) {
+  const t = useT()
   const queryClient = useQueryClient()
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('all')
-  const [sort, setSort] = useState('featured')
   const [variantByDefinition, setVariantByDefinition] = useState({})
-  const definitions = useMemo(() => {
-    const seen = new Set()
-    return (bootstrap?.catalog || []).filter(item => {
-      if (!item.asset_id || !['floor', 'wall'].includes(item.placement_kind) || !ASSET_PRESENTATION[item.asset_id] || seen.has(item.asset_id)) return false
-      seen.add(item.asset_id)
-      return true
-    })
-  }, [bootstrap?.catalog])
+  const definitions = useMemo(() => getFurnitureDefinitions(bootstrap?.catalog || []), [bootstrap?.catalog])
   const definitionAsset = useMemo(() => new Map((bootstrap?.catalog || []).map(item => [item.id, item.asset_id])), [bootstrap?.catalog])
   const ownedCounts = useMemo(() => (bootstrap?.owned_instances || []).reduce((counts, item) => {
     const assetId = definitionAsset.get(item.definition_id)
     if (!assetId) return counts
     return { ...counts, [assetId]: (counts[assetId] || 0) + 1 }
   }, {}), [bootstrap?.owned_instances, definitionAsset])
-  const categories = useMemo(() => [...new Set(definitions.map(item => ASSET_PRESENTATION[item.asset_id] || 'Furniture'))], [definitions])
   const products = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = definitions.filter(item => {
@@ -96,19 +96,15 @@ export default function RoomFixtureShop({ bootstrap, wallet }) {
   }, [category, definitions, query, sort])
   const purchase = useMutation({
     mutationFn: ({ definition, requestKey }) => tcgRoomApi.purchaseFurniture({ definition_id: definition.id, variant_key: variantByDefinition[definition.id] || definition.variants?.[0] || 'default', request_key: requestKey }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); queryClient.invalidateQueries({ queryKey: ['tcg-room-furniture'] }); queryClient.invalidateQueries({ queryKey: ['tcg-v2-summary'] }); toast.success('Added to Furniture Inventory') },
-    onError: error => toast.error(error.response?.data?.detail || 'Could not purchase that furniture'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); queryClient.invalidateQueries({ queryKey: ['tcg-room-furniture'] }); queryClient.invalidateQueries({ queryKey: ['tcg-v2-summary'] }); toast.success(t("Added to Furniture Inventory")) },
+    onError: error => toast.error(apiErrorMessage(error, t("Could not purchase that furniture"))),
   })
-  return <section className="furniture-store">
-    <header><div><span>ROOM MARKET</span><h2>Display furniture</h2><p>Only pieces from your room file, plus posters printed from Vault photos.</p></div><div className="furniture-store__wallet"><span>Available balance</span><strong>{Number(wallet?.vault_credits || 0).toLocaleString()} Credits</strong><small>{Number(wallet?.shards || 0).toLocaleString()} Shards</small></div></header>
-    <div className="furniture-store__toolbar"><label><Search size={19} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search furniture and posters" /></label><label className="furniture-store__sort"><SlidersHorizontal size={18} /> Sort<select value={sort} onChange={event => setSort(event.target.value)}><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name</option></select></label></div>
-    <nav><button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>All products</button>{categories.map(value => <button key={value} className={category === value ? 'active' : ''} onClick={() => setCategory(value)}>{value}</button>)}</nav>
-    <div className="furniture-store__results"><strong>{products.length} products</strong><span>Purchased pieces stay in your Inventory until placed.</span></div>
+  return <section className="furniture-store furniture-store--embedded">
+    {products.length > 0 && <h2 className="furniture-store__section-title"><LocalizedText text={"Furniture"} /><span>{products.length}</span></h2>}
     <div className="furniture-store__grid">{products.map(definition => <article key={definition.id}>
       <ProductVisual definition={definition} />
-      <div className="furniture-store__body"><div className="furniture-store__owned">{ownedCounts[definition.asset_id] ? `${ownedCounts[definition.asset_id]} owned` : 'Not owned'}</div><h3>{definition.name}</h3><p>{furnitureDescription(definition)}</p></div>
-      <footer><div><span>Price</span><strong>{definition.unit_cost.toLocaleString()} {definition.currency === 'credits' ? 'Credits' : 'Shards'}</strong></div><button disabled={purchase.isPending} onClick={() => purchase.mutate({ definition, requestKey: crypto.randomUUID() })}>{definition.currency === 'credits' ? <CreditCard size={18} /> : <Gem size={18} />} {purchase.isPending && purchase.variables?.definition.id === definition.id ? 'Adding…' : 'Add to inventory'}</button></footer>
+      <div className="furniture-store__body"><h3>{definition.name}</h3><p>{furnitureDescription(definition)}</p><div className="furniture-store__owned">{ownedCounts[definition.asset_id] ? `${ownedCounts[definition.asset_id]} owned` : <LocalizedText text={"Not owned"} />}</div></div>
+      <footer><div><span><LocalizedText text={"Price"} /></span><strong>{definition.currency === 'credits' ? <Coins size={19} /> : <Gem size={19} />} {Number(definition.unit_cost || 0).toLocaleString()} <LocalizedText text={definition.currency === 'credits' ? "Credits" : "Shards"} before={" "} /></strong></div><button disabled={purchase.isPending} onClick={() => purchase.mutate({ definition, requestKey: crypto.randomUUID() })}>{purchase.isPending && purchase.variables?.definition.id === definition.id ? 'Adding…' : 'Add to inventory'}</button></footer>
     </article>)}</div>
-    {!products.length && <div className="furniture-store__empty">No furniture matches those filters.</div>}
   </section>
 }

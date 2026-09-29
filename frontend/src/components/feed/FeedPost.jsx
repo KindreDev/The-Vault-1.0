@@ -18,14 +18,14 @@ const TYPE_META = {
   saved:       { icon: Bookmark,      label: 'Saved',        color: '#8AB4F8' },
 }
 
-function timeAgo(iso) {
+function timeAgo(iso, t) {
   if (!iso) return ''
   const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  if (s < 60) return t('Just now')
+  if (s < 3600) return t('{count}m', { count: Math.floor(s / 60) })
+  if (s < 86400) return t('{count}h', { count: Math.floor(s / 3600) })
   const d = Math.floor(s / 86400)
-  return d === 1 ? '1 day ago' : `${d} days ago`
+  return t('{count} days ago', { count: d })
 }
 
 // Post frame aspect (width/height): follow the first image, clamped so extreme
@@ -172,7 +172,7 @@ export default function FeedPost({ post, onCreatorClick }) {
       }])
       setCommentText('')
       setShowAllComments(true)
-    } catch { toast.error('Could not post comment') }
+    } catch { toast.error(t('Could not post comment')) }
     finally { setPosting(false) }
   }
   const likeCount = (post.like_count ?? 0) + (liked ? 1 : 0)
@@ -234,7 +234,7 @@ export default function FeedPost({ post, onCreatorClick }) {
             <VerifiedBadge tier={post.creator.badge} size={15} />
           </div>
           <div className="text-[13px] truncate" style={{ color: 'rgba(255,255,255,0.38)' }}>
-            @{post.creator.handle} · {timeAgo(post.posted_at)}
+            @{post.creator.handle} · {timeAgo(post.posted_at, t)}
           </div>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[13px] font-medium flex-shrink-0"

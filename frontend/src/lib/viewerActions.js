@@ -11,6 +11,10 @@
  */
 import toast from 'react-hot-toast'
 import { rateFocusedImage } from './rating'
+import { useVaultStore } from '../store/vault'
+import { translate } from '../i18n'
+
+const tr = (key, params) => translate(useVaultStore.getState().locale, key, params)
 
 // 1–9, 0 for ten, backtick to wipe. Always targets the focused surface, which
 // on the panel wall means the pinned panel.
@@ -43,16 +47,16 @@ export function videoHandlers(getPlayer, isVideo) {
   return {
     video_rate_up:    withPlayer(p => toast(`⏩ ${fmtRate(p.adjustRate(+0.25))}×`, { id: 'video-rate' })),
     video_rate_down:  withPlayer(p => toast(`⏪ ${fmtRate(p.adjustRate(-0.25))}×`, { id: 'video-rate' })),
-    video_rate_reset: withPlayer(p => toast(`${fmtRate(p.setRate(1))}× — normal speed`, { id: 'video-rate' })),
-    video_restart:    withPlayer(p => { p.restart(); toast('↺ From the top', { id: 'video-restart' }) }),
-    video_mute:       withPlayer(p => toast(p.toggleMute() ? '🔇 Muted' : '🔊 Sound on', { id: 'video-mute' })),
-    video_loop:       withPlayer(p => toast(p.toggleLoop() ? '🔁 Loop on' : 'Loop off', { id: 'video-loop' })),
+    video_rate_reset: withPlayer(p => toast(tr('{rate}× — normal speed', { rate: fmtRate(p.setRate(1)) }), { id: 'video-rate' })),
+    video_restart:    withPlayer(p => { p.restart(); toast(tr('↺ From the top'), { id: 'video-restart' }) }),
+    video_mute:       withPlayer(p => toast(p.toggleMute() ? tr('🔇 Muted') : tr('🔊 Sound on'), { id: 'video-mute' })),
+    video_loop:       withPlayer(p => toast(p.toggleLoop() ? tr('🔁 Loop on') : tr('Loop off'), { id: 'video-loop' })),
     video_volume_up:  withPlayer(p => toast(`🔊 ${Math.round(p.adjustVolume(+0.05) * 100)}%`, { id: 'video-volume' })),
     video_volume_down: withPlayer(p => toast(`🔉 ${Math.round(p.adjustVolume(-0.05) * 100)}%`, { id: 'video-volume' })),
     video_funscript_sync: withPlayer(p => {
       const state = p.toggleScriptSync()
-      if (state === null) { toast('No funscript on this video'); return }
-      toast(state ? '🔗 Device following the script' : 'Device released', { id: 'video-sync' })
+      if (state === null) { toast(tr('No funscript on this video')); return }
+      toast(state ? tr('🔗 Device following the script') : tr('Device released'), { id: 'video-sync' })
     }),
   }
 }

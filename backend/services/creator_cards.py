@@ -15,6 +15,10 @@ from services.character_cards import extract_character_palette
 
 CREATOR_RECIPE_SCHEMA = "vault.creator-card-recipe"
 CREATOR_RECIPE_VERSION = 2
+CREATOR_CANON_PLACEHOLDER_PALETTE = {
+    "background": "#18232B", "primary": "#547A86",
+    "secondary": "#D8B986", "ink": "#F4E9D8",
+}
 # ``custom`` is the persisted legacy value behind the current Model/Other UI label.
 CREATOR_CARD_TYPES = ("cosplayer", "ethot", "artist", "actress", "custom")
 
@@ -192,25 +196,33 @@ def prepare_creator_visual(db, card) -> dict[str, Any]:
     if not creator_card_eligible_type(creator.creator_type):
         raise ValueError("Creator card source is not an eligible real creator type")
 
-    image = db.query(Image).filter(Image.id == card.source_image_id).first() if card.source_image_id else None
-    if image and (image.is_video or not image.width or not image.height or not os.path.isfile(image.file_path)):
-        image = None
-    if image:
-        selection = {"kind": "image", "image": image, "creator": creator}
+    if card.source_image_id:
+        image = db.query(Image).filter(Image.id == card.source_image_id).first()
+        if (not image or image.is_video or not image.width or not image.height
+                or not image.file_path or not os.path.isfile(image.file_path)):
+            raise ValueError("Creator portrait printing's frozen source image is unavailable")
+        source_kind, source_path = "image", image.file_path
+        width, height = int(image.width), int(image.height)
+        focal_x = float(image.focal_x if image.focal_x is not None else 0.5)
+        focal_y = float(image.focal_y if image.focal_y is not None else 0.2)
     else:
-        selection = select_creator_source(db, creator.id)
-    if not selection:
-        raise ValueError("Creator has no eligible full-resolution portrait or avatar")
-
-    source_kind = selection["kind"]
-    image = selection.get("image")
-    source_path = image.file_path if image else selection["path"]
-    width = int(image.width if image else selection["width"])
-    height = int(image.height if image else selection["height"])
-    focal_x = float(image.focal_x if image and image.focal_x is not None else 0.5)
-    focal_y = float(image.focal_y if image and image.focal_y is not None else 0.2)
-    if image:
-        card.source_image_id = image.id
+        # Canon identity printings deliberately follow the live profile PFP.
+        source_path = creator.avatar_path if creator.avatar_path and os.path.isfile(creator.avatar_path) else None
+        if source_path:
+            try:
+                with PILImage.open(source_path) as avatar:
+                    width, height = avatar.size
+                if width <= 0 or height <= 0:
+                    source_path = None
+            except Exception:
+                source_path = None
+        if not source_path:
+            # The colored card face remains readable until a profile PFP is
+            # assigned; the dynamic avatar URL will begin resolving afterward.
+            width, height = 2, 3
+        image = None
+        source_kind = "avatar"
+        focal_x, focal_y = 0.5, 0.2
 
     raw_type = creator.creator_type.value if hasattr(creator.creator_type, "value") else creator.creator_type
     recipe = build_creator_recipe(
@@ -227,7 +239,7 @@ def prepare_creator_visual(db, card) -> dict[str, Any]:
         source_height=height,
         focal_x=focal_x,
         focal_y=focal_y,
-        palette=extract_character_palette(source_path),
+        palette=(extract_character_palette(source_path) if source_path else dict(CREATOR_CANON_PLACEHOLDER_PALETTE)),
         source_kind=source_kind,
     )
     card.visual_recipe = json.dumps(recipe, separators=(",", ":"), sort_keys=True)

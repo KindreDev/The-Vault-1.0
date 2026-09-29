@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { creatorsApi, galleriesApi, intakeApi, scannerApi } from '../lib/api'
 import { useT } from '../i18n'
 import InlineVideoPlayer from './InlineVideoPlayer'
+import FolderPicker from './FolderPicker'
 
 const CREATOR_TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
 const text = { fontSize: 16 }
@@ -65,6 +66,7 @@ export default function IntakeModal({ onClose }) {
   const [busy, setBusy] = useState(false)
   const [job, setJob] = useState(null)
   const [report, setReport] = useState(null)
+  const [importError, setImportError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [preview, setPreview] = useState(null)
   const [duplicate, setDuplicate] = useState(null)
@@ -132,8 +134,12 @@ export default function IntakeModal({ onClose }) {
     if (!job || status?.done_job_id !== job.id) return
     setScanning(false)
     setBusy(false)
-    setReport(status.report || null)
-    setSelected(new Set())
+    const results = status.report || []
+    const failed = results.filter(row => row.result === 'error')
+    const error = status.message?.match(/^(?:Commit error|Gallery import error):\s*(.*)$/)?.[1]
+    setReport(results.length ? results : null)
+    setImportError(error || (failed.length ? failed.map(row => `${row.filename}: ${row.message}`).join('\n') : ''))
+    if (!error && !failed.length) setSelected(new Set())
     setJob(null)
     refresh()
     qc.invalidateQueries({ queryKey: ['galleries'] })
@@ -189,14 +195,14 @@ export default function IntakeModal({ onClose }) {
       if (duplicateCount && !window.confirm(
         `${duplicateCount} ${t('selected file(s) already match something in the vault.')}\n\n${t('Import them anyway? Use the duplicate filters if you want to ignore or delete them first.')}`)) return
     }
-    setBusy(true); setReport(null)
+    setBusy(true); setReport(null); setImportError('')
     try {
       const ids = [...selected]
       const { data } = tab === 'galleries'
         ? await intakeApi.commitFolders(ids, target)
         : await intakeApi.commit(ids, target)
       setJob({ id: data.job_id })
-    } catch (error) { setBusy(false); toast.error(error?.response?.data?.detail || t('Could not start import')) }
+    } catch (error) { setBusy(false); setImportError(error?.response?.data?.detail || t('Could not start import')) }
   }
 
   const act = async action => {
@@ -276,7 +282,7 @@ export default function IntakeModal({ onClose }) {
               folderName={folderName} setFolderName={setFolderName} galleryId={galleryId} setGalleryId={setGalleryId}
               galleries={filteredGalleries} gallerySearch={gallerySearch} setGallerySearch={setGallerySearch}
               newName={newName} setNewName={setNewName} newType={newType} setNewType={setNewType}
-              folderConflict={folderConflict} setFolderConflict={setFolderConflict} report={report}
+              folderConflict={folderConflict} setFolderConflict={setFolderConflict} report={report} importError={importError}
               selectedCount={selected.size} busy={busy} onCommit={commit} onAction={act} t={t} />
           </div>
         )}
@@ -335,12 +341,19 @@ function FolderCard({ item, selected, onToggle, onPreview, t }) {
 }
 
 function DestinationPanel(props) {
+  const qc = useQueryClient()
   const { tab, creators, creatorId, setCreatorId, creatorSearch, setCreatorSearch, mode, setMode,
     folderName, setFolderName, galleryId, setGalleryId, galleries, gallerySearch, setGallerySearch,
-    newName, setNewName, newType, setNewType, folderConflict, setFolderConflict, report,
+    newName, setNewName, newType, setNewType, folderConflict, setFolderConflict, report, importError,
     selectedCount, busy, onCommit, onAction, t } = props
+  const [choosingBase, setChoosingBase] = useState(false)
   const { data: intakeConfig } = useQuery({ queryKey: ['intake-config'], queryFn: () => intakeApi.getConfig().then(r => r.data) })
+  const saveCreatorBase = async path => {
+    await intakeApi.setConfig({ new_creator_base: path })
+    await qc.invalidateQueries({ queryKey: ['intake-config'] })
+  }
   return <aside className="w-[410px] flex-shrink-0 flex flex-col"><div className="flex-1 overflow-y-auto p-4 space-y-4">
+    {importError && <div role="alert" className="p-3 rounded-lg whitespace-pre-wrap break-words" style={{ ...text, color: 'var(--c-pink)', background: 'color-mix(in srgb,var(--c-pink) 12%,transparent)' }}>{importError}</div>}
     {report && <div className="p-3 rounded-lg" style={{ ...text, background: 'color-mix(in srgb,var(--c-green) 12%,transparent)' }}>{report.filter(r => r.result !== 'error').length} {t('completed')}{report.some(r => r.result === 'error') && ` · ${report.filter(r => r.result === 'error').length} ${t('failed')}`}</div>}
     <div className="font-semibold" style={text}>{t('Import destination')}</div>
     <button onClick={() => setMode('unsorted')} className="w-full text-left p-4 rounded-xl" style={{ ...text, background: mode === 'unsorted' ? 'color-mix(in srgb,var(--accent) 22%,transparent)' : 'rgba(255,255,255,.05)', border: `1px solid ${mode === 'unsorted' ? 'var(--accent)' : 'rgba(255,255,255,.1)'}` }}><div className="font-semibold flex items-center gap-2"><Inbox size={20} />{t('Import as unsorted')}</div><div className="mt-1" style={{ opacity: .65 }}>{t('No creator assignment. Move everything into your Unsorted folder and register it in the Vault.')}</div></button>
@@ -349,12 +362,12 @@ function DestinationPanel(props) {
     <div className="grid grid-cols-2 gap-2">{[['creator_root','Creator root'],['new_creator','New creator'], ...(tab === 'files' ? [['new_folder','New gallery'],['existing_gallery','Existing gallery']] : [])].map(([key,label]) => <Chip key={key} active={mode === key} onClick={() => setMode(key)}>{t(label)}</Chip>)}</div>
     {mode === 'new_folder' && <input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder={t('Gallery folder name…')} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} />}
     {mode === 'existing_gallery' && <><input value={gallerySearch} onChange={e => setGallerySearch(e.target.value)} placeholder={t('Search galleries…')} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><div className="max-h-48 overflow-y-auto">{galleries.map(g => <button key={g.id} onClick={() => setGalleryId(g.id)} className="w-full text-left px-3 py-2" style={{ ...text, background: galleryId === g.id ? 'color-mix(in srgb,var(--accent) 20%,transparent)' : 'transparent' }}>{g.name}</button>)}</div></>}
-    {mode === 'new_creator' && <><input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('New creator name…')} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><select value={newType} onChange={e => setNewType(e.target.value)} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}>{CREATOR_TYPES.map(type => <option key={type}>{type}</option>)}</select></>}
+    {mode === 'new_creator' && <><input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('New creator name…')} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><select value={newType} onChange={e => setNewType(e.target.value)} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}>{CREATOR_TYPES.map(type => <option key={type}>{type}</option>)}</select><div className="p-3 rounded-lg break-all" style={{ ...text, background: 'rgba(255,255,255,.04)' }}><div>{t('New creator base folder')}</div><div style={{ color: intakeConfig?.new_creator_base ? 'var(--c-green-text)' : 'var(--c-amber)' }}>{intakeConfig?.new_creator_base || t('Choose where new creator folders will be made.')}</div><button onClick={() => setChoosingBase(true)} disabled={busy} className="mt-2 px-3 py-2 rounded-lg disabled:opacity-40" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Choose folder')}</button></div></>}
     {tab === 'galleries' && <div><div className="mb-2" style={text}>{t('If a folder with the same name exists')}</div><select value={folderConflict} onChange={e => setFolderConflict(e.target.value)} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}><option value="rename">{t('Keep both — rename incoming')}</option><option value="merge">{t('Merge folders safely')}</option><option value="cancel">{t('Stop that gallery import')}</option></select></div>}
   </div><div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
-    <button onClick={onCommit} disabled={!selectedCount || busy || (mode === 'unsorted' && !intakeConfig?.unsorted_folder)} className="w-full py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-40" style={{ ...text, background: 'var(--accent)' }}>{busy ? <Loader2 className="animate-spin" /> : <ArrowRight />}{mode === 'unsorted' ? t('Import as unsorted') : tab === 'galleries' ? t('Import galleries') : t('Sort files')} {selectedCount ? `(${selectedCount})` : ''}</button>
+    <button onClick={onCommit} disabled={!selectedCount || busy || choosingBase || (mode === 'unsorted' && !intakeConfig?.unsorted_folder) || (mode === 'new_creator' && !intakeConfig?.new_creator_base)} className="w-full py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-40" style={{ ...text, background: 'var(--accent)' }}>{busy ? <Loader2 className="animate-spin" /> : <ArrowRight />}{mode === 'unsorted' ? t('Import as unsorted') : tab === 'galleries' ? t('Import galleries') : t('Sort files')} {selectedCount ? `(${selectedCount})` : ''}</button>
     {!!selectedCount && <><button onClick={() => onAction('hide')} className="w-full py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }}>{t('Hide until next scan')}</button><button onClick={() => onAction('ignore')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, background: 'rgba(255,255,255,.05)' }}><ShieldCheck size={20} />{t('Ignore permanently')}</button><button onClick={() => onAction('delete')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, color: 'var(--c-pink)', background: 'color-mix(in srgb,var(--c-pink) 12%,transparent)' }}><Trash2 size={20} />{t('Delete permanently')}</button></>}
-  </div></aside>
+  </div>{choosingBase && <FolderPicker initialPath={intakeConfig?.new_creator_base || ''} onSelect={saveCreatorBase} onClose={() => setChoosingBase(false)} />}</aside>
 }
 
 function FolderPreview({ folder, onClose, t }) {
@@ -473,14 +486,19 @@ function LoadingBaySettings({ roots, refreshRoots, t }) {
   const { data: config } = useQuery({ queryKey: ['intake-config'], queryFn: () => intakeApi.getConfig().then(r => r.data) })
   const [base, setBase] = useState('')
   const [unsorted, setUnsorted] = useState('')
+  const [pickerTarget, setPickerTarget] = useState(null)
   useEffect(() => { if (config) { setBase(config.new_creator_base || ''); setUnsorted(config.unsorted_folder || '') } }, [config])
-  const add = async () => { const { data } = await scannerApi.browseFolder(); if (data?.path) { await intakeApi.addRoot(data.path); refreshRoots() } }
+  const chooseFolder = async path => {
+    if (pickerTarget === 'root') { await intakeApi.addRoot(path); refreshRoots() }
+    else if (pickerTarget === 'unsorted') setUnsorted(path)
+    else if (pickerTarget === 'base') setBase(path)
+  }
   const save = async patch => { await intakeApi.setConfig(patch); qc.invalidateQueries({ queryKey: ['intake-config'] }); toast.success(t('Settings saved')) }
-  const browseInto = async setter => { const { data } = await scannerApi.browseFolder(); if (data?.path) setter(data.path) }
   return <div className="p-6 overflow-y-auto space-y-7" style={text}>
-    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Loading Bay folders')}</h2>{roots.map(root => <div key={root.id} className="flex items-center gap-3 py-2"><FolderOpen /><span className="flex-1">{root.label || root.path}</span><button onClick={async () => { await intakeApi.delRoot(root.id); refreshRoots() }}><Trash2 /></button></div>)}<button onClick={add} className="px-3 py-2 rounded-lg flex gap-2" style={{ ...text, background: 'rgba(255,255,255,.06)' }}><FolderPlus />{t('Add folder')}</button></section>
-    <section className="p-4 rounded-xl" style={{ background: 'color-mix(in srgb,var(--accent) 8%,transparent)', border: '1px solid color-mix(in srgb,var(--accent) 28%,transparent)' }}><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Unsorted import folder')}</h2><p className="my-2" style={{ opacity: .68 }}>{t('Raw imports move here without assigning a creator. Loose files become one Unsorted gallery; complete folders remain separate galleries beneath it.')}</p><div className="flex gap-2"><input value={unsorted} onChange={e => setUnsorted(e.target.value)} placeholder={t('Choose a folder outside the Loading Bay…')} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => browseInto(setUnsorted)} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ unsorted_folder: unsorted })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
-    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('New creator base folder')}</h2><div className="flex gap-2"><input value={base} onChange={e => setBase(e.target.value)} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => browseInto(setBase)} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ new_creator_base: base })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
+    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Loading Bay folders')}</h2>{roots.map(root => <div key={root.id} className="flex items-center gap-3 py-2"><FolderOpen /><span className="flex-1">{root.label || root.path}</span><button onClick={async () => { await intakeApi.delRoot(root.id); refreshRoots() }}><Trash2 /></button></div>)}<button onClick={() => setPickerTarget('root')} className="px-3 py-2 rounded-lg flex gap-2" style={{ ...text, background: 'rgba(255,255,255,.06)' }}><FolderPlus />{t('Add folder')}</button></section>
+    <section className="p-4 rounded-xl" style={{ background: 'color-mix(in srgb,var(--accent) 8%,transparent)', border: '1px solid color-mix(in srgb,var(--accent) 28%,transparent)' }}><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Unsorted import folder')}</h2><p className="my-2" style={{ opacity: .68 }}>{t('Raw imports move here without assigning a creator. Loose files become one Unsorted gallery; complete folders remain separate galleries beneath it.')}</p><div className="flex gap-2"><input value={unsorted} onChange={e => setUnsorted(e.target.value)} placeholder={t('Choose a folder outside the Loading Bay…')} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => setPickerTarget('unsorted')} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ unsorted_folder: unsorted })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
+    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('New creator base folder')}</h2><div className="flex gap-2"><input value={base} onChange={e => setBase(e.target.value)} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => setPickerTarget('base')} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ new_creator_base: base })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
     <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Archives')}</h2><label className="flex gap-3"><input type="checkbox" checked={config?.extract_archives ?? true} onChange={e => save({ extract_archives: e.target.checked })} />{t('Extract loose archives when sorted')}</label><select value={config?.archive_after || 'delete'} onChange={e => save({ archive_after: e.target.value })} className="mt-3 px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}><option value="delete">{t('Delete original after extraction')}</option><option value="move">{t('Move original into destination')}</option><option value="keep">{t('Leave original in Loading Bay')}</option></select></section>
+    {pickerTarget && <FolderPicker onSelect={chooseFolder} onClose={() => setPickerTarget(null)} />}
   </div>
 }

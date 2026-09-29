@@ -1,3 +1,4 @@
+import { LocalizedText } from '../../i18n'
 import { useId, useMemo } from 'react'
 
 import rarityBounds from '../../assets/tcg-v2/shared/rarity/bounds.json'
@@ -143,7 +144,7 @@ export default function BondCard({
           <g className="bond-card-v2__footer" data-effect-layer="text">
             <line x1="235" y1="1480" x2="785" y2="1480" />
             <circle cx="228" cy="1480" r="4" /><circle cx="792" cy="1480" r="4" />
-            <text x="512" y="1494" textAnchor="middle">BOND{period} · {recipe.snapshot.cardId.toUpperCase()}</text>
+            <text x="512" y="1494" textAnchor="middle"><LocalizedText text={"BOND"} />{period} · {recipe.snapshot.cardId.toUpperCase()}</text>
           </g>
 
         </g>

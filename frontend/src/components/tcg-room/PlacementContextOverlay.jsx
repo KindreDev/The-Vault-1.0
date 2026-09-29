@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { Html } from '@react-three/drei'
 import { useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -10,6 +11,7 @@ import { Check, RotateCw, Undo2, X } from 'lucide-react'
  * item instead of becoming a second screen-pinned placement UI.
  */
 export default function PlacementContextOverlay({ preview, onPlace, onReturn, onRotate, onDeselect }) {
+  const t = useT()
   const { camera } = useThree()
   const hudAnchor = useRef(null)
   const cameraRight = useRef(new THREE.Vector3())
@@ -35,33 +37,34 @@ export default function PlacementContextOverlay({ preview, onPlace, onReturn, on
     <group ref={hudAnchor} position={[offsetX, offsetY, 0]}>
       <Html center occlude={false} zIndexRange={[80, 0]} className="placement-context-hud">
       <div className="placement-context-hud__content" onPointerDown={event => event.stopPropagation()}>
-        <section className="placement-context-hud__info" aria-label="Placement status">
+        <section className="placement-context-hud__info" aria-label={t("Placement status")}>
           <strong>{definition.name || 'Furniture'}</strong>
         </section>
 
-        <section className="placement-context-hud__wheel" aria-label="Placement actions">
+        <section className="placement-context-hud__wheel" aria-label={t("Placement actions")}>
           <button
             type="button"
             className="placement-context-hud__action placement-context-hud__action--place"
             onClick={onPlace}
             disabled={!preview.valid || !preview.locked}
+            aria-label={t("Place")}
             title={!preview.valid ? 'This position is not valid' : preview.locked ? 'Place furniture' : 'Click the scene to lock this position first'}
           >
             <Check size={25} />
-            <span>Place</span>
           </button>
-          <button type="button" className="placement-context-hud__action placement-context-hud__action--return" onClick={onReturn} title="Return to inventory">
+          <span className="placement-context-hud__action-label placement-context-hud__action-label--place" aria-hidden="true"><LocalizedText text={"Place"} /></span>
+          <button type="button" className="placement-context-hud__action placement-context-hud__action--return" onClick={onReturn} aria-label={t("Return")} title={t("Return to inventory")}>
             <Undo2 size={25} />
-            <span>Return</span>
           </button>
-          <button type="button" className="placement-context-hud__action placement-context-hud__action--rotate" onClick={onRotate} title="Rotate furniture">
+          <span className="placement-context-hud__action-label placement-context-hud__action-label--return" aria-hidden="true"><LocalizedText text={"Return"} /></span>
+          <button type="button" className="placement-context-hud__action placement-context-hud__action--rotate" onClick={onRotate} aria-label={t("Rotate")} title={t("Rotate furniture")}>
             <RotateCw size={25} />
-            <span>Rotate</span>
           </button>
-          <button type="button" className="placement-context-hud__action placement-context-hud__action--deselect" onClick={onDeselect} title="Deselect furniture">
+          <span className="placement-context-hud__action-label placement-context-hud__action-label--rotate" aria-hidden="true"><LocalizedText text={"Rotate"} /></span>
+          <button type="button" className="placement-context-hud__action placement-context-hud__action--deselect" onClick={onDeselect} aria-label={t("Deselect")} title={t("Deselect furniture")}>
             <X size={25} />
-            <span>Deselect</span>
           </button>
+          <span className="placement-context-hud__action-label placement-context-hud__action-label--deselect" aria-hidden="true"><LocalizedText text={"Deselect"} /></span>
         </section>
       </div>
       </Html>

@@ -9,6 +9,7 @@ import {
   MessageCircle, Gift, ArrowUpRight, Waves,
 } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
+import { useT } from '../i18n'
 import BondHearts, { BOND_TIERS } from './BondHearts'
 import VaultCard from './VaultCard'
 
@@ -30,17 +31,18 @@ function fmtDate(iso) {
   try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }
   catch { return '—' }
 }
-function daysAgo(iso) {
+function daysAgo(t, iso) {
   if (!iso) return null
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
-  if (d <= 0) return 'today'
-  if (d === 1) return 'yesterday'
-  return `${d} days ago`
+  if (d <= 0) return t('Today')
+  if (d === 1) return t('Yesterday')
+  return t('{days} days ago', { days: d })
 }
 const num = (n) => (n ?? 0).toLocaleString()
 
 // ── Building blocks ───────────────────────────────────────────────────────────
 function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)', children }) {
+  const t = useT()
   return (
     <section className="rounded-[14px] p-6"
              style={{ background: 'rgba(255,255,255,0.025)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
@@ -50,8 +52,8 @@ function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)', childr
           <Icon size={18} style={{ color: accent }} />
         </div>
         <div>
-          <div className="text-[19px] font-bold" style={{ color: 'rgba(255,255,255,0.92)' }}>{title}</div>
-          {subtitle && <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{subtitle}</div>}
+          <div className="text-[19px] font-bold" style={{ color: 'rgba(255,255,255,0.92)' }}>{t(title)}</div>
+          {subtitle && <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(subtitle)}</div>}
         </div>
       </div>
       {children}
@@ -60,22 +62,24 @@ function Panel({ icon: Icon, title, subtitle, accent = 'var(--c-accent)', childr
 }
 
 function Stat({ label, value, sub, accent = 'rgba(255,255,255,0.92)', big = false }) {
+  const t = useT()
   return (
     <div className="rounded-[10px] px-4 py-3 flex flex-col gap-0.5"
          style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{label}</div>
+      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t(label)}</div>
       <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, color: accent, lineHeight: 1.1, letterSpacing: '-0.01em' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t(sub)}</div>}
     </div>
   )
 }
 
 // Tiny SVG bar sparkline over a monthly series
 function Sparkline({ points = [], accessor, accent = 'var(--c-accent)', height = 60, labelFmt }) {
+  const t = useT()
   if (!points.length) {
-    return <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>No history yet</div>
+    return <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>{t('No history yet')}</div>
   }
   const vals = points.map(accessor)
   const max = Math.max(...vals, 1)
@@ -195,9 +199,9 @@ function CrownsPanel({ crowns }) {
           <Crown size={17} style={{ color: 'var(--c-amber-text)' }} />
         </div>
         <div>
-          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">Honours</div>
+          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">{t('Honours')}</div>
           <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-            Hall of Fame periods she has topped — each one minted a card that can never be won again
+            {t('Hall of Fame periods she has topped — each one minted a card that can never be won again')}
           </div>
         </div>
       </div>
@@ -206,7 +210,7 @@ function CrownsPanel({ crowns }) {
         <div>
           <div style={{ fontSize: 46, fontWeight: 800, color: 'var(--c-amber-text)', lineHeight: 1 }}>{total}</div>
           <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-            crown{total === 1 ? '' : 's'} total
+            {t('{count} crowns total', { count: total })}
           </div>
         </div>
         {Object.entries(CROWN_META).map(([k, meta]) => (
@@ -237,8 +241,8 @@ function CrownsPanel({ crowns }) {
               </span>
               {c.field_size > 1 && (
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}
-                      title="How many creators she beat that period">
-                  beat {c.field_size - 1}
+                      title={t('How many creators she beat that period')}>
+                  {t('beat {count}', { count: c.field_size - 1 })}
                 </span>
               )}
               <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)', minWidth: 64, textAlign: 'right' }}>
@@ -253,6 +257,7 @@ function CrownsPanel({ crowns }) {
 }
 
 function StatsBody({ d, onNavigate, onClose }) {
+  const t = useT()
   const accent = RARITY_COLORS[d.card_rarity] || RARITY_COLORS.common
   const avatarUrl = d.avatar_path ? `/api/creators/${d.id}/avatar` : null
   const go = (path) => { onClose(); onNavigate(path) }
@@ -292,18 +297,18 @@ function StatsBody({ d, onNavigate, onClose }) {
             <div className="flex items-center gap-2">
               <Crown size={16} style={{ color: 'var(--c-amber-text)' }} />
               <span style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--c-amber-text)' }}>
-                {d.rank ? `#${d.rank} of ${num(d.total_creators)} creators` : 'Creator'}
+                {d.rank ? t('#{rank} of {count} creators', { rank: d.rank, count: num(d.total_creators) }) : t('Creator')}
               </span>
             </div>
             <h2 style={{ fontSize: 40, fontWeight: 800, color: 'rgba(255,255,255,0.96)', lineHeight: 1.05 }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>You &amp; </span>{d.name}
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>{t('You & ')}</span>{d.name}
             </h2>
 
             {/* Marquee — time spent */}
             <div className="flex items-end gap-6 flex-wrap">
               <div className="flex flex-col">
                 <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                  <Clock size={15} /> Time spent together
+                  <Clock size={15} /> {t('Time spent together')}
                 </span>
                 <span style={{ fontSize: 34, fontWeight: 800, color: 'var(--c-accent-text)', lineHeight: 1.1 }}>
                   {fmtDuration(d.total_view_seconds)}
@@ -311,7 +316,7 @@ function StatsBody({ d, onNavigate, onClose }) {
               </div>
               <div className="flex flex-col">
                 <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                  <Droplets size={15} /> Lifetime Os
+                  <Droplets size={15} /> {t('Lifetime Os')}
                 </span>
                 <span style={{ fontSize: 34, fontWeight: 800, color: 'var(--c-pink-text)', lineHeight: 1.1 }}>
                   {num(d.cum_count)}
@@ -320,7 +325,7 @@ function StatsBody({ d, onNavigate, onClose }) {
               {d.edge_count > 0 && (
                 <div className="flex flex-col">
                   <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                    <Waves size={15} /> Edges
+                    <Waves size={15} /> {t('Edges')}
                   </span>
                   <span style={{ fontSize: 34, fontWeight: 800, color: '#A89FE8', lineHeight: 1.1 }}>
                     {num(d.edge_count)}
@@ -330,11 +335,11 @@ function StatsBody({ d, onNavigate, onClose }) {
             </div>
 
             <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)', maxWidth: 640, lineHeight: 1.5 }}>
-              In your collection for <b style={{ color: 'rgba(255,255,255,0.85)' }}>{num(d.days_in_collection)} days</b> (since {fmtDate(d.first_media_at)}).
-              She holds <b style={{ color: 'var(--c-accent-text)' }}>{d.share_of_total_time}%</b> of all your viewing time
-              and <b style={{ color: 'var(--c-pink-text)' }}>{d.share_of_total_cum}%</b> of your lifetime Os
+              {t('In your collection for')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{num(d.days_in_collection)} {t('days')}</b> ({t('since')} {fmtDate(d.first_media_at)}).
+              {t('She holds')} <b style={{ color: 'var(--c-accent-text)' }}>{d.share_of_total_time}%</b> {t('of all your viewing time')}
+              {t('and')} <b style={{ color: 'var(--c-pink-text)' }}>{d.share_of_total_cum}%</b> {t('of your lifetime Os')}
               {d.edge_count > 0 && (
-                <> — plus <b style={{ color: '#A89FE8' }}>{d.share_of_total_edges}%</b> of every edge you've held</>
+                <> — {t('plus')} <b style={{ color: '#A89FE8' }}>{d.share_of_total_edges}%</b> {t('of every edge you have held')}</>
               )}.
             </div>
 
@@ -415,10 +420,9 @@ function StatsBody({ d, onNavigate, onClose }) {
                 {/* Her attention multiplier scales everything she earns, so the
                     raw gap has to be divided by it before converting to Os or
                     hours — otherwise this overstates the work by ~50%. */}
-                <b style={{ color: 'var(--c-amber-text)' }}>{num(d.points_to_first)} points</b> behind {d.leader_name}. That's
-                roughly <b style={{ color: 'var(--c-amber-text)' }}>{Math.ceil(d.points_to_first / (120 * (d.engagement_factor || 1)))} more Os</b>,
-                or <b style={{ color: 'var(--c-amber-text)' }}>{fmtDuration(Math.ceil(d.points_to_first / (d.engagement_factor || 1)))}</b> more
-                time spent with her.
+                <b style={{ color: 'var(--c-amber-text)' }}>{num(d.points_to_first)} {t('points')}</b> {t('behind')} {d.leader_name}. {t("That's roughly")}
+                <b style={{ color: 'var(--c-amber-text)' }}>{Math.ceil(d.points_to_first / (120 * (d.engagement_factor || 1)))} {t('more Os')}</b>,
+                {t('or')} <b style={{ color: 'var(--c-amber-text)' }}>{fmtDuration(Math.ceil(d.points_to_first / (d.engagement_factor || 1)))}</b> {t('more time spent with her.')}
               </div>
             </div>
           )}
@@ -466,20 +470,20 @@ function StatsBody({ d, onNavigate, onClose }) {
           <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <div>
               <div className="mb-2 flex items-center gap-1.5" style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }}>
-                <Images size={14} /> Media added / month
+                <Images size={14} /> {t('Media added / month')}
               </div>
               <Sparkline points={d.acquisition_timeline} accessor={p => p.count} accent="var(--c-accent)" />
             </div>
             <div>
               <div className="mb-2 flex items-center gap-1.5" style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }}>
-                <Clock size={14} /> Sessions / month
+                <Clock size={14} /> {t('Sessions / month')}
               </div>
               <Sparkline points={d.activity_timeline} accessor={p => p.sessions} accent="var(--c-green-text)" />
             </div>
           </div>
           <div className="grid gap-3 mt-5" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
-            <Stat label="In collection since" value={fmtDate(d.first_media_at)} sub={`${num(d.days_in_collection)} days ago`} />
-            <Stat label="Last seen" value={daysAgo(d.last_viewed_at) || '—'} sub={fmtDate(d.last_viewed_at)} />
+            <Stat label="In collection since" value={fmtDate(d.first_media_at)} sub={t('{days} days ago', { days: num(d.days_in_collection) })} />
+            <Stat label="Last seen" value={daysAgo(t, d.last_viewed_at) || '—'} sub={fmtDate(d.last_viewed_at)} />
           </div>
         </Panel>
 
@@ -492,14 +496,14 @@ function StatsBody({ d, onNavigate, onClose }) {
                 {d.top_tags.slice(0, 16).map(t => <TagChip key={t.name} tag={t} />)}
               </div>
               <div className="mb-4" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                {aiPct}% AI-tagged · {100 - aiPct}% by hand
+                {aiPct}% {t('AI-tagged')} · {100 - aiPct}% {t('by hand')}
               </div>
             </>
           ) : (
-            <div className="mb-4" style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>No tags yet</div>
+            <div className="mb-4" style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('No tags yet')}</div>
           )}
           <div className="mb-2 flex items-center gap-1.5" style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }}>
-            <Camera size={14} /> Orientation
+            <Camera size={14} /> {t('Orientation')}
           </div>
           <SplitBar segments={[
             { label: 'Portrait', value: orientation.portrait || 0, color: 'var(--c-accent)' },
@@ -512,7 +516,7 @@ function StatsBody({ d, onNavigate, onClose }) {
         <Panel icon={Heart} title="Your Bond" accent="#FF2D75"
                subtitle="The relationship you've built">
           {d.bond_excluded ? (
-            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>Bond tracking doesn't apply to this creator.</div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>{t('Bond tracking does not apply to this creator.')}</div>
           ) : (
             <>
               <div className="mb-4">
@@ -557,7 +561,7 @@ function StatsBody({ d, onNavigate, onClose }) {
               </>
             ) : (
               <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
-                No cards featuring her yet — open packs to start her collection.
+                {t('No cards featuring her yet — open packs to start her collection.')}
               </div>
             )}
           </Panel>
@@ -570,6 +574,7 @@ function StatsBody({ d, onNavigate, onClose }) {
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
 export default function CreatorStatsModal({ creatorId, onClose }) {
+  const t = useT()
   const navigate = useNavigate()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['creator-stats', creatorId],
@@ -615,12 +620,12 @@ export default function CreatorStatsModal({ creatorId, onClose }) {
               {isLoading && (
                 <div className="flex flex-col items-center justify-center gap-3 py-24">
                   <Sparkles size={30} className="animate-pulse" style={{ color: 'var(--c-accent)' }} />
-                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>Crunching the numbers…</span>
+                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>{t('Crunching the numbers…')}</span>
                 </div>
               )}
               {isError && (
                 <div className="py-24 text-center" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                  Couldn't load her stats. Try again.
+                  {t("Couldn't load her stats. Try again.")}
                 </div>
               )}
               {data && <StatsBody d={data} onNavigate={navigate} onClose={onClose} />}

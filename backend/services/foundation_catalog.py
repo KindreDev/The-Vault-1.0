@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 from datetime import datetime
 
@@ -20,13 +21,21 @@ from models import (
     Image, TCGChecklistEntry, TCGRelease, TCGSettings, TCGSetupState,
 )
 from services.personal_value import apply_rarity_floor, build_personal_value_context, evaluate_personal_value
+from services.tcg_rarity import earned_card_pack_rarity
 
 
 FOUNDATION_CODE = "FND-001"
 FOUNDATION_LARGE_LIBRARY_TARGET = 60_000
 FOUNDATION_SEED = "the-vault-foundation-v1"
+FOUNDATION_FAMILY_TARGETS = {
+    "gallery": 9_000,
+    "creator": 6_000,
+    "character": 6_000,
+    "cosplay": 6_000,
+}
+FOUNDATION_REAL_CREATOR_TYPES = ("cosplayer", "ethot", "artist", "actress")
 PRINT_RARITIES = ("C", "R", "SR", "UR", "SPR")
-FOUNDATION_ALGORITHM_VERSION = "foundation-v2-engagement-spr"
+FOUNDATION_ALGORITHM_VERSION = "foundation-v3-multi-family"
 FOUNDATION_SPR_UNLOCK_CUM = 6
 
 # The approved September release is the calibration point for the permanent
@@ -39,6 +48,167 @@ FOUNDATION_SPR_RATIO = 40 / 620
 def _hash_int(*parts) -> int:
     raw = "|".join(str(part) for part in (FOUNDATION_SEED, *parts)).encode("utf-8")
     return int.from_bytes(hashlib.blake2b(raw, digest_size=8).digest(), "big")
+
+
+def _round_robin_sources(groups: dict[int, list], target: int, family: str) -> list:
+    """Select stable, evenly distributed sources without exceeding real supply."""
+    if target <= 0:
+        return []
+    ordered_ids = sorted(groups, key=lambda value: _hash_int(family, value, "group"))
+    for identity in ordered_ids:
+        groups[identity] = sorted(
+            groups[identity],
+            key=lambda item: _hash_int(
+                family, identity,
+                getattr(item[-1], "id", item[-1]) if isinstance(item, tuple) else getattr(item, "id", item),
+                "source",
+            ),
+        )
+    selected = []
+    offset = 0
+    while len(selected) < target:
+        added = False
+        for identity in ordered_ids:
+            if offset < len(groups[identity]):
+                selected.append(groups[identity][offset])
+                added = True
+                if len(selected) >= target:
+                    break
+        if not added:
+            break
+        offset += 1
+    return selected
+
+
+def _portrait_groups(db: Session, people: list[Creator], *, character: bool) -> dict[int, list[Image]]:
+    """Return existing full-resolution stills explicitly linked to each profile."""
+    from sqlalchemy import or_, select
+    from models import gallery_creators, image_creators
+
+    groups: dict[int, list[Image]] = {int(person.id): [] for person in people}
+    if not groups:
+        return groups
+    linked_gallery_ids = select(gallery_creators.c.gallery_id).where(
+        gallery_creators.c.creator_id.in_(list(groups))
+    )
+    directly_linked_ids = select(image_creators.c.image_id).where(
+        image_creators.c.creator_id.in_(list(groups))
+    )
+    legacy_creator_gallery_ids = select(Gallery.id).where(
+        Gallery.creator_id.in_(list(groups))
+    )
+    if character:
+        legacy_creator_gallery_ids = select(Gallery.id).where(or_(
+            Gallery.creator_id.in_(list(groups)),
+            Gallery.linked_character_id.in_(list(groups)),
+        ))
+    rows = db.query(Image).filter(
+        Image.is_video.is_(False),
+        Image.file_path.isnot(None), Image.width.isnot(None), Image.height.isnot(None),
+        or_(
+            Image.id.in_(directly_linked_ids),
+            Image.gallery_id.in_(linked_gallery_ids),
+            Image.gallery_id.in_(legacy_creator_gallery_ids),
+        ),
+    ).order_by(Image.id.asc()).all()
+    people_by_id = {int(person.id): person for person in people}
+    direct_links: dict[int, set[int]] = {}
+    for image_id, person_id in db.query(image_creators.c.image_id, image_creators.c.creator_id).filter(
+        image_creators.c.creator_id.in_(list(groups))
+    ).all():
+        direct_links.setdefault(int(image_id), set()).add(int(person_id))
+    group_links: dict[int, set[int]] = {}
+    for gallery_id, person_id in db.query(gallery_creators.c.gallery_id, gallery_creators.c.creator_id).filter(
+        gallery_creators.c.creator_id.in_(list(groups))
+    ).all():
+        group_links.setdefault(int(gallery_id), set()).add(int(person_id))
+    legacy_links: dict[int, set[int]] = {}
+    for gallery_id, creator_id, character_id in db.query(
+        Gallery.id, Gallery.creator_id, Gallery.linked_character_id
+    ).filter(or_(Gallery.creator_id.in_(list(groups)), Gallery.linked_character_id.in_(list(groups)))).all():
+        if creator_id in groups:
+            legacy_links.setdefault(int(gallery_id), set()).add(int(creator_id))
+        if character_id in groups:
+            legacy_links.setdefault(int(gallery_id), set()).add(int(character_id))
+    for image in rows:
+        if (int(image.width or 0) <= 0 or int(image.height or 0) <= 0
+                or int(image.height) <= int(image.width) or not os.path.isfile(image.file_path)):
+            continue
+        owners = set(direct_links.get(int(image.id), ()))
+        owners.update(group_links.get(int(image.gallery_id), ()))
+        owners.update(legacy_links.get(int(image.gallery_id), ()))
+        for person_id in owners:
+            if person_id in people_by_id:
+                groups[person_id].append(image)
+    return groups
+
+
+def _valid_still_images(query) -> list[Image]:
+    return [image for image in query if (
+        not image.is_video and image.file_path and os.path.isfile(image.file_path)
+        and int(image.width or 0) > 0 and int(image.height or 0) > 0
+    )]
+
+
+def _collab_sources(db: Session) -> list[dict]:
+    """Build only gallery and image Collabs backed by explicit creator links."""
+    from models import gallery_creators, image_creators
+
+    people = db.query(Creator).filter(Creator.creator_type.in_(FOUNDATION_REAL_CREATOR_TYPES)).all()
+    person_ids = {int(person.id) for person in people}
+    by_id = {int(person.id): person for person in people}
+    gallery_people: dict[int, set[int]] = {}
+    for gallery_id, person_id in db.query(gallery_creators.c.gallery_id, gallery_creators.c.creator_id).filter(
+        gallery_creators.c.creator_id.in_(person_ids or {-1})
+    ).all():
+        gallery_people.setdefault(int(gallery_id), set()).add(int(person_id))
+    # Legacy gallery ownership is an explicit creator link too.
+    for gallery_id, person_id in db.query(Gallery.id, Gallery.creator_id).filter(
+        Gallery.creator_id.in_(person_ids or {-1})
+    ).all():
+        gallery_people.setdefault(int(gallery_id), set()).add(int(person_id))
+
+    gallery_rows = db.query(Gallery).filter(Gallery.id.in_(list(gallery_people) or [-1])).order_by(Gallery.id.asc()).all()
+    by_gallery = {int(gallery.id): gallery for gallery in gallery_rows}
+    gallery_images = _valid_still_images(db.query(Image).filter(
+        Image.gallery_id.in_(list(by_gallery) or [-1]),
+        Image.is_video.is_(False), Image.file_path.isnot(None),
+        Image.width.isnot(None), Image.height.isnot(None),
+    ).order_by(Image.id.asc()).all())
+    images_by_gallery: dict[int, list[Image]] = {}
+    for image in gallery_images:
+        images_by_gallery.setdefault(int(image.gallery_id), []).append(image)
+
+    output: list[dict] = []
+    for gallery_id in sorted(gallery_people):
+        creator_ids = sorted(gallery_people[gallery_id])
+        images = images_by_gallery.get(gallery_id, [])
+        if len(creator_ids) >= 2 and images:
+            output.append({
+                "family": "collab", "subtype": "gallery", "creator_ids": creator_ids,
+                "gallery": by_gallery[gallery_id], "image": images[0],
+            })
+
+    # Image-level people must be linked directly to the still itself and also
+    # belong to the supporting gallery's explicit creator set.
+    direct_people: dict[int, set[int]] = {}
+    for image_id, person_id in db.query(image_creators.c.image_id, image_creators.c.creator_id).filter(
+        image_creators.c.creator_id.in_(person_ids or {-1})
+    ).all():
+        direct_people.setdefault(int(image_id), set()).add(int(person_id))
+    for gallery_id, images in images_by_gallery.items():
+        allowed = gallery_people.get(gallery_id, set())
+        for image in images:
+            creator_ids = sorted(direct_people.get(int(image.id), set()) & allowed)
+            if len(creator_ids) >= 2:
+                output.append({
+                    "family": "collab", "subtype": "image", "creator_ids": creator_ids,
+                    "gallery": by_gallery[gallery_id], "image": image,
+                })
+    output.sort(key=lambda row: (
+        row["subtype"], tuple(row["creator_ids"]), int(row["image"].id), int(row["gallery"].id),
+    ))
+    return output
 
 
 def foundation_base_rarity_targets(base_count: int) -> dict[str, int]:
@@ -129,7 +299,7 @@ def _select_ranked_with_variety(candidates: list[tuple[Card, dict]], target: int
     return selected
 
 
-def _print_rarity(card_type: str, source_id: int) -> str:
+def _print_rarity(card_type: str, source_id: str | int) -> str:
     """Persisted rarity allocation: 55% C, 28% R, 14% SR, 3% UR."""
     roll = _hash_int(card_type, source_id, "rarity") % 10_000
     if roll < 300:
@@ -385,19 +555,72 @@ def reconcile_foundation_sprs(db: Session) -> dict:
             fallback, max(0, target - len(existing_bases) - len(selected)),
         ))
     added = 0
+    selected_missing_checklist = 0
+    append_returned_none = 0
+    base_checklist_ids = {
+        row[0] for row in db.query(TCGChecklistEntry.card_id).filter(
+            TCGChecklistEntry.release_id == release.id,
+            TCGChecklistEntry.is_base_printing.is_(True),
+        ).all()
+    }
     for base, value in selected:
-        if _append_foundation_spr(
+        if base.id not in base_checklist_ids:
+            selected_missing_checklist += 1
+            continue
+        spr = _append_foundation_spr(
             db, base, value,
             reason="Initial Foundation SPR quota selected by deterministic personal-value ranking",
-        ):
+        )
+        if spr:
             added += 1
+        else:
+            append_returned_none += 1
+    db.flush()
+    spr_count = db.query(Card.id).filter(
+        Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR",
+        Card.parallel_of_id.isnot(None),
+    ).count()
+    spr_checklist_count = db.query(TCGChecklistEntry.id).join(
+        Card, TCGChecklistEntry.card_id == Card.id,
+    ).filter(
+        TCGChecklistEntry.release_id == release.id,
+        TCGChecklistEntry.is_base_printing.is_(False),
+        TCGChecklistEntry.published_rarity == "SPR",
+        Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR",
+        Card.parallel_of_id.isnot(None),
+    ).count()
+    diagnostics = {
+        "base_count": len(bases),
+        "base_checklist_count": len(base_checklist_ids),
+        "candidate_count": len(candidates),
+        "candidate_missing_source_count": len(bases) - len(candidates),
+        "ur_candidate_count": len(ur_candidates),
+        "existing_spr_base_count": len(existing_bases),
+        "selected_count": len(selected),
+        "selected_missing_checklist_count": selected_missing_checklist,
+        "appended_count": added,
+        "append_returned_none_count": append_returned_none,
+        "skip_reasons": {
+            "missing_source_reference": len(bases) - len(candidates),
+            "selected_base_missing_checklist": selected_missing_checklist,
+            "append_helper_returned_none": append_returned_none,
+        },
+        "spr_card_count": spr_count,
+        "spr_checklist_count": spr_checklist_count,
+        "spr_target": target,
+    }
+    if spr_count < target or spr_checklist_count < target:
+        raise RuntimeError(
+            "Foundation SPR quota was not materialized; "
+            + json.dumps(diagnostics, sort_keys=True)
+        )
     release.algorithm_version = FOUNDATION_ALGORITHM_VERSION
     release.manifest_json = json.dumps({
         **(json.loads(release.manifest_json or "{}") if release.manifest_json else {}),
         "frozen": False,
         "base_total": len(bases),
         "spr_target": target,
-        "spr_count": len(existing_bases) + added,
+        "spr_count": spr_count,
         "spr_unlock_cum_threshold": FOUNDATION_SPR_UNLOCK_CUM,
         "append_only_spr": True,
         "selection": "deterministic personal-value ranking with creator variety",
@@ -408,12 +631,22 @@ def reconcile_foundation_sprs(db: Session) -> dict:
         "spr_target": target,
         "spr_existing": len(existing_bases),
         "spr_added": added,
+        "spr_candidate_count": len(candidates),
+        "spr_candidate_missing_source_count": len(bases) - len(candidates),
+        "spr_ur_candidate_count": len(ur_candidates),
+        "spr_selected_count": len(selected),
+        "spr_selected_missing_checklist_count": selected_missing_checklist,
+        "spr_append_returned_none_count": append_returned_none,
+        "spr_skip_reasons": diagnostics["skip_reasons"],
+        "spr_card_count": spr_count,
+        "spr_checklist_count": spr_checklist_count,
     })
     db.flush()
     return {
         "added": added, "target": target,
-        "spr_count": len(existing_bases) + added,
+        "spr_count": spr_count,
         "base_count": len(bases),
+        **diagnostics,
     }
 
 
@@ -499,133 +732,239 @@ def build_foundation_catalog(db: Session) -> dict:
     state.foundation_status = "building"
     db.commit()
 
-    # Only source records that can truthfully populate the accepted V2 faces.
-    eligible_images = (
-        db.query(Image.id, Image.gallery_id)
-        .join(Gallery, Gallery.id == Image.gallery_id)
-        .filter(
-            Image.file_path.isnot(None),
-            Image.width.isnot(None), Image.height.isnot(None),
-            Gallery.creator_id.isnot(None),
-            Gallery.period_year.isnot(None),
-        )
-        .order_by(Image.id.asc())
-        .all()
-    )
-    eligible_galleries = (
-        db.query(Gallery.id, func.min(Image.id).label("image_id"))
-        .join(Image, Image.gallery_id == Gallery.id)
-        .filter(
-            Gallery.creator_id.isnot(None), Gallery.period_year.isnot(None),
-            Image.file_path.isnot(None), Image.width.isnot(None), Image.height.isnot(None),
-        )
-        .group_by(Gallery.id)
-        .order_by(Gallery.id.asc())
-        .all()
-    )
-    eligible_creators = (
-        db.query(Creator.id)
-        .filter(Creator.creator_type.in_(("cosplayer", "ethot", "artist", "character", "actress", "custom")))
-        .order_by(Creator.id.asc())
-        .all()
-    )
+    # Catalogue each supported card face from real sources. Scene count is the
+    # residual after the named family targets and all supported Collab sources.
+    from models import gallery_creators
+    from PIL import Image as PILImage
 
-    available = len(eligible_images) + len(eligible_galleries) + len(eligible_creators)
-    target = min(FOUNDATION_LARGE_LIBRARY_TARGET, available)
+    still_query = db.query(Image).join(Gallery, Gallery.id == Image.gallery_id).filter(
+        Image.is_video.is_(False), Image.file_path.isnot(None),
+        Image.width.isnot(None), Image.height.isnot(None),
+        Gallery.period_year.isnot(None),
+    ).order_by(Image.id.asc())
+    eligible_scene_images = _valid_still_images(still_query.all())
+    gallery_rows = db.query(Gallery.id, func.min(Image.id).label("image_id")).join(
+        Image, Image.gallery_id == Gallery.id
+    ).filter(
+        Gallery.period_year.isnot(None),
+        Image.is_video.is_(False), Image.file_path.isnot(None),
+        Image.width.isnot(None), Image.height.isnot(None),
+    ).group_by(Gallery.id).order_by(Gallery.id.asc()).all()
+    valid_image_by_id = {int(image.id): image for image in eligible_scene_images}
+    eligible_galleries = [
+        (int(gallery_id), int(image_id)) for gallery_id, image_id in gallery_rows
+        if int(image_id) in valid_image_by_id
+    ]
+
+    all_people = db.query(Creator).filter(Creator.creator_type.in_(
+        ("cosplayer", "ethot", "artist", "character", "actress", "custom")
+    )).order_by(Creator.id.asc()).all()
+    creators = [person for person in all_people if str(getattr(person.creator_type, "value", person.creator_type)) != "character"]
+    characters = [person for person in all_people if str(getattr(person.creator_type, "value", person.creator_type)) == "character"]
+
+    def avatar_ready(person):
+        if not person.avatar_path or not os.path.isfile(person.avatar_path):
+            return False
+        try:
+            with PILImage.open(person.avatar_path) as avatar:
+                return avatar.width > 0 and avatar.height > 0
+        except Exception:
+            return False
+
+    portrait_candidate_counts = {"creator": 0, "character": 0}
+
+    def identity_cards(people: list[Creator], family: str) -> list[dict]:
+        target_count = FOUNDATION_FAMILY_TARGETS[family]
+        grouped = _portrait_groups(db, people, character=(family == "character"))
+        portrait_candidate_counts[family] = sum(len(sources) for sources in grouped.values())
+        # Canonical identity coverage is one per eligible profile even if its
+        # current PFP needs repair before that printing can be rendered.
+        cards = [{
+            "family": family, "person": person, "image": None,
+            "identity_kind": "canonical",
+        } for person in sorted(people, key=lambda row: int(row.id))]
+        portrait_groups = {
+            int(person.id): [(int(person.id), image) for image in grouped.get(int(person.id), [])]
+            for person in people
+        }
+        variants = _round_robin_sources(portrait_groups, max(0, target_count - len(cards)), family)
+        people_by_id = {int(person.id): person for person in people}
+        cards.extend({
+            "family": family, "person": people_by_id[int(person_id)],
+            "image": image, "identity_kind": "portrait",
+        } for person_id, image in variants)
+        return cards[:target_count]
+
+    creator_cards = identity_cards(creators, "creator")
+    character_cards = identity_cards(characters, "character")
+    missing_live_avatar_ids = sorted(
+        int(person.id) for person in all_people if not avatar_ready(person)
+    )
+    # Gallery-level M2M links establish the real creator×character pairing.
+    cre_link = gallery_creators.alias("foundation_pair_creator")
+    char_link = gallery_creators.alias("foundation_pair_character")
+    # Use explicit aliases for the two linked identities to keep their type
+    # predicates independent in SQLAlchemy's ORM query construction.
+    from sqlalchemy.orm import aliased
+    PairCreator = aliased(Creator, name="foundation_pair_person")
+    PairCharacter = aliased(Creator, name="foundation_pair_character_person")
+    pair_rows = db.query(
+        cre_link.c.creator_id, char_link.c.creator_id, cre_link.c.gallery_id
+    ).select_from(cre_link).join(char_link, char_link.c.gallery_id == cre_link.c.gallery_id).join(
+        PairCreator, PairCreator.id == cre_link.c.creator_id
+    ).join(PairCharacter, PairCharacter.id == char_link.c.creator_id).filter(
+        PairCreator.creator_type.in_(FOUNDATION_REAL_CREATOR_TYPES),
+        PairCharacter.creator_type == "character",
+    ).distinct().order_by(cre_link.c.creator_id, char_link.c.creator_id, cre_link.c.gallery_id).all()
+    pair_gallery_ids: dict[tuple[int, int], set[int]] = {}
+    for creator_id, character_id, gallery_id in pair_rows:
+        pair_gallery_ids.setdefault((int(creator_id), int(character_id)), set()).add(int(gallery_id))
+    pair_groups: dict[int, list] = {}
+    pair_keys = sorted(pair_gallery_ids)
+    image_rows = db.query(Image).filter(
+        Image.gallery_id.in_(sorted({gid for ids in pair_gallery_ids.values() for gid in ids}) or [-1]),
+        Image.is_video.is_(False), Image.file_path.isnot(None),
+        Image.width.isnot(None), Image.height.isnot(None),
+    ).order_by(Image.id.asc()).all()
+    valid_pair_images = _valid_still_images(image_rows)
+    pair_by_gallery: dict[int, list[tuple[int, int]]] = {}
+    for pair in pair_keys:
+        for gallery_id in pair_gallery_ids[pair]:
+            pair_by_gallery.setdefault(gallery_id, []).append(pair)
+    for image in valid_pair_images:
+        for pair in pair_by_gallery.get(int(image.gallery_id), []):
+            pair_groups.setdefault(pair_keys.index(pair), []).append((pair[0], pair[1], image))
+    selected_cosplay = _round_robin_sources(pair_groups, FOUNDATION_FAMILY_TARGETS["cosplay"], "cosplay")
+
+    collab_sources = _collab_sources(db)
+    gallery_target = min(FOUNDATION_FAMILY_TARGETS["gallery"], len(eligible_galleries))
+    selected_galleries = eligible_galleries[:gallery_target]
+    selected_creator_cards = creator_cards
+    selected_character_cards = character_cards
+    non_scene_count = (
+        len(selected_galleries) + len(selected_creator_cards) + len(selected_character_cards)
+        + len(selected_cosplay) + len(collab_sources)
+    )
+    if non_scene_count > FOUNDATION_LARGE_LIBRARY_TARGET:
+        raise ValueError("Foundation non-Scene source families exceed the 60,000-card base target")
+    scene_target = min(len(eligible_scene_images), FOUNDATION_LARGE_LIBRARY_TARGET - non_scene_count)
+    scene_pool = list(eligible_scene_images)
+    random.Random(_hash_int("foundation-scenes")).shuffle(scene_pool)
+    selected_scenes = scene_pool[:scene_target]
+    target = non_scene_count + len(selected_scenes)
     state.foundation_target = target
     db.commit()
     if target <= 0:
         state.foundation_status = "failed"
         db.commit()
-        raise ValueError("No media currently has enough real metadata for a Foundation card")
+        raise ValueError("No media or identity sources currently support a Foundation card")
 
-    rng = random.Random(_hash_int("catalog-order"))
-    rng.shuffle(eligible_images)
-    rng.shuffle(eligible_galleries)
-    rng.shuffle(eligible_creators)
-
-    creator_quota = min(len(eligible_creators), max(1, round(target * 0.02)))
-    gallery_quota = min(len(eligible_galleries), max(1, round(target * 0.08)))
-    scene_quota = min(len(eligible_images), target - creator_quota - gallery_quota)
-    unfilled = target - scene_quota - gallery_quota - creator_quota
-    if unfilled > 0:
-        extra = min(unfilled, len(eligible_images) - scene_quota)
-        scene_quota += extra
-        unfilled -= extra
-    if unfilled > 0:
-        extra = min(unfilled, len(eligible_galleries) - gallery_quota)
-        gallery_quota += extra
-        unfilled -= extra
-    target = scene_quota + gallery_quota + creator_quota
-    state.foundation_target = target
+    # Build all personal-value context in bounded source-ID batches.
+    selected_image_ids = {
+        int(image.id) for image in selected_scenes
+    } | {image_id for _, image_id in selected_galleries}
+    for entry in (*selected_creator_cards, *selected_character_cards):
+        if entry["image"]:
+            selected_image_ids.add(int(entry["image"].id))
+    selected_image_ids.update(int(image.id) for _, _, image in selected_cosplay)
+    selected_image_ids.update(int(row["image"].id) for row in collab_sources)
+    selected_gallery_ids = {gallery_id for gallery_id, _ in selected_galleries}
+    selected_gallery_ids.update(int(row["gallery"].id) for row in collab_sources)
+    selected_creator_ids = {int(entry["person"].id) for entry in (*selected_creator_cards, *selected_character_cards)}
+    for row in collab_sources:
+        selected_creator_ids.update(row["creator_ids"])
+    settings = db.query(TCGSettings).filter(TCGSettings.id == 1).first()
+    personal_context = build_personal_value_context(
+        db, image_ids=list(selected_image_ids), gallery_ids=list(selected_gallery_ids),
+        creator_ids=list(selected_creator_ids),
+        ai_confidence_threshold=float(settings.ai_confidence_threshold if settings else 0.72),
+    )
 
     now = datetime.utcnow()
     rows: list[dict] = []
     collector_number = 1
-    selected_images = eligible_images[:scene_quota]
-    selected_galleries = eligible_galleries[:gallery_quota]
-    selected_creators = eligible_creators[:creator_quota]
-    settings = db.query(TCGSettings).filter(TCGSettings.id == 1).first()
-    personal_context = build_personal_value_context(
-        db,
-        image_ids=[image_id for image_id, _ in selected_images] + [image_id for _, image_id in selected_galleries],
-        gallery_ids=[gallery_id for gallery_id, _ in selected_galleries],
-        creator_ids=[creator_id for (creator_id,) in selected_creators],
-        ai_confidence_threshold=float(settings.ai_confidence_threshold if settings else 0.72),
-    )
 
-    def append_row(card_type: CardType, source_key: int, **source_fields):
+    def append_row(card_type: CardType, family: str, source_identity: str, **source_fields):
         nonlocal collector_number
-        base_rarity = _print_rarity(card_type.value, source_key)
         image_id = source_fields.get("source_image_id")
-        image = personal_context.images.get(image_id)
-        gallery_id = source_fields.get("source_gallery_id") or (image.gallery_id if image else None)
-        gallery = personal_context.galleries.get(gallery_id)
+        gallery_id = source_fields.get("source_gallery_id")
+        image = personal_context.images.get(image_id) if image_id else None
+        if not gallery_id and image:
+            gallery_id = image.gallery_id
+        gallery = personal_context.galleries.get(gallery_id) if gallery_id else None
         creator_id = source_fields.get("source_creator_id") or (gallery.creator_id if gallery else None)
-        creator = personal_context.creators.get(creator_id)
-        source_identity = f"{card_type.value}:{source_key}"
+        creator = personal_context.creators.get(creator_id) if creator_id else None
+        base_rarity = _print_rarity(family, source_identity)
         personal_value = evaluate_personal_value(
-            source_key=source_identity,
-            card_type=card_type.value,
-            image=image,
-            gallery=gallery,
+            source_key=source_identity, card_type=family, image=image, gallery=gallery,
             creator=creator,
-            tags=(personal_context.gallery_tags.get(gallery_id, []) if card_type == CardType.gallery else personal_context.image_tags.get(image_id, [])),
+            tags=(personal_context.gallery_tags.get(gallery_id, []) if family == "gallery"
+                  else personal_context.image_tags.get(image_id, [])),
             gallery_view_seconds=personal_context.gallery_view_seconds.get(gallery_id, 0),
         )
         rarity = apply_rarity_floor(base_rarity, personal_value["rarity_floor"])
         mint_audit = {
-            **personal_value,
-            "source_key": source_identity,
-            "base_rarity": base_rarity,
-            "published_rarity": rarity,
+            **personal_value, "source_key": source_identity,
+            "base_rarity": base_rarity, "published_rarity": rarity,
         }
+        if source_fields.pop("identity_kind", None):
+            mint_audit["identity_kind"] = "canonical" if source_identity.endswith(":canon") else "portrait"
         rows.append({
-            "card_type": card_type,
-            "rarity": _legacy_tier(rarity),
-            "foil": False,
-            "is_relic": False,
-            "is_unique": False,
-            "cxp": 0,
-            "crs": personal_value["score"],
-            "rarity_class": rarity,
-            "catalog_code": FOUNDATION_CODE,
-            "collector_number": collector_number,
-            "print_rarity": rarity,
-            "parallel_of_id": None,
-            "is_legacy": False,
-            "generated_at": now,
-            "mint_audit_json": json.dumps(mint_audit),
+            "card_type": card_type, "rarity": _legacy_tier(rarity),
+            "foil": False, "is_relic": False, "is_unique": False,
+            "cxp": 0, "crs": personal_value["score"], "rarity_class": rarity,
+            "catalog_code": FOUNDATION_CODE, "collector_number": collector_number,
+            "print_rarity": rarity, "parallel_of_id": None, "is_legacy": False,
+            "generated_at": now, "mint_audit_json": json.dumps(mint_audit),
             **source_fields,
         })
         collector_number += 1
 
-    for image_id, _gallery_id in selected_images:
-        append_row(CardType.image, image_id, source_image_id=image_id)
+    for image in selected_scenes:
+        append_row(CardType.image, "scene", f"image:{image.id}", source_image_id=image.id)
     for gallery_id, image_id in selected_galleries:
-        append_row(CardType.gallery, gallery_id, source_gallery_id=gallery_id, source_image_id=image_id)
-    for (creator_id,) in selected_creators:
-        append_row(CardType.creator, creator_id, source_creator_id=creator_id)
+        append_row(CardType.gallery, "gallery", f"gallery:{gallery_id}",
+                   source_gallery_id=gallery_id, source_image_id=image_id)
+    for family, entries in (("creator", selected_creator_cards), ("character", selected_character_cards)):
+        for entry in entries:
+            person = entry["person"]
+            image = entry["image"]
+            key = (
+                f"{family}:{person.id}:canon" if image is None
+                else f"{family}:{person.id}:portrait:{image.id}"
+            )
+            append_row(CardType.creator, family, key,
+                       source_creator_id=person.id,
+                       source_image_id=image.id if image else None,
+                       identity_kind=entry["identity_kind"])
+    for creator_id, character_id, image in selected_cosplay:
+        append_row(CardType.variant, "cosplay",
+                   f"cosplay:{creator_id}:{character_id}:image:{image.id}",
+                   source_creator_id=creator_id, linked_character_id=character_id,
+                   source_image_id=image.id)
+    for row in collab_sources:
+        gallery = row["gallery"]
+        image = row["image"]
+        creator_ids = row["creator_ids"]
+        names = [personal_context.creators[cid].name for cid in creator_ids if cid in personal_context.creators]
+        character_names = [
+            person.name for person in db.query(Creator).join(
+                gallery_creators, gallery_creators.c.creator_id == Creator.id
+            ).filter(gallery_creators.c.gallery_id == gallery.id, Creator.creator_type == "character")
+            .order_by(Creator.id.asc()).all()
+        ]
+        source_identity = (
+            f"collab:{','.join(str(value) for value in creator_ids)}:image:{image.id}"
+            if row["subtype"] == "image"
+            else f"collab:{','.join(str(value) for value in creator_ids)}:gallery:{gallery.id}"
+        )
+        append_row(CardType.collab, "collab", source_identity,
+                   source_creator_id=None, source_gallery_id=gallery.id,
+                   source_image_id=image.id,
+                   collab_data=json.dumps({
+                       "subtype": row["subtype"], "creator_ids": creator_ids,
+                       "creator_names": names, "character_names": character_names,
+                   }),)
 
     # A failed prior attempt can leave a partial catalogue. Rebuild only the
     # unpublished rows and never duplicate an already completed catalogue.
@@ -641,11 +980,52 @@ def build_foundation_catalog(db: Session) -> dict:
     state.foundation_status = "ready"
     state.foundation_total = len(rows)
     db.commit()
+    # The catalogue uses bulk deletes/inserts, which bypass ORM identity-map
+    # synchronization. Expire loaded Cards before publication/reconciliation so
+    # reused primary keys cannot expose stale source or rarity fields.
+    db.expire_all()
     from services.tcg_v2 import seed_foundation_release
     seed_foundation_release(db)
+    db.flush()
     rebalance_foundation_base_rarities(db)
     reconcile_foundation_sprs(db)
     state.foundation_total = db.query(Card.id).filter(Card.catalog_code == FOUNDATION_CODE).count()
+    release = _foundation_release(db)
+    if release:
+        try:
+            generation_report = json.loads(release.generation_report or "{}")
+        except (TypeError, ValueError):
+            generation_report = {}
+        generation_report.update({
+            "algorithm": FOUNDATION_ALGORITHM_VERSION,
+            "base_target": FOUNDATION_LARGE_LIBRARY_TARGET,
+            "base_count": target,
+            "base_composition": {
+                "scene": len(selected_scenes), "gallery": len(selected_galleries),
+                "creator": len(selected_creator_cards), "character": len(selected_character_cards),
+                "cosplay": len(selected_cosplay),
+                "collab": len(collab_sources),
+                "collab_gallery": sum(row["subtype"] == "gallery" for row in collab_sources),
+                "collab_image": sum(row["subtype"] == "image" for row in collab_sources),
+            },
+            "eligible_sources": {
+                "scene_images": len(eligible_scene_images),
+                "galleries": len(eligible_galleries),
+                "creator_profiles": len(creators), "creator_portrait_images": portrait_candidate_counts["creator"],
+                "character_profiles": len(characters), "character_portrait_images": portrait_candidate_counts["character"],
+                "cosplay_pair_images": sum(len(items) for items in pair_groups.values()),
+                "collab_gallery_and_image_sources": len(collab_sources),
+            },
+            "missing_live_avatar_profile_ids": missing_live_avatar_ids,
+            "family_shortfalls": {
+                "gallery": max(0, FOUNDATION_FAMILY_TARGETS["gallery"] - len(selected_galleries)),
+                "creator": max(0, FOUNDATION_FAMILY_TARGETS["creator"] - len(selected_creator_cards)),
+                "character": max(0, FOUNDATION_FAMILY_TARGETS["character"] - len(selected_character_cards)),
+                "cosplay": max(0, FOUNDATION_FAMILY_TARGETS["cosplay"] - len(selected_cosplay)),
+                "scene_residual": max(0, FOUNDATION_LARGE_LIBRARY_TARGET - non_scene_count - len(selected_scenes)),
+            },
+        })
+        release.generation_report = json.dumps(generation_report, sort_keys=True)
     db.commit()
     return foundation_status(db)
 
@@ -710,6 +1090,29 @@ def acquire_vault_booster(
     awarded: list[Card] = []
     from models import CardAcquisition, TCGPackOpening, TCGPackOpeningCard, TCGPackProduct
     product = db.query(TCGPackProduct).filter(TCGPackProduct.code == "VAULT-PERMANENT").first()
+    from sqlalchemy import or_
+
+    # Foundation printings are finite; personally earned Bond and HOF cards
+    # join this live pool as soon as they exist and remain eligible forever.
+    live_cards = db.query(Card).filter(
+        Card.is_legacy.is_(False),
+        or_(
+            Card.catalog_code == FOUNDATION_CODE,
+            Card.card_type.in_((CardType.bond, CardType.hof)),
+        ),
+    ).order_by(Card.id.asc()).all()
+
+    pullable_by_rarity: dict[str, list[Card]] = {rarity: [] for rarity in PRINT_RARITIES}
+    for card in live_cards:
+        rarity = earned_card_pack_rarity(card)
+        if not rarity:
+            continue
+        if card.card_type in (CardType.bond, CardType.hof) and not card.print_rarity:
+            # Freeze a normalized V2 pull rarity the first time the earned card
+            # enters the permanent booster. Its visual remains the earned face.
+            card.print_rarity = rarity
+        pullable_by_rarity[rarity].append(card)
+
     for pack_index in range(quantity):
         opening = None
         if product:
@@ -729,16 +1132,13 @@ def acquire_vault_booster(
         pack_cards: list[Card] = []
 
         def draw(allowed: tuple[str, ...]) -> Card:
-            query = db.query(Card).filter(
-                Card.catalog_code == FOUNDATION_CODE,
-                Card.print_rarity.in_(allowed),
-            )
-            if picked_ids:
-                query = query.filter(~Card.id.in_(picked_ids))
-            count = query.count()
-            if not count:
+            choices = [
+                card for rarity in allowed for card in pullable_by_rarity.get(rarity, [])
+                if card.id not in picked_ids
+            ]
+            if not choices:
                 raise ValueError(f"Foundation has no eligible {'/'.join(allowed)} printing")
-            card = query.offset(random.randrange(count)).first()
+            card = random.choice(choices)
             picked_ids.add(card.id)
             return card
 

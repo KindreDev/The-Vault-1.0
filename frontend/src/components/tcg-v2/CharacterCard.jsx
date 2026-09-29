@@ -1,3 +1,4 @@
+import { LocalizedText } from '../../i18n'
 import { useId, useMemo } from 'react'
 
 import popBackground from '../../assets/tcg-v2/templates/character/pop-art-v1/background-base.png'
@@ -139,8 +140,7 @@ export default function CharacterCard({ recipe: input, artUrl, packedMaskUrl, si
                   textLength={name.length > 13 ? (cutout ? 600 : 560) : undefined}
                   lengthAdjust="spacingAndGlyphs"
                   className={`character-card-v2__hero-name ${cutout ? 'is-ribbon' : ''}`}>{name}</text>
-            <text x="970" y="1500" textAnchor="end" className="character-card-v2__metadata">
-              CHARACTER · {recipe.snapshot.cardId}
+            <text x="970" y="1500" textAnchor="end" className="character-card-v2__metadata"><LocalizedText text={"CHARACTER ·"} before={" "} after={" "} />{recipe.snapshot.cardId}
             </text>
           </g>
 

@@ -1,5 +1,6 @@
+import { LocalizedText } from '../../i18n'
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Clock3, PackageOpen, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { CheckCircle2, Clock3, Coins, PackageOpen, ShieldCheck, Sparkles } from 'lucide-react'
 
 const WRAPPERS = {
   permanent: '/tcg-booster-permanent-cutout.png',
@@ -15,6 +16,14 @@ const LABELS = {
   weekly_protection: 'Weekly reward',
 }
 
+const WRAPPER_KIND = {
+  permanent: 'permanent',
+  release_standard: 'standard',
+  release_premium: 'premium',
+  limited: 'limited',
+  weekly_protection: 'limited',
+}
+
 function guarantee(pack) {
   const values = (pack.guaranteed_slots || []).map(value => String(value).toUpperCase())
   const rarity = ['SPR', 'UR', 'SR', 'R', 'C'].find(value => values.some(slot => slot === value || slot.startsWith(`${value}_`)))
@@ -22,46 +31,34 @@ function guarantee(pack) {
   return pack.rarity_floor ? `1 ${pack.rarity_floor} guaranteed` : 'Published odds'
 }
 
-export default function RoomOnlineStore({ packs, releases, productImages = [], pending, pendingPackId, onOrder }) {
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('all')
-  const [sort, setSort] = useState('featured')
+export default function RoomOnlineStore({ packs, releases, productImages = [], pending, pendingPackId, onOrder, query = '', category = 'all', sort = 'featured' }) {
   const [releaseByPack, setReleaseByPack] = useState({})
-  const categories = useMemo(() => [...new Set(packs.map(pack => pack.product_kind))], [packs])
   const products = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const filtered = packs.filter(pack => (category === 'all' || pack.product_kind === category) && (!normalized || `${pack.name} ${pack.pool_summary || ''}`.toLowerCase().includes(normalized)))
     if (sort === 'price-low') return [...filtered].sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
     if (sort === 'price-high') return [...filtered].sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
+    if (sort === 'name') return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
     return filtered
   }, [category, packs, query, sort])
 
-  return <section className="room-store">
-    <header className="room-store__masthead">
-      <div><span>VAULT ONLINE</span><strong>Booster Packs</strong></div>
-      <label><Search size={19} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search packs" /></label>
-      <div className="room-store__account"><span>Secure delivery</span><strong>To your room</strong></div>
-    </header>
-    <div className="room-store__controls">
-      <div><button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>All packs</button>{categories.map(value => <button key={value} className={category === value ? 'active' : ''} onClick={() => setCategory(value)}>{LABELS[value] || value.replaceAll('_', ' ')}</button>)}</div>
-      <label><SlidersHorizontal size={18} /> Sort<select value={sort} onChange={event => setSort(event.target.value)}><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label>
-    </div>
-    <div className="room-store__results"><strong>{products.length} booster packs</strong><span>Orders arrive sealed in your inventory</span></div>
+  return <section className="room-store room-store--embedded">
+    {products.length > 0 && <h2 className="room-store__section-title"><LocalizedText text={"Booster Packs"} /><span>{products.length}</span></h2>}
     <div className="room-store__grid">{products.map(pack => {
       const weekly = pack.product_kind === 'weekly_protection'
       const available = Boolean(pack.active && (pack.purchasable || pack.tokens > 0))
       const releaseId = releaseByPack[pack.id] || ''
+      const wrapperKind = WRAPPER_KIND[pack.product_kind] || 'standard'
       return <article key={pack.id} className={!available ? 'unavailable' : ''}>
-        <div className="room-store__product-image"><span>{LABELS[pack.product_kind] || 'Booster pack'}</span><img src={pack.wrapper_src || WRAPPERS[pack.product_kind] || WRAPPERS.permanent} alt="" />{productImages.length > 0 && <img className="room-store__product-art" src={productImages[pack.id % productImages.length]} alt="" />}</div>
+        <div className={`room-store__product-image room-store__product-image--${wrapperKind}`}><span className={`room-store__product-kind-badge${pack.product_kind === 'release_premium' ? ' room-store__product-kind-badge--premium' : ''}`}>{LABELS[pack.product_kind] || 'Booster pack'}</span><div className="room-store__wrapper-stage"><img className="room-store__wrapper" src={pack.wrapper_src || WRAPPERS[pack.product_kind] || WRAPPERS.permanent} alt="" />{productImages.length > 0 && <img className="room-store__product-art" src={productImages[pack.id % productImages.length]} alt="" />}</div></div>
         <div className="room-store__product-body">
           <h2>{pack.name}</h2>
-          <p>{pack.pool_summary || pack.release_name || 'Published cards from the Vault catalogue'}</p>
-          <ul><li><PackageOpen size={18} /><strong>{pack.card_count} cards</strong></li><li><ShieldCheck size={18} /><strong>{guarantee(pack)}</strong></li><li>{available ? <CheckCircle2 size={18} /> : <Clock3 size={18} />}<strong>{available ? 'Available now' : 'Not currently scheduled'}</strong></li></ul>
-          {weekly && pack.tokens > 0 && <label className="room-store__release">Choose release<select value={releaseId} onChange={event => setReleaseByPack(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value="">Select a frozen release</option>{releases.filter(item => item.status === 'published').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-          <div className="room-store__buy"><div><span>Price</span><strong>{weekly ? 'Quest reward' : `${Number(pack.price || 0).toLocaleString()} Credits`}</strong></div><button disabled={!available || pending || (weekly && !releaseId)} onClick={() => onOrder(pack, releaseId || null)}>{pending && pendingPackId === pack.id ? 'Ordering...' : 'Order online'}</button></div>
+          <ul><li><PackageOpen size={18} /><strong>{pack.card_count}<LocalizedText text={"cards"} before={" "} /></strong></li><li><ShieldCheck size={18} /><strong>{guarantee(pack)}</strong></li></ul>
+          <div className={`room-store__availability${available ? ' is-available' : ''}`}>{available ? <CheckCircle2 size={17} /> : <Clock3 size={17} />}<strong>{available ? <LocalizedText text={"Available now"} /> : <LocalizedText text={"Not currently scheduled"} />}</strong></div>
+          {weekly && pack.tokens > 0 && <label className="room-store__release"><LocalizedText text={"Choose release"} /><select value={releaseId} onChange={event => setReleaseByPack(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value=""><LocalizedText text={"Select a frozen release"} /></option>{releases.filter(item => item.status === 'published').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+          <div className="room-store__buy"><span><LocalizedText text={"Price"} /></span><strong>{weekly ? <><Sparkles size={18} /> <LocalizedText text={"Quest reward"} /></> : <><Coins size={19} /> {Number(pack.price || 0).toLocaleString()} <LocalizedText text={"Credits"} before={" "} /></>}</strong><button disabled={!available || pending || (weekly && !releaseId)} onClick={() => onOrder(pack, releaseId || null)}>{pending && pendingPackId === pack.id ? 'Ordering...' : 'Order online'}</button></div>
         </div>
       </article>
     })}</div>
-    {!products.length && <div className="room-store__empty">No packs match these filters.</div>}
   </section>
 }

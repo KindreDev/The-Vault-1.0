@@ -383,7 +383,7 @@ export const HOTKEY_ACTIONS = [
   {
     id:      'video_loop',
     label:   'Toggle loop',
-    hint:    'Repeats the video instead of advancing.',
+    hint:    'Keeps every video looping until you turn it off.',
     group:   'Video',
     scope:   SCOPE_VIEWER,
     default: 'l',

@@ -25,6 +25,34 @@ from services.gallery_merge import GalleryMergeError, merge_gallery_records, mov
 log = logging.getLogger(__name__)
 
 
+def browse_directories(path: str = "") -> dict:
+    """List local folders for the in-app relocation destination picker."""
+    if not path:
+        if os.name == "nt":
+            roots = [f"{letter}:\\" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                     if os.path.isdir(f"{letter}:\\")]
+        else:
+            roots = ["/"]
+        return {"path": "", "parent": None,
+                "folders": [{"name": root, "path": root} for root in roots]}
+
+    directory = os.path.abspath(path)
+    if not os.path.isdir(directory):
+        raise ValueError("That folder is no longer available.")
+    try:
+        with os.scandir(directory) as entries:
+            folders = [
+                {"name": entry.name, "path": entry.path}
+                for entry in entries if entry.is_dir()
+            ]
+    except OSError as exc:
+        raise ValueError(f"Could not open that folder: {exc}") from exc
+    folders.sort(key=lambda folder: folder["name"].casefold())
+    parent = os.path.dirname(directory)
+    return {"path": directory, "parent": parent if parent != directory else "",
+            "folders": folders}
+
+
 def _norm(p):
     return os.path.normpath(p).rstrip("\\/") if p else p
 

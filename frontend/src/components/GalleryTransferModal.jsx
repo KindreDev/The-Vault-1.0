@@ -91,8 +91,8 @@ export default function GalleryTransferModal({
       if (data.added === 0) {
         toast(t('Already in that gallery'), { icon: 'ℹ️' })
       } else {
-        const skipped = data.skipped ? ` (${data.skipped} already there)` : ''
-        toast.success(`${data.added} → "${targetGallery.name}"${skipped}`)
+        const skipped = data.skipped ? t(' ({count} already there)', { count: data.skipped }) : ''
+        toast.success(t('{count} items added to "{name}"{skipped}', { count: data.added, name: targetGallery.name, skipped }))
       }
       onClose()
     } catch (err) {
@@ -101,7 +101,7 @@ export default function GalleryTransferModal({
     }
   }
 
-  const noun = images.length === 1 ? t('image') : `${images.length} images`
+  const noun = images.length === 1 ? t('image') : t('{count} images', { count: images.length })
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"

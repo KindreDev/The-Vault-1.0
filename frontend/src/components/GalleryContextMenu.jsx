@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -118,8 +119,7 @@ export default function GalleryContextMenu({
         }}>
           {bulkCount > 1 ? (
             <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
-              {bulkCount} galleries selected
-            </div>
+              {bulkCount}<LocalizedText text={"galleries selected"} before=" " after=" " /></div>
           ) : (
             <div style={{
               fontSize: 11, color: 'rgba(255,255,255,0.35)',

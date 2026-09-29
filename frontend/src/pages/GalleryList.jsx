@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
@@ -20,9 +21,11 @@ import PeriodFilter from '../components/PeriodFilter'
 import { useAllCreators } from '../hooks/useAllCreators'
 import GalleryContextMenu from '../components/GalleryContextMenu'
 import RelocateModal from '../components/RelocateModal'
+import FolderPicker from '../components/FolderPicker'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 import { tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
+import { stopVideoPreview } from '../lib/videoPreview'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -54,7 +57,7 @@ function CreateGalleryModal({ onClose }) {
   const createMutation = useMutation({
     mutationFn: () => galleriesApi.create({ name: name.trim() }),
     onSuccess: () => {
-      toast.success(`Gallery "${name}" created!`)
+      toast.success(t('Gallery "{name}" created!', { name }))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onClose()
     },
@@ -151,6 +154,7 @@ function RenameFolderModal({ gallery, onClose }) {
 
 // ── Star rating ───────────────────────────────────────────────────────────────
 function StarRating({ value = 0, onRate, className = '' }) {
+  const t = useT()
   const [hovered, setHovered] = useState(0)
   return (
     <div
@@ -170,7 +174,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
               onRate(value === n ? 0 : n)
             }}
             className="cursor-pointer p-0.5 transition-transform hover:scale-125"
-            title={`Rate ${n}/10`}>
+            title={t('Rate {level} out of 10', { level: n })}>
             <Star
               size={9}
               fill={filled ? (hovered ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'var(--c-amber)') : 'none'}
@@ -181,7 +185,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
         )
       })}
       {value > 0 && !hovered && (
-        <span className="text-[10px] ml-0.5" style={{ color: 'var(--c-amber)' }}>{value}</span>
+        <span className="text-[16px] ml-0.5" style={{ color: 'var(--c-amber)' }}>{value}</span>
       )}
     </div>
   )
@@ -191,6 +195,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
 // React.memo: grid of 100 cards won't re-render when parent state changes
 // (search input, sort, modal open, bulk selection of other cards, etc.)
 const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRenameFolder, onContextMenu }) {
+  const locale = useVaultStore(s => s.locale)
   const t = useT()
   const [isHovered, setIsHovered]     = useState(false)
   const [fanImgs, setFanImgs]         = useState([])
@@ -200,6 +205,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   const videoRef      = useRef(null)
   const cardRef       = useRef(null)
   const hoverTimer    = useRef(null)
+  const hoverGeneration = useRef(0)
   const qc = useQueryClient()
 
   const handleMouseMove = useCallback((e) => {
@@ -218,7 +224,9 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
     // No fan/video in bulk-select mode — you're clicking, not browsing
     if (bulkMode) return
     // 400 ms intent delay — accidental mouse passes don't trigger anything
+    const generation = ++hoverGeneration.current
     hoverTimer.current = setTimeout(async () => {
+      if (generation !== hoverGeneration.current) return
       if (!gallery?.id) return
       setIsHovered(true)
       try {
@@ -226,6 +234,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
           imagesApi.list({ gallery_id: gallery.id, is_video: false, sort_by: 'random', limit: 5 }),
           imagesApi.list({ gallery_id: gallery.id, is_video: true,  sort_by: 'random', limit: 1 }),
         ])
+        if (generation !== hoverGeneration.current) return
         const toArr = (r) => { const d = r.data; return d?.images ?? (Array.isArray(d) ? d : []) }
         setFanImgs(toArr(rPhotos).slice(0, 5))
         setFirstVideo(toArr(rVideo)[0] ?? null)
@@ -234,6 +243,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   }, [bulkMode, gallery?.id])
 
   const handleMouseLeave = useCallback(() => {
+    hoverGeneration.current++
     clearTimeout(hoverTimer.current)
     setIsHovered(false)
     setFanImgs([])
@@ -245,23 +255,23 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   const activeIdx = fanImgs.length > 0 ? Math.min(fanImgs.length - 1, Math.floor(mouseX * fanImgs.length)) : 0
 
   useEffect(() => {
-    if (isHovered && firstVideo && videoRef.current) {
-      videoRef.current.currentTime = 0
-      videoRef.current.play().catch(() => {})
-    } else if (!isHovered && videoRef.current) {
-      videoRef.current.pause()
+    const video = videoRef.current
+    if (!isHovered || !firstVideo || !video) return
+    video.src = `/api/images/${firstVideo.id}/file`
+    video.load()
+    video.play().catch(() => {})
+    const previewTimer = setTimeout(() => setFirstVideo(null), 15000)
+    return () => {
+      clearTimeout(previewTimer)
+      stopVideoPreview(video)
     }
-  }, [isHovered, firstVideo])
+  }, [isHovered, firstVideo?.id])
 
-  // Release video file handle and cancel any pending hover timer on unmount
+  // A pending gallery lookup must not attach a video after this card unmounts.
   useEffect(() => {
     return () => {
+      hoverGeneration.current++
       clearTimeout(hoverTimer.current)
-      const v = videoRef.current
-      if (!v) return
-      v.pause()
-      v.removeAttribute('src')
-      v.load()
     }
   }, [])
 
@@ -285,7 +295,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         </div>
       )}
       {selected && (
-        <div className="absolute inset-0 z-10 pointer-events-none rounded-[10px]"
+        <div className="media-selection-overlay absolute inset-0 z-10 pointer-events-none rounded-[10px]"
              style={{ border: '1.5px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)' }} />
       )}
       <div className="relative overflow-hidden" style={{ height: thumbSize, background: 'rgba(255,255,255,0.03)' }}>
@@ -303,7 +313,6 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         {firstVideo && (
           <video
             ref={videoRef}
-            src={`/api/images/${firstVideo.id}/file`}
             muted
             playsInline
             preload="none"
@@ -348,7 +357,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
             {gallery.period_month && gallery.period_year && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
                     style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)' }}>
-                {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
+                {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })}
               </span>
             )}
           </div>
@@ -503,7 +512,7 @@ function CreatorDropdown({ value, onChange, placeholder }) {
         {hasSelection
           ? (selectedCreators.length === 1
               ? selectedCreators[0].name
-              : `${selectedCreators.length} creators`)
+              : t('{count} creators', { count: selectedCreators.length }))
           : placeholder}
         {hasSelection
           ? <X size={11} onMouseDown={clearAll} className="cursor-pointer" />
@@ -677,10 +686,10 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
     }
 
     const parts = []
-    if (totalMoved   > 0) parts.push(`${totalMoved} images merged`)
-    if (totalReconciled > 0) parts.push(`${totalReconciled} already-present files reconciled`)
-    if (totalSkipped > 0) parts.push(`${totalSkipped} skipped`)
-    if (errors       > 0) parts.push(`${errors} failed`)
+    if (totalMoved   > 0) parts.push(t('{count} images merged', { count: totalMoved }))
+    if (totalReconciled > 0) parts.push(t('{count} already-present files reconciled', { count: totalReconciled }))
+    if (totalSkipped > 0) parts.push(t('{count} skipped', { count: totalSkipped }))
+    if (errors       > 0) parts.push(t('{count} failed', { count: errors }))
     toast[errors > 0 ? 'error' : 'success'](parts.join(', ') || t('Merged'))
 
     qc.invalidateQueries({ queryKey: ['galleries'] })
@@ -738,7 +747,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{g.image_count ?? 0} {t('images')}</div>
                       </div>
                       {targetId === g.id && (
-                        <span style={{ fontSize: 10, color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', padding: '1px 6px', borderRadius: 4 }}>{t('TARGET')}</span>
+                        <span style={{ fontSize: 16, color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', padding: '1px 6px', borderRadius: 4 }}>{t('TARGET')}</span>
                       )}
                     </button>
                   ))}
@@ -776,7 +785,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                                 border: `0.5px solid ${collision === key ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
                         <div style={{ fontSize: 12, color: collision === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
+                        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
@@ -828,7 +837,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
                 <div className="flex items-center gap-2 px-3 py-2 rounded-[8px] mt-1"
                      style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', fontSize: 12, color: 'var(--c-accent-text)' }}>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>→ {target?.name}</span>
-                  <span style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)', flexShrink: 0, fontSize: 10 }}>{t('TARGET')}</span>
+                  <span style={{ color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)', flexShrink: 0, fontSize: 16 }}>{t('TARGET')}</span>
                 </div>
               </div>
 
@@ -959,6 +968,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
   const [assigning, setAssigning]             = useState(false)
   const [removing, setRemoving]               = useState(false)
   const [zipping, setZipping]                 = useState(false)
+  const [showExportPicker, setShowExportPicker] = useState(false)
   const [showMergeModal, setShowMergeModal]   = useState(false)
   const [bulkTagOpen, setBulkTagOpen]         = useState(false)
   const [bulkPendingTags, setBulkPendingTags] = useState([])
@@ -973,7 +983,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
   const assignMutation = useMutation({
     mutationFn: () => galleriesApi.bulkAssign(selectedIds, creatorId),
     onSuccess: (r) => {
-      toast.success(`Assigned creator to ${r.data.updated} galleries`)
+      toast.success(t('Assigned creator to {count} galleries', { count: r.data.updated }))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onDone()
     },
@@ -994,8 +1004,8 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       }
     }
     setRemoving(false)
-    if (removed > 0) toast.success(`Removed creator from ${removed} ${removed === 1 ? 'gallery' : 'galleries'}`)
-    if (errs > 0) toast.error(`${errs} galleries couldn't be updated`)
+    if (removed > 0) toast.success(t('Removed creator from {count} galleries', { count: removed }))
+    if (errs > 0) toast.error(t('{count} galleries could not be updated', { count: errs }))
     qc.invalidateQueries({ queryKey: ['galleries'] })
     onDone()
   }
@@ -1008,7 +1018,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     try {
       const { data } = await galleriesApi.bulkClearCreators(selectedIds)
       if (data.updated > 0) {
-        toast.success(`Cleared creators from ${data.updated} ${data.updated === 1 ? 'gallery' : 'galleries'}`)
+        toast.success(t('Cleared creators from {count} galleries', { count: data.updated }))
       } else {
         toast(t('Nothing to clear — none of those had a creator'))
       }
@@ -1041,7 +1051,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
       }
     } catch (e) { skipped += batch.length }
     toast.dismiss('bulk-add')
-    if (added > 0) toast.success(`Sent ${added} galleries to Playlists`)
+    if (added > 0) toast.success(t('Sent {count} galleries to Playlists', { count: added }))
     if (skipped > 0) toast(t('Some were already queued or queue is full'), { icon: 'ℹ️' })
     onDone()
   }
@@ -1051,7 +1061,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     setBulkTagging(true)
     try {
       const { data } = await galleriesApi.bulkAddTags(selectedIds, bulkPendingTags)
-      toast.success(`Added ${data.added} tag${data.added === 1 ? '' : 's'} to ${data.updated} ${data.updated === 1 ? 'gallery' : 'galleries'}`)
+      toast.success(t('Added {tagCount} tags to {galleryCount} galleries', { tagCount: data.added, galleryCount: data.updated }))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
       setBulkPendingTags([])
@@ -1073,8 +1083,8 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     setDeleteOp(null)
     setShowDeleteModal(false)
     qc.invalidateQueries({ queryKey: ['galleries'] })
-    if (errs > 0) toast.error(`Finished with ${errs} errors`)
-    else toast.success(`Removed ${selectedIds.length} ${selectedIds.length === 1 ? 'gallery' : 'galleries'} from vault`)
+    if (errs > 0) toast.error(t('Finished with {count} errors', { count: errs }))
+    else toast.success(t('Removed {count} galleries from vault', { count: selectedIds.length }))
     onDone()
   }
 
@@ -1104,29 +1114,28 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
     setShowDeleteModal(false)
     qc.invalidateQueries({ queryKey: ['galleries'] })
 
-    if (deleted > 0) toast.success(`Deleted ${deleted} ${deleted === 1 ? 'gallery' : 'galleries'} from disk`)
+    if (deleted > 0) toast.success(t('Deleted {count} galleries from disk', { count: deleted }))
     blocked.forEach(({ gallery, children }) => {
       const names = children.slice(0, 3).map(c => `"${c.name}"`).join(', ')
-      const more = children.length > 3 ? ` +${children.length - 3} more` : ''
-      toast.error(`"${gallery.name}" has child galleries inside it (${names}${more}) — delete those first`, { duration: 8000 })
+      const more = children.length > 3 ? ` ${t('+{count} more', { count: children.length - 3 })}` : ''
+      toast.error(t('"{name}" has child galleries inside it ({children}{more}) — delete those first', { name: gallery.name, children: names, more }), { duration: 8000 })
     })
-    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
+    if (errs > 0) toast.error(t('{count} deletions failed{details}', { count: errs, details: firstError ? `: ${firstError}` : '' }))
     if (deleted > 0) onDone()
   }
 
-  const handleExportZip = async () => {
+  const handleExportZip = () => setShowExportPicker(true)
+  const exportSelectedZip = async outputPath => {
     setZipping(true)
+    const tid = toast.loading(t('Zipping {count} galleries…', { count: selectedGalleries.length }))
     try {
-      const folderRes = await galleriesApi.pickFolder()
-      const outputPath = folderRes.data.path
-      const tid = toast.loading(`Zipping ${selectedGalleries.length} ${selectedGalleries.length === 1 ? 'gallery' : 'galleries'}…`)
       const res = await galleriesApi.exportZip(selectedIds, outputPath)
-      toast.dismiss(tid)
       const d = res.data
-      toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
+      toast.success(t('Zip created — {count} files · {name}', { count: d.file_count, name: d.zip_name }))
     } catch (e) {
-      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || t('Export failed'))
+      toast.error(e?.response?.data?.detail || t('Export failed'))
     } finally {
+      toast.dismiss(tid)
       setZipping(false)
     }
   }
@@ -1272,6 +1281,7 @@ function BulkActionPanel({ selectedGalleries, onDone, onCancel }) {
           onMerged={() => { setShowMergeModal(false); onDone() }}
         />
       )}
+      {showExportPicker && <FolderPicker onSelect={exportSelectedZip} onClose={() => setShowExportPicker(false)} />}
     </div>
   )
 }
@@ -1347,6 +1357,7 @@ export default function GalleryList() {
   const [relocating, setRelocating]                     = useState(null)
   const [ctxDeletingGalleries, setCtxDeletingGalleries] = useState(null) // array
   const [ctxDeleteOp, setCtxDeleteOp]                   = useState(null)
+  const [ctxExportGalleries, setCtxExportGalleries]     = useState(null)
 
   const qc = useQueryClient()
 
@@ -1537,7 +1548,7 @@ export default function GalleryList() {
 
   const handleCtxSendToPanel = useCallback(async (galleries) => {
     const targets = Array.isArray(galleries) ? galleries : [galleries]
-    const tid = toast.loading(targets.length > 1 ? `Adding ${targets.length} galleries…` : t('Adding to Playlists…'))
+    const tid = toast.loading(targets.length > 1 ? t('Adding {count} galleries…', { count: targets.length }) : t('Adding to Playlists…'))
     let added = 0, skipped = 0
     // One request for the whole selection. This used to be a sequential fetch
     // per gallery, so sending a few hundred meant a few hundred round trips.
@@ -1554,8 +1565,8 @@ export default function GalleryList() {
       }
     } catch { skipped += batch.length }
     toast.dismiss(tid)
-    if (added > 0) toast.success(`${added} ${added === 1 ? 'gallery' : 'galleries'} added to Playlists`)
-    if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
+    if (added > 0) toast.success(t('{count} galleries added to Playlists', { count: added }))
+    if (skipped > 0) toast(t('{count} already queued or queue full', { count: skipped }), { icon: 'ℹ️' })
     if (added === 0 && skipped === 0) toast.error(t('Could not load gallery images'))
   }, [addToMultiViewer, multiViewerQueue, MULTIVIEWER_MAX])
 
@@ -1578,7 +1589,7 @@ export default function GalleryList() {
     if (n > 0) toast.success(mode === 'disk'
       ? `${n} ${n === 1 ? 'gallery' : 'galleries'} deleted from disk`
       : `${n} ${n === 1 ? 'gallery' : 'galleries'} removed from vault`)
-    if (errs > 0) toast.error(`${errs} deletion${errs > 1 ? 's' : ''} failed${firstError ? `: ${firstError}` : ''}`)
+    if (errs > 0) toast.error(t('{count} deletions failed{details}', { count: errs, details: firstError ? `: ${firstError}` : '' }))
     qc.invalidateQueries({ queryKey: ['galleries'] })
     setCtxDeletingGalleries(null)
     setCtxDeleteOp(null)
@@ -1615,25 +1626,25 @@ export default function GalleryList() {
   const selectAll = () => {
     setSelected(selected.size === galleries?.length ? new Set() : new Set(galleries?.map(g => g.id) ?? []))
   }
-  const handleCtxExportZip = useCallback(async (galleries) => {
-    const targets = Array.isArray(galleries) ? galleries : [galleries]
-    try {
-      const folderRes = await galleriesApi.pickFolder()
-      const outputPath = folderRes.data.path
-      const tid = toast.loading(t('Creating zip…'))
-      const res = await galleriesApi.exportZip(targets.map(g => g.id), outputPath)
-      toast.dismiss(tid)
-      const d = res.data
-      toast.success(`Zip created — ${d.file_count} file${d.file_count !== 1 ? 's' : ''} · ${d.zip_name}`)
-    } catch (e) {
-      if (e?.response?.status !== 400) toast.error(e?.response?.data?.detail || t('Export failed'))
-    }
+  const handleCtxExportZip = useCallback(galleries => {
+    setCtxExportGalleries(Array.isArray(galleries) ? galleries : [galleries])
   }, [])
+  const exportCtxZip = async outputPath => {
+    const targets = ctxExportGalleries || []
+    const tid = toast.loading(t('Creating zip…'))
+    try {
+      const res = await galleriesApi.exportZip(targets.map(g => g.id), outputPath)
+      const d = res.data
+      toast.success(t('Zip created — {count} files · {name}', { count: d.file_count, name: d.zip_name }))
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('Export failed'))
+    } finally { toast.dismiss(tid) }
+  }
 
   const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
 
   return (
-    <div className="p-5 flex flex-col gap-4 w-full">
+    <div className="vault-theme-gallery-page p-5 flex flex-col gap-4 w-full">
       {/* Header + controls */}
       <div className="vault-control-row vault-filter-toolbar flex items-center gap-2 flex-wrap">
         <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Galleries')}</div>
@@ -1778,7 +1789,7 @@ export default function GalleryList() {
           {creatorFilter.length > 0 && (
             <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
-              {creatorFilter.length} creator{creatorFilter.length > 1 ? 's' : ''} {t('selected')} <button type="button" onMouseDown={() => setCreatorFilter([])} className="cursor-pointer ml-0.5"><X size={10} /></button>
+              {creatorFilter.length}<LocalizedText text={"creator"} before=" " />{creatorFilter.length > 1 ? 's' : ''} {t('selected')} <button type="button" onMouseDown={() => setCreatorFilter([])} className="cursor-pointer ml-0.5"><X size={10} /></button>
             </span>
           )}
         </div>
@@ -1814,9 +1825,9 @@ export default function GalleryList() {
             </div>
           )}
           <div className="text-[13px] text-[rgba(255,255,255,0.3)] mb-2">
-            {`${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + (galleries?.length ?? 0)} shown of ${totalCount} · page ${page} of ${totalPages}`}
+            {t('{start}–{end} shown of {total} · page {page} of {pages}', { start: (page - 1) * pageSize + 1, end: (page - 1) * pageSize + (galleries?.length ?? 0), total: totalCount, page, pages: totalPages })}
           </div>
-          <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
+          <div className="vault-theme-gallery-grid grid gap-3 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
             {galleries.map(g => (
               <GalleryCard
                 key={g.id}
@@ -1865,6 +1876,7 @@ export default function GalleryList() {
           onClose={() => setRelocating(null)}
         />
       )}
+      {ctxExportGalleries && <FolderPicker onSelect={exportCtxZip} onClose={() => setCtxExportGalleries(null)} />}
 
       {/* Right-click context menu */}
       {contextMenu && (

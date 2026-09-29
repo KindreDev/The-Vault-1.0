@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
+import { stopVideoPreview } from '../lib/videoPreview'
 
 /**
  * Lightweight hover-to-play video overlay for thumbnail cards.
@@ -12,39 +13,36 @@ import React, { useRef, useEffect } from 'react'
  */
 export default function HoverVideoPreview({ imageId, hovered }) {
   const videoRef = useRef(null)
-  const timerRef = useRef(null)
+  const [active, setActive] = useState(false)
 
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (hovered) {
-      vid.src = `/api/images/${imageId}/file`
-      const seekAndPlay = () => {
-        if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
-        vid.play().catch(() => {})
-      }
-      if (vid.readyState >= 1) seekAndPlay()
-      else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-      timerRef.current = setTimeout(() => vid.pause(), 15000)
-    } else {
-      clearTimeout(timerRef.current)
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
+    if (!hovered) {
+      stopVideoPreview(vid)
+      setActive(false)
+      return
     }
-    return () => clearTimeout(timerRef.current)
-  }, [hovered, imageId])
 
-  // Release media pipeline on unmount (see InlineVideoPlayer for why this matters)
-  useEffect(() => {
-    return () => {
-      const vid = videoRef.current
-      if (!vid) return
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
+    setActive(true)
+    vid.src = `/api/images/${imageId}/file`
+    const seekAndPlay = () => {
+      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
+      vid.play().catch(() => {})
     }
-  }, [])
+    if (vid.readyState >= 1) seekAndPlay()
+    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
+    const timer = setTimeout(() => {
+      vid.removeEventListener('loadedmetadata', seekAndPlay)
+      stopVideoPreview(vid)
+      setActive(false)
+    }, 15000)
+    return () => {
+      clearTimeout(timer)
+      vid.removeEventListener('loadedmetadata', seekAndPlay)
+      stopVideoPreview(vid)
+    }
+  }, [hovered, imageId])
 
   return (
     <video
@@ -53,7 +51,7 @@ export default function HoverVideoPreview({ imageId, hovered }) {
       playsInline
       preload="none"
       className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-      style={{ opacity: hovered ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
+      style={{ opacity: hovered && active ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
     />
   )
 }

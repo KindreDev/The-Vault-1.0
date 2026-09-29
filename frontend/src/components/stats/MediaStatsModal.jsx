@@ -12,12 +12,14 @@ import {
   Images, Film, ArrowUpRight, Star, Info,
 } from 'lucide-react'
 import { imagesApi } from '../../lib/api'
+import { useT } from '../../i18n'
 import {
   StatsModalShell, LoadingBody, Panel, Stat, TagChip,
   fmtDuration, fmtDate, num,
 } from './StatsKit'
 
 export default function MediaStatsModal({ imageId, onClose }) {
+  const t = useT()
   const navigate = useNavigate()
   const open = !!imageId
 
@@ -45,7 +47,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
               <button onClick={() => go(`/galleries/${d.gallery_id}?openImage=${d.id}`)}
                       className="flex-shrink-0 cursor-pointer rounded-[12px] overflow-hidden"
                       style={{ border: '0.5px solid rgba(255,255,255,0.15)' }}
-                      title="Open in the viewer">
+                      title={t('Open in the viewer')}>
                 <img src={`/api/images/${d.id}/thumb`} alt={d.filename}
                      style={{ width: 150, height: 150, objectFit: 'cover', display: 'block' }} />
               </button>
@@ -54,13 +56,13 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   <Trophy size={16} style={{ color: 'var(--c-amber-text)' }} />
                   <span style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase',
                                  letterSpacing: '0.12em', color: 'var(--c-amber-text)' }}>
-                    #{num(d.rank)} of {num(d.total_ranked)}
+                    {t('#{rank} of {count}', { rank: num(d.rank), count: num(d.total_ranked) })}
                   </span>
                   <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>·</span>
                   <span className="flex items-center gap-1.5"
                         style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)' }}>
                     {d.is_video ? <Film size={14} /> : <Images size={14} />}
-                    {d.is_video ? 'Video' : 'Photo'}
+                    {d.is_video ? t('Video') : t('Photo')}
                   </span>
                 </div>
                 <h2 className="break-all"
@@ -88,7 +90,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                 <div className="flex items-end gap-6 flex-wrap mt-1">
                   <div className="flex flex-col">
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                      <Droplets size={15} /> Os
+                      <Droplets size={15} /> {t('Os')}
                     </span>
                     <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-pink-text)', lineHeight: 1.1 }}>
                       {num(d.cum_count)}
@@ -97,7 +99,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   {d.edge_count > 0 && (
                     <div className="flex flex-col">
                       <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                        <Waves size={15} /> Edges
+                        <Waves size={15} /> {t('Edges')}
                       </span>
                       <span style={{ fontSize: 30, fontWeight: 800, color: '#A89FE8', lineHeight: 1.1 }}>
                         {num(d.edge_count)}
@@ -106,7 +108,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   )}
                   <div className="flex flex-col">
                     <span className="flex items-center gap-2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>
-                      <Clock size={15} /> Watched
+                      <Clock size={15} /> {t('Watched')}
                     </span>
                     <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--c-accent-text)', lineHeight: 1.1 }}>
                       {fmtDuration(d.view_seconds) || '—'}
@@ -175,7 +177,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
             </Panel>
 
             <Panel icon={TagIcon} title="Tags"
-                   subtitle={d.tags?.length ? `${d.tags.length} on this file — purple is AI` : 'None yet'}
+                   subtitle={d.tags?.length ? t('{count} on this file — purple is AI', { count: d.tags.length }) : t('None yet')}
                    accent="var(--c-green)">
               {d.tags?.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -185,12 +187,12 @@ export default function MediaStatsModal({ imageId, onClose }) {
                 </div>
               ) : (
                 <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }}>
-                  Nothing tagged here yet
+                  {t('Nothing tagged here yet')}
                 </div>
               )}
               {d.creators_inherited && d.creators?.length > 0 && (
                 <div className="mt-3" style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)' }}>
-                  Creator inherited from the gallery — no per-file assignment.
+                  {t('Creator inherited from the gallery — no per-file assignment.')}
                 </div>
               )}
             </Panel>
@@ -201,7 +203,7 @@ export default function MediaStatsModal({ imageId, onClose }) {
                   style={{ fontSize: 17, fontWeight: 600, color: '#F4C0D1',
                            background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
                            border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
-            Open in the viewer →
+            {t('Open in the viewer')} →
           </button>
         </>
       )}

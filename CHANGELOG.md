@@ -14,20 +14,115 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Added
+- Added separate permanent Creator, Media, and Gallery Hall of Fame cards for each category and period win.
+- Added a conditional Legacy cards toggle to the card collection for databases that contain legacy records.
+- Added a one-time local HOF media ladder fixture with image and video cards at every HOF print rarity for renderer testing.
+- Added plain-language Hall of Fame award provenance and rarity-matched Metal Signature highlights to HOF image cards, video cards, and GIFs.
+
+### Changed
+- Made Collection card tiles transparent behind the card faces and metadata.
+- Folder browsing now remembers the last location, supports typed addresses and back/forward navigation, and is used throughout Settings, Loading Bay, creator folder assignment, relocation, relinking, and ZIP export.
+- Deferred Collection card-face rendering until cards approach the viewport to reduce first-load and scroll work without changing card visuals.
+- Reused deterministic booster validation results during Collection startup instead of repeating identical pack simulations for concurrent requests.
+- Collection card faces now mount in smaller batches and keep their loading veil until the main artwork is decoded.
+- Collection search now matches card IDs, printed codes and numbers, names, rarity, card type, and content classification.
+- Video loop now stays on across videos, viewer screens, and app restarts until you turn it off.
+- Changed HOF award wording to name the recipient and state the category and period in natural order.
+- Extended HOF's pointer-reactive Metal Signature across every card's metallic frame, lettering, stars, and flowers.
+- Increased Silver-and-higher HOF metallic highlights and restored the pointer-following light reflection on Common cards.
+- Consolidated Collection Room booster packs and furniture in a responsive Shop with artwork-first product tiles and prices below each item.
+- Changed Hall of Fame cards with video-winning sources to play the preserved video inside the HOF face while retaining the existing frame and effects.
+- Changed HOF video cards to fill the complete card frame, use short low-resolution looping previews in grids and the Collection Room, and reserve full-video playback for opened card views.
+- Changed full-video Hall of Fame foil to keep transparent star-only VFX with pointer-reactive per-speck highlights instead of a flat overlay.
+- Unified the transparent, reactive foil composition across preview and opened views for video-backed Hall of Fame cards while preserving their separate media playback.
+- Strengthened video-card star foil with clearly visible pointer-shifting rainbow color while keeping the video unobscured.
+- Added an experimental rarity-matched Metal Signature treatment to video-backed Hall of Fame cards.
+- Extended video HOF Metal Signature highlights to the four metal ribbons and masked rarity letter.
+- Kept HOF video card names fixed to their face during Collection Room focus rotation without changing the metal finish.
+- Fixed the HOF-061653 Collection Room poster's inherited letterbox bars and reduced full-view video foil to a sparse reactive star layer.
+- Fixed the HOF-061653 full-view foil layer so its sparse reactive stars render when the card is picked up.
+- Fixed HOF-061653's opened-card foil fallback to use its transparent star texture and kept the special treatment scoped to that card.
+
+### Fixed
+- Fixed hover video previews holding files and gallery folders open after the preview ends, so Relocate and folder renaming can proceed; move failures now show their specific errors.
+- Fixed Gallery View merge search so it finds matching galleries across the full library.
+- Fixed Relocate's Browse button by opening an in-app folder chooser instead of relying on a hidden Windows dialog.
+- Fixed Loading Bay new-creator imports silently failing when no destination folder was set; the destination can now be chosen in-app and import errors are shown.
+- Fixed the Collection Room rarity dropdown showing blank, unusable options in its native popup menu.
+- Fixed Hall of Fame identity text being truncated by the artwork clip during steep Collection Room focus-view rotations.
+- Fixed the HOF metal highlight lagging behind card rotation while dragging in the Collection Room focus viewer.
+- Fixed pointer-reactive HOF metal highlights staying aligned with the creator name while rotating cards in the Collection Room focus viewer.
+- Fixed weekly Hall of Fame cards so their SR print rarity persists through pack pulls and collection display.
+- Fixed All-Time Hall of Fame cards to display as SPR while Monthly cards remain UR, with matching frozen recipes.
+- Fixed full-video playback in the Collection Room card inspection view by using a reliable DOM video layer beneath the HOF frame effects.
+- Added a visible loading and failure state for full-video HOF card views while the browser starts or rejects the source.
+- Fixed Collection Room pack opening to consume serialized card payloads correctly, prevent legacy cards from entering pack pools, and suppress the subject outline only for Common cards.
+- Fixed Chloe theme readability for low-opacity inline labels in Settings, Help, Stats, and Erika AI.
+- Added: Theme packs can choose an Appearance preview image in the private editor, shown for inactive packs with aligned settings cards.
+- Changed: Funscript filters stay on one horizontal strip with compact overflow-safe controls, and Device Control supports right-click quick reconnect/disconnect with a timed failure indicator.
+- Changed: Chloe-compatible leather interaction states now cover Help, Settings, filter toolbars, and Funscripts controls where the pack texture is used.
+- Changed: Chloe-compatible theme-pack buttons now use distinct leather-tinted hover, active, focus, and pressed states without adding new premium texture assets.
+- Fixed: Collection Room navigation no longer crashes from a missing localized-text import.
+- Changed: Selection highlights remain transparent over thumbnails in Gallery, Image, and Video lists when theme-pack textures are enabled.
+- Changed: Funscript output now uses acknowledged device commands, latest-value coalescing, and MFP-matched curve samples for Intiface and The Handy, preventing stale backlogs and coarse fast sections.
+- Changed: Funscript playback now uses shape-preserving interpolation on a regular provider-aware clock, keeping fast script sections smooth instead of jumping between raw keyframes.
+- Changed: Dashboard duration labels now use the active locale safely without crashing when a time formatter is called without a translator.
+- Changed: Video playback now initializes its translation helper before rendering localized player actions and errors.
+- Changed: Video funscript stats, axis controls, and sync offset now share the bottom control band so the waveform and video retain more viewing space.
+
+- Fixed: Erika AI chat keeps its header and input inside the viewport when message history or theme artwork changes.
+- Changed: File curation now mirrors gallery curation with a reason row, matching run header, and full action footer.
+- Changed: Collection Curating now treats automatic gallery covers as valid, keeps the Vault name tied to the folder name, removes gallery tags from curation debt labels, and lets file curation create missing creators while showing each file's disk directory.
+- Added: Installed theme packs can bundle an optional local font that appears in Typography settings only while that pack is active.
+- Changed: Simplified Chinese now covers the Vault frontend, including Help, gallery and creator workflows, collection, device control, funscripts, companion, and statistics screens.
+- Added: Theme packs can set Vault-wide primary, secondary, and muted text colors in the private editor, with leather textures reaching Funscripts and Card Collection.
+- Fixed: Chloe filter toolbars now use the private editor's readable warm text colors across Galleries, Photos, Videos, and Creators instead of low-contrast gray.
+- Changed: Tiny 10px labels are now readable throughout the Vault, Device Control uses at least 16px text, and Card Collection opens with a more spacious header.
+
+- Added: Delete script playlists directly from the Funscripts sidebar.
+- Added: Import, update, select, and remove local character theme packs in Appearance, with responsive page and dialog artwork.
+- Added: Installed theme packs can texture panels and controls across the Vault, plus the sidebar, with editable local images and edge color.
+- Changed: The private theme editor previews local artwork and textures reliably, uses a native texture picker, and keeps its controls on screen when preview sizes change.
+- Changed: Character theme packs now support shared sidebar and heading artwork, Dashboard tools art, and empty-state artwork across pages.
+- Changed: The private theme editor can resize, mirror, and rotate each image.
+- Changed: Dashboard tile artwork stays anchored while moving or resizing it in the private theme editor.
+- Changed: Theme pack artwork supports precise position controls and Z depth in front of or behind Vault content, and Help heading artwork now uses the full top header.
+- Removed: The bundled character artwork and palette; character themes are installed from private local packs.
+
+- Fixed: Hall of Fame cards with missing crown artwork now use the winner's live profile avatar or a readable placeholder while retaining the original crown image record.
+
+- Changed: MKV videos with browser-compatible streams now prepare quickly without full re-encoding and show a loading message while preparing.
+
+- Changed: Foundation and September TCG releases now cover Scene, Gallery, Creator, Character, Cosplay, and Collab sources with canonical live-PFP identity cards and frozen portrait editions.
+- Changed: Bond and Hall of Fame cards now use the same fixed rarity mapping in every pack path, with their explicit rarity preserved during prelaunch rebuilds.
+
 - Changed: Rebalanced recurring Vault Credit income, quest rewards, and monthly release pack prices with deterministic persona simulation targets.
 - Changed: Help & Reference now documents current navigation, Library and Loading Bay workflows, Collection Curating, Stats, TCG V2 releases and economy, Collection Room, settings, and current quest rewards.
 
 ### Fixed
-- Collection Room cards now open a darkened focus viewer with full VFX, drag tilt, zoom, reset, and keyboard close controls while keeping the inventory selection intact.
+- Opening a photo no longer crashes the viewer because of a missing translation helper in the creator panel.
+- WD14 sexual classification now recognizes plain ratings and clearly clothed shirt evidence while preserving explicit/suggestive precedence.
+- The Vault theme preview now keeps its own violet accent when other palettes are selected.
+- Collection Room furniture now keeps all shelf and panel meshes visible from either side, with readable cabinet glass during placement.
+- Collection Room placement hitboxes remain raycastable without writing invisible depth over furniture geometry while arranging.
+- Collection Room placement wheel hover states now match each radial sector instead of applying one purple overlay across every action.
+- Collection Room placement wheel sectors now keep their radial wedge shape on hover, with accurate selection instructions below.
+- Collection Room placement wheel base sectors now use the same geometry as their hover states.
+- Collection Room placement action labels now sit outside clipped hitboxes so Return and Rotate remain fully readable.
+- Collection Room cards now open a clean dark focus stage with active idle foil VFX, unrestricted drag rotation, wide-range zoom, a clean two-sided card back, and Escape or X close while keeping the inventory selection intact without nested tilt clipping.
+- Collection Room inventory headers no longer show the stray decorative star.
 - Collection Room now labels black/white furniture variants explicitly and turns compact card stands to face the room in both placement and display rendering.
 - Collection Room inventory now uses a narrower responsive card grid, a larger selected-card preview, and static non-selected inventory cards.
 - Collection Room stand previews now face the room correctly, remain visible in the dark rail, and glass cabinets render without pane shadows or transparency depth artifacts.
 
 - Collection Room inventory now shows loading state/count placeholders instead of a false zero-card flash, and furniture previews use transparent cleaned assets plus real framed Vault-photo poster previews.
+- Collection Room inventory now opens sealed booster packs with large frozen card pools without exceeding SQLite query limits.
 - Collection Room placement rail now uses larger physical-item previews, supports mouse-wheel horizontal scrolling, and keeps the rail centered instead of expanding off-screen.
 - Collection Room Controls is now a readable key/action list, and parcel booster reveals return resolved card payloads directly so opening does not fail during a second detail lookup.
 - Collection Room poster previews now retain their assigned Vault image while moving, and placement-wheel hover feedback stays contained inside its action button.
 - Fixed Scene card masking so subject and background foil effects stay separated instead of applying an unmasked effect across the whole card.
+- Fixed R-card masked foil surfaces by applying each channel mask directly to its foreignObject surface.
 - Collection Room placement thumbnails no longer expand over the interface and block clicks, and their rail cards now keep readable names and proportions.
 - Collection Room card displays nested inside cabinets now follow their parent shelf when it moves or rotates, while remaining blocked from floor placement.
 - Collection Room wall posters now face into the room correctly on every wall instead of rendering edge-on at side-wall corners.
@@ -70,6 +165,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Foundation now scales C/R/SR/UR and additive SPR supply from the approved release economy, ranks SPRs by personal engagement and resolved creator context, and appends linked SPRs at the six-cum milestone without replacing owned base cards.
 - Gallery View now remembers the last selected media sort when navigating between galleries.
 - Large gallery views now mount thumbnail tiles in incremental browse batches while preserving full-list search, selection, and viewer navigation.
+- Image viewers now remember the filmstrip visibility choice and resize the photo area around a separate thumbnail row.
 - Queue strips now stay expanded after hover and drag/drop until manually collapsed with the themed chevron control, while preserving horizontal scroll position.
 
 ### Added

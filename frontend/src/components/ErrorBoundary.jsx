@@ -1,4 +1,5 @@
 import React from 'react'
+import { LocalizedText } from '../i18n'
 
 /**
  * Catches any unhandled JS error inside a page tree and shows a graceful
@@ -35,9 +36,7 @@ export default class ErrorBoundary extends React.Component {
         <div
           className="text-[18px] font-medium"
           style={{ color: 'rgba(255,255,255,0.4)' }}
-        >
-          Something went wrong
-        </div>
+        ><LocalizedText text={"Something went wrong"} before=" " after=" " /></div>
         <div
           className="text-[14px] text-center"
           style={{ color: 'rgba(255,255,255,0.22)', maxWidth: 420 }}
@@ -52,9 +51,7 @@ export default class ErrorBoundary extends React.Component {
             color: 'var(--c-accent-text)',
             border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)',
           }}
-        >
-          Try again
-        </button>
+        ><LocalizedText text={"Try again"} before=" " after=" " /></button>
       </div>
     )
   }

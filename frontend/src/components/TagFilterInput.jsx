@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Ban, Check, ChevronDown, Tag as TagIcon, X } from 'lucide-react'
 import { tagsApi } from '../lib/api'
@@ -17,6 +18,7 @@ const EXCLUDE = { strong: '#D4537E', text: '#FFC2D5', bg: 'rgba(212,83,126,0.18)
 const tokenFor = tag => `id:${tag.id}`
 
 function TagGroup({ kind, tokens, mode, onModeChange, onAdd, onRemove, onClear, allTags, rounded }) {
+  const t = useT()
   const semantic = kind === 'include' ? INCLUDE : EXCLUDE
   const isInclude = kind === 'include'
   const [input, setInput] = useState('')
@@ -105,8 +107,8 @@ function TagGroup({ kind, tokens, mode, onModeChange, onAdd, onRemove, onClear, 
           <TagIcon size={16} style={{ color: semantic.text }} />
           <select value={category} onChange={e => { setCategory(e.target.value); setOpen(true) }}
             className="bg-transparent outline-none cursor-pointer"
-            style={{ color: semantic.text, fontSize: 16 }} title="Limit suggestions to a tag category">
-            <option value="" style={{ background: '#1e1e1e' }}>All categories</option>
+            style={{ color: semantic.text, fontSize: 16 }} title={t("Limit suggestions to a tag category")}>
+            <option value="" style={{ background: '#1e1e1e' }}><LocalizedText text={"All categories"} /></option>
             {categories.map(cat => <option key={cat} value={cat} style={{ background: '#1e1e1e' }}>{cat}</option>)}
           </select>
           <input ref={inputRef} value={input}
@@ -131,9 +133,7 @@ function TagGroup({ kind, tokens, mode, onModeChange, onAdd, onRemove, onClear, 
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{tag.use_count}</span>
               </button>
             )) : (
-              <div className="px-3 py-3" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 16 }}>
-                No matching tag
-              </div>
+              <div className="px-3 py-3" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 16 }}><LocalizedText text={"No matching tag"} before=" " after=" " /></div>
             )}
           </div>
         )}
@@ -141,7 +141,7 @@ function TagGroup({ kind, tokens, mode, onModeChange, onAdd, onRemove, onClear, 
 
       {!!tokens.length && (
         <button type="button" onMouseDown={onClear} className="cursor-pointer px-2 py-1"
-          style={{ color: semantic.text, fontSize: 16 }}>Clear</button>
+          style={{ color: semantic.text, fontSize: 16 }}><LocalizedText text={"Clear"} /></button>
       )}
     </div>
   )
@@ -187,9 +187,7 @@ export default function TagFilterInput({
           color: active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)',
           border: `1px solid ${active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.1)'}`,
         }}>
-        <TagIcon size={16} />
-        Tags
-        {!!includeTags.length && (
+        <TagIcon size={16} /><LocalizedText text={"Tags"} before=" " after=" " />{!!includeTags.length && (
           <span className="px-1.5 rounded-full" style={{ background: INCLUDE.bg, color: INCLUDE.text, fontSize: 16 }}>+{includeTags.length}</span>
         )}
         {!!excludeTags.length && (
@@ -207,7 +205,7 @@ export default function TagFilterInput({
             boxShadow: '0 18px 50px rgba(0,0,0,0.65)',
           }}>
           <div className="flex items-center justify-between">
-            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 16, fontWeight: 600 }}>Tag filters</div>
+            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 16, fontWeight: 600 }}><LocalizedText text={"Tag filters"} /></div>
             <button type="button" onMouseDown={() => setPanelOpen(false)} className="cursor-pointer p-1"
               style={{ color: 'rgba(255,255,255,0.45)' }}><X size={17} /></button>
           </div>

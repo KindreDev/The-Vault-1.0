@@ -14,6 +14,9 @@ import toast from 'react-hot-toast'
 import { imagesApi } from './api'
 import { useVaultStore } from '../store/vault'
 import queryClient from './queryClient'
+import { translate } from '../i18n'
+
+const tr = (key, params) => translate(useVaultStore.getState().locale, key, params)
 
 const STARS = '★'
 
@@ -21,7 +24,7 @@ export async function rateFocusedImage(rating) {
   const s = useVaultStore.getState()
   const imageId = s.getFocusedImageId()
   if (!imageId) {
-    toast('Nothing on screen to rate')
+    toast(tr('Nothing on screen to rate'))
     return null
   }
   return rateImage(imageId, rating)
@@ -38,7 +41,7 @@ export async function rateImage(imageId, rating) {
     const { data } = await imagesApi.update(imageId, { rating: value })
     s.pingRating(imageId, value)
     if (data?.xp?.amount) s.addXpToast(`+${data.xp.amount} XP`)
-    toast(value > 0 ? `${STARS.repeat(Math.min(value, 10))} ${value}` : 'Rating cleared', {
+    toast(value > 0 ? `${STARS.repeat(Math.min(value, 10))} ${value}` : tr('Rating cleared'), {
       id: 'rating-toast',   // one toast, replaced — not ten stacked up
     })
     for (const key of ['images-list', 'gallery-images', 'image']) {
@@ -47,7 +50,7 @@ export async function rateImage(imageId, rating) {
     return data
   } catch (err) {
     console.error('Rate failed:', err)
-    toast.error('Could not save that rating')
+    toast.error(tr('Could not save that rating'))
     return null
   }
 }

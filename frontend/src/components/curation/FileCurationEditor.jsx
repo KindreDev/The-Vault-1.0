@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { AlignLeft, Heart, Star } from 'lucide-react'
+import { AlignLeft, FolderOpen, Heart, Star } from 'lucide-react'
 import { CreatorPanel, TagPanel } from '../ViewerPanel'
 import { useT } from '../../i18n'
 
@@ -32,19 +32,29 @@ function Section({ icon: Icon, title, children }) {
 export default function FileCurationEditor({ file, draft, patch, tags, onTagsChanged, creators, onCreatorsChanged, onHasImageCreatorsChanged, onFileCreatorIdsChanged }) {
   const t = useT()
   const [ratingHover, setRatingHover] = useState(0)
+  const directoryPath = file.directory_path || (file.file_path ? file.file_path.replace(/[\\/][^\\/]*$/, '') : '')
   const fileCreatorIds = draft.file_creator_ids || file.file_creator_ids || []
   const galleryCreatorIds = (creators || [])
     .filter(c => !fileCreatorIds.includes(c.id))
     .map(c => c.id)
 
   return (
-    <aside className="flex flex-col gap-4 p-4 overflow-y-auto"
-           style={{ width: 380, flexShrink: 0, background: '#141414', borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
+    <aside className="flex flex-col gap-5 p-4 min-h-0 overflow-y-auto"
+           style={{ width: 400, flexShrink: 0, borderLeft: '0.5px solid rgba(255,255,255,0.07)' }}>
       <div className="truncate" style={{ fontSize: 18, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }} title={file.filename}>
         {file.filename}
       </div>
       <div className="truncate" style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
         {file.gallery_name || t('Unassigned gallery')}
+      </div>
+      <div className="flex items-start gap-2" title={directoryPath}>
+        <FolderOpen size={15} style={{ color: 'rgba(255,255,255,0.3)', marginTop: 2, flexShrink: 0 }} />
+        <div className="min-w-0">
+          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.32)' }}>{t('Directory on disk')}</div>
+          <div className="truncate" style={{ fontSize: 16, color: 'rgba(255,255,255,0.55)' }}>
+            {directoryPath || t('Directory unavailable')}
+          </div>
+        </div>
       </div>
 
       <CreatorPanel
@@ -57,6 +67,7 @@ export default function FileCurationEditor({ file, draft, patch, tags, onTagsCha
         onCreatorsChanged={onCreatorsChanged}
         onHasImageCreatorsChanged={onHasImageCreatorsChanged}
         onFileCreatorIdsChanged={onFileCreatorIdsChanged}
+        allowCreate
       />
       <TagPanel imageId={file.id} tags={tags} onTagsChanged={onTagsChanged} />
 

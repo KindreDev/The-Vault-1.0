@@ -39,7 +39,6 @@ const clearSession = () => {
 
 const draftFrom = (g) => ({
   folder_name:    g.folder_name || '',
-  name:           g.name || '',
   creator_ids:    (g.creators || []).map(c => c.id),
   tags:           (g.tags || []).map(t => t.name),
   rating:         g.rating || 0,
@@ -48,7 +47,7 @@ const draftFrom = (g) => ({
   period_month:   g.period_month ?? null,
   period_year:    g.period_year ?? null,
   purchase_value: g.purchase_value || 0,
-  cover_image_id: null,
+  cover_image_id: g.cover_image_id || null,
 })
 
 /**
@@ -290,7 +289,7 @@ export default function CurationRun({ onClose }) {
       const deleted = data?.ids?.length ?? selected.size
       const failed = data?.failed ?? []
       if (deleted) toast.success(t('{n} files deleted').replace('{n}', deleted))
-      if (failed.length) toast.error(`${failed.length} deletion${failed.length !== 1 ? 's' : ''} failed: ${failed[0].message || apiErrorMessage(null, t('Could not delete those files'))}`)
+      if (failed.length) toast.error(t('{count} deletions failed: {details}', { count: failed.length, details: failed[0].message || apiErrorMessage(null, t('Could not delete those files')) }))
       setConfirmFileDelete(false)
       invalidate()
       await refreshGallery()

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Eye, ImagePlus, LayoutTemplate, FolderMinus, Trash2, UserCircle, UserPlus, ImageIcon, ChevronRight, MousePointer2, Copy, HardDrive, FolderOutput } from 'lucide-react'
 import { creatorsApi } from '../lib/api'
 import { useAllCreators } from '../hooks/useAllCreators'
+import { useT } from '../i18n'
 
 /**
  * Right-click context menu for image / video thumbnails.
@@ -30,6 +31,7 @@ export default function ImageContextMenu({
   creators, onSetAsAvatar, onSetAsBanner,
   onSelectMode, onAssignCreator,
 }) {
+  const t = useT()
   const menuRef = useRef(null)
   const [avatarOpen,  setAvatarOpen]  = useState(false)
   const [bannerOpen,  setBannerOpen]  = useState(false)
@@ -98,7 +100,7 @@ export default function ImageContextMenu({
         <div style={{ padding: '6px 14px 8px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', marginBottom: 3 }}>
           {bulkCount > 1 ? (
             <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
-              {bulkCount} images selected
+              {bulkCount} {t('images selected')}
             </div>
           ) : (
             <>
@@ -106,7 +108,7 @@ export default function ImageContextMenu({
                 {image.filename}
               </div>
               {image.is_video && (
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 1 }}>Video</div>
+                <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', marginTop: 1 }}>{t('Video')}</div>
               )}
             </>
           )}
@@ -148,7 +150,7 @@ export default function ImageContextMenu({
           <>
             <ExpandRow
               icon={UserPlus}
-              label={bulkCount > 1 ? `Assign creator (${bulkCount})` : 'Assign creator'}
+              label={bulkCount > 1 ? t('Assign creator ({count})', { count: bulkCount }) : t('Assign creator')}
               open={assignOpen}
               onToggle={(e) => {
                 e.stopPropagation()
@@ -173,7 +175,7 @@ export default function ImageContextMenu({
                       autoFocus
                       value={assignSearch}
                       onChange={e => setAssignSearch(e.target.value)}
-                      placeholder="Search creators…"
+                      placeholder={t('Search creators…')}
                       style={{
                         width: '100%', boxSizing: 'border-box',
                         padding: '5px 8px', borderRadius: 6, fontSize: 11,
@@ -192,7 +194,7 @@ export default function ImageContextMenu({
                       />
                     ))}
                     {filteredAssign.length === 0 && (
-                      <div style={{ padding: '6px 14px', fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>No creators found</div>
+                      <div style={{ padding: '6px 14px', fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{t('No creators found')}</div>
                     )}
                   </div>
                 </motion.div>
@@ -282,6 +284,7 @@ export default function ImageContextMenu({
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function MenuItem({ icon: Icon, label, danger, accent, onMouseDown }) {
+  const t = useT()
   const color  = danger ? '#F4C0D1' : accent ? '#A79FF0' : 'rgba(255,255,255,0.82)'
   const hoverBg = danger ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.07)'
   return (
@@ -294,7 +297,7 @@ function MenuItem({ icon: Icon, label, danger, accent, onMouseDown }) {
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >
       <Icon size={13} style={{ flexShrink: 0, opacity: 0.8 }} />
-      {label}
+      {t(label)}
     </button>
   )
 }

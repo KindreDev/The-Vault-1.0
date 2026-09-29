@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -20,7 +21,6 @@ import HoverVideoPreview from '../components/HoverVideoPreview'
 import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 import { useScrollLock } from '../hooks/useScrollLock'
-import { useT } from '../i18n'
 import toast from 'react-hot-toast'
 
 // ── Animated numeric stat value ───────────────────────────────────────────────
@@ -38,26 +38,35 @@ function AnimatedStatValue({ value, color }) {
   )
 }
 
-function fmtMs(ms) {
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m`
-  return '<1m'
+function fallbackTranslate(key, params = {}) {
+  return Object.entries(params).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, String(value ?? '')),
+    key,
+  )
 }
 
-function timeAgo(ts) {
+function fmtMs(ms, t) {
+  const translateTime = typeof t === 'function' ? t : fallbackTranslate
+  const h = Math.floor(ms / 3600000)
+  const m = Math.floor((ms % 3600000) / 60000)
+  if (h > 0) return translateTime('{hours}h {minutes}m', { hours: h, minutes: m })
+  if (m > 0) return translateTime('{count}m', { count: m })
+  return translateTime('<1m')
+}
+
+function timeAgo(ts, t) {
+  const translateTime = typeof t === 'function' ? t : fallbackTranslate
   // Backend returns naive UTC strings without 'Z' — append it so the browser parses correctly
   const normalized = ts && !String(ts).endsWith('Z') && !String(ts).includes('+') ? ts + 'Z' : ts
   const diff = Date.now() - new Date(normalized).getTime()
   const d = Math.floor(diff / 86400000)
   const h = Math.floor(diff / 3600000)
   const m = Math.floor(diff / 60000)
-  if (d > 1) return `${d}d ago`
-  if (d === 1) return 'Yesterday'
-  if (h >= 1) return `${h}h ago`
-  if (m >= 1) return `${m}m ago`
-  return 'Just now'
+  if (d > 1) return translateTime('{count}d ago', { count: d })
+  if (d === 1) return translateTime('Yesterday')
+  if (h >= 1) return translateTime('{count}h ago', { count: h })
+  if (m >= 1) return translateTime('{count}m ago', { count: m })
+  return translateTime('Just now')
 }
 
 const TYPE_COLORS = {
@@ -71,6 +80,7 @@ const TYPE_COLORS = {
 
 // ── Favorite creator card (big circle, no container) ─────────────────────────
 function FavCreatorCard({ creator, onClick, avatarBust }) {
+  const t = useT()
   const [imgFailed, setImgFailed] = useState(false)
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -94,7 +104,7 @@ function FavCreatorCard({ creator, onClick, avatarBust }) {
         {creator.title || creator.name}
       </div>
       <div className="text-[14px] px-2.5 py-0.5 rounded-full capitalize -mt-1" style={{ background: tc.bg, color: tc.text }}>
-        {creator.creator_type}
+        {t(creator.creator_type)}
       </div>
     </div>
   )
@@ -178,6 +188,7 @@ const RARITY_LABELS = {
 
 // ── Creator HOF card ──────────────────────────────────────────────────────────
 function CreatorHofCard({ creator, onClick, avatarBust }) {
+  const t = useT()
   const [imgFailed, setImgFailed] = useState(false)
   const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
@@ -204,9 +215,9 @@ function CreatorHofCard({ creator, onClick, avatarBust }) {
         <div className="flex items-center gap-2 mb-1">
           <div className="text-[14px] font-semibold text-[rgba(255,255,255,0.85)] truncate flex-1">{creator.name}</div>
           {creator.card_rarity && creator.card_rarity !== 'common' && (
-            <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0"
+            <span className="text-[16px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0"
                   style={{ background: `${rc}22`, color: rc, border: `0.5px solid ${rc}55` }}>
-              {RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity}
+              {t(RARITY_LABELS[creator.card_rarity] ?? creator.card_rarity)}
             </span>
           )}
         </div>
@@ -398,7 +409,7 @@ function SpinModal({ onClose, onSpent }) {
         </div>
 
         {phase === 'result' && (
-          <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{t('click to close')}</div>
+          <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{t('click to close')}</div>
         )}
       </div>
     </div>
@@ -420,7 +431,7 @@ function MoreStatsModal({ stats, onClose }) {
         <Icon size={12} style={{ color }} /> {label}
       </div>
       <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] truncate">{value}</div>
-      {sub && <div className="text-[10px] text-[rgba(255,255,255,0.3)] mt-0.5">{sub}</div>}
+      {sub && <div className="text-[16px] text-[rgba(255,255,255,0.3)] mt-0.5">{sub}</div>}
     </div>
   )
 
@@ -447,8 +458,8 @@ function MoreStatsModal({ stats, onClose }) {
             <h3 className="text-[13px] font-medium text-[rgba(255,255,255,0.6)] mb-3 uppercase tracking-wider">{t('Library & Content')}</h3>
             <div className="grid grid-cols-4 gap-3">
               <StatBox icon={Images} label={t('Avg files / gallery')} value={stats.avg_files_per_gallery} />
-              <StatBox icon={Video} color="var(--c-pink-text)" label={t('Total video duration')} value={fmtMs(stats.total_video_duration * 1000)} />
-              <StatBox icon={PlayCircle} color="var(--c-pink-text)" label={t('Avg video length')} value={fmtMs(stats.avg_video_length * 1000)} />
+              <StatBox icon={Video} color="var(--c-pink-text)" label={t('Total video duration')} value={fmtMs(stats.total_video_duration * 1000, t)} />
+              <StatBox icon={PlayCircle} color="var(--c-pink-text)" label={t('Avg video length')} value={fmtMs(stats.avg_video_length * 1000, t)} />
               <StatBox icon={HardDrive} label={t('Highest file size')} value={`${(stats.highest_file_size / (1024*1024)).toFixed(1)} MB`} />
               <StatBox icon={Calendar} label={t('Last added')} value={stats.last_added ? new Date(stats.last_added).toLocaleDateString() : t('Never')} />
               <StatBox icon={User} color="var(--c-amber-text)" label={t('New creators (month)')} value={stats.new_creators_month} />
@@ -616,7 +627,7 @@ function CoOccurringWidget({ onTagClick, onPairClick }) {
               {p.tag2.name}
             </button>
             <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginLeft: 'auto', flexShrink: 0 }}>{p.co_count}</span>
-            <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[10px] transition-opacity"
+            <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[16px] transition-opacity"
                   style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{t('view →')}</span>
           </div>
         ))}
@@ -653,7 +664,7 @@ function MoreLikeThis({ refGalleryId, refGalleryName, onNavigate }) {
           <PortraitCard key={g.id}
             imgSrc={g.cover_thumb}
             title={g.name}
-            sub={`${g.image_count ?? 0} photos · ${g.shared_tags} tags`}
+            sub={t('{count} photos · {tags} tags', { count: g.image_count ?? 0, tags: g.shared_tags })}
             onClick={() => navigate(`/galleries/${g.id}`)} />
         ))}
       </div>
@@ -679,11 +690,18 @@ const GREETINGS = [
 
 function getOrCreateGreeting(name) {
   const existing = sessionStorage.getItem('vault_greeting')
-  if (existing) return existing // same greeting all session; new message each app/tab open
   const display = name || 'Collector'
-  const text = GREETINGS[Math.floor(Math.random() * GREETINGS.length)].replace('{name}', display)
-  sessionStorage.setItem('vault_greeting', text)
-  return text
+  if (existing) {
+    for (const key of GREETINGS) {
+      const [before, after] = key.split('{name}')
+      if (existing.startsWith(before) && existing.endsWith(after)) {
+        return { key, name: existing.slice(before.length, existing.length - after.length || undefined) }
+      }
+    }
+  }
+  const key = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
+  sessionStorage.setItem('vault_greeting', key.replace('{name}', display))
+  return { key, name: display }
 }
 
 // ── Scan Folders Modal ────────────────────────────────────────────────────────
@@ -1070,7 +1088,7 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, c
         {items.slice(0, cardLimit).map(item => {
           if (tab === 'galleries') {
             return <PortraitCard key={item.id} imgSrc={item.cover_thumb} title={item.name}
-                      sub={`${item.image_count} photos${item.creator_name ? ' · ' + item.creator_name : ''}`}
+                      sub={`${t('{count} photos', { count: item.image_count })}${item.creator_name ? ' · ' + item.creator_name : ''}`}
                       onClick={() => navigate(`/galleries/${item.id}`)}
                       onContextMenu={(e) => onContextMenu?.(e, item, 'gallery')} />
           }
@@ -1090,7 +1108,7 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, c
           const tc = TYPE_COLORS[item.creator_type] || TYPE_COLORS.custom
           const initials = item.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
           return <PortraitCard key={item.id} imgSrc={item.avatar_path ? `/api/creators/${item.id}/avatar` : null}
-                    title={item.title || item.name} sub={item.creator_type}
+                    title={item.title || item.name} sub={t(item.creator_type)}
                     onClick={() => navigate(`/creators/${item.id}`)}
                     fallbackIcon={<span className="text-[40px] font-semibold select-none" style={{ color: tc.text, opacity: 0.7 }}>{initials}</span>} />
         })}
@@ -1210,7 +1228,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 flex flex-col gap-6 w-full">
+    <div className="vault-dashboard p-6 flex flex-col gap-6 w-full">
 
       {/* Top bar */}
       <div className="flex items-center justify-between">
@@ -1232,7 +1250,7 @@ export default function Dashboard() {
               animation: 'vault-fade-in 1.8s ease forwards',
               fontStyle: 'italic',
             }}>
-              {greeting}
+              {t(greeting.key, { name: greeting.name })}
             </span>
           )}
         </div>
@@ -1372,11 +1390,11 @@ export default function Dashboard() {
 
           {/* ── Hero action tiles ─────────────────────────────────────────────── */}
           {(stats?.total_galleries ?? 0) > 0 && (
-            <div className="grid gap-3" style={{ gridTemplateColumns: '1.2fr 1fr 1fr' }}>
+            <div className="vault-theme-dashboard-actions grid gap-3" style={{ gridTemplateColumns: '1.2fr 1fr 1fr' }}>
               {/* Collection Curating — occupies the old Random Gallery tile's exact cell,
                   so the row's proportions are unchanged. */}
               <div
-                      className="rounded-[12px] text-left flex flex-col justify-between p-4 relative overflow-hidden group"
+                      className="vault-theme-dashboard-curation rounded-[12px] text-left flex flex-col justify-between p-4 relative overflow-hidden group"
                       style={{ minHeight: 120, background: 'color-mix(in srgb, var(--c-amber) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)', transition: 'background 0.15s, border-color 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 13%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 45%, transparent)' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--c-amber) 7%, transparent)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
@@ -1474,13 +1492,13 @@ export default function Dashboard() {
                   </div>
                 )}
                 <div style={{ fontSize: 12, color: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
-                  {(epicCards ?? []).length > 0 ? `${epicCards.length} epic+ owned →` : t('Open packs →')}
+                  {(epicCards ?? []).length > 0 ? t('{count} epic+ owned →', { count: epicCards.length }) : t('Open packs →')}
                 </div>
               </button>
 
               {/* Session start/stop — big centered play-button hero; elapsed time from sessionStartAt */}
               <button onClick={handleSessionBtn}
-                      className="rounded-[12px] cursor-pointer flex flex-col items-center justify-center gap-3 p-3 group"
+                      className="vault-theme-dashboard-session rounded-[12px] cursor-pointer flex flex-col items-center justify-center gap-3 p-3 group"
                       style={{
                         minHeight: 120,
                         transition: 'background 0.15s, border-color 0.15s',
@@ -1507,7 +1525,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-center">
                   <div className="text-[16px] font-semibold" style={{ color: 'var(--c-pink-text)' }}>
-                    {sessionActive ? `End — ${fmtMs(sessionElapsedMs)}` : t('Start session')}
+                    {sessionActive ? `End — ${fmtMs(sessionElapsedMs, t)}` : t('Start session')}
                   </div>
                   <div className="text-[12px] mt-0.5" style={{ color: 'color-mix(in srgb, var(--c-pink) 55%, transparent)' }}>
                     {sessionActive ? t('Log when you finish') : t('+25 XP when you finish')}
@@ -1577,7 +1595,7 @@ export default function Dashboard() {
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
                   {recent.slice(0, dashboardCardLimit).map(g => (
                     <PortraitCard key={g.id} imgSrc={g.cover_thumb} title={g.name}
-                      sub={`${g.image_count} photos${g.creator_name ? ' · ' + g.creator_name : ''}`}
+                      sub={`${t('{count} photos', { count: g.image_count })}${g.creator_name ? ' · ' + g.creator_name : ''}`}
                       onClick={() => navigate(`/galleries/${g.id}`)}
                       onContextMenu={(e) => openCtx(e, g, 'gallery')} />
                   ))}
@@ -1607,11 +1625,11 @@ export default function Dashboard() {
         </div>
 
         {/* RIGHT: sticky sidebar */}
-        <div className="flex flex-col gap-4"
+        <div className="vault-theme-dashboard-rail flex flex-col gap-4"
              style={{ position: 'sticky', top: 20, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', scrollbarWidth: 'none' }}>
 
           {/* ── Tools ────────────────────────────────────────── */}
-          <div className="rounded-[12px] p-4"
+          <div className="vault-theme-dashboard-tools rounded-[12px] p-4"
                style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
@@ -1660,9 +1678,9 @@ export default function Dashboard() {
                     <div key={q.id}>
                       <div className="flex items-center justify-between mb-1">
                         <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                          {q.title || q.key}
+                          {t(q.title || q.key)}
                         </span>
-                        <span style={{ fontSize: 14, color: 'var(--c-amber)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                        <span style={{ fontSize: 14, color: 'var(--c-amber)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward}<LocalizedText text={"XP"} before=" " /></span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
@@ -1695,9 +1713,9 @@ export default function Dashboard() {
                     <div key={q.id}>
                       <div className="flex items-center justify-between mb-1">
                         <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                          {q.title || q.key}
+                          {t(q.title || q.key)}
                         </span>
-                        <span style={{ fontSize: 14, color: 'var(--c-accent)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward} XP</span>
+                        <span style={{ fontSize: 14, color: 'var(--c-accent)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward}<LocalizedText text={"XP"} before=" " /></span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
@@ -1742,12 +1760,12 @@ export default function Dashboard() {
                   <div key={s.id} className="flex items-center gap-2 py-2 border-b last:border-0"
                        style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                     <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }}>{timeAgo(s.logged_at)}</div>
+                      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }}>{timeAgo(s.logged_at, t)}</div>
                       {s.duration_sec > 0 && (
-                        <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.28)' }}>{fmtMs(s.duration_sec * 1000)}</div>
+                        <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.28)' }}>{fmtMs(s.duration_sec * 1000, t)}</div>
                       )}
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-accent)', flexShrink: 0 }}>+{s.xp_earned} XP</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-accent)', flexShrink: 0 }}>+{s.xp_earned}<LocalizedText text={"XP"} before=" " /></div>
                   </div>
                 ))}
               </div>

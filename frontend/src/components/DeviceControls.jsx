@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom'
 import { Square, Droplets, ChevronDown, Waves } from 'lucide-react'
 import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { deviceService } from '../services/device'
+import { LocalizedText, useT } from '../i18n'
 
 // ── Dual-range slider CSS (shared with DeviceControl page) ───────────────────
 const DUAL_RANGE_CSS = `
@@ -61,6 +62,7 @@ function buildOptions(savedPatterns) {
 
 // Compact pattern dropdown — renders via portal so overflow-y-auto parents can't clip it
 function CompactPatternSelect({ value, onChange, options }) {
+  const t = useT()
   const [open, setOpen]   = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, dropUp: false, maxH: 240 })
   const btnRef  = useRef(null)
@@ -107,7 +109,7 @@ function CompactPatternSelect({ value, onChange, options }) {
         onClick={handleOpen}
         className="flex items-center gap-1 px-2 py-1 rounded text-[16px] text-[rgba(255,255,255,0.8)] hover:text-white transition-colors"
         style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-        {selected?.label ?? '—'}
+        {t(selected?.label ?? '—')}
         <ChevronDown size={10} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
                      style={{ color: 'rgba(255,255,255,0.4)' }} />
       </button>
@@ -136,7 +138,7 @@ function CompactPatternSelect({ value, onChange, options }) {
                   ? 'bg-[color-mix(in_srgb,_var(--c-accent)_20%,_transparent)] text-[var(--c-accent)]'
                   : 'text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.06)]'
               }`}>
-              {opt.label}
+                {t(opt.label)}
             </button>
           ))}
         </div>,
@@ -152,7 +154,7 @@ function StrokeLimiter({ floor, ceiling, onFloorChange, onCeilChange }) {
     <div className="w-full">
       <style>{DUAL_RANGE_CSS}</style>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-[16px] text-[rgba(255,255,255,0.4)]">Stroke range</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)]"><LocalizedText text="Stroke range" /></span>
         <span className="text-[16px] font-mono text-[rgba(255,255,255,0.55)]">{floor}% – {ceiling}%</span>
       </div>
       <div className="relative h-5 flex items-center">
@@ -189,6 +191,7 @@ function StrokeLimiter({ floor, ceiling, onFloorChange, onCeilChange }) {
 // Control page. Settings stay on that page — this is arm/disarm plus a live
 // countdown to the next edge.
 function EdgeModeRow() {
+  const t = useT()
   const enabled = useDeviceStore(s => s.edgeModeEnabled)
   const active  = useDeviceStore(s => s.edgeActive)
   const nextAt  = useDeviceStore(s => s.edgeNextAt)
@@ -208,7 +211,7 @@ function EdgeModeRow() {
     <div className="flex items-center gap-2">
       <button
         onClick={() => deviceService.setEdgeMode(!enabled)}
-        title={enabled ? 'Disarm Edge Mode' : 'Arm Edge Mode'}
+        title={t(enabled ? 'Disarm Edge Mode' : 'Arm Edge Mode')}
         className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
         style={{
           background: active ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : enabled ? 'color-mix(in srgb, var(--c-accent) 22%, transparent)' : 'rgba(255,255,255,0.06)',
@@ -216,14 +219,14 @@ function EdgeModeRow() {
           border:     `0.5px solid ${active ? 'color-mix(in srgb, var(--c-pink) 45%, transparent)' : enabled ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.12)'}`,
         }}>
         <Waves size={11} />
-        Edge
+        <LocalizedText text="Edge" />
       </button>
 
       {enabled && (
         <span className="text-[16px] font-mono text-[rgba(255,255,255,0.4)]">
           {active
-            ? 'holding…'
-            : secsLeft != null ? `next in ${secsLeft}s` : '—'}
+            ? t('holding…')
+            : secsLeft != null ? t('next in {seconds}s', { seconds: secsLeft }) : '—'}
           {count > 0 && ` · ${count}`}
         </span>
       )}
@@ -234,6 +237,7 @@ function EdgeModeRow() {
 // ── DeviceControls ────────────────────────────────────────────────────────────
 
 export default function DeviceControls({ className = '' }) {
+  const t = useT()
   const status        = useDeviceStore(s => s.status)
   const mode          = useDeviceStore(s => s.mode)
   const activeId      = useDeviceStore(s => s.activePresetId)
@@ -279,32 +283,32 @@ export default function DeviceControls({ className = '' }) {
         {isFreestyle && (
           <button
             onClick={() => deviceService.triggerCumPattern(30)}
-            title="Cum pattern for 30s"
+            title={t('Cum pattern for 30s')}
         className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
             style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
             <Droplets size={11} />
-            Cum
+            <LocalizedText text="Cum" />
           </button>
         )}
 
         {finisherPattern && (
           <button
             onClick={() => deviceService.toggleFinisher(finisherPattern)}
-            title={`Finisher: ${finisherPattern}`}
+            title={t('Finisher: {pattern}', { pattern: finisherPattern })}
         className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
             style={{ background: finisherActive ? 'color-mix(in srgb, var(--c-pink) 35%, transparent)' : 'color-mix(in srgb, var(--c-pink) 15%, transparent)',
                      color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 35%, transparent)' }}>
-            🏁 {finisherActive ? 'Stop' : 'Finish'}
+            🏁 {t(finisherActive ? 'Stop' : 'Finish')}
           </button>
         )}
 
         <button
           onClick={() => deviceService.stop()}
-          title="Emergency stop"
+          title={t('Emergency stop')}
           className="flex items-center gap-1 px-2 py-1 rounded text-[16px] font-semibold cursor-pointer transition-all"
           style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'color-mix(in srgb, var(--c-pink) 70%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
           <Square size={10} />
-          Stop
+          <LocalizedText text="Stop" />
         </button>
       </div>
 
@@ -313,7 +317,7 @@ export default function DeviceControls({ className = '' }) {
 
       {/* Row 2: intensity */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Speed</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0"><LocalizedText text="Speed" /></span>
         <input
           type="range" min={10} max={500} step={5}
           value={Math.round(intensity * 100)}
@@ -327,7 +331,7 @@ export default function DeviceControls({ className = '' }) {
 
       {/* Row 3: glans */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Glans</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0"><LocalizedText text="Glans" /></span>
         <input
           type="range" min={0} max={100} step={5}
           value={Math.round(glansShift * 100)}
@@ -341,7 +345,7 @@ export default function DeviceControls({ className = '' }) {
 
       {/* Row 4: stroke variance */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0">Vary</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.4)] w-10 flex-shrink-0"><LocalizedText text="Vary" /></span>
         <input
           type="range" min={0} max={100} step={5}
           value={variance}

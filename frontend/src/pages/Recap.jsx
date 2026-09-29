@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
@@ -36,6 +37,7 @@ function flatten(cards, periodLabel) {
 const DURATION = 6200
 
 function Player({ deck, onClose }) {
+  const t = useT()
   const cards = useMemo(() => flatten(deck.cards, deck.label), [deck])
   const [idx, setIdx] = useState(0)
   const [paused, setPaused] = useState(false)
@@ -104,11 +106,11 @@ function Player({ deck, onClose }) {
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setPaused(p => !p)} className="p-2 rounded-lg"
-                    style={{ color: 'rgba(255,255,255,0.5)' }} title={paused ? 'Play' : 'Pause'}>
+                    style={{ color: 'rgba(255,255,255,0.5)' }} title={t(paused ? 'Play' : 'Pause')}>
               {paused ? <Play size={19} /> : <Pause size={19} />}
             </button>
             <button onClick={onClose} className="p-2 rounded-lg"
-                    style={{ color: 'rgba(255,255,255,0.5)' }} title="Close (Esc)">
+                    style={{ color: 'rgba(255,255,255,0.5)' }} title={t("Close (Esc)")}>
               <X size={21} />
             </button>
           </div>
@@ -128,9 +130,9 @@ function Player({ deck, onClose }) {
           </motion.div>
 
           {/* Tap zones — left third back, right two-thirds forward, like stories */}
-          <button onClick={prev} aria-label="Previous"
+          <button onClick={prev} aria-label={t("Previous")}
                   style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '32%', cursor: 'w-resize' }} />
-          <button onClick={next} aria-label="Next"
+          <button onClick={next} aria-label={t("Next")}
                   style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '68%', cursor: 'e-resize' }} />
         </div>
 
@@ -145,9 +147,7 @@ function Player({ deck, onClose }) {
           {atEnd ? (
             <button onClick={onClose} className="px-4 py-2 rounded-[10px]"
                     style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-amber-text)',
-                             background: 'color-mix(in srgb, var(--c-amber) 14%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 38%, transparent)' }}>
-              Done
-            </button>
+                             background: 'color-mix(in srgb, var(--c-amber) 14%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 38%, transparent)' }}><LocalizedText text={"Done"} before=" " after=" " /></button>
           ) : (
             <button onClick={next} className="p-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
               <ChevronRight size={22} />
@@ -161,6 +161,7 @@ function Player({ deck, onClose }) {
 }
 
 function PeriodTile({ p, active, onClick }) {
+  const t = useT()
   return (
     <button onClick={onClick}
             className="text-left p-6 rounded-[16px] transition-all"
@@ -202,10 +203,8 @@ export default function Recap() {
             <Sparkles size={26} style={{ color: 'var(--c-amber-text)' }} />
           </div>
           <div>
-            <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">Recap</h1>
-            <p className="text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5">
-              Your own behaviour, read back to you. Pick a window.
-            </p>
+            <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]"><LocalizedText text={"Recap"} /></h1>
+            <p className="text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5"><LocalizedText text={"Your own behaviour, read back to you. Pick a window."} before=" " after=" " /></p>
           </div>
         </div>
 
@@ -218,11 +217,9 @@ export default function Recap() {
         <div className="rounded-[18px] p-10"
              style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
           {isLoading ? (
-            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }}>Reading the numbers…</div>
+            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Reading the numbers…"} /></div>
           ) : deck?.empty ? (
-            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)' }}>
-              Not enough logged in this window to tell a story yet.
-            </div>
+            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)' }}><LocalizedText text={"Not enough logged in this window to tell a story yet."} before=" " after=" " /></div>
           ) : (
             <>
               <div style={{ fontSize: 16, letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -236,11 +233,10 @@ export default function Recap() {
                 <button onClick={() => setPlaying(true)}
                         className="px-6 py-3.5 rounded-[12px] flex items-center gap-2.5"
                         style={{ fontSize: 18, fontWeight: 700, color: '#0e0e0e', background: 'var(--c-amber-text)' }}>
-                  <Play size={19} /> Play {deck?.label}
+                  <Play size={19} /><LocalizedText text={"Play"} before=" " after=" " />{deck?.label}
                 </button>
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
-                  {deck?.cards?.length} cards
-                </span>
+                  {deck?.cards?.length}<LocalizedText text={"cards"} before=" " after=" " /></span>
               </div>
             </>
           )}

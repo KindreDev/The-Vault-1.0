@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { Plus, X, Trophy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -17,6 +18,7 @@ const SLOT_W = 96
 
 // ── Card picker overlay for one slot ─────────────────────────────────────────
 function SlotPicker({ creatorId, slot, onClose, onPicked }) {
+  const t = useT()
   const { data: eligible, isLoading } = useQuery({
     queryKey: ['showcase-eligible', creatorId, slot],
     queryFn:  () => creatorsApi.showcaseEligible(creatorId, slot).then(r => r.data),
@@ -32,10 +34,9 @@ function SlotPicker({ creatorId, slot, onClose, onPicked }) {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <p className="text-[18px] font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
-              {SLOT_META[slot].label} slot
-            </p>
+              {t('{label} slot', { label: t(SLOT_META[slot].label) })}</p>
             <p className="text-[16px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              {SLOT_META[slot].hint}
+              {t(SLOT_META[slot].hint)}
             </p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10"
@@ -43,11 +44,9 @@ function SlotPicker({ creatorId, slot, onClose, onPicked }) {
         </div>
         <div className="flex-1 overflow-y-auto min-h-0" style={{ scrollbarWidth: 'thin' }}>
           {isLoading ? (
-            <p className="text-[16px] py-8 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading…</p>
+            <p className="text-[16px] py-8 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Loading…"} /></p>
           ) : (eligible || []).length === 0 ? (
-            <p className="text-[16px] py-8 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              No eligible cards yet — pull some packs featuring her first.
-            </p>
+            <p className="text-[16px] py-8 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"No eligible cards yet — pull some packs featuring her first."} before=" " after=" " /></p>
           ) : (
             <div className="flex flex-wrap gap-4 justify-center py-2">
               {(eligible || []).map(c => (
@@ -66,6 +65,7 @@ function SlotPicker({ creatorId, slot, onClose, onPicked }) {
  * Fill all 5 for MASTERY: a one-time bond surge, a badge... and she notices.
  */
 export default function CreatorShowcase({ creatorId, slotWidth = SLOT_W }) {
+  const t = useT()
   const [pickingSlot, setPickingSlot] = useState(null)
   const qc = useQueryClient()
 
@@ -81,7 +81,7 @@ export default function CreatorShowcase({ creatorId, slotWidth = SLOT_W }) {
       qc.setQueryData(['creator-showcase', creatorId], data)
       qc.invalidateQueries({ queryKey: ['showcase-eligible'] })
       if (data.mastery_awarded) {
-        toast('🏆 MASTERY! She noticed…', { duration: 5000, style: { background: '#2a1e00', color: '#FFD700' } })
+        toast(t('🏆 MASTERY! She noticed…'), { duration: 5000, style: { background: '#2a1e00', color: '#FFD700' } })
         qc.invalidateQueries({ queryKey: ['feed-dm'] })
       }
       setPickingSlot(null)
@@ -107,7 +107,7 @@ export default function CreatorShowcase({ creatorId, slotWidth = SLOT_W }) {
         <span className="text-[16px] font-medium uppercase tracking-wider"
               style={{ color: mastery ? '#FFD700' : 'rgba(255,255,255,0.4)',
                        textShadow: mastery ? '0 0 12px rgba(255,215,0,0.5)' : 'none' }}>
-          {mastery ? 'Showcase · Mastered' : `Showcase · ${showcase?.filled ?? 0}/5`}
+          {mastery ? t('Showcase · Mastered') : t('Showcase · {filled}/5', { filled: showcase?.filled ?? 0 })}
         </span>
       </div>
       <div className="flex gap-2 p-2 rounded-2xl"
@@ -133,7 +133,7 @@ export default function CreatorShowcase({ creatorId, slotWidth = SLOT_W }) {
             </div>
           ) : (
             <button key={slot} onClick={() => setPickingSlot(slot)}
-                    title={SLOT_META[slot].hint}
+                    title={t(SLOT_META[slot].hint)}
                     className="flex flex-col items-center justify-center gap-1 rounded-xl transition-all hover:bg-white/5 cursor-pointer"
                     style={{
                       width: slotWidth + 6, height: Math.round(slotWidth * 1.45) + 6,

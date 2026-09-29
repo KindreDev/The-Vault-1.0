@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -14,6 +15,7 @@ import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
 import HoverVideoPreview from '../components/HoverVideoPreview'
 import CreatorShowcase from '../components/CreatorShowcase'
+import FolderPicker from '../components/FolderPicker'
 import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi, apiErrorMessage } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -140,6 +142,7 @@ function RatingInput({ value, onChange }) {
 
 // ── Portrait gallery card (horizontal grid) ───────────────────────────────────
 function PortraitGalleryCard({ gallery, onClick }) {
+  const locale = useVaultStore(s => s.locale)
   const [failed, setFailed] = useState(false)
   const cover = !failed && gallery.cover_thumb ? thumbSrc(gallery.cover_thumb) : null
   return (
@@ -155,10 +158,10 @@ function PortraitGalleryCard({ gallery, onClick }) {
       <div className="absolute inset-x-0 bottom-0 p-3 pt-10"
            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)' }}>
         <div className="text-[15px] font-medium text-white truncate leading-tight">{gallery.name}</div>
-        <div className="text-[13px] text-[rgba(255,255,255,0.45)] mt-0.5">{gallery.image_count} photos</div>
+        <div className="text-[13px] text-[rgba(255,255,255,0.45)] mt-0.5">{gallery.image_count}<LocalizedText text={"photos"} before=" " /></div>
         {gallery.period_month && gallery.period_year && (
           <div className="text-[12px] mt-0.5 font-medium" style={{ color: 'var(--c-green-text)' }}>
-            {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
+            {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })}
           </div>
         )}
       </div>
@@ -330,6 +333,7 @@ const staggerItem = {
 
 // ── Enhanced gallery card for the new grid ────────────────────────────────────
 function GalleryCard({ gallery, onClick, onContextMenu }) {
+  const locale = useVaultStore(s => s.locale)
   const [failed, setFailed] = useState(false)
   const cover = !failed && gallery.cover_thumb ? thumbSrc(gallery.cover_thumb) : null
   return (
@@ -799,7 +803,7 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
             <Upload size={14} /> {uploading ? t('Uploading...') : t('Pick from PC')}
           </button>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-          <div className="text-[10px] text-[rgba(255,255,255,0.2)]">{t('— or —')}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.2)]">{t('— or —')}</div>
           <button onClick={() => randomMutation.mutate()} disabled={randomMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 rounded-full text-[11px] cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
@@ -1091,6 +1095,7 @@ export default function CreatorProfile() {
   const [bannerMenuOpen, setBannerMenuOpen] = useState(false)
   const [scrollY, setScrollY] = useState(0)
   const [folderInput, setFolderInput] = useState('')
+  const [showFolderPicker, setShowFolderPicker] = useState(false)
   const [ctxMenu, setCtxMenu] = useState(null)              // { type: 'gallery'|'media', item, x, y }
   const [framePicker, setFramePicker] = useState(null)      // { image, creatorId, mode: 'avatar'|'banner' }
   const [activeTab, setActiveTab] = useState('galleries')
@@ -1285,7 +1290,7 @@ export default function CreatorProfile() {
       await galleriesApi.delete(g.id, mode === 'disk')
       toast.success(mode === 'disk' ? t('Gallery deleted from disk') : t('Gallery removed from vault'))
       invalidateContent()
-    } catch (e) { toast.error(`${t('Deletion failed')}: ${apiErrorMessage(e, t('Could not complete deletion'))}`) }
+    } catch (e) { toast.error(t('Deletion failed: {details}', { details: apiErrorMessage(e, t('Could not complete deletion')) })) }
   }
   const ctxMediaSendToPanel = (img) => {
     const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
@@ -1321,7 +1326,7 @@ export default function CreatorProfile() {
       await imagesApi.delete(img.id, mode === 'vault')
       toast.success(mode === 'vault' ? t('Removed from vault') : t('Deleted from disk'))
       invalidateContent()
-    } catch (e) { toast.error(`${t('Deletion failed')}: ${apiErrorMessage(e, t('Could not complete deletion'))}`) }
+    } catch (e) { toast.error(t('Deletion failed: {details}', { details: apiErrorMessage(e, t('Could not complete deletion')) })) }
   }
 
   const ctxItems = ctxMenu?.type === 'gallery'
@@ -1381,7 +1386,7 @@ export default function CreatorProfile() {
   const deleteMutation = useMutation({
     mutationFn: () => creatorsApi.delete(id),
     onSuccess: () => {
-      toast.success(`${creator.name} deleted`)
+      toast.success(t('{name} deleted', { name: creator.name }))
       qc.invalidateQueries({ queryKey: ['creators'] })
       navigate('/creators')
     },
@@ -1391,7 +1396,7 @@ export default function CreatorProfile() {
     mutationFn: (path) => creatorsApi.assignFolder(id, path || null).then(r => r.data),
     onSuccess: (data, variables) => {
       if (variables) {
-        toast.success(`${data.assigned_count} ${data.assigned_count === 1 ? 'gallery' : 'galleries'} assigned to ${creator?.name}`)
+        toast.success(t('{count} galleries assigned to {name}', { count: data.assigned_count, name: creator?.name }))
       } else {
         toast.success(t('Folder cleared'))
       }
@@ -1552,10 +1557,10 @@ export default function CreatorProfile() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[17px]"
                      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)', pointerEvents: 'none' }}>
                   {avatarUploading
-                    ? <span className="text-[16px] font-medium text-white/80">Uploading…</span>
+                    ? <span className="text-[16px] font-medium text-white/80"><LocalizedText text={"Uploading…"} /></span>
                     : <>
                         <Upload size={36} style={{ color: '#fff', opacity: 0.9 }} />
-                        <span className="text-[16px] font-medium text-white/90">Drop to set avatar</span>
+                        <span className="text-[16px] font-medium text-white/90"><LocalizedText text={"Drop to set avatar"} /></span>
                       </>
                   }
                 </div>
@@ -1563,7 +1568,7 @@ export default function CreatorProfile() {
             </div>
             <button onClick={() => setShowAvatarModal(true)}
                     className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
-                    title="Set avatar"
+                    title={t('Set avatar')}
                     style={{ background: '#1a1a1a', border: `1.5px solid ${rc}66`, color: 'rgba(255,255,255,0.6)' }}>
               <Camera size={15} />
             </button>
@@ -1800,6 +1805,14 @@ export default function CreatorProfile() {
                 className="flex-1 min-w-0 rounded-[8px] px-3 py-2 text-[13px] placeholder-[rgba(255,255,255,0.18)] outline-none font-mono"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
               />
+              <button
+                onClick={() => setShowFolderPicker(true)}
+                title={t('Browse')}
+                aria-label={t('Browse')}
+                className="flex-shrink-0 w-9 h-9 rounded-[8px] flex items-center justify-center cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'var(--c-text)' }}>
+                <FolderOpen size={18} />
+              </button>
               <button
                 onClick={() => folderMutation.mutate(folderInput.trim())}
                 disabled={folderMutation.isPending || !folderInput.trim()}
@@ -2049,6 +2062,7 @@ export default function CreatorProfile() {
       ), document.body)}
 
       {/* Delete confirmation modal */}
+      {showFolderPicker && <FolderPicker initialPath={folderInput} onSelect={path => setFolderInput(path)} onClose={() => setShowFolderPicker(false)} />}
       {confirmDelete && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="rounded-[16px] p-7 w-[420px] text-center shadow-2xl"

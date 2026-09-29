@@ -1,4 +1,5 @@
 /**
+import { LocalizedText, useT } from '../i18n'
  * Recovery prompt for a session the app was closed on top of.
  *
  * The store detects this on boot (see readSessionBoot) and does NOT resume the
@@ -74,19 +75,13 @@ export default function SessionRecoveryModal() {
           borderBottom: '0.5px solid rgba(255,255,255,0.07)',
         }}>
           <Clock size={17} style={{ color: 'var(--c-pink)', flexShrink: 0 }} />
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
-            Session left running
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}><LocalizedText text={"Session left running"} before=" " after=" " /></div>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '18px 24px 4px', fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}>
-          A session was still running when The Vault last closed. It started{' '}
-          <span style={{ color: 'rgba(255,255,255,0.85)' }}>{fmtWhen(stale.startAt)}</span>{' '}
-          and ran for about{' '}
-          <span style={{ color: 'var(--c-pink)', fontWeight: 600 }}>{fmtDuration(stale.elapsedMs)}</span>{' '}
-          before the app stopped responding.
-        </div>
+        <div style={{ padding: '18px 24px 4px', fontSize: 16, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}><LocalizedText text={"A session was still running when The Vault last closed. It started"} before=" " />{' '}
+          <span style={{ color: 'rgba(255,255,255,0.85)' }}>{fmtWhen(stale.startAt)}</span>{' '}<LocalizedText text={"and ran for about"} before=" " />{' '}
+          <span style={{ color: 'var(--c-pink)', fontWeight: 600 }}>{fmtDuration(stale.elapsedMs)}</span>{' '}<LocalizedText text={"before the app stopped responding."} before=" " after=" " /></div>
 
         {/* Editable duration */}
         <div style={{ padding: '16px 24px 20px' }}>
@@ -96,9 +91,7 @@ export default function SessionRecoveryModal() {
               display: 'block', fontSize: 16, marginBottom: 8,
               color: 'rgba(255,255,255,0.4)',
             }}
-          >
-            Log it as
-          </label>
+          ><LocalizedText text={"Log it as"} before=" " after=" " /></label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <input
               id="recovered-minutes"
@@ -119,7 +112,7 @@ export default function SessionRecoveryModal() {
               onFocus={e => { e.target.style.borderColor = 'var(--c-accent)' }}
               onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.12)' }}
             />
-            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}>minutes</span>
+            <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)' }}><LocalizedText text={"minutes"} /></span>
           </div>
         </div>
 
@@ -145,8 +138,7 @@ export default function SessionRecoveryModal() {
             onMouseEnter={e => { if (!busy) e.currentTarget.style.color = 'rgba(255,255,255,0.8)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}
           >
-            <X size={14} /> Discard
-          </button>
+            <X size={14} /><LocalizedText text={"Discard"} before=" " after=" " /></button>
           <button
             onClick={keep}
             disabled={busy}

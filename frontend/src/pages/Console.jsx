@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { Terminal, Trash2, Pause, Play, ChevronDown } from 'lucide-react'
 import { systemApi } from '../lib/api'
 
@@ -22,6 +23,7 @@ function levelColor(lvl) { return LEVEL_COLOR[lvl] ?? LEVEL_COLOR.INFO }
 function levelBg(lvl)    { return LEVEL_BG[lvl]    ?? 'transparent' }
 
 export default function Console() {
+  const t = useT()
   const [entries,   setEntries]   = useState([])
   const [filter,    setFilter]    = useState('ALL')
   const [paused,    setPaused]    = useState(false)
@@ -153,9 +155,7 @@ export default function Console() {
         background: 'var(--c-surface, #161616)',
       }}>
         <Terminal size={16} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />
-        <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.03em' }}>
-          Console
-        </span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.03em' }}><LocalizedText text={"Console"} before=" " after=" " /></span>
 
         {/* Connection dot */}
         <div style={{
@@ -197,7 +197,7 @@ export default function Console() {
         {/* Pause */}
         <button
           onClick={togglePause}
-          title={paused ? 'Resume' : 'Pause'}
+          title={paused ? t('Resume') : t('Pause')}
           style={{
             padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
@@ -216,7 +216,7 @@ export default function Console() {
         {/* Clear */}
         <button
           onClick={clear}
-          title="Clear"
+          title={t('Clear')}
           style={{
             padding: '3px 10px', borderRadius: 6, fontSize: 11,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
@@ -225,8 +225,7 @@ export default function Console() {
             border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          <Trash2 size={11} /> Clear
-        </button>
+          <Trash2 size={11} /><LocalizedText text={"Clear"} before=" " after=" " /></button>
       </div>
 
       {/* ── Log lines ── */}
@@ -271,7 +270,7 @@ export default function Console() {
 
               {/* Level badge */}
               <span style={{
-                flexShrink: 0, fontSize: 10, fontWeight: 700,
+                flexShrink: 0, fontSize: 16, fontWeight: 700,
                 width: 58, paddingTop: 2, letterSpacing: '0.04em',
                 color: levelColor(entry.level),
                 userSelect: 'none',
@@ -302,7 +301,7 @@ export default function Console() {
         flexShrink: 0,
         fontSize: 11, color: 'rgba(255,255,255,0.2)',
       }}>
-        <span>{visible.length.toLocaleString()} line{visible.length !== 1 ? 's' : ''}{filter !== 'ALL' ? ` (${filter} only)` : ''}</span>
+        <span>{visible.length.toLocaleString()}<LocalizedText text={"line"} before=" " />{visible.length !== 1 ? 's' : ''}{filter !== 'ALL' ? ` (${filter} only)` : ''}</span>
 
         {/* Jump to bottom */}
         {userScrolled.current && (
@@ -319,8 +318,7 @@ export default function Console() {
               color: 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: 11,
             }}
           >
-            <ChevronDown size={11} /> Jump to bottom
-          </button>
+            <ChevronDown size={11} /><LocalizedText text={"Jump to bottom"} before=" " after=" " /></button>
         )}
 
         <span>{paused ? '⏸ paused' : '● live'}</span>

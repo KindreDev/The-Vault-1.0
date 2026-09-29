@@ -1,4 +1,5 @@
 import React from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasksApi, taggerApi } from '../lib/api'
 import {
@@ -19,6 +20,7 @@ function taskMeta(type) {
 }
 
 function StatusBadge({ status }) {
+  const t = useT()
   const cfg = {
     queued:    { icon: Clock,        color: 'rgba(255,255,255,0.4)',  bg: 'rgba(255,255,255,0.07)',  label: 'Queued' },
     running:   { icon: Play,         color: 'var(--c-green)',                bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',   label: 'Running' },
@@ -33,12 +35,13 @@ function StatusBadge({ status }) {
     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium"
           style={{ color: cfg.color, background: cfg.bg }}>
       <Icon size={12} />
-      {cfg.label}
+      {t(cfg.label)}
     </span>
   )
 }
 
 function ProgressBar({ progress, total, color, animate }) {
+  const t = useT()
   const pct = total > 0 ? Math.min(100, Math.round((progress / total) * 100)) : (animate ? null : 0)
   return (
     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
@@ -55,6 +58,7 @@ function ProgressBar({ progress, total, color, animate }) {
 }
 
 function RunningTask({ task, onCancel, onPause }) {
+  const t = useT()
   if (!task) return null
   const meta = taskMeta(task.type)
   const Icon = meta.icon
@@ -69,7 +73,7 @@ function RunningTask({ task, onCancel, onPause }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <span className="font-semibold text-white/90 text-base">{task.label}</span>
+            <span className="font-semibold text-white/90 text-base">{t(meta.label)}</span>
             <StatusBadge status="running" />
             {pct !== null && (
               <span className="text-sm ml-auto" style={{ color: meta.color }}>{pct}%</span>
@@ -86,14 +90,14 @@ function RunningTask({ task, onCancel, onPause }) {
         {task.type === 'ai_tag' && <button
           onClick={onPause}
           className="mt-1 p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition flex-shrink-0"
-          title="Pause task"
+          title={t("Pause task")}
         >
           <Clock size={16} />
         </button>}
         <button
           onClick={onCancel}
           className="mt-1 p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition flex-shrink-0"
-          title="Cancel task"
+          title={t("Cancel task")}
         >
           <X size={16} />
         </button>
@@ -103,6 +107,7 @@ function RunningTask({ task, onCancel, onPause }) {
 }
 
 function QueuedTask({ task, onRemove, position }) {
+  const t = useT()
   const meta = taskMeta(task.type)
   const Icon = meta.icon
   return (
@@ -114,14 +119,14 @@ function QueuedTask({ task, onRemove, position }) {
         <Icon size={15} style={{ color: meta.color }} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white/80 text-base font-medium">{task.label}</p>
-        <p className="text-white/35 text-sm">Queued {new Date(task.created_at).toLocaleTimeString()}</p>
+        <p className="text-white/80 text-base font-medium">{t(meta.label)}</p>
+        <p className="text-white/35 text-sm"><LocalizedText text={"Queued"} after=" " />{new Date(task.created_at).toLocaleTimeString()}</p>
       </div>
       <StatusBadge status="queued" />
       <button
         onClick={() => onRemove(task.id)}
         className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition ml-2 flex-shrink-0"
-        title="Remove from queue"
+        title={t("Remove from queue")}
       >
         <Trash2 size={15} />
       </button>
@@ -130,6 +135,7 @@ function QueuedTask({ task, onRemove, position }) {
 }
 
 function HistoryTask({ task, onResume }) {
+  const t = useT()
   const meta = taskMeta(task.type)
   const Icon = meta.icon
 
@@ -146,16 +152,14 @@ function HistoryTask({ task, onResume }) {
         <Icon size={14} style={{ color: meta.color, opacity: 0.7 }} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white/70 text-base">{task.label}</p>
+        <p className="text-white/70 text-base">{t(meta.label)}</p>
         <p className="text-white/30 text-sm truncate">{task.message}</p>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         {task.status === 'paused' && task.detail?.job_id && (
           <button onClick={() => onResume(task.detail.job_id)}
                   className="px-3 py-1 rounded-lg text-base"
-                  style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 15%, transparent)' }}>
-            Resume
-          </button>
+                  style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 15%, transparent)' }}><LocalizedText text={"Resume"} before=" " after=" " /></button>
         )}
         {elapsedStr && <span className="text-white/25 text-sm">{elapsedStr}</span>}
         <StatusBadge status={task.status} />
@@ -202,9 +206,9 @@ export default function TaskQueue() {
   const idle    = !current && queued.length === 0
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className={`p-6 max-w-3xl mx-auto${idle && history.length === 0 ? ' vault-theme-task-queue-empty' : ''}`}>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white/90">Task Queue</h1>
+        <h1 className="text-2xl font-bold text-white/90"><LocalizedText text={"Task Queue"} /></h1>
         <p className="text-white/45 text-base mt-1">
           {idle
             ? 'No tasks running. One task runs at a time — others wait in queue.'
@@ -216,20 +220,18 @@ export default function TaskQueue() {
 
       {/* Running */}
       <section className="mb-6">
-        <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3">Now Running</h2>
+        <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3"><LocalizedText text={"Now Running"} /></h2>
         {current ? (
           <RunningTask task={current} onCancel={() => cancelMutation.mutate()} onPause={() => pauseMutation.mutate()} />
         ) : (
-          <div className="rounded-xl border border-white/8 bg-vault-card px-5 py-5 text-white/30 text-base italic">
-            Nothing running
-          </div>
+          <div className="rounded-xl border border-white/8 bg-vault-card px-5 py-5 text-white/30 text-base italic"><LocalizedText text={"Nothing running"} before=" " after=" " /></div>
         )}
       </section>
 
       {/* Queue */}
       {queued.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3">Up Next</h2>
+          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3"><LocalizedText text={"Up Next"} /></h2>
           <div className="flex flex-col gap-2">
             {queued.map((t, i) => (
               <QueuedTask
@@ -246,7 +248,7 @@ export default function TaskQueue() {
       {/* History */}
       {history.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3">History</h2>
+          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider mb-3"><LocalizedText text={"History"} /></h2>
           <div className="rounded-xl border border-white/8 bg-vault-card overflow-hidden">
             {history.map((t, i) => (
               <HistoryTask key={t.id ?? i} task={t} onResume={jobId => resumeMutation.mutate(jobId)} />
@@ -256,9 +258,7 @@ export default function TaskQueue() {
       )}
 
       {idle && history.length === 0 && (
-        <div className="text-center py-20 text-white/20 text-base">
-          No recent tasks. Start a scan, AI tagging, or dedup run to see it here.
-        </div>
+        <div className="text-center py-20 text-white/20 text-base"><LocalizedText text={"No recent tasks. Start a scan, AI tagging, or dedup run to see it here."} before=" " after=" " /></div>
       )}
     </div>
   )

@@ -1,0 +1,521 @@
+/* Installed packs supply their own artwork; the loader only styles existing UI surfaces. */
+body[data-theme^='pack:'] .vault-main {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background: radial-gradient(ellipse at 84% 8%, color-mix(in srgb, var(--c-accent) 10%, transparent), transparent 42%), var(--c-bg) !important;
+}
+body[data-theme^='pack:'] .vault-main > div:not(:is(.vault-theme-pack-layer, .vault-theme-pack-front-layer)) { position: relative; z-index: 1; }
+body[data-theme^='pack:'] .vault-app-shell > aside {
+  background: linear-gradient(175deg, color-mix(in srgb, var(--c-accent) 13%, var(--c-surface)), var(--c-surface) 42%, var(--c-bg)) !important;
+  border-right-color: color-mix(in srgb, var(--c-accent) 28%, transparent) !important;
+}
+body[data-theme^='pack:'] .vault-app-shell > aside > div:first-child {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(92deg, color-mix(in srgb, var(--c-accent) 20%, transparent), transparent 92%);
+  border-bottom-color: color-mix(in srgb, var(--c-accent) 25%, transparent);
+}
+body[data-theme^='pack:'] .vault-app-shell > aside > div:first-child > :not(:is(.vault-theme-pack-anchor-layer, .vault-theme-pack-anchor-front-layer)) {
+  position: relative;
+  z-index: 1;
+}
+body[data-theme^='pack:'] aside nav a:not([aria-current='page']):hover {
+  background-color: color-mix(in srgb, var(--c-accent) 10%, transparent) !important;
+}
+body[data-theme^='pack:'] aside nav a[aria-current='page'],
+body[data-theme^='pack:'] aside nav a.nav-active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-accent) 26%, transparent), color-mix(in srgb, var(--c-amber) 8%, transparent)) !important;
+  box-shadow: inset 3px 0 var(--c-amber);
+}
+body[data-theme^='pack:'] .vault-card {
+  border-color: color-mix(in srgb, var(--c-accent) 17%, transparent);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, .13);
+}
+body[data-theme^='pack:'] .vault-card:hover {
+  border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
+}
+body[data-theme^='pack:'] .animate-modal-pop,
+body[data-theme^='pack:'] .loading-bay-modal-shell,
+body[data-theme^='pack:'] .tcgws-binder-modal,
+body[data-theme^='pack:'] .vault-inv {
+  border-color: color-mix(in srgb, var(--c-accent) 34%, transparent) !important;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, .62), 0 0 0 1px color-mix(in srgb, var(--c-amber) 8%, transparent) !important;
+}
+body[data-theme^='pack:'] .tcgws-root {
+  --tcg-line: color-mix(in srgb, var(--c-accent) 19%, transparent);
+  --tcg-soft: color-mix(in srgb, var(--c-accent) 8%, transparent);
+}
+body[data-theme^='pack:'] .tcgws-nav button.active {
+  background: color-mix(in srgb, var(--c-accent) 19%, transparent);
+  box-shadow: inset 3px 0 var(--c-amber);
+}
+body[data-theme^='pack:'] .fs-dropdown-menu,
+body[data-theme^='pack:'] .fs-tag-suggestions,
+body[data-theme^='pack:'] .fs-inline-popover {
+  background: var(--c-card);
+  border-color: color-mix(in srgb, var(--c-accent) 31%, transparent);
+}
+body[data-theme^='pack:'] input:focus,
+body[data-theme^='pack:'] textarea:focus,
+body[data-theme^='pack:'] select:focus { border-color: var(--c-accent) !important; }
+.vault-theme-pack-layer,
+.vault-theme-pack-front-layer {
+  position: fixed;
+  overflow: hidden;
+  pointer-events: none;
+}
+.vault-theme-pack-layer { z-index: 0; }
+.vault-theme-pack-front-layer { z-index: 2; }
+.vault-theme-pack-layer img,
+.vault-theme-pack-front-layer img,
+.vault-theme-pack-modal-layer img,
+.vault-theme-pack-modal-front-layer img {
+  display: block;
+  position: absolute;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+.vault-theme-pack-modal-host { isolation: isolate; }
+.vault-theme-pack-modal-layer,
+.vault-theme-pack-modal-front-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.vault-theme-pack-modal-layer { z-index: -1; }
+.vault-theme-pack-modal-front-layer { z-index: 2; }
+body[data-theme^='pack:'] .vault-theme-dashboard-curation,
+body[data-theme^='pack:'] .vault-theme-dashboard-session,
+body[data-theme^='pack:'] .vault-theme-dashboard-tools,
+body[data-theme^='pack:'] .vault-main h1,
+body[data-theme^='pack:'] .vault-theme-option__art { position: relative; isolation: isolate; }
+.vault-theme-option__art {
+  display: block;
+  width: 110px;
+  height: 76px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--c-accent) 10%, var(--c-card));
+  overflow: hidden;
+}
+.vault-theme-option__art > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+body[data-theme^='pack:'] [data-theme-heading] { position: relative; isolation: isolate; }
+body[data-theme^='pack:'] [data-theme-heading] + div { position: relative; z-index: 1; }
+body[data-theme^='pack:'] [data-theme-heading]:has(> .vault-theme-pack-anchor-front-layer) { z-index: 2; }
+body[data-theme^='pack:'] .vault-theme-dashboard-curation > :not(:is(.vault-theme-pack-anchor-layer, .vault-theme-pack-anchor-front-layer)),
+body[data-theme^='pack:'] .vault-theme-dashboard-session > :not(:is(.vault-theme-pack-anchor-layer, .vault-theme-pack-anchor-front-layer)) {
+  position: relative;
+  z-index: 1;
+}
+.vault-theme-pack-anchor-layer,
+.vault-theme-pack-anchor-front-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+}
+.vault-theme-pack-anchor-layer { z-index: -1; }
+.vault-theme-pack-anchor-front-layer { z-index: 2; }
+.vault-theme-pack-anchor-layer img,
+.vault-theme-pack-anchor-front-layer img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+}
+body[data-theme^='pack:'] .vault-main h1 > .vault-theme-pack-anchor-layer,
+body[data-theme^='pack:'] [data-theme-heading] > .vault-theme-pack-anchor-layer,
+body[data-theme^='pack:'] .vault-main h1 > .vault-theme-pack-anchor-front-layer,
+body[data-theme^='pack:'] [data-theme-heading] > .vault-theme-pack-anchor-front-layer { overflow: visible; }
+
+/* Texture files and trim color come from an installed pack, never the app bundle. */
+body[data-theme-pack-sidebar='true'] .vault-app-shell > aside {
+  background-image: linear-gradient(#0009, #0009), var(--vault-pack-sidebar-texture) !important;
+  background-size: auto, 440px 440px !important;
+  border-right: 1px solid color-mix(in srgb, var(--vault-pack-edge) 48%, transparent) !important;
+}
+body[data-theme-pack-panel='true'] .vault-main :is(
+  .vault-card,
+  .vault-theme-settings-header,
+  .vault-theme-settings-section,
+  [style*='background: var(--c-card)'],
+  [style*='background: var(--c-surface)'],
+  :is(div, section, article)[style*='background:'][style*='border:']:not(.media-selection-overlay):not([style*='url(']):not([style*='gradient(']):not(.vault-theme-dashboard-curation),
+  [class*='bg-[var(--c-card)]'],
+  [class*='bg-[var(--c-surface)]']
+) {
+  background-image: linear-gradient(#0006, #0006), var(--vault-pack-panel-texture) !important;
+  background-size: auto, 440px 440px !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 43%, transparent) !important;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--vault-pack-edge) 22%, transparent), 0 8px 22px #0005;
+}
+/* Selection highlights must remain transparent over the media thumbnail. */
+body[data-theme-pack-panel='true'] .vault-main .media-selection-overlay {
+  background-image: none !important;
+}
+body[data-theme-pack-button='true'] .vault-main button:where(
+  [class*='border'],
+  [class*='bg-'],
+  [style*='background:']:not([style*='background: transparent']),
+  .vault-theme-settings-tabs > button,
+  .vault-control-row > button
+):not(:where([style*='background-image'], [style*='url('], [style*='gradient('], .vault-theme-dashboard-session, .vault-theme-dashboard-curation)) {
+  background-image: linear-gradient(#0005, #0005), var(--vault-pack-button-texture) !important;
+  background-size: auto, 340px 340px !important;
+  border: 1px solid color-mix(in srgb, var(--vault-pack-edge) 48%, transparent) !important;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--vault-pack-edge) 30%, transparent), 0 2px 6px #0005;
+}
+body[data-theme-pack-button='true'] .vault-theme-settings-tabs > button[data-active='true'] {
+  border-color: var(--vault-pack-edge) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-pack-edge) 65%, transparent), 0 2px 10px #0008;
+}
+body[data-theme-pack-ui='textured'] .vault-main :is(input, select, textarea) {
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 29%, transparent);
+}
+
+/* Feature workspaces have their own opaque surfaces, so texture their chrome explicitly. */
+body[data-theme-pack-panel='true'] .fs-page :is(.fs-main, .fs-playlists, .fs-inspector, .fs-toolbar, .fs-playlist-view, .fs-detail-grid > div),
+body[data-theme-pack-panel='true'] .tcgws-root :is(.tcgws-topbar, .tcgws-summary, .tcgws-nav, .tcgws-inspector-panel, .tcgws-settings-panel, .tcgws-release-detail, .tcgws-binders, .tcgws-workshop) {
+  background-image: linear-gradient(#0006, #0006), var(--vault-pack-panel-texture) !important;
+  background-size: auto, 440px 440px !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 43%, transparent) !important;
+}
+body[data-theme-pack-button='true'] .fs-page :is(.fs-tabs button, .fs-secondary-action, .fs-primary-action, .fs-playlist-choice, .fs-filters select, .fs-analyze-button),
+body[data-theme-pack-button='true'] .tcgws-root :is(.tcgws-nav button, .tcgws-toolbar button, .tcgws-toolbar select, .tcgws-toolbar input, .tcgws-icon-btn, .tcgws-primary, .tcgws-secondary, .tcgws-select-mode) {
+  background-image: linear-gradient(#0005, #0005), var(--vault-pack-button-texture) !important;
+  background-size: auto, 340px 340px !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 48%, transparent) !important;
+}
+
+/* Keep pack-owned leather, but give the app's textured controls real interaction states. */
+body[data-theme-pack-button='true'] .vault-main :is(
+  .tcgws-nav button,
+  .tcgws-collection-scopes button,
+  .tcgws-primary,
+  .tcgws-secondary,
+  .tcgws-select-mode,
+  .tcgws-filter-trigger,
+  .vault-help-page button,
+  .vault-theme-settings-tabs > button,
+  .vault-theme-settings-section-toggle,
+  .vault-settings-page .vault-theme-settings-panel button,
+  .vault-control-row > button,
+  .vault-control-row > .vault-row-control > button,
+  .fs-page .fs-tabs button,
+  .fs-page .fs-secondary-action,
+  .fs-page .fs-primary-action,
+  .fs-page .fs-playlist-choice,
+  .fs-page .fs-dropdown-button,
+  .fs-page .fs-pagination button,
+  .fs-page .fs-playlist-view-head > button,
+  .fs-page .fs-column-heading > button,
+  .fs-page .fs-analyze-button
+) {
+  transition: background-image .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease, color .16s ease;
+}
+body[data-theme-pack-button='true'] .vault-main :is(
+  .tcgws-nav button,
+  .tcgws-collection-scopes button,
+  .tcgws-primary,
+  .tcgws-secondary,
+  .tcgws-select-mode,
+  .tcgws-filter-trigger,
+  .vault-help-page button,
+  .vault-theme-settings-tabs > button,
+  .vault-theme-settings-section-toggle,
+  .vault-settings-page .vault-theme-settings-panel button,
+  .vault-control-row > button,
+  .vault-control-row > .vault-row-control > button,
+  .fs-page .fs-tabs button,
+  .fs-page .fs-secondary-action,
+  .fs-page .fs-primary-action,
+  .fs-page .fs-playlist-choice,
+  .fs-page .fs-dropdown-button,
+  .fs-page .fs-pagination button,
+  .fs-page .fs-playlist-view-head > button,
+  .fs-page .fs-column-heading > button,
+  .fs-page .fs-analyze-button
+):hover,
+body[data-theme-pack-button='true'] .vault-main :is(
+  .tcgws-nav button,
+  .tcgws-collection-scopes button,
+  .tcgws-primary,
+  .tcgws-secondary,
+  .tcgws-select-mode,
+  .tcgws-filter-trigger,
+  .vault-help-page button,
+  .vault-theme-settings-tabs > button,
+  .vault-theme-settings-section-toggle,
+  .vault-settings-page .vault-theme-settings-panel button,
+  .vault-control-row > button,
+  .vault-control-row > .vault-row-control > button,
+  .fs-page .fs-tabs button,
+  .fs-page .fs-secondary-action,
+  .fs-page .fs-primary-action,
+  .fs-page .fs-playlist-choice,
+  .fs-page .fs-dropdown-button,
+  .fs-page .fs-pagination button,
+  .fs-page .fs-playlist-view-head > button,
+  .fs-page .fs-column-heading > button,
+  .fs-page .fs-analyze-button
+):focus-visible {
+  background-image: linear-gradient(color-mix(in srgb, var(--c-accent) 22%, transparent), color-mix(in srgb, var(--c-accent) 22%, transparent)), var(--vault-pack-button-texture) !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 78%, var(--c-accent)) !important;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--vault-pack-edge) 52%, transparent), 0 4px 13px #0008, 0 0 0 1px color-mix(in srgb, var(--c-accent) 16%, transparent);
+}
+body[data-theme-pack-button='true'] .vault-main :is(
+  .tcgws-nav button.active,
+  .tcgws-collection-scopes button.active,
+  .tcgws-collection-scopes button[aria-selected='true'],
+  .tcgws-select-mode.active,
+  .tcgws-filter-trigger.is-open,
+  .vault-help-tabs > button[data-active='true'],
+  .vault-help-section-toggle[aria-expanded='true'],
+  .vault-theme-settings-tabs > button[data-active='true'],
+  .vault-theme-settings-section-toggle[aria-expanded='true'],
+  button.is-active,
+  button.is-selected,
+  button[aria-selected='true'],
+  button[aria-pressed='true'],
+  button[aria-expanded='true']
+) {
+  background-image: linear-gradient(color-mix(in srgb, var(--c-amber) 19%, transparent), color-mix(in srgb, var(--c-accent) 12%, transparent)), var(--vault-pack-button-texture) !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 92%, var(--c-amber)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-pack-edge) 54%, transparent), inset 0 -2px color-mix(in srgb, var(--c-amber) 82%, transparent), 0 5px 16px color-mix(in srgb, var(--c-accent) 18%, #0008);
+  color: var(--c-accent-text) !important;
+}
+body[data-theme-pack-button='true'] .vault-main :is(
+  .tcgws-nav button,
+  .tcgws-collection-scopes button,
+  .tcgws-primary,
+  .tcgws-secondary,
+  .tcgws-select-mode,
+  .tcgws-filter-trigger,
+  .vault-help-page button,
+  .vault-theme-settings-tabs > button,
+  .vault-theme-settings-section-toggle,
+  .vault-settings-page .vault-theme-settings-panel button,
+  .vault-control-row > button,
+  .vault-control-row > .vault-row-control > button,
+  .fs-page .fs-tabs button,
+  .fs-page .fs-secondary-action,
+  .fs-page .fs-primary-action,
+  .fs-page .fs-playlist-choice,
+  .fs-page .fs-dropdown-button,
+  .fs-page .fs-pagination button,
+  .fs-page .fs-playlist-view-head > button,
+  .fs-page .fs-column-heading > button,
+  .fs-page .fs-analyze-button
+):active {
+  background-image: linear-gradient(color-mix(in srgb, var(--c-accent) 12%, #0004), color-mix(in srgb, var(--c-amber) 12%, #0004)), var(--vault-pack-button-texture) !important;
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 5px #0009, 0 1px 4px #0008;
+}
+
+/* Explicit page scopes keep non-TCG states reliable while preserving each
+   page's semantic text colours (especially Settings' green/pink actions). */
+body[data-theme-pack-button='true'] .vault-main .vault-help-page button:hover,
+body[data-theme-pack-button='true'] .vault-main .vault-help-page button:focus-visible,
+body[data-theme-pack-button='true'] .vault-main .vault-settings-page button:hover,
+body[data-theme-pack-button='true'] .vault-main .vault-settings-page button:focus-visible,
+body[data-theme-pack-button='true'] .vault-main .vault-control-row > button:hover,
+body[data-theme-pack-button='true'] .vault-main .vault-control-row > button:focus-visible,
+body[data-theme-pack-button='true'] .vault-main .vault-control-row > .vault-row-control > button:hover,
+body[data-theme-pack-button='true'] .vault-main .vault-control-row > .vault-row-control > button:focus-visible,
+body[data-theme-pack-button='true'] .vault-main .fs-page :is(
+  .fs-tabs button,
+  .fs-secondary-action,
+  .fs-primary-action,
+  .fs-playlist-choice,
+  .fs-dropdown-button,
+  .fs-pagination button,
+  .fs-playlist-view-head > button,
+  .fs-column-heading > button,
+  .fs-analyze-button
+):hover,
+body[data-theme-pack-button='true'] .vault-main .fs-page :is(
+  .fs-tabs button,
+  .fs-secondary-action,
+  .fs-primary-action,
+  .fs-playlist-choice,
+  .fs-dropdown-button,
+  .fs-pagination button,
+  .fs-playlist-view-head > button,
+  .fs-column-heading > button,
+  .fs-analyze-button
+):focus-visible {
+  background-image: linear-gradient(color-mix(in srgb, var(--c-accent) 22%, transparent), color-mix(in srgb, var(--c-accent) 22%, transparent)), var(--vault-pack-button-texture) !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 78%, var(--c-accent)) !important;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--vault-pack-edge) 52%, transparent), 0 4px 13px #0008, 0 0 0 1px color-mix(in srgb, var(--c-accent) 16%, transparent);
+}
+body[data-theme-pack-button='true'] .vault-main .vault-help-tabs > button[data-active='true'],
+body[data-theme-pack-button='true'] .vault-main .vault-help-section-toggle[aria-expanded='true'],
+body[data-theme-pack-button='true'] .vault-main .vault-theme-settings-tabs > button[data-active='true'],
+body[data-theme-pack-button='true'] .vault-main .vault-theme-settings-section-toggle[aria-expanded='true'],
+body[data-theme-pack-button='true'] .vault-main .vault-settings-page button.is-active,
+body[data-theme-pack-button='true'] .vault-main .vault-settings-page button[aria-pressed='true'],
+body[data-theme-pack-button='true'] .vault-main .vault-control-row button.is-active,
+body[data-theme-pack-button='true'] .vault-main .vault-control-row button[aria-expanded='true'],
+body[data-theme-pack-button='true'] .vault-main .fs-page button.is-active,
+body[data-theme-pack-button='true'] .vault-main .fs-page button.is-selected,
+body[data-theme-pack-button='true'] .vault-main .fs-page button[aria-selected='true'],
+body[data-theme-pack-button='true'] .vault-main .fs-page button[aria-expanded='true'] {
+  background-image: linear-gradient(color-mix(in srgb, var(--c-amber) 19%, transparent), color-mix(in srgb, var(--c-accent) 12%, transparent)), var(--vault-pack-button-texture) !important;
+  border-color: color-mix(in srgb, var(--vault-pack-edge) 92%, var(--c-amber)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-pack-edge) 54%, transparent), inset 0 -2px color-mix(in srgb, var(--c-amber) 82%, transparent), 0 5px 16px color-mix(in srgb, var(--c-accent) 18%, #0008);
+}
+
+/* Pack text colors brighten semantic text throughout the Vault without altering accent/status colors. */
+body[data-theme-pack-text='true'] .vault-app-shell {
+  --c-muted: var(--vault-pack-text-muted);
+  color: var(--vault-pack-text-primary);
+}
+body[data-theme-pack-text='true'] .vault-app-shell :is(
+  [class*='text-white/80'], [class*='text-white/85'], [class*='text-white/90'],
+  [class*='text-white/95']
+) { color: var(--vault-pack-text-primary) !important; }
+body[data-theme-pack-text='true'] .vault-app-shell :is(
+  [class*='text-white/45'], [class*='text-white/50'], [class*='text-white/55'],
+  [class*='text-white/60'], [class*='text-white/65'], [class*='text-white/70'],
+  [class*='text-white/75']
+) { color: var(--vault-pack-text-secondary) !important; }
+body[data-theme-pack-text='true'] .vault-app-shell :is(
+  [class*='text-white/20'], [class*='text-white/25'], [class*='text-white/30'],
+  [class*='text-white/35'], [class*='text-white/40']
+) { color: var(--vault-pack-text-muted) !important; }
+body[data-theme-pack-text='true'] .vault-app-shell :is(
+  [class*='text-[rgba(255,255,255,0.2'],
+  [class*='text-[rgba(255,255,255,0.3'],
+  [class*='text-[rgba(255,255,255,0.4'],
+  [class*='text-[rgba(255,255,255,0.5']
+) { color: var(--vault-pack-text-muted) !important; }
+body[data-theme-pack-text='true'] .vault-app-shell :is(
+  [class*='text-[rgba(255,255,255,0.6'],
+  [class*='text-[rgba(255,255,255,0.7']
+) { color: var(--vault-pack-text-secondary) !important; }
+body[data-theme-pack-text='true'] .vault-app-shell [style*='color: rgba(255, 255, 255, 0.2'] {
+  color: var(--vault-pack-text-muted) !important;
+}
+
+/* Filter toolbars use React inline colours instead of Tailwind classes. Keep
+   those controls on the editor's readable text scale too, while leaving
+   explicit accent/status colours untouched. */
+body[data-theme-pack-text='true'] .vault-main .vault-filter-toolbar :is(
+  [style*='color: rgba(255, 255, 255, 0.45'],
+  [style*='color: rgba(255, 255, 255, 0.5'],
+  [style*='color: rgba(255, 255, 255, 0.55'],
+  [style*='color: rgba(255, 255, 255, 0.6'],
+  [style*='color: rgba(255, 255, 255, 0.65'],
+  [style*='color: rgba(255, 255, 255, 0.7'],
+  [style*='color: rgba(255, 255, 255, 0.75'],
+  [class*='text-[rgba(255,255,255,0.45'],
+  [class*='text-[rgba(255,255,255,0.5'],
+  [class*='text-[rgba(255,255,255,0.55'],
+  [class*='text-[rgba(255,255,255,0.6'],
+  [class*='text-[rgba(255,255,255,0.65'],
+  [class*='text-[rgba(255,255,255,0.7'],
+  [class*='text-[rgba(255,255,255,0.75']
+) {
+  color: var(--vault-pack-text-secondary) !important;
+}
+body[data-theme-pack-text='true'] .vault-main .vault-filter-toolbar :is(
+  [style*='color: rgba(255, 255, 255, 0.2'],
+  [style*='color: rgba(255, 255, 255, 0.25'],
+  [style*='color: rgba(255, 255, 255, 0.3'],
+  [style*='color: rgba(255, 255, 255, 0.35'],
+  [style*='color: rgba(255, 255, 255, 0.4'],
+  [class*='text-[rgba(255,255,255,0.2'],
+  [class*='text-[rgba(255,255,255,0.25'],
+  [class*='text-[rgba(255,255,255,0.3'],
+  [class*='text-[rgba(255,255,255,0.35'],
+  [class*='text-[rgba(255,255,255,0.4']
+) {
+  color: var(--vault-pack-text-muted) !important;
+}
+body[data-theme-pack-text='true'] .vault-main .vault-filter-toolbar :is(
+  [style*='color: rgba(255, 255, 255, 0.8'],
+  [style*='color: rgba(255, 255, 255, 0.85'],
+  [style*='color: rgba(255, 255, 255, 0.9'],
+  [class*='text-[rgba(255,255,255,0.8'],
+  [class*='text-[rgba(255,255,255,0.85'],
+  [class*='text-[rgba(255,255,255,0.9']
+) {
+  color: var(--vault-pack-text-primary) !important;
+}
+
+/* Settings, Help, Stats, and Erika AI still contain legacy inline white
+   colours.  Scope this compatibility pass to those pages so Chloe's editor
+   text settings also reach styles that cannot be matched by Tailwind classes. */
+body[data-theme-pack-text='true'] .vault-main :is(
+  .vault-settings-page,
+  .vault-help-page,
+  .vault-stats-page,
+  .vault-theme-erika-page
+) :is(
+  [style*='color: rgba(255,255,255,0.'],
+  [style*='color: rgba(255, 255, 255, 0.']
+) {
+  color: var(--vault-pack-text-secondary) !important;
+}
+body[data-theme-pack-text='true'] .vault-main :is(
+  .vault-settings-page,
+  .vault-help-page,
+  .vault-stats-page,
+  .vault-theme-erika-page
+) :is(
+  [style*='color: rgba(255,255,255,0.1'],
+  [style*='color: rgba(255,255,255,0.12'],
+  [style*='color: rgba(255,255,255,0.15'],
+  [style*='color: rgba(255,255,255,0.18'],
+  [style*='color: rgba(255,255,255,0.2'],
+  [style*='color: rgba(255,255,255,0.25'],
+  [style*='color: rgba(255,255,255,0.28'],
+  [style*='color: rgba(255,255,255,0.3'],
+  [style*='color: rgba(255,255,255,0.35'],
+  [style*='color: rgba(255,255,255,0.4'],
+  [style*='color: rgba(255, 255, 255, 0.1'],
+  [style*='color: rgba(255, 255, 255, 0.12'],
+  [style*='color: rgba(255, 255, 255, 0.15'],
+  [style*='color: rgba(255, 255, 255, 0.18'],
+  [style*='color: rgba(255, 255, 255, 0.2'],
+  [style*='color: rgba(255, 255, 255, 0.25'],
+  [style*='color: rgba(255, 255, 255, 0.28'],
+  [style*='color: rgba(255, 255, 255, 0.3'],
+  [style*='color: rgba(255, 255, 255, 0.35'],
+  [style*='color: rgba(255, 255, 255, 0.4']
+) {
+  color: var(--vault-pack-text-muted) !important;
+}
+body[data-theme-pack-text='true'] .vault-main :is(
+  .vault-settings-page,
+  .vault-help-page,
+  .vault-stats-page,
+  .vault-theme-erika-page
+) :is(
+  [style*='color: rgba(255,255,255,0.8'],
+  [style*='color: rgba(255,255,255,0.85'],
+  [style*='color: rgba(255,255,255,0.9'],
+  [style*='color: rgba(255,255,255,0.95'],
+  [style*='color: rgba(255, 255, 255, 0.8'],
+  [style*='color: rgba(255, 255, 255, 0.85'],
+  [style*='color: rgba(255, 255, 255, 0.9'],
+  [style*='color: rgba(255, 255, 255, 0.95']
+) {
+  color: var(--vault-pack-text-primary) !important;
+}
+body[data-theme-pack-text='true'] .fs-page :is(.fs-muted, .fs-script-byline, .fs-list-head, .fs-metric small, .fs-empty-inspector, .fs-detail-grid small),
+body[data-theme-pack-text='true'] .tcgws-root :is(.tcgws-filter-label, .tcgws-result-count, .tcgws-topbar span, .tcgws-summary span) {
+  color: var(--vault-pack-text-muted) !important;
+}

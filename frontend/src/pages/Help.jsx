@@ -15,14 +15,16 @@ import {
 } from 'lucide-react'
 import { HOTKEY_GROUPS, HOTKEY_ACTIONS, bindingToDisplay, SCOPE_VIEWER } from '../lib/hotkeys'
 import { useVaultStore } from '../store/vault'
+import { LocalizedText, useT } from '../i18n'
 
 // ── Shared micro-components ───────────────────────────────────────────────────
 
 function Pill({ children, color = 'var(--c-accent)', bg }) {
+  const t = useT()
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[16px] font-semibold"
           style={{ color, background: bg || `${color}22`, border: `0.5px solid ${color}44` }}>
-      {children}
+      {typeof children === 'string' ? t(children) : children}
     </span>
   )
 }
@@ -31,12 +33,12 @@ function XpBadge({ xp }) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[16px] font-bold"
           style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
-      <Zap size={11} />+{xp.toLocaleString()} XP
-    </span>
+      <Zap size={11} />+{xp.toLocaleString()}{" "}<LocalizedText text="XP"/>{" "}</span>
   )
 }
 
 function NavRow({ icon: Icon, label, path, desc, color = 'rgba(255,255,255,0.55)' }) {
+  const t = useT()
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-[rgba(255,255,255,0.04)] last:border-0">
       <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -45,10 +47,10 @@ function NavRow({ icon: Icon, label, path, desc, color = 'rgba(255,255,255,0.55)
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-[18px] font-semibold text-white/85">{label}</span>
+          <span className="text-[18px] font-semibold text-white/85">{t(label)}</span>
           {path && <span className="text-[16px] font-mono text-white/25">{path}</span>}
         </div>
-        <p className="text-[17px] text-white/50 leading-snug">{desc}</p>
+        <p className="text-[17px] text-white/50 leading-snug">{t(desc)}</p>
       </div>
     </div>
   )
@@ -56,20 +58,22 @@ function NavRow({ icon: Icon, label, path, desc, color = 'rgba(255,255,255,0.55)
 
 // ── Accordion section ─────────────────────────────────────────────────────────
 function Section({ title, icon: Icon, accentColor = 'var(--c-accent)', children, open: controlledOpen, onToggle, defaultOpen = false }) {
+  const t = useT()
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const isOpen = controlledOpen !== undefined ? controlledOpen : localOpen
   const toggle = onToggle || (() => setLocalOpen(v => !v))
 
   return (
-    <div className="mb-3 rounded-[10px] overflow-hidden"
+    <div className="vault-help-section mb-3 rounded-[10px] overflow-hidden"
          style={{ background: 'var(--c-card)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
       <button onClick={toggle}
-              className="w-full flex items-center gap-3 px-5 py-4 text-left group transition-colors hover:bg-[rgba(255,255,255,0.03)]">
+              aria-expanded={isOpen}
+              className="vault-help-section-toggle w-full flex items-center gap-3 px-5 py-4 text-left group transition-colors hover:bg-[rgba(255,255,255,0.03)]">
         <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
              style={{ background: `${accentColor}20` }}>
           <Icon size={15} style={{ color: accentColor }} />
         </div>
-        <span className="flex-1 text-[19px] font-semibold text-white/85">{title}</span>
+        <span className="flex-1 text-[19px] font-semibold text-white/85">{typeof title === 'string' ? t(title) : title}</span>
         <ChevronDown size={16} className="text-white/25 transition-transform duration-200"
                      style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </button>
@@ -166,10 +170,7 @@ function OverviewContent({ search }) {
     <div className="space-y-3">
       <Section title="What is The Vault?" icon={Box} defaultOpen={!s || 'vault gallery creator'.includes(s)}>
         <SectionBody>
-          <p className="text-[18px] text-white/60 leading-relaxed mb-4">
-            The Vault is a private, local media gallery for personal collections. Your content lives on your machine only.
-            Everything is organised, searchable, and tied into a gamification layer that turns your collection into a completely unique TCG (Trading Card Game) making every day tasks such as curating, tagging and just collecting, genuinely rewarding.
-          </p>
+          <p className="text-[18px] text-white/60 leading-relaxed mb-4"><LocalizedText text="The Vault is a private, local media gallery for personal collections. Your content lives on your machine only. Everything is organised, searchable, and tied into a gamification layer that turns your collection into a completely unique TCG (Trading Card Game) making every day tasks such as curating, tagging and just collecting, genuinely rewarding."/></p>
           <div className="grid grid-cols-3 gap-3">
             {[
               { icon: FolderOpen, label: 'Library Root', desc: 'A folder on your drive that The Vault watches. Add one in Settings → Library.', color: 'var(--c-amber)' },
@@ -179,19 +180,19 @@ function OverviewContent({ search }) {
               <div key={label} className="p-4 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Icon size={16} style={{ color }} />
-                  <span className="text-[17px] font-semibold text-white/80">{label}</span>
+                  <span className="text-[17px] font-semibold text-white/80"><LocalizedText text={label}/></span>
                 </div>
-                <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
           <div className="flex items-center gap-2 mt-4 text-[16px] text-white/35">
-            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>Library Root</span>
+            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}><LocalizedText text="Library Root"/></span>
             <ChevronRight size={12} />
-            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>Gallery (folder)</span>
+            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}><LocalizedText text="Gallery (folder)"/></span>
             <ChevronRight size={12} />
-            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>Image / Video</span>
-            <span className="ml-2 text-white/25">— 3 levels deep, always</span>
+            <span className="px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}><LocalizedText text="Image / Video"/></span>
+            <span className="ml-2 text-white/25"><LocalizedText text="— 3 levels deep, always"/></span>
           </div>
         </SectionBody>
       </Section>
@@ -211,8 +212,8 @@ function OverviewContent({ search }) {
                   {n}
                 </div>
                 <div>
-                  <div className="text-[18px] font-semibold text-white/80 mb-0.5">{title}</div>
-                  <p className="text-[16px] text-white/50 leading-snug">{body}</p>
+                  <div className="text-[18px] font-semibold text-white/80 mb-0.5"><LocalizedText text={title}/></div>
+                  <p className="text-[16px] text-white/50 leading-snug"><LocalizedText text={body}/></p>
                 </div>
               </div>
             ))}
@@ -234,8 +235,8 @@ function OverviewContent({ search }) {
               <div key={label} className="flex gap-3 p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <Icon size={16} style={{ color }} className="flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-[17px] font-semibold text-white/75 mb-0.5">{label}</div>
-                  <p className="text-[16px] text-white/40 leading-snug">{body}</p>
+                  <div className="text-[17px] font-semibold text-white/75 mb-0.5"><LocalizedText text={label}/></div>
+                  <p className="text-[16px] text-white/40 leading-snug"><LocalizedText text={body}/></p>
                 </div>
               </div>
             ))}
@@ -302,15 +303,15 @@ function NavContent() {
           <div className="space-y-3 text-[17px] text-white/55">
             <div className="flex gap-3 items-start">
               <Flame size={15} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
-              <div><span className="text-white/75 font-medium">Streak badge</span> — Shows your current daily login streak in days. Turns orange/gold as it grows. Missing a day uses a grace token (1 per week) before resetting.</div>
+              <div><span className="text-white/75 font-medium"><LocalizedText text="Streak badge"/></span>{" "}<LocalizedText text="— Shows your current daily login streak in days. Turns orange/gold as it grows. Missing a day uses a grace token (1 per week) before resetting."/></div>
             </div>
             <div className="flex gap-3 items-start">
               <TrendingUp size={15} style={{ color: 'var(--c-accent)' }} className="flex-shrink-0 mt-0.5" />
-              <div><span className="text-white/75 font-medium">XP bar</span> — Thin gradient bar below your level title. Shows progress toward next level. Click the entire profile area to go to your full Profile page.</div>
+              <div><span className="text-white/75 font-medium"><LocalizedText text="XP bar"/></span>{" "}<LocalizedText text="— Thin gradient bar below your level title. Shows progress toward next level. Click the entire profile area to go to your full Profile page."/></div>
             </div>
             <div className="flex gap-3 items-start">
               <Crown size={15} style={{ color: '#FFD700' }} className="flex-shrink-0 mt-0.5" />
-              <div><span className="text-white/75 font-medium">Level title colour</span> — Changes through 10 colour tiers as you advance. Grey → green → blue → violet → pink → gold → red → orange → purple → gold.</div>
+              <div><span className="text-white/75 font-medium"><LocalizedText text="Level title colour"/></span>{" "}<LocalizedText text="— Changes through 10 colour tiers as you advance. Grey → green → blue → violet → pink → gold → red → orange → purple → gold."/></div>
             </div>
           </div>
         </SectionBody>
@@ -328,19 +329,19 @@ function GamificationContent() {
             <table className="w-full text-[17px]">
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                  <th className="text-left px-4 py-2.5 text-white/40 font-medium">Action</th>
-                  <th className="text-right px-4 py-2.5 text-white/40 font-medium">XP</th>
-                  <th className="text-left px-4 py-2.5 text-white/40 font-medium">Note</th>
+                  <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Action"/></th>
+                  <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="XP"/></th>
+                  <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Note"/></th>
                 </tr>
               </thead>
               <tbody>
                 {XP_ACTIONS.map((row, i) => (
                   <tr key={row.action} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                    <td className="px-4 py-2 text-white/70">{row.action}</td>
+                    <td className="px-4 py-2 text-white/70"><LocalizedText text={row.action}/></td>
                     <td className="px-4 py-2 text-right font-mono font-bold" style={{ color: 'var(--c-accent)' }}>
                       {row.xp != null ? `+${row.xp}` : '—'}
                     </td>
-                    <td className="px-4 py-2 text-white/35">{row.note}</td>
+                    <td className="px-4 py-2 text-white/35"><LocalizedText text={row.note}/></td>
                   </tr>
                 ))}
               </tbody>
@@ -351,7 +352,7 @@ function GamificationContent() {
 
       <Section title="Streak multiplier" icon={Flame} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <p className="text-[17px] text-white/50 mb-4">Your login streak multiplies <em className="text-white/70">all</em> XP earned that day — not just login XP. Every action benefits.</p>
+          <p className="text-[17px] text-white/50 mb-4"><LocalizedText text="Your login streak multiplies"/>{" "}<em className="text-white/70"><LocalizedText text="all"/></em>{" "}<LocalizedText text="XP earned that day — not just login XP. Every action benefits."/></p>
           <div className="grid grid-cols-2 gap-2 mb-4">
             {STREAK_MULTIPLIERS.map(({ range, mult, color }) => (
               <div key={range} className="flex items-center gap-3 px-4 py-3 rounded-lg"
@@ -367,14 +368,14 @@ function GamificationContent() {
           <div className="p-3 rounded-lg text-[16px] text-white/45 flex gap-2"
                style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
             <Info size={14} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white/60">Grace token:</strong> You get 1 per week. If you miss exactly one day, a grace token is consumed automatically to keep your streak alive. You can hold at most 1 grace token at any time.</span>
+            <span><strong className="text-white/60"><LocalizedText text="Grace token:"/></strong>{" "}<LocalizedText text="You get 1 per week. If you miss exactly one day, a grace token is consumed automatically to keep your streak alive. You can hold at most 1 grace token at any time."/></span>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="Level titles" icon={Crown} defaultOpen={false} accentColor="#FFD700">
         <SectionBody>
-          <p className="text-[17px] text-white/50 mb-4">100 levels total. XP required follows a quadratic curve — each level costs 500 more XP than the previous. New titles unlock every 5 levels.</p>
+          <p className="text-[17px] text-white/50 mb-4"><LocalizedText text="100 levels total. XP required follows a quadratic curve — each level costs 500 more XP than the previous. New titles unlock every 5 levels."/></p>
           <div className="space-y-1.5">
             {LEVEL_TIERS.map(({ range, color, titles }) => (
               <div key={range} className="flex items-center gap-3 px-3 py-2 rounded-lg"
@@ -384,25 +385,19 @@ function GamificationContent() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[16px] text-white/30">You can set a custom title from any title you've unlocked via your Profile page.</p>
+          <p className="mt-3 text-[16px] text-white/30"><LocalizedText text="You can set a custom title from any title you've unlocked via your Profile page."/></p>
         </SectionBody>
       </Section>
 
       <Section title="Daily spin wheel" icon={Gamepad2} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed">
-            One free spin per day is accessible from Dashboard → Daily Spin. It awards a random XP result, a 50/100-Credit result, or a small spotlight XP reward.
-            XP results range from 15 to 150 and are multiplied by your active streak. The spin resets daily at midnight and the button becomes unavailable after it is consumed.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed"><LocalizedText text="One free spin per day is accessible from Dashboard → Daily Spin. It awards a random XP result, a 50/100-Credit result, or a small spotlight XP reward. XP results range from 15 to 150 and are multiplied by your active streak. The spin resets daily at midnight and the button becomes unavailable after it is consumed."/></p>
         </SectionBody>
       </Section>
 
       <Section title="Cum counter" icon={Droplets} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            Every image and gallery has a lifetime orgasm count that <strong className="text-white/70">never resets</strong>.
-            Tap the 💧 button on any image or gallery to log one. Each event gives +10 XP (multiplied by streak) and can give +25 Credits, up to the daily Credit cap.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-3"><LocalizedText text="Every image and gallery has a lifetime orgasm count that"/>{" "}<strong className="text-white/70"><LocalizedText text="never resets"/></strong><LocalizedText text=". Tap the 💧 button on any image or gallery to log one. Each event gives +10 XP (multiplied by streak) and can give +25 Credits, up to the daily Credit cap."/></p>
           <div className="grid grid-cols-3 gap-2 text-[16px]">
             {[
               { label: 'Per image', desc: 'Tracked individually. Shown on the image card and in the viewer.' },
@@ -410,8 +405,8 @@ function GamificationContent() {
               { label: 'Lifetime total', desc: 'Drives Foundation SPR milestones, boss quests (50, 100, 500 Os), and achievement unlocks.' },
             ].map(({ label, desc }) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
-                <div className="font-semibold text-[var(--c-pink-text)] mb-1">{label}</div>
-                <p className="text-white/40 leading-snug">{desc}</p>
+                <div className="font-semibold text-[var(--c-pink-text)] mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/40 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -451,9 +446,9 @@ function QuestsContent() {
       <div className="p-4 rounded-lg text-[17px] text-white/55"
            style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
         <div className="flex gap-6">
-          <div><span className="text-white/75 font-semibold">Daily quests:</span> 4 randomly selected from a pool of 11 each midnight. Each shows XP and Credits.</div>
-          <div><span className="text-white/75 font-semibold">Weekly quests:</span> 4 randomly selected from a pool of 8 each Monday.</div>
-          <div><span className="text-white/75 font-semibold">Boss quests:</span> Permanent milestones — always visible, never expire. Completing the whole daily/weekly board unlocks a separate pack reward to claim.</div>
+          <div><span className="text-white/75 font-semibold"><LocalizedText text="Daily quests:"/></span>{" "}<LocalizedText text="4 randomly selected from a pool of 11 each midnight. Each shows XP and Credits."/></div>
+          <div><span className="text-white/75 font-semibold"><LocalizedText text="Weekly quests:"/></span>{" "}<LocalizedText text="4 randomly selected from a pool of 8 each Monday."/></div>
+          <div><span className="text-white/75 font-semibold"><LocalizedText text="Boss quests:"/></span>{" "}<LocalizedText text="Permanent milestones — always visible, never expire. Completing the whole daily/weekly board unlocks a separate pack reward to claim."/></div>
         </div>
       </div>
 
@@ -473,15 +468,15 @@ function QuestsContent() {
         <SectionBody>
           <div className="grid grid-cols-2 gap-3 text-[16px]">
             <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
-              <div className="text-[18px] font-bold text-[var(--c-accent-text)] mb-1">Daily sweep</div>
-              <p className="text-white/50 leading-snug">Complete every active daily quest, then claim <strong className="text-white/75">5 Permanent Vault Boosters</strong>. Each contains 10 cards with an SR-or-higher guarantee.</p>
+              <div className="text-[18px] font-bold text-[var(--c-accent-text)] mb-1"><LocalizedText text="Daily sweep"/></div>
+              <p className="text-white/50 leading-snug"><LocalizedText text="Complete every active daily quest, then claim"/>{" "}<strong className="text-white/75"><LocalizedText text="5 Permanent Vault Boosters"/></strong><LocalizedText text=". Each contains 10 cards with an SR-or-higher guarantee."/></p>
             </div>
             <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
-              <div className="text-[18px] font-bold text-[var(--c-amber-text)] mb-1">Weekly sweep</div>
-              <p className="text-white/50 leading-snug">Complete every active weekly quest, choose a published release, then claim <strong className="text-white/75">1 Weekly Protection Pack</strong>: 4 cards with 3 UR + 1 SPR guaranteed.</p>
+              <div className="text-[18px] font-bold text-[var(--c-amber-text)] mb-1"><LocalizedText text="Weekly sweep"/></div>
+              <p className="text-white/50 leading-snug"><LocalizedText text="Complete every active weekly quest, choose a published release, then claim"/>{" "}<strong className="text-white/75"><LocalizedText text="1 Weekly Protection Pack"/></strong><LocalizedText text=": 4 cards with 3 UR + 1 SPR guaranteed."/></p>
             </div>
           </div>
-          <p className="mt-3 text-[16px] text-white/40">The board does not open these rewards silently. Click Claim. If a period rolls over before you claim, an earned completion reward waits for you instead of disappearing.</p>
+          <p className="mt-3 text-[16px] text-white/40"><LocalizedText text="The board does not open these rewards silently. Click Claim. If a period rolls over before you claim, an earned completion reward waits for you instead of disappearing."/></p>
         </SectionBody>
       </Section>
 
@@ -537,21 +532,21 @@ function QuestTable({ quests }) {
       <table className="w-full text-[17px]">
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <th className="text-left px-4 py-2.5 text-white/40 font-medium">Quest</th>
-            <th className="text-left px-4 py-2.5 text-white/40 font-medium">Objective</th>
-            <th className="text-center px-3 py-2.5 text-white/40 font-medium">Goal</th>
-            <th className="text-right px-4 py-2.5 text-white/40 font-medium">XP</th>
-            <th className="text-right px-4 py-2.5 text-white/40 font-medium">Credits</th>
+            <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Quest"/></th>
+            <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Objective"/></th>
+            <th className="text-center px-3 py-2.5 text-white/40 font-medium"><LocalizedText text="Goal"/></th>
+            <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="XP"/></th>
+            <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Credits"/></th>
           </tr>
         </thead>
         <tbody>
           {quests.map((q, i) => (
             <tr key={q.title} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-              <td className="px-4 py-2 text-white/80 font-medium">{q.title}</td>
-              <td className="px-4 py-2 text-white/50">{q.desc}</td>
-              <td className="px-3 py-2 text-center text-white/40 font-mono text-[16px]">{q.target}</td>
-              <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: 'var(--c-accent)' }}>+{q.xp}</td>
-              <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: '#FFD700' }}>+{q.credit}</td>
+              <td className="px-4 py-2 text-white/80 font-medium"><LocalizedText text={q.title}/></td>
+              <td className="px-4 py-2 text-white/50"><LocalizedText text={q.desc}/></td>
+                <td className="px-3 py-2 text-center text-white/40 font-mono text-[16px]"><LocalizedText text={q.target}/></td>
+              <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: 'var(--c-accent)' }}><LocalizedText text="+"/>{q.xp}</td>
+              <td className="px-4 py-2 text-right font-bold font-mono" style={{ color: '#FFD700' }}><LocalizedText text="+"/>{q.credit}</td>
             </tr>
           ))}
         </tbody>
@@ -567,10 +562,10 @@ function BossQuestTable({ rows }) {
         <div key={title} className="flex items-center gap-3 px-4 py-2.5 rounded-lg"
              style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
           <Target size={13} style={{ color: 'var(--c-pink)' }} className="flex-shrink-0" />
-          <span className="flex-1 text-[17px] text-white/75 font-medium">{title}</span>
-          <span className="text-[16px] text-white/40 mr-4">{desc}</span>
+          <span className="flex-1 text-[17px] text-white/75 font-medium"><LocalizedText text={title}/></span>
+          <span className="text-[16px] text-white/40 mr-4"><LocalizedText text={desc}/></span>
           <XpBadge xp={xp} />
-          <span className="text-[16px] font-bold font-mono" style={{ color: '#FFD700' }}>+{credit} Credits</span>
+          <span className="text-[16px] font-bold font-mono" style={{ color: '#FFD700' }}><LocalizedText text="+"/>{credit}{" "}<LocalizedText text="Credits"/></span>
         </div>
       ))}
     </div>
@@ -665,15 +660,15 @@ function AchievementsContent() {
   return (
     <div className="space-y-3">
       {groups.map(({ label, color, items }) => (
-        <Section key={label} title={`${label} (${items.length})`} icon={Star} defaultOpen={false} accentColor={color}>
+        <Section key={label} title={t('{label} ({count})', { label: t(label), count: items.length })} icon={Star} defaultOpen={false} accentColor={color}>
           <SectionBody>
             <div className="grid grid-cols-2 gap-2">
               {items.map(({ title, desc, xp }) => (
                 <div key={title} className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
                      style={{ background: `${color}0D`, border: `0.5px solid ${color}22` }}>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[17px] font-semibold text-white/80 truncate">{title}</div>
-                    <div className="text-[16px] text-white/40">{desc}</div>
+                    <div className="text-[17px] font-semibold text-white/80 truncate"><LocalizedText text={title}/></div>
+                    <div className="text-[16px] text-white/40"><LocalizedText text={desc}/></div>
                   </div>
                   <XpBadge xp={xp} />
                 </div>
@@ -691,9 +686,7 @@ function LibraryContent() {
     <div className="space-y-3">
       <Section title="The library model" icon={FolderOpen} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            The Vault is local-first and folder-based. A library root is a folder you choose; every gallery is a folder beneath it; every image or video stays attached to that gallery. The filesystem remains the source of truth, so scans reconcile the database with what is actually on disk instead of flattening your collection.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="The Vault is local-first and folder-based. A library root is a folder you choose; every gallery is a folder beneath it; every image or video stays attached to that gallery. The filesystem remains the source of truth, so scans reconcile the database with what is actually on disk instead of flattening your collection."/></p>
           <div className="grid grid-cols-2 gap-3 text-[16px]">
             {[
               { icon: FolderOpen, label: 'Library root', desc: 'A watched location configured in Settings → Library. You can have more than one root.' },
@@ -704,8 +697,8 @@ function LibraryContent() {
               <div key={label} className="flex gap-3 p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                 <Icon size={18} style={{ color: 'var(--c-accent)' }} className="flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
-                  <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                  <div className="text-[17px] font-semibold text-white/80 mb-1"><LocalizedText text={label}/></div>
+                  <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text={desc}/></p>
                 </div>
               </div>
             ))}
@@ -715,22 +708,20 @@ function LibraryContent() {
 
       <Section title="Vault Credit economy" icon={WalletCards} defaultOpen={false} accentColor="#FFD700">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            XP controls progression; <strong className="text-white/75">Vault Credits</strong> are the separate pack currency. Credit rewards are designed to make collecting, organizing, and using the Vault all worthwhile without turning a bulk import into an infinite faucet.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="XP controls progression;"/>{" "}<strong className="text-white/75"><LocalizedText text="Vault Credits"/></strong>{" "}<LocalizedText text="are the separate pack currency. Credit rewards are designed to make collecting, organizing, and using the Vault all worthwhile without turning a bulk import into an infinite faucet."/></p>
           <div className="rounded-lg overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <table className="w-full text-[16px]">
               <thead><tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Activity</th>
-                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Credits</th>
-                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Rule</th>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Activity"/></th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Credits"/></th>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Rule"/></th>
               </tr></thead>
               <tbody>
                 {CREDIT_ACTIONS.map((row, i) => (
                   <tr key={row.action} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                    <td className="px-4 py-2 text-white/70">{row.action}</td>
+                    <td className="px-4 py-2 text-white/70"><LocalizedText text={row.action}/></td>
                     <td className="px-4 py-2 text-right font-mono font-bold" style={{ color: '#FFD700' }}>{row.value}</td>
-                    <td className="px-4 py-2 text-white/45">{row.note}</td>
+                    <td className="px-4 py-2 text-white/45"><LocalizedText text={row.note}/></td>
                   </tr>
                 ))}
               </tbody>
@@ -738,12 +729,12 @@ function LibraryContent() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-[16px]">
             <div className="p-3 rounded-lg" style={{ background: 'rgba(255,215,0,0.07)', border: '0.5px solid rgba(255,215,0,0.22)' }}>
-              <div className="font-semibold text-[#FFD700] mb-1">What does not pay Credits?</div>
-              <p className="text-white/45 leading-snug">Bulk file imports, pack opening itself, and card dismantling. Dismantling still produces forge materials; opening a pack never refunds its price.</p>
+              <div className="font-semibold text-[#FFD700] mb-1"><LocalizedText text="What does not pay Credits?"/></div>
+              <p className="text-white/45 leading-snug"><LocalizedText text="Bulk file imports, pack opening itself, and card dismantling. Dismantling still produces forge materials; opening a pack never refunds its price."/></p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 22%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-accent-text)] mb-1">Why the cap?</div>
-              <p className="text-white/45 leading-snug">Cum Credits are capped at 10 credit-paying events per day. Your lifetime counter and XP remain lifetime progression; only the recurring currency faucet is bounded.</p>
+              <div className="font-semibold text-[var(--c-accent-text)] mb-1"><LocalizedText text="Why the cap?"/></div>
+              <p className="text-white/45 leading-snug"><LocalizedText text="Cum Credits are capped at 10 credit-paying events per day. Your lifetime counter and XP remain lifetime progression; only the recurring currency faucet is bounded."/></p>
             </div>
           </div>
         </SectionBody>
@@ -751,9 +742,7 @@ function LibraryContent() {
 
       <Section title="Loading Bay — formerly Intake" icon={ScanLine} defaultOpen accentColor="var(--c-amber)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Loading Bay is the safe staging area for files that are not ready to become ordinary library media. It can inspect archives, preview pending files, detect duplicates, import complete gallery folders, and place content into an existing gallery or Unsorted without breaking the folder model.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Loading Bay is the safe staging area for files that are not ready to become ordinary library media. It can inspect archives, preview pending files, detect duplicates, import complete gallery folders, and place content into an existing gallery or Unsorted without breaking the folder model."/></p>
           <div className="space-y-2.5 text-[16px]">
             {[
               ['Inspect first', 'Preview images, videos, archives, counts, filenames, thumbnails, video duration, and the reason a file matched another item.'],
@@ -764,22 +753,20 @@ function LibraryContent() {
             ].map(([label, desc]) => (
               <div key={label} className="flex gap-3 items-start">
                 <CheckCircle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
-                <p className="text-white/55 leading-snug"><strong className="text-white/75">{label}:</strong> {desc}</p>
+            <p className="text-white/55 leading-snug"><strong className="text-white/75"><LocalizedText text={label}/><LocalizedText text=":"/></strong> <LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
           <div className="mt-4 p-3 rounded-lg flex gap-2 text-[16px]" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
             <Info size={15} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
-            <span className="text-white/50">Loading Bay is an intake workflow, not a second library hierarchy. Once imported, the normal root → gallery → media model takes over.</span>
+            <span className="text-white/50"><LocalizedText text="Loading Bay is an intake workflow, not a second library hierarchy. Once imported, the normal root → gallery → media model takes over."/></span>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="Collection Curating" icon={Sparkles} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Collection Curating is the guided cleanup loop for galleries that still need attention. It presents one gallery at a time and lets you fix the metadata that makes the rest of the Vault useful.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Collection Curating is the guided cleanup loop for galleries that still need attention. It presents one gallery at a time and lets you fix the metadata that makes the rest of the Vault useful."/></p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
               ['What you can fix', 'Rename the folder, assign creators, add tags, rate the gallery, set a cover, mark it favourite, record period/price, or delete it.'],
@@ -788,8 +775,8 @@ function LibraryContent() {
               ['Curation rotation', 'Completed galleries leave the active rotation for three months, so the queue keeps showing work that actually needs you.'],
             ].map(([label, desc]) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 22%, transparent)' }}>
-                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
-                <p className="text-white/45 leading-snug">{desc}</p>
+                <div className="text-[17px] font-semibold text-white/80 mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -799,10 +786,10 @@ function LibraryContent() {
       <Section title="Tags, AI tagging & provenance" icon={Tag} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <div className="space-y-3 text-[16px] text-white/55">
-            <p><strong className="text-white/75">Manual tags</strong> are your explicit curation. <strong className="text-[#C084FC]">AI tags</strong> are model suggestions and stay visually distinct. Tag Manager can merge duplicates, remove orphaned tags, browse the raw WD14/JoyTag vocabulary, and enable or disable tags per model.</p>
-            <p>Per-tag confidence overrides take priority over the global AI threshold. This is useful when a tag is consistently reliable or consistently noisy.</p>
-            <p>ComfyUI images are identified from embedded workflow metadata during import. They receive the <strong className="text-white/75">AI generated</strong> provenance tag without needing to run an AI tagger.</p>
-            <p>Creator and character assignment is metadata, not a forced folder level. A file can carry its own creator relationship while its gallery remains intact.</p>
+            <p><strong className="text-white/75"><LocalizedText text="Manual tags"/></strong>{" "}<LocalizedText text="are your explicit curation."/>{" "}<strong className="text-[#C084FC]"><LocalizedText text="AI tags"/></strong>{" "}<LocalizedText text="are model suggestions and stay visually distinct. Tag Manager can merge duplicates, remove orphaned tags, browse the raw WD14/JoyTag vocabulary, and enable or disable tags per model."/></p>
+            <p><LocalizedText text="Per-tag confidence overrides take priority over the global AI threshold. This is useful when a tag is consistently reliable or consistently noisy."/></p>
+            <p><LocalizedText text="ComfyUI images are identified from embedded workflow metadata during import. They receive the"/>{" "}<strong className="text-white/75"><LocalizedText text="AI generated"/></strong>{" "}<LocalizedText text="provenance tag without needing to run an AI tagger."/></p>
+            <p><LocalizedText text="Creator and character assignment is metadata, not a forced folder level. A file can carry its own creator relationship while its gallery remains intact."/></p>
           </div>
         </SectionBody>
       </Section>
@@ -810,10 +797,10 @@ function LibraryContent() {
       <Section title="Duplicates, missing folders & background work" icon={GitCompare} defaultOpen={false} accentColor="var(--c-accent)">
         <SectionBody>
           <div className="space-y-3 text-[16px] text-white/55">
-            <p><strong className="text-white/75">Duplicates</strong> uses exact and visual comparison. The safe deletion flow keeps the selected original and updates database references before removing a duplicate.</p>
-            <p><strong className="text-white/75">Missing folders</strong> appears in Settings when a root or gallery is unavailable. Resolve all can scan online roots and relink confidently moved folders while protecting offline libraries; genuinely stale records can be removed explicitly.</p>
-            <p><strong className="text-white/75">Task Queue</strong> is where long scans, thumbnail work, AI tagging, and other background jobs report progress. Long AI-tagging runs can pause, survive a restart, and resume from their last committed checkpoint.</p>
-            <p><strong className="text-white/75">Console</strong> shows live server output when you need to diagnose a scan, model, or playback issue.</p>
+            <p><strong className="text-white/75"><LocalizedText text="Duplicates"/></strong>{" "}<LocalizedText text="uses exact and visual comparison. The safe deletion flow keeps the selected original and updates database references before removing a duplicate."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Missing folders"/></strong>{" "}<LocalizedText text="appears in Settings when a root or gallery is unavailable. Resolve all can scan online roots and relink confidently moved folders while protecting offline libraries; genuinely stale records can be removed explicitly."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Task Queue"/></strong>{" "}<LocalizedText text="is where long scans, thumbnail work, AI tagging, and other background jobs report progress. Long AI-tagging runs can pause, survive a restart, and resume from their last committed checkpoint."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Console"/></strong>{" "}<LocalizedText text="shows live server output when you need to diagnose a scan, model, or playback issue."/></p>
           </div>
         </SectionBody>
       </Section>
@@ -833,8 +820,8 @@ function StatsContent() {
               ['Collection History', 'The long view formerly called Almanac: reconstruct collection years, phases, creator growth, curation health, and the written read from your own numbers.'],
             ].map(([label, desc]) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 22%, transparent)' }}>
-                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
-                <p className="text-white/45 leading-snug">{desc}</p>
+                <div className="text-[17px] font-semibold text-white/80 mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -844,19 +831,17 @@ function StatsContent() {
       <Section title="Sessions are local, editable history" icon={Clock} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
           <div className="space-y-2.5 text-[16px] text-white/55">
-            <p>Start and stop sessions from Dashboard, Stats, Playlists, or a viewer. A session can survive a refresh and the recovery prompt can resume an interrupted one.</p>
-            <p>Session History uses your browser's local timezone for date and hour buckets. It can show multiple credited creators without turning one elapsed session into several sessions.</p>
-            <p>Every history row can be edited or deleted, and you can add a session the app never observed. Creator attribution can be corrected without rewriting the rest of the session.</p>
-            <p>The Session settings tab controls what ending a session means: count a climax automatically, ask each time, or never count one automatically. Edges are tracked separately.</p>
+            <p><LocalizedText text="Start and stop sessions from Dashboard, Stats, Playlists, or a viewer. A session can survive a refresh and the recovery prompt can resume an interrupted one."/></p>
+            <p><LocalizedText text="Session History uses your browser's local timezone for date and hour buckets. It can show multiple credited creators without turning one elapsed session into several sessions."/></p>
+            <p><LocalizedText text="Every history row can be edited or deleted, and you can add a session the app never observed. Creator attribution can be corrected without rewriting the rest of the session."/></p>
+            <p><LocalizedText text="The Session settings tab controls what ending a session means: count a climax automatically, ask each time, or never count one automatically. Edges are tracked separately."/></p>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="When analytics are unavailable" icon={Info} defaultOpen={false} accentColor="var(--c-accent)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed">
-            Some charts require enough timestamped session history to say something useful. The Vault shows an honest unavailable state instead of inventing missing history. A shorter range may still work when the full history does not.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed"><LocalizedText text="Some charts require enough timestamped session history to say something useful. The Vault shows an honest unavailable state instead of inventing missing history. A shorter range may still work when the full history does not."/></p>
         </SectionBody>
       </Section>
     </div>
@@ -868,27 +853,23 @@ function CardsContent() {
     <div className="space-y-3">
       <Section title="One rarity ladder — C / R / SR / UR / SPR" icon={Sparkles} defaultOpen accentColor="#FFD700">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Every printing has one visible rarity: <strong className="text-white/75">C → R → SR → UR → SPR</strong>. Each printing is frozen when it is created; Foundation may append a new linked SPR later when fresh personal engagement reaches its unlock milestone.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Every printing has one visible rarity:"/>{" "}<strong className="text-white/75"><LocalizedText text="C → R → SR → UR → SPR"/></strong><LocalizedText text=". Each printing is frozen when it is created; Foundation may append a new linked SPR later when fresh personal engagement reaches its unlock milestone."/></p>
           <div className="space-y-2">
             {RARITY_DATA.map(({ label, color, bg, note }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-lg"
                    style={{ background: bg, border: `0.5px solid ${color}40` }}>
-                <span className="w-24 text-[17px] font-bold flex-shrink-0" style={{ color }}>{label}</span>
-                <span className="flex-1 text-[16px] text-white/55">{note}</span>
+                <span className="w-24 text-[17px] font-bold flex-shrink-0" style={{ color }}><LocalizedText text={label}/></span>
+                <span className="flex-1 text-[16px] text-white/55"><LocalizedText text={note}/></span>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[16px] text-white/35">Rarity is not a live score or an upgrade track: an existing printing never changes, while an eligible Foundation source can receive one new linked SPR printing.</p>
+          <p className="mt-3 text-[16px] text-white/35"><LocalizedText text="Rarity is not a live score or an upgrade track: an existing printing never changes, while an eligible Foundation source can receive one new linked SPR printing."/></p>
         </SectionBody>
       </Section>
 
       <Section title="What rarity changes" icon={Diamond} defaultOpen={false} accentColor="#55C2FF">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Rarity changes the material, foil, ornament density, embossing, and signature treatment while preserving the card type's identity. A published card's source, artwork, set, number, and rarity stay together as one immutable collectible.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Rarity changes the material, foil, ornament density, embossing, and signature treatment while preserving the card type's identity. A published card's source, artwork, set, number, and rarity stay together as one immutable collectible."/></p>
           <div className="grid grid-cols-5 gap-2 mb-4">
             {[
               { c: 'C',   color: '#888780', pct: 'Common' },
@@ -906,7 +887,7 @@ function CardsContent() {
           <div className="p-3 rounded-lg text-[16px] text-white/50 flex gap-2"
                style={{ background: 'rgba(85,194,255,0.08)', border: '0.5px solid rgba(85,194,255,0.25)' }}>
             <Info size={14} style={{ color: '#55C2FF' }} className="flex-shrink-0 mt-0.5" />
-            <span>Rarity is a publication fact, not a live score. Engagement can inform initial selection and append a linked Foundation SPR at the six-cum milestone, but it never rewrites the existing base card.</span>
+            <span><LocalizedText text="Rarity is a publication fact, not a live score. Engagement can inform initial selection and append a linked Foundation SPR at the six-cum milestone, but it never rewrites the existing base card."/></span>
           </div>
         </SectionBody>
       </Section>
@@ -927,9 +908,9 @@ function CardsContent() {
               return (
                 <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[17px] font-semibold text-white/80">{label}</span>
+                    <span className="text-[17px] font-semibold text-white/80"><LocalizedText text={label}/></span>
                   </div>
-                  <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                  <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text={desc}/></p>
                 </div>
               )
             })}
@@ -940,16 +921,15 @@ function CardsContent() {
       <Section title="Special Rare parallels" icon={Crown} defaultOpen={false} accentColor="#ff5db1">
         <SectionBody>
           <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            <strong className="text-white/75">SPR</strong> is a linked Special Rare printing, not a live upgrade button. It is created as its own immutable card definition with its own artwork, number, and rarity treatment. Foundation starts with a substantial engagement-ranked SPR pool and may append one linked SPR when a source reaches six lifetime cums. The collection keeps the base card and its SPR parallel distinct.
-          </p>
+            <strong className="text-white/75"><LocalizedText text="SPR"/></strong>{" "}<LocalizedText text="is a linked Special Rare printing, not a live upgrade button. It is created as its own immutable card definition with its own artwork, number, and rarity treatment. Foundation starts with a substantial engagement-ranked SPR pool and may append one linked SPR when a source reaches six lifetime cums. The collection keeps the base card and its SPR parallel distinct."/></p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
               { label: 'Linked printing', desc: 'A parallel points back to its base card and remains tied to the same published source identity.' },
               { label: 'No silent upgrades', desc: 'Ownership and engagement never rewrite the existing base card; a milestone can add one separate parallel.' },
             ].map(({ label, desc }) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,93,177,0.08)', border: '0.5px solid rgba(255,93,177,0.25)' }}>
-                <div className="font-semibold text-[#ff9dd0] mb-1">{label}</div>
-                <p className="text-white/45 leading-snug">{desc}</p>
+                <div className="font-semibold text-[#ff9dd0] mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -959,26 +939,24 @@ function CardsContent() {
       <Section title="Card visuals (VFX)" icon={Sparkles} defaultOpen={false} accentColor="#C084FC">
         <SectionBody>
           <div className="space-y-2 text-[16px] text-white/55">
-            <p><strong className="text-white/75">Rarity</strong> controls finish intensity — material, foil, embossing, ornament density, and signature treatment — while the card type keeps its own frame architecture.</p>
-            <p><strong className="text-white/75">SPR</strong> uses the linked parallel treatment and is not a boolean foil toggle.</p>
-            <p><strong className="text-white/75">Source art</strong> stays truthful: stills and video artwork come from real Vault media, and missing metadata is left unknown rather than invented.</p>
+            <p><strong className="text-white/75"><LocalizedText text="Rarity"/></strong>{" "}<LocalizedText text="controls finish intensity — material, foil, embossing, ornament density, and signature treatment — while the card type keeps its own frame architecture."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="SPR"/></strong>{" "}<LocalizedText text="uses the linked parallel treatment and is not a boolean foil toggle."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Source art"/></strong>{" "}<LocalizedText text="stays truthful: stills and video artwork come from real Vault media, and missing metadata is left unknown rather than invented."/></p>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="Published cards and owned copies" icon={TrendingUp} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-3">
-            A <strong className="text-white/75">card definition</strong> is the published collectible: source, artwork, type, rarity, set, and collector number are frozen. An <strong className="text-white/75">owned copy</strong> only tracks inventory state such as quantity, acquisition date, lock/favorite state, and display assignment.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-3"><LocalizedText text="A"/>{" "}<strong className="text-white/75"><LocalizedText text="card definition"/></strong>{" "}<LocalizedText text="is the published collectible: source, artwork, type, rarity, set, and collector number are frozen. An"/>{" "}<strong className="text-white/75"><LocalizedText text="owned copy"/></strong>{" "}<LocalizedText text="only tracks inventory state such as quantity, acquisition date, lock/favorite state, and display assignment."/></p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-green)] mb-1">Frozen identity</div>
-              <p className="text-white/45 leading-snug">The same published printing remains the same card wherever it appears in the collection.</p>
+              <div className="font-semibold text-[var(--c-green)] mb-1"><LocalizedText text="Frozen identity"/></div>
+              <p className="text-white/45 leading-snug"><LocalizedText text="The same published printing remains the same card wherever it appears in the collection."/></p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-green) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 25%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-green)] mb-1">Separate ownership</div>
-              <p className="text-white/45 leading-snug">Quantity and display choices belong to your owned copies, never to the printed definition.</p>
+              <div className="font-semibold text-[var(--c-green)] mb-1"><LocalizedText text="Separate ownership"/></div>
+              <p className="text-white/45 leading-snug"><LocalizedText text="Quantity and display choices belong to your owned copies, never to the printed definition."/></p>
             </div>
           </div>
         </SectionBody>
@@ -989,15 +967,15 @@ function CardsContent() {
           <div className="grid grid-cols-2 gap-3 text-[16px]">
             <div className="p-4 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[var(--c-accent-text)]">Permanent Vault Booster</span>
+                <span className="text-[18px] font-bold text-[var(--c-accent-text)]"><LocalizedText text="Permanent Vault Booster"/></span>
               </div>
-              <p className="text-white/50 leading-snug">The permanent pool: 10 cards drawn from the published Foundation catalogue with an SR-or-higher guarantee.</p>
+              <p className="text-white/50 leading-snug"><LocalizedText text="The permanent pool: 10 cards drawn from the published Foundation catalogue with an SR-or-higher guarantee."/></p>
             </div>
             <div className="p-4 rounded-lg" style={{ background: 'rgba(255,136,0,0.08)', border: '0.5px solid rgba(255,136,0,0.3)' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[18px] font-bold text-[#ffb347]">Release packs</span>
+                <span className="text-[18px] font-bold text-[#ffb347]"><LocalizedText text="Release packs"/></span>
               </div>
-              <p className="text-white/50 leading-snug">Standard packs contain 6 cards with an SR-or-higher slot. Premium packs contain 4 cards with a UR guarantee. Both draw from a named release checklist.</p>
+              <p className="text-white/50 leading-snug"><LocalizedText text="Standard packs contain 6 cards with an SR-or-higher slot. Premium packs contain 4 cards with a UR guarantee. Both draw from a named release checklist."/></p>
             </div>
           </div>
         </SectionBody>
@@ -1005,15 +983,13 @@ function CardsContent() {
 
       <Section title="Dynamic monthly releases" icon={Calendar} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Monthly releases scale with the published Foundation <strong className="text-white/75">base-card count</strong>, not with the number of SPR parallels. The target and economy modifier are frozen into the release when it is drafted, so a later library scan cannot silently change an existing release.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Monthly releases scale with the published Foundation"/>{" "}<strong className="text-white/75"><LocalizedText text="base-card count"/></strong><LocalizedText text=", not with the number of SPR parallels. The target and economy modifier are frozen into the release when it is drafted, so a later library scan cannot silently change an existing release."/></p>
           <div className="rounded-lg overflow-hidden mb-4" style={{ border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <table className="w-full text-[16px]">
               <thead><tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <th className="text-left px-4 py-2.5 text-white/40 font-medium">Published base collection</th>
-                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Monthly base cards</th>
-                <th className="text-right px-4 py-2.5 text-white/40 font-medium">Economy modifier</th>
+                <th className="text-left px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Published base collection"/></th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Monthly base cards"/></th>
+                <th className="text-right px-4 py-2.5 text-white/40 font-medium"><LocalizedText text="Economy modifier"/></th>
               </tr></thead>
               <tbody>
                 {[
@@ -1033,17 +1009,17 @@ function CardsContent() {
               </tbody>
             </table>
           </div>
-          <p className="text-[16px] text-white/45 leading-snug">The modifier also scales future monthly pack prices in 25-Credit steps. At the 1.00× reference, Standard is 550 Credits regular / 700 launch and Premium is 1,000 regular / 1,250 launch. Published prices are frozen with the release; September's existing products are not rewritten.</p>
+          <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text="The modifier also scales future monthly pack prices in 25-Credit steps. At the 1.00× reference, Standard is 550 Credits regular / 700 launch and Premium is 1,000 regular / 1,250 launch. Published prices are frozen with the release; September's existing products are not rewritten."/></p>
         </SectionBody>
       </Section>
 
       <Section title="Pack opening, copies & binders" icon={Archive} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <div className="space-y-3 text-[16px] text-white/55">
-            <p>Opening a booster creates an acquisition record and durable physical-copy identity for each card. The published card definition stays frozen; duplicate pulls become additional owned copies rather than a different card.</p>
-            <p>Binders, cabinets, display stands, and physical placements refer to owned copies. Collection filters, release checklists, provenance, and the approved card renderers remain authoritative in the ordinary Card Collection workspace.</p>
-            <p>Pack odds are independent of the card's personal-value evidence. Engagement can decide which real sources deserve a printing or an SPR, but opening a pack does not rewrite a card's rarity or artwork.</p>
-            <p>Legacy cards from before TCG V2 are preserved as Legacy and kept outside current rarity/type categories unless you explicitly enable the Legacy scope.</p>
+            <p><LocalizedText text="Opening a booster creates an acquisition record and durable physical-copy identity for each card. The published card definition stays frozen; duplicate pulls become additional owned copies rather than a different card."/></p>
+            <p><LocalizedText text="Binders, cabinets, display stands, and physical placements refer to owned copies. Collection filters, release checklists, provenance, and the approved card renderers remain authoritative in the ordinary Card Collection workspace."/></p>
+            <p><LocalizedText text="Pack odds are independent of the card's personal-value evidence. Engagement can decide which real sources deserve a printing or an SPR, but opening a pack does not rewrite a card's rarity or artwork."/></p>
+            <p><LocalizedText text="Legacy cards from before TCG V2 are preserved as Legacy and kept outside current rarity/type categories unless you explicitly enable the Legacy scope."/></p>
           </div>
         </SectionBody>
       </Section>
@@ -1059,8 +1035,8 @@ function CardsContent() {
             ].map(({ name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
-                <span className="font-bold w-36 flex-shrink-0" style={{ color }}>{name}</span>
-                <p className="text-white/55 leading-snug">{desc}</p>
+                <span className="font-bold w-36 flex-shrink-0" style={{ color }}><LocalizedText text={name}/></span>
+                <p className="text-white/55 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1079,7 +1055,7 @@ function CardsContent() {
               <div key={action} className="flex gap-3 items-start px-4 py-3 rounded-lg"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                 <Pill color={color}>{action}</Pill>
-                <p className="text-white/55 leading-snug flex-1 mt-0.5">{desc}</p>
+                <p className="text-white/55 leading-snug flex-1 mt-0.5"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1094,9 +1070,7 @@ function CollectionRoomContent() {
     <div className="space-y-3">
       <Section title="What the Collection Room is" icon={Box} defaultOpen accentColor="var(--c-amber)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">
-            Collection Room is an optional first-person home for the TCG layer. It gives your cards a physical place to live: shelves, cabinets, binders, posters, stands, parcels, and furniture. The ordinary Card Collection remains authoritative; the room is its tactile display space.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Collection Room is an optional first-person home for the TCG layer. It gives your cards a physical place to live: shelves, cabinets, binders, posters, stands, parcels, and furniture. The ordinary Card Collection remains authoritative; the room is its tactile display space."/></p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
               ['I inventory', 'Press I to open the persistent inventory. Place exact owned furniture instances, inspect held items, and open collected parcels or earned booster tokens.'],
@@ -1105,8 +1079,8 @@ function CollectionRoomContent() {
               ['Safe persistence', 'Room layouts, furniture instances, parcels, and display assignments are persisted with revision-safe updates and undo/redo support.'],
             ].map(([label, desc]) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 22%, transparent)' }}>
-                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
-                <p className="text-white/45 leading-snug">{desc}</p>
+                <div className="text-[17px] font-semibold text-white/80 mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1125,7 +1099,7 @@ function CollectionRoomContent() {
             ].map(([label, desc], index) => (
               <div key={label} className="flex gap-3 items-start">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[16px] font-bold" style={{ background: 'color-mix(in srgb, var(--c-accent) 22%, transparent)', color: 'var(--c-accent)' }}>{index + 1}</div>
-                <p className="text-white/55 leading-snug"><strong className="text-white/75">{label}:</strong> {desc}</p>
+            <p className="text-white/55 leading-snug"><strong className="text-white/75"><LocalizedText text={label}/><LocalizedText text=":"/></strong> <LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1135,19 +1109,17 @@ function CollectionRoomContent() {
       <Section title="Placement rules" icon={Layers3} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <div className="space-y-2.5 text-[16px] text-white/55">
-            <p><strong className="text-white/75">Floor furniture</strong> can be placed freely on the authored walkable floor and moved or rotated later.</p>
-            <p><strong className="text-white/75">Wall shelves and posters</strong> are wall-only. The placement preview uses the actual authored wall faces rather than treating the whole room as a loose rectangle.</p>
-            <p><strong className="text-white/75">Card stands</strong> belong inside authored shelf levels. Cards displayed in cabinets follow their parent shelf when it moves or rotates.</p>
-            <p><strong className="text-white/75">Context actions</strong> stay attached to the live preview: Place, Return, Rotate, and Deselect. Right-click is reserved for deselecting rather than accidentally selecting another object.</p>
+            <p><strong className="text-white/75"><LocalizedText text="Floor furniture"/></strong>{" "}<LocalizedText text="can be placed freely on the authored walkable floor and moved or rotated later."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Wall shelves and posters"/></strong>{" "}<LocalizedText text="are wall-only. The placement preview uses the actual authored wall faces rather than treating the whole room as a loose rectangle."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Card stands"/></strong>{" "}<LocalizedText text="belong inside authored shelf levels. Cards displayed in cabinets follow their parent shelf when it moves or rotates."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Context actions"/></strong>{" "}<LocalizedText text="stay attached to the live preview: Place, Return, Rotate, and Deselect. Right-click is reserved for deselecting rather than accidentally selecting another object."/></p>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="Module and display safety" icon={Settings} defaultOpen={false} accentColor="rgba(255,255,255,0.45)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed">
-            The room is an optional downloadable module. Its installer can resume downloads, verify integrity, repair a damaged version, update it, cancel safely, and uninstall only the room module without deleting your collection. If the room is unavailable, your cards, binders, releases, and physical-copy ledger remain usable in the main TCG workspace.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed"><LocalizedText text="The room is an optional downloadable module. Its installer can resume downloads, verify integrity, repair a damaged version, update it, cancel safely, and uninstall only the room module without deleting your collection. If the room is unavailable, your cards, binders, releases, and physical-copy ledger remain usable in the main TCG workspace."/></p>
         </SectionBody>
       </Section>
     </div>
@@ -1159,7 +1131,7 @@ function SettingsContent() {
     <div className="space-y-3">
       <Section title="Settings at a glance" icon={Settings} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed mb-4">Settings is organized by the kind of thing it changes. The important distinction is between library paths, behavior preferences, and destructive maintenance.</p>
+          <p className="text-[17px] text-white/55 leading-relaxed mb-4"><LocalizedText text="Settings is organized by the kind of thing it changes. The important distinction is between library paths, behavior preferences, and destructive maintenance."/></p>
           <div className="grid grid-cols-2 gap-2 text-[16px]">
             {[
               ['Library', 'Roots, missing-folder resolution, creator-folder synchronization, and the configured data locations.'],
@@ -1172,8 +1144,8 @@ function SettingsContent() {
               ['System', 'Connect a mobile device, check updates, read the in-app changelog, restart the server, or perform a factory reset.'],
             ].map(([label, desc]) => (
               <div key={label} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-                <div className="text-[17px] font-semibold text-white/80 mb-1">{label}</div>
-                <p className="text-white/45 leading-snug">{desc}</p>
+                <div className="text-[17px] font-semibold text-white/80 mb-1"><LocalizedText text={label}/></div>
+                <p className="text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1183,10 +1155,10 @@ function SettingsContent() {
       <Section title="Scanning and video compatibility" icon={ScanLine} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <div className="space-y-2.5 text-[16px] text-white/55">
-            <p>Scans ignore hidden/system files and metadata folders by default. The Scanner setting can include them when a library needs that behavior.</p>
-            <p>Video durations are recorded during new scans. Read video lengths is a resumable repair action for older imports, and unknown durations stay visibly unknown instead of being guessed.</p>
-            <p>Funscripts can stay beside videos or be centralized in a configured library. Matching uses the video's filename and permanent links survive future playback.</p>
-            <p>When Chromium cannot play a VLC/FFmpeg-compatible file directly, The Vault can create a cached browser-compatible playback copy while preserving the original media.</p>
+            <p><LocalizedText text="Scans ignore hidden/system files and metadata folders by default. The Scanner setting can include them when a library needs that behavior."/></p>
+            <p><LocalizedText text="Video durations are recorded during new scans. Read video lengths is a resumable repair action for older imports, and unknown durations stay visibly unknown instead of being guessed."/></p>
+            <p><LocalizedText text="Funscripts can stay beside videos or be centralized in a configured library. Matching uses the video's filename and permanent links survive future playback."/></p>
+            <p><LocalizedText text="When Chromium cannot play a VLC/FFmpeg-compatible file directly, The Vault can create a cached browser-compatible playback copy while preserving the original media."/></p>
           </div>
         </SectionBody>
       </Section>
@@ -1194,18 +1166,16 @@ function SettingsContent() {
       <Section title="Backup, restore & destructive actions" icon={AlertTriangle} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
           <div className="space-y-2.5 text-[16px] text-white/55">
-            <p>Use Backup before a large repair or economy/catalogue operation. Restore replaces the current database only after you choose a backup file, and the current database is saved automatically first.</p>
-            <p>Changing the data location moves future database/thumb storage; the fixed configuration file remains the anchor so the app can find the setting again.</p>
-            <p>Factory reset is different from restore: it wipes the collection and should be treated as irreversible. It does not mean “clear the current filters” or “re-scan the library.”</p>
+            <p><LocalizedText text="Use Backup before a large repair or economy/catalogue operation. Restore replaces the current database only after you choose a backup file, and the current database is saved automatically first."/></p>
+            <p><LocalizedText text="Changing the data location moves future database/thumb storage; the fixed configuration file remains the anchor so the app can find the setting again."/></p>
+            <p><LocalizedText text="Factory reset is different from restore: it wipes the collection and should be treated as irreversible. It does not mean “clear the current filters” or “re-scan the library.”"/></p>
           </div>
         </SectionBody>
       </Section>
 
       <Section title="Themes and semantic colours" icon={Sparkles} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed">
-            Theme palettes recolour the interface, surfaces, controls, and charts. Some colours intentionally remain semantic: rarity, AI-versus-manual tag source, and device status keep their meaning when the palette changes. This is why a rarity badge may stay gold or a connected device may stay green in every theme.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed"><LocalizedText text="Theme palettes recolour the interface, surfaces, controls, and charts. Some colours intentionally remain semantic: rarity, AI-versus-manual tag source, and device status keep their meaning when the palette changes. This is why a rarity badge may stay gold or a connected device may stay green in every theme."/></p>
         </SectionBody>
       </Section>
     </div>
@@ -1227,8 +1197,8 @@ function DevicesContent() {
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
                 <Icon size={18} style={{ color }} className="flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-[18px] font-semibold text-white/80 mb-1">{name}</div>
-                  <p className="text-[16px] text-white/50 leading-snug">{desc}</p>
+                  <div className="text-[18px] font-semibold text-white/80 mb-1"><LocalizedText text={name}/></div>
+                  <p className="text-[16px] text-white/50 leading-snug"><LocalizedText text={desc}/></p>
                 </div>
               </div>
             ))}
@@ -1247,7 +1217,7 @@ function DevicesContent() {
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}12`, border: `0.5px solid ${color}35` }}>
                 <Pill color={color}>{name}</Pill>
-                <p className="text-white/55 leading-snug flex-1 mt-0.5">{desc}</p>
+                <p className="text-white/55 leading-snug flex-1 mt-0.5"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1267,8 +1237,8 @@ function DevicesContent() {
               <div key={name} className="flex gap-2 items-start">
                 <ArrowRight size={13} style={{ color: 'var(--c-accent)' }} className="flex-shrink-0 mt-1" />
                 <div>
-                  <span className="text-white/80 font-semibold">{name}</span>
-                  <span className="text-white/50"> — {desc}</span>
+                <span className="text-white/80 font-semibold"><LocalizedText text={name}/></span>
+                  <span className="text-white/50">{" "}<LocalizedText text="—"/>{" "}<LocalizedText text={desc}/></span>
                 </div>
               </div>
             ))}
@@ -1280,16 +1250,16 @@ function DevicesContent() {
         <SectionBody>
           <div className="space-y-3 text-[17px]">
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-amber)] mb-1">Ramp Mode</div>
-              <p className="text-white/55">Smoothly interpolates between a Start Pattern and an End Pattern over a set duration (1–120 min). Great for gradual escalation during a session. Mutually exclusive with the scheduler.</p>
+              <div className="font-semibold text-[var(--c-amber)] mb-1"><LocalizedText text="Ramp Mode"/></div>
+              <p className="text-white/55"><LocalizedText text="Smoothly interpolates between a Start Pattern and an End Pattern over a set duration (1–120 min). Great for gradual escalation during a session. Mutually exclusive with the scheduler."/></p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-accent)] mb-1">Pattern Scheduler</div>
-              <p className="text-white/55">Queue a sequence of patterns, each with a duration. The device cycles through them in order when Freestyle is active. Supports looping or play-once mode.</p>
+              <div className="font-semibold text-[var(--c-accent)] mb-1"><LocalizedText text="Pattern Scheduler"/></div>
+              <p className="text-white/55"><LocalizedText text="Queue a sequence of patterns, each with a duration. The device cycles through them in order when Freestyle is active. Supports looping or play-once mode."/></p>
             </div>
             <div className="p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--c-pink) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
-              <div className="font-semibold text-[var(--c-pink)] mb-1">Edge Mode</div>
-              <p className="text-white/55">Arm it and the device cuts out — or slows to a set percentage — at random (or fixed) intervals, holds for a random (or fixed) stretch, then eases back. Works in Freestyle and during funscript playback, and can be toggled from the device panel in any viewer or by hotkey. Every edge adds +1 to the edge count of whatever is on screen.</p>
+              <div className="font-semibold text-[var(--c-pink)] mb-1"><LocalizedText text="Edge Mode"/></div>
+              <p className="text-white/55"><LocalizedText text="Arm it and the device cuts out — or slows to a set percentage — at random (or fixed) intervals, holds for a random (or fixed) stretch, then eases back. Works in Freestyle and during funscript playback, and can be toggled from the device panel in any viewer or by hotkey. Every edge adds +1 to the edge count of whatever is on screen."/></p>
             </div>
           </div>
         </SectionBody>
@@ -1297,11 +1267,7 @@ function DevicesContent() {
 
       <Section title="Funscript sync" icon={ScrollText} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 leading-relaxed">
-            When a video is scanned, The Vault looks for a file with the same name but <code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>.funscript</code> extension
-            in the same folder (e.g. <code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>scene.mp4</code> → <code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>scene.funscript</code>).
-            If found, it's stored in the database. A ⚡ badge appears on the video card. When you play the video with a device connected, funscript mode activates automatically and the device follows the script.
-          </p>
+          <p className="text-[17px] text-white/55 leading-relaxed"><LocalizedText text="When a video is scanned, The Vault looks for a file with the same name but"/>{" "}<code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}><LocalizedText text=".funscript"/></code>{" "}<LocalizedText text="extension in the same folder (e.g."/>{" "}<code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}><LocalizedText text="scene.mp4"/></code>{" "}<LocalizedText text="→"/>{" "}<code className="px-1 rounded text-[16px]" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}><LocalizedText text="scene.funscript"/></code><LocalizedText text="). If found, it's stored in the database. A ⚡ badge appears on the video card. When you play the video with a device connected, funscript mode activates automatically and the device follows the script."/></p>
         </SectionBody>
       </Section>
     </div>
@@ -1329,11 +1295,7 @@ function ErikaContent() {
       {/* What is Erika */}
       <Section title="What is Erika?" icon={Bot} defaultOpen accentColor="var(--c-pink)">
         <SectionBody>
-          <p className="text-[18px] text-white/60 leading-relaxed mb-4">
-            Erika is an AI companion built into the sidebar of The Vault. She is powered entirely by a local
-            language model running on your own machine via <strong className="text-white/75">Ollama</strong> — no cloud, no
-            subscription, no data leaving your device.
-          </p>
+          <p className="text-[18px] text-white/60 leading-relaxed mb-4"><LocalizedText text="Erika is an AI companion built into the sidebar of The Vault. She is powered entirely by a local language model running on your own machine via"/>{" "}<strong className="text-white/75"><LocalizedText text="Ollama"/></strong>{" "}<LocalizedText text="— no cloud, no subscription, no data leaving your device."/></p>
           <div className="grid grid-cols-3 gap-3">
             {[
               { icon: Bot,          color: 'var(--c-pink)',   label: 'Fully local',     desc: 'Runs on your GPU (or CPU). Nothing is sent to any server.' },
@@ -1343,9 +1305,9 @@ function ErikaContent() {
               <div key={label} className="p-4 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Icon size={15} style={{ color }} />
-                  <span className="text-[17px] font-semibold text-white/80">{label}</span>
+                  <span className="text-[17px] font-semibold text-white/80"><LocalizedText text={label}/></span>
                 </div>
-                <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1367,8 +1329,8 @@ function ErikaContent() {
                 {ok === true  && <CheckCircle size={16} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />}
                 {ok === null  && <AlertTriangle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />}
                 <div>
-                  <div className="text-[17px] font-semibold text-white/80 mb-0.5">{label}</div>
-                  <p className="text-[16px] text-white/45 leading-snug">{desc}</p>
+                  <div className="text-[17px] font-semibold text-white/80 mb-0.5"><LocalizedText text={label}/></div>
+                  <p className="text-[16px] text-white/45 leading-snug"><LocalizedText text={desc}/></p>
                 </div>
               </div>
             ))}
@@ -1382,26 +1344,26 @@ function ErikaContent() {
           <div className="space-y-3">
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}>1</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}><LocalizedText text="1"/></div>
               <div>
-                <div className="text-[18px] font-semibold text-white/80 mb-0.5">Download Ollama</div>
-                <p className="text-[16px] text-white/50 leading-snug">Go to <span className="font-mono text-[16px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}>https://ollama.com</span> and download the Windows installer. Run it — Ollama installs as a background service and starts automatically.</p>
+                <div className="text-[18px] font-semibold text-white/80 mb-0.5"><LocalizedText text="Download Ollama"/></div>
+                <p className="text-[16px] text-white/50 leading-snug"><LocalizedText text="Go to"/>{" "}<span className="font-mono text-[16px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--c-green)' }}><LocalizedText text="https://ollama.com"/></span>{" "}<LocalizedText text="and download the Windows installer. Run it — Ollama installs as a background service and starts automatically."/></p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
-                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}>2</div>
+                   style={{ background: 'color-mix(in srgb, var(--c-green) 25%, transparent)', color: 'var(--c-green)' }}><LocalizedText text="2"/></div>
               <div>
-                <div className="text-[18px] font-semibold text-white/80 mb-0.5">Verify it's running</div>
-                <p className="text-[16px] text-white/50 leading-snug mb-2">Open a Command Prompt or PowerShell and run:</p>
-                <code className="block px-3 py-2 rounded-lg text-[16px] font-mono" style={{ background: 'rgba(0,0,0,0.4)', color: '#7DD3A8', border: '0.5px solid rgba(255,255,255,0.08)' }}>ollama list</code>
-                <p className="text-[16px] text-white/40 mt-2 leading-snug">You should see a table (even if empty). If you get "command not found", restart your terminal or reboot.</p>
+                <div className="text-[18px] font-semibold text-white/80 mb-0.5"><LocalizedText text="Verify it's running"/></div>
+                <p className="text-[16px] text-white/50 leading-snug mb-2"><LocalizedText text="Open a Command Prompt or PowerShell and run:"/></p>
+                <code className="block px-3 py-2 rounded-lg text-[16px] font-mono" style={{ background: 'rgba(0,0,0,0.4)', color: '#7DD3A8', border: '0.5px solid rgba(255,255,255,0.08)' }}><LocalizedText text="ollama list"/></code>
+                <p className="text-[16px] text-white/40 mt-2 leading-snug"><LocalizedText text="You should see a table (even if empty). If you get &quot;command not found&quot;, restart your terminal or reboot."/></p>
               </div>
             </div>
             <div className="p-3 rounded-lg flex gap-2 text-[16px]"
                  style={{ background: 'color-mix(in srgb, var(--c-green) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 20%, transparent)' }}>
               <Info size={14} style={{ color: 'var(--c-green)' }} className="flex-shrink-0 mt-0.5" />
-              <span className="text-white/50">Ollama listens on <span className="font-mono text-[16px] text-white/70">http://localhost:11434</span> by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port.</span>
+              <span className="text-white/50"><LocalizedText text="Ollama listens on"/>{" "}<span className="font-mono text-[16px] text-white/70"><LocalizedText text="http://localhost:11434"/></span>{" "}<LocalizedText text="by default. The Vault uses this address to talk to it — no extra configuration needed unless you changed the port."/></span>
             </div>
           </div>
         </SectionBody>
@@ -1410,31 +1372,24 @@ function ErikaContent() {
       {/* Step 2 — Pull a model */}
       <Section title="Step 2 — Pull a model" icon={Package} defaultOpen={false} accentColor="var(--c-accent)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 mb-4">
-            Erika works with any model available in Ollama. The recommended model is an uncensored 27B that handles
-            roleplay and explicit content well. Pull it with:
-          </p>
+          <p className="text-[17px] text-white/55 mb-4"><LocalizedText text="Erika works with any model available in Ollama. The recommended model is an uncensored 27B that handles roleplay and explicit content well. Pull it with:"/></p>
           <code className="block px-4 py-3 rounded-lg text-[16px] font-mono mb-4 leading-relaxed break-all"
-                style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-            ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
-          </code>
-          <p className="text-[16px] text-white/40 mb-4">This is ~15 GB. It will take a few minutes depending on your connection. Ollama shows download progress in the terminal.</p>
+                style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>{" "}<LocalizedText text="ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS"/>{" "}</code>
+          <p className="text-[16px] text-white/40 mb-4"><LocalizedText text="This is ~15 GB. It will take a few minutes depending on your connection. Ollama shows download progress in the terminal."/></p>
 
           <div className="mb-4 p-3 rounded-lg flex gap-2"
                style={{ background: 'color-mix(in srgb, var(--c-amber) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
             <AlertTriangle size={16} style={{ color: 'var(--c-amber)' }} className="flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
-              <div className="text-[16px] font-semibold text-white/75 mb-1">Troubleshooting a Hugging Face redirect error</div>
-              <p className="text-[16px] text-white/50 leading-snug mb-2">If Ollama reports a redirect or download error while fetching this model, update Ollama and retry the normal command above first. As a temporary workaround, run:</p>
+              <div className="text-[16px] font-semibold text-white/75 mb-1"><LocalizedText text="Troubleshooting a Hugging Face redirect error"/></div>
+              <p className="text-[16px] text-white/50 leading-snug mb-2"><LocalizedText text="If Ollama reports a redirect or download error while fetching this model, update Ollama and retry the normal command above first. As a temporary workaround, run:"/></p>
               <code className="block px-3 py-2 rounded-lg text-[16px] font-mono leading-relaxed break-all"
-                    style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-amber)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                ollama pull --insecure hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS
-              </code>
-              <p className="text-[16px] text-white/40 mt-2 leading-snug">This flag relaxes download security checks to work around the redirect. Use it only with the trusted <span className="font-mono text-[16px] text-white/60">hf.co</span> model address above, then prefer the normal command again after Ollama is updated.</p>
+                    style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--c-amber)', border: '0.5px solid rgba(255,255,255,0.08)' }}>{" "}<LocalizedText text="ollama pull --insecure hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ4_XS"/>{" "}</code>
+              <p className="text-[16px] text-white/40 mt-2 leading-snug"><LocalizedText text="This flag relaxes download security checks to work around the redirect. Use it only with the trusted"/>{" "}<span className="font-mono text-[16px] text-white/60"><LocalizedText text="hf.co"/></span>{" "}<LocalizedText text="model address above, then prefer the normal command again after Ollama is updated."/></p>
             </div>
           </div>
 
-          <div className="text-[17px] font-semibold text-white/60 mb-2">Lighter alternatives (lower VRAM)</div>
+          <div className="text-[17px] font-semibold text-white/60 mb-2"><LocalizedText text="Lighter alternatives (lower VRAM)"/></div>
           <div className="space-y-2">
             {[
               { model: 'hf.co/mradermacher/Mistral-Nemo-Instruct-2407-abliterated-GGUF:Q5_K_M', vram: '~9 GB', note: '12B uncensored — good balance of quality and speed' },
@@ -1444,7 +1399,7 @@ function ErikaContent() {
                 <code className="text-[16px] font-mono text-white/60 break-all">{model}</code>
                 <div className="flex gap-3 mt-1">
                   <span className="text-[16px] font-semibold" style={{ color: 'var(--c-amber)' }}>{vram}</span>
-                  <span className="text-[16px] text-white/40">{note}</span>
+                    <span className="text-[16px] text-white/40"><LocalizedText text={note}/></span>
                 </div>
               </div>
             ))}
@@ -1452,7 +1407,7 @@ function ErikaContent() {
           <div className="mt-3 p-3 rounded-lg flex gap-2 text-[16px]"
                style={{ background: 'color-mix(in srgb, var(--c-pink) 7%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 20%, transparent)' }}>
             <AlertTriangle size={14} style={{ color: 'var(--c-pink)' }} className="flex-shrink-0 mt-0.5" />
-            <span className="text-white/50">Standard (censored) models from Ollama's library will refuse explicit requests regardless of bond tier. You must use an uncensored or abliterated model for Erika to be fully functional.</span>
+            <span className="text-white/50"><LocalizedText text="Standard (censored) models from Ollama's library will refuse explicit requests regardless of bond tier. You must use an uncensored or abliterated model for Erika to be fully functional."/></span>
           </div>
         </SectionBody>
       </Section>
@@ -1472,8 +1427,8 @@ function ErikaContent() {
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[16px] font-bold"
                      style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent)' }}>{n}</div>
                 <div>
-                  <div className="text-[18px] font-semibold text-white/80 mb-0.5">{title}</div>
-                  <p className="text-[16px] text-white/50 leading-snug">{body}</p>
+                  <div className="text-[18px] font-semibold text-white/80 mb-0.5"><LocalizedText text={title}/></div>
+              <p className="text-[16px] text-white/50 leading-snug"><LocalizedText text={body}/></p>
                 </div>
               </div>
             ))}
@@ -1484,23 +1439,20 @@ function ErikaContent() {
       {/* Bond system */}
       <Section title="Bond system" icon={Heart} defaultOpen={false} accentColor="var(--c-pink)">
         <SectionBody>
-          <p className="text-[17px] text-white/55 mb-4">
-            Every conversation earns bond XP. As your bond grows, Erika's intimacy gates open — she becomes
-            more comfortable, more open, and eventually fully uninhibited. Bond is tracked per persona.
-          </p>
+          <p className="text-[17px] text-white/55 mb-4"><LocalizedText text="Every conversation earns bond XP. As your bond grows, Erika's intimacy gates open — she becomes more comfortable, more open, and eventually fully uninhibited. Bond is tracked per persona."/></p>
           <div className="space-y-2">
             {BOND_TIERS.map(({ tier, xp, color, desc }) => (
               <div key={tier} className="flex items-start gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
                 <div className="flex-shrink-0 text-center w-24">
-                  <div className="text-[17px] font-bold" style={{ color }}>{tier}</div>
-                  <div className="text-[16px] text-white/35 font-mono">{xp.toLocaleString()} XP</div>
+                  <div className="text-[17px] font-bold" style={{ color }}><LocalizedText text={tier}/></div>
+                  <div className="text-[16px] text-white/35 font-mono">{xp.toLocaleString()}{" "}<LocalizedText text="XP"/></div>
                 </div>
-                <p className="text-[16px] text-white/55 leading-snug mt-0.5">{desc}</p>
+                <p className="text-[16px] text-white/55 leading-snug mt-0.5"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[16px] text-white/30">Bond XP accumulates naturally through conversation. There is no shortcut to skip tiers — the progression is intentional.</p>
+          <p className="mt-3 text-[16px] text-white/30"><LocalizedText text="Bond XP accumulates naturally through conversation. There is no shortcut to skip tiers — the progression is intentional."/></p>
         </SectionBody>
       </Section>
 
@@ -1510,8 +1462,8 @@ function ErikaContent() {
           <div className="grid grid-cols-2 gap-2 mb-4">
             {PERSONALITIES.map(({ name, color, desc }) => (
               <div key={name} className="p-3 rounded-lg" style={{ background: `${color}0D`, border: `0.5px solid ${color}30` }}>
-                <div className="text-[17px] font-bold mb-1" style={{ color }}>{name}</div>
-                <p className="text-[16px] text-white/50 leading-snug">{desc}</p>
+                <div className="text-[17px] font-bold mb-1" style={{ color }}><LocalizedText text={name}/></div>
+                <p className="text-[16px] text-white/50 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1519,8 +1471,7 @@ function ErikaContent() {
                style={{ background: 'rgba(192,132,252,0.07)', border: '0.5px solid rgba(192,132,252,0.2)' }}>
             <Info size={14} style={{ color: '#C084FC' }} className="flex-shrink-0 mt-0.5" />
             <span className="text-white/50">
-              <strong className="text-white/70">Active persona:</strong> Link any creator from your vault roster and Erika adopts their name and background. Bond XP is tracked separately per persona, so each relationship starts at Acquaintance.
-            </span>
+              <strong className="text-white/70"><LocalizedText text="Active persona:"/></strong>{" "}<LocalizedText text="Link any creator from your vault roster and Erika adopts their name and background. Bond XP is tracked separately per persona, so each relationship starts at Acquaintance."/>{" "}</span>
           </div>
         </SectionBody>
       </Section>
@@ -1538,8 +1489,8 @@ function ErikaContent() {
             ].map(({ name, color, desc }) => (
               <div key={name} className="flex gap-3 px-4 py-3 rounded-lg"
                    style={{ background: `${color}0D`, border: `0.5px solid ${color}25` }}>
-                <span className="font-bold flex-shrink-0 w-36" style={{ color }}>{name}</span>
-                <p className="text-white/50 leading-snug">{desc}</p>
+                <span className="font-bold flex-shrink-0 w-36" style={{ color }}><LocalizedText text={name}/></span>
+                <p className="text-white/50 leading-snug"><LocalizedText text={desc}/></p>
               </div>
             ))}
           </div>
@@ -1556,6 +1507,7 @@ function ErikaContent() {
 // never go stale against Settings → Hotkeys — there is nothing here to update
 // when an action is added.
 function HotkeysContent() {
+  const t = useT()
   const hotkeys = useVaultStore(s => s.hotkeys)
   const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
 
@@ -1570,41 +1522,31 @@ function HotkeysContent() {
       <Section title="How the two kinds of shortcut differ" icon={Keyboard} defaultOpen accentColor="var(--c-accent)">
         <SectionBody>
           <p className="text-white/55">
-            <b>Anywhere</b> shortcuts work on any page and use modifier combos so they never collide with typing.
-            <b> Viewer</b> shortcuts are bare keys — they only exist while a viewer or the panel wall is open, and they
-            win over an anywhere-shortcut on the same key. Nothing fires while you are typing in a box, with the single
-            exception of Emergency stop.
-          </p>
-          <p className="mt-3 text-white/55">
-            On the panel wall, <b>click a panel to pin it</b>. The pinned panel gets an accent ring, and it is what the
-            viewer keys — including the number-key ratings — act on. The <b>wall</b> keys ignore the pin and drive every
-            panel at once.
-          </p>
-          <p className="mt-3 text-[16px] text-white/30">
-            Every binding below is yours to change in Settings → Hotkeys. Seek currently moves {seekStep}s,
-            long seek {seekStepBig}s.
-          </p>
+            <b><LocalizedText text="Anywhere"/></b>{" "}<LocalizedText text="shortcuts work on any page and use modifier combos so they never collide with typing."/>{" "}<b>{" "}<LocalizedText text="Viewer"/></b>{" "}<LocalizedText text="shortcuts are bare keys — they only exist while a viewer or the panel wall is open, and they win over an anywhere-shortcut on the same key. Nothing fires while you are typing in a box, with the single exception of Emergency stop."/></p>
+          <p className="mt-3 text-white/55"><LocalizedText text="On the panel wall,"/>{" "}<b><LocalizedText text="click a panel to pin it"/></b><LocalizedText text=". The pinned panel gets an accent ring, and it is what the viewer keys — including the number-key ratings — act on. The"/>{" "}<b><LocalizedText text="wall"/></b>{" "}<LocalizedText text="keys ignore the pin and drive every panel at once."/></p>
+          <p className="mt-3 text-[16px] text-white/30"><LocalizedText text="Every binding below is yours to change in Settings → Hotkeys. Seek currently moves"/>{" "}{seekStep}<LocalizedText text="s, long seek"/>{" "}{seekStepBig}<LocalizedText text="s."/></p>
         </SectionBody>
       </Section>
 
       {HOTKEY_GROUPS.map(group => {
         const actions = byGroup[group.name] ?? []
         if (!actions.length) return null
+        const scope = group.scope === SCOPE_VIEWER ? t('viewers only') : t('anywhere')
         return (
           <Section key={group.name}
-                   title={`${group.name} — ${group.scope === SCOPE_VIEWER ? 'viewers only' : 'anywhere'}`}
+                   title={`${t(group.name)} — ${scope}`}
                    icon={Keyboard}
                    defaultOpen={group.name === 'Viewer'}
                    accentColor={group.scope === SCOPE_VIEWER ? 'var(--c-accent)' : 'var(--c-amber)'}>
             <SectionBody>
-              <p className="text-white/40 mb-3">{group.blurb}</p>
+              <p className="text-white/40 mb-3"><LocalizedText text={group.blurb}/></p>
               <div className="flex flex-col gap-1.5">
                 {actions.map(a => (
                   <div key={a.id} className="flex items-center justify-between gap-4 py-1.5"
                        style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
                     <div className="min-w-0">
-                      <div className="text-[16px] text-white/70">{a.label}</div>
-                      <div className="text-[16px] text-white/30">{a.hint}</div>
+                      <div className="text-[16px] text-white/70"><LocalizedText text={a.label}/></div>
+                      <div className="text-[16px] text-white/30"><LocalizedText text={a.hint}/></div>
                     </div>
                     <span className="px-2.5 py-1 rounded-[6px] text-[16px] font-mono flex-shrink-0"
                           style={{
@@ -1642,6 +1584,7 @@ const TABS = [
 ]
 
 export default function Help() {
+  const t = useT()
   const [activeTab, setActiveTab] = useState('overview')
   const [search, setSearch]       = useState('')
 
@@ -1665,9 +1608,9 @@ export default function Help() {
   }, [activeTab, search])
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="vault-help-page flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 px-8 pt-8 pb-5"
+      <div data-theme-heading className="flex-shrink-0 px-8 pt-8 pb-5"
            style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: 'var(--c-surface)' }}>
         <div className="flex items-start justify-between mb-5">
           <div>
@@ -1676,9 +1619,9 @@ export default function Help() {
                    style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                 <BookOpen size={18} style={{ color: 'var(--c-accent)' }} />
               </div>
-              <h1 className="text-[27px] font-bold text-white/90">Help & Reference</h1>
+              <h1 className="text-[27px] font-bold text-white/90"><LocalizedText text="Help &amp; Reference"/></h1>
             </div>
-            <p className="text-[18px] text-white/40 ml-12">Everything The Vault can do, explained.</p>
+            <p className="text-[18px] text-white/40 ml-12"><LocalizedText text="Everything The Vault can do, explained."/></p>
           </div>
           {/* Search */}
           <div className="relative w-72">
@@ -1686,7 +1629,7 @@ export default function Help() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search help…"
+              placeholder={t("Search help…")}
               className="w-full pl-9 pr-4 py-2.5 rounded-xl text-[17px] text-white/80 placeholder:text-white/25 outline-none transition-all"
               style={{
                 background: 'rgba(255,255,255,0.05)',
@@ -1697,13 +1640,14 @@ export default function Help() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <div className="vault-help-tabs flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = activeTab === id
             return (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
+                data-active={active}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-[17px] font-medium whitespace-nowrap transition-all flex-shrink-0"
                 style={active
                   ? { background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
@@ -1711,7 +1655,7 @@ export default function Help() {
                 }
               >
                 <Icon size={14} />
-                {label}
+                {t(label)}
               </button>
             )
           })}

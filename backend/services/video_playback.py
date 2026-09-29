@@ -9,6 +9,7 @@ file is opened.  The original media is never modified.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import threading
@@ -69,6 +70,39 @@ def _remove_stale_caches(cache_path: str, cache_key: str | int) -> None:
         pass
 
 
+def _can_remux_to_mp4(source_path: str, ffmpeg: str) -> bool:
+    """Check whether stream copy can make a browser-playable MP4.
+
+    MKV is only a container. Re-encoding H.264/AAC inside it can take longer
+    than the entire video, while copying those streams takes seconds.
+    """
+    ffprobe = str(Path(ffmpeg).with_name("ffprobe.exe" if os.name == "nt" else "ffprobe"))
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries",
+             "stream=codec_type,codec_name,pix_fmt", "-of", "json", source_path],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+        )
+        if result.returncode != 0:
+            return False
+        streams = json.loads(result.stdout).get("streams", [])
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+    video = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
+    audio = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    return bool(
+        video
+        and video.get("codec_name") == "h264"
+        and video.get("pix_fmt") in {"yuv420p", "yuvj420p"}
+        and all(stream.get("codec_name") == "aac" for stream in audio)
+    )
+
+
 def ensure_browser_playback(
     source_path: str,
     cache_key: str | int,
@@ -77,16 +111,19 @@ def ensure_browser_playback(
 ) -> tuple[str, bool]:
     """Return ``(path, converted)`` for a browser-playable video.
 
-    Native MP4/WebM files are returned directly.  Other formats are converted
-    into a cached H.264/AAC MP4 using an atomic temporary-file replacement, so
-    a cancelled request can never leave a half-written cache file behind.
+    Native MP4/WebM files are returned directly. Other containers with H.264
+    video and AAC audio are remuxed without re-encoding; other codecs are
+    converted to H.264/AAC. Both paths write the cache atomically.
     """
     if not needs_browser_conversion(source_path, force=force):
         return source_path, False
     if not os.path.isfile(source_path):
         raise VideoPlaybackError("Video file not found on disk")
 
-    cache_path = _cache_path(source_path, cache_key)
+    # A browser retry must be able to bypass a remuxed cache if its codec is
+    # still rejected, so forced re-encodes get their own cache entry.
+    effective_cache_key = f"forced-{cache_key}" if force else cache_key
+    cache_path = _cache_path(source_path, effective_cache_key)
     lock = _lock_for(cache_path)
     with lock:
         if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
@@ -96,8 +133,20 @@ def ensure_browser_playback(
         temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             ffmpeg = _get_ffmpeg_exe()
-            result = subprocess.run(
-                [
+            remux = not force and _can_remux_to_mp4(source_path, ffmpeg)
+            for copy_streams in ([True, False] if remux else [False]):
+                codec_args = (
+                    ["-c:v", "copy", "-c:a", "copy"] if copy_streams else [
+                        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                        "-c:v", "libx264",
+                        "-preset", "fast",
+                        "-crf", "21",
+                        "-pix_fmt", "yuv420p",
+                        "-c:a", "aac",
+                        "-b:a", "160k",
+                    ]
+                )
+                result = subprocess.run([
                     ffmpeg,
                     "-hide_banner",
                     "-loglevel", "error",
@@ -106,29 +155,25 @@ def ensure_browser_playback(
                     "-map", "0:v:0",
                     "-map", "0:a?",
                     "-sn",
-                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-                    "-c:v", "libx264",
-                    "-preset", "fast",
-                    "-crf", "21",
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "aac",
-                    "-b:a", "160k",
+                    *codec_args,
                     "-movflags", "+faststart",
                     "-f", "mp4",
                     temp_path,
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
-            )
-            if result.returncode != 0 or not os.path.isfile(temp_path) or os.path.getsize(temp_path) == 0:
+                ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.PIPE, text=True,
+                   creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+                if result.returncode == 0 and os.path.isfile(temp_path) and os.path.getsize(temp_path) > 0:
+                    break
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            else:
                 detail = (result.stderr or "").strip().splitlines()[-1:]
                 suffix = f": {detail[0]}" if detail else ""
                 raise VideoPlaybackError(f"FFmpeg could not convert this video{suffix}")
             os.replace(temp_path, cache_path)
-            _remove_stale_caches(cache_path, cache_key)
+            _remove_stale_caches(cache_path, effective_cache_key)
             return cache_path, True
         except FileNotFoundError as exc:
             raise VideoPlaybackError("FFmpeg is not available for browser video conversion") from exc

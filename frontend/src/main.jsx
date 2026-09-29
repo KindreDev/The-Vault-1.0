@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast'
 import App from './App'
 import queryClient from './lib/queryClient'
 import './index.css'
+import './theme-packs.css'
 import 'flag-icons/css/flag-icons.min.css'
 
 // If a lazily-loaded route chunk can't be fetched (the app was rebuilt while a

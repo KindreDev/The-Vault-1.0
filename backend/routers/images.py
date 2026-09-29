@@ -1,7 +1,9 @@
 import os
 import re
 import mimetypes
-import aiofiles
+import asyncio
+import hashlib
+import threading
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
@@ -9,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, nullslast, select, or_, and_
 from typing import Optional, List, Literal
 
-from database import get_db, _read_config
+from database import get_db, _read_config, DATA_DIR
 from models import Image, Gallery, Tag, image_tags, TagSource, gallery_creators, mix_images, Creator, image_creators
 from schemas import ImageOut, ImageUpdate, CumCountUpdate, EdgeLogIn
 import services.gamification as gami
@@ -21,8 +23,10 @@ from services.file_ops import remove_file
 from services.gallery_deletion import detach_image_references
 from services.tag_filters import apply_image_tag_filters
 from services.video_playback import VideoPlaybackError, ensure_browser_playback
+from services.video_stream import read_video_chunk
 
 router = APIRouter()
+_VIDEO_PREVIEW_LOCK = threading.Lock()
 
 
 def _enrich_image(img: Image, db: Session) -> dict:
@@ -705,15 +709,16 @@ _SERVE_EXTS = {
 }
 
 _VIDEO_EXTS  = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv"}
-_CHUNK_SIZE  = 256 * 1024   # 256 KB per aiofiles read
+_CHUNK_SIZE  = 256 * 1024   # 256 KB per read
 
 
 def _video_response(path: str, range_header: str | None, request=None) -> StreamingResponse:
     """
-    Range-aware video streaming using aiofiles for truly async file I/O.
+    Range-aware video streaming with nonblocking, short-lived file reads.
 
-    aiofiles.open() runs each read in a thread-pool executor, yielding the
-    event loop back between reads so other requests are serviced normally.
+    Each read runs in a worker thread and closes its disk handle before the
+    chunk is sent. An abandoned browser response may stall between chunks,
+    but it cannot keep the file or its parent folder locked on Windows.
 
     request.is_disconnected() is polled before every chunk. On Windows the
     proactor event loop does not always raise ConnectionResetError promptly
@@ -742,17 +747,20 @@ def _video_response(path: str, range_header: str | None, request=None) -> Stream
         length = end - start + 1
 
         async def _iter_range():
-            async with aiofiles.open(path, "rb") as f:
-                await f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    if request is not None and await request.is_disconnected():
-                        break
-                    data = await f.read(min(_CHUNK_SIZE, remaining))
-                    if not data:
-                        break
-                    remaining -= len(data)
-                    yield data
+            offset = start
+            while offset <= end:
+                if request is not None and await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.to_thread(
+                        read_video_chunk, path, offset, min(_CHUNK_SIZE, end - offset + 1)
+                    )
+                except FileNotFoundError:
+                    break  # File was moved while this response was in progress.
+                if not data:
+                    break
+                offset += len(data)
+                yield data
 
         return StreamingResponse(
             _iter_range(),
@@ -767,14 +775,20 @@ def _video_response(path: str, range_header: str | None, request=None) -> Stream
 
     # No Range header — send the full file (browser will seek via subsequent Range requests)
     async def _iter_full():
-        async with aiofiles.open(path, "rb") as f:
-            while True:
-                if request is not None and await request.is_disconnected():
-                    break
-                data = await f.read(_CHUNK_SIZE)
-                if not data:
-                    break
-                yield data
+        offset = 0
+        while offset < file_size:
+            if request is not None and await request.is_disconnected():
+                break
+            try:
+                data = await asyncio.to_thread(
+                    read_video_chunk, path, offset, min(_CHUNK_SIZE, file_size - offset)
+                )
+            except FileNotFoundError:
+                break  # File was moved while this response was in progress.
+            if not data:
+                break
+            offset += len(data)
+            yield data
 
     return StreamingResponse(
         _iter_full(),
@@ -1047,6 +1061,43 @@ def serve_preview(image_id: int, w: int = 1080, db: Session = Depends(get_db)):
         except Exception:
             return FileResponse(img.file_path)
     return FileResponse(cache, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/{image_id}/video-preview")
+def serve_video_preview(image_id: int, db: Session = Depends(get_db)):
+    """Serve a small looping WebP preview for video-backed card surfaces.
+
+    This is intentionally separate from ``/preview``: that route is a still
+    JPEG endpoint, while card grids need a short, cropped, low-bandwidth loop.
+    The original video is never modified and the derived preview is cached
+    outside the source library.
+    """
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img or not img.is_video:
+        raise HTTPException(404, "Video preview is only available for videos")
+    if not img.file_path or not os.path.isfile(img.file_path):
+        raise HTTPException(404, "Video file not found on disk")
+
+    source_stat = os.stat(img.file_path)
+    fingerprint = hashlib.sha256(
+        f"{os.path.abspath(img.file_path)}\0{source_stat.st_size}\0"
+        f"{source_stat.st_mtime_ns}".encode("utf-8")
+    ).hexdigest()[:16]
+    preview_dir = os.path.join(DATA_DIR, "video_previews")
+    preview_path = os.path.join(preview_dir, f"{image_id}-{fingerprint}.webp")
+    if not os.path.isfile(preview_path):
+        from services.scanner import generate_video_preview
+        with _VIDEO_PREVIEW_LOCK:
+            if not os.path.isfile(preview_path):
+                ok = generate_video_preview(img.file_path, preview_path, img.duration)
+                if not ok:
+                    return serve_thumb(image_id, db)
+
+    return FileResponse(
+        preview_path,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/{image_id}/thumb")

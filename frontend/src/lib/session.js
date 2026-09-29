@@ -11,6 +11,9 @@ import toast from 'react-hot-toast'
 import queryClient from './queryClient'
 import { sessionsApi } from './api'
 import { useVaultStore, SESSION_HEARTBEAT_MS } from '../store/vault'
+import { translate } from '../i18n'
+
+const tr = (key, params) => translate(useVaultStore.getState().locale, key, params)
 
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 // Stamps the clock while a session runs so the next launch can tell a session
@@ -43,7 +46,7 @@ export function stopSessionHeartbeat() {
 export function startSessionNow() {
   useVaultStore.getState().startSession()
   startSessionHeartbeat()
-  toast('🔥 Session started')
+  toast(tr('🔥 Session started'))
 }
 
 /**
@@ -73,13 +76,13 @@ export async function logRecoveredSession(durationSec, startedAt) {
       logged_at: toNaiveUtc(startedAt),
     })
     const mins = Math.round(durationSec / 60)
-    toast.success(`Session recovered · ${mins}m logged`)
+    toast.success(tr('Session recovered · {minutes}m logged', { minutes: mins }))
     for (const key of ['profile', 'quests', 'all-sessions', 'recent-sessions', 'ses-stats']) {
       queryClient.invalidateQueries({ queryKey: [key] })
     }
     return data
   } catch (_) {
-    toast.error('Could not save the recovered session')
+    toast.error(tr('Could not save the recovered session'))
     return null
   }
 }
@@ -161,8 +164,8 @@ export async function finishSessionNow(opts = {}) {
     const mins = Math.round(elapsed / 60000)
     toast.success(
       credited > 0
-        ? `💦 Session logged · ${mins}m · counted on ${credited} ${credited === 1 ? 'file' : 'files'}`
-        : `Session logged · ${mins}m`
+        ? tr('💦 Session logged · {minutes}m · counted on {count} files', { minutes: mins, count: credited })
+        : tr('Session logged · {minutes}m', { minutes: mins })
     )
 
     // Counts moved in several places at once.
@@ -173,7 +176,7 @@ export async function finishSessionNow(opts = {}) {
   } catch (_) {
     // The session already ended locally — say so rather than failing quietly,
     // which is exactly how orgasms went missing before.
-    toast.error('Session ended but could not be saved')
+    toast.error(tr('Session ended but could not be saved'))
     return null
   }
 }

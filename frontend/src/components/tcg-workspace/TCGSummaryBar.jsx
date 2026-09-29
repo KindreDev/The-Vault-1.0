@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { Archive, Copy, Layers3, Shapes, Sparkles } from 'lucide-react'
 
 const ITEMS = [
@@ -9,13 +10,14 @@ const ITEMS = [
 ]
 
 export default function TCGSummaryBar({ summary }) {
+  const t = useT()
   return (
     <div className="tcgws-summary">
       {ITEMS.map(([key, label, Icon]) => (
-        <div key={key}><Icon size={17} /><span>{label}</span><strong>{Number(summary?.[key] || 0).toLocaleString()}</strong></div>
+        <div key={key}><Icon size={17} /><span>{t(label)}</span><strong>{Number(summary?.[key] || 0).toLocaleString()}</strong></div>
       ))}
       <div className="tcgws-completion">
-        <span>Collection completion</span>
+        <span><LocalizedText text={"Collection completion"} /></span>
         <strong>{summary?.catalog_total ? Math.round(summary.owned_printings / summary.catalog_total * 100) : 0}%</strong>
         <i><b style={{ width: `${summary?.catalog_total ? summary.owned_printings / summary.catalog_total * 100 : 0}%` }} /></i>
       </div>

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useT } from '../i18n'
 
 export const BOND_TIERS = ['', 'Acquaintance', 'Friends', 'Crush', 'Waifu', 'Soulbound']
 
@@ -54,6 +55,7 @@ export default function BondHearts({
   bondScore = 0,
   showProgress = false,
 }) {
+  const t = useT()
   if (excluded) return null
 
   const isLg    = size === 'lg'
@@ -65,15 +67,15 @@ export default function BondHearts({
   if (showProgress && isLg) {
     if (level >= 5) {
       progressPct  = 100
-      progressText = 'Max bond'
+      progressText = t('Max bond')
     } else {
       const lo   = THRESHOLDS[level]
       const hi   = THRESHOLDS[level + 1]
       progressPct = Math.min(100, Math.max(0, ((bondScore - lo) / (hi - lo)) * 100))
       const rem  = Math.ceil(hi - bondScore)
       progressText = level === 0
-        ? `${Math.ceil(bondScore)} / ${hi} pts to unlock`
-        : `${rem > 0 ? rem : 0} pts to ${BOND_TIERS[level + 1]}`
+        ? t('{score} / {total} pts to unlock', { score: Math.ceil(bondScore), total: hi })
+        : t('{count} pts to {bond}', { count: rem > 0 ? rem : 0, bond: t(BOND_TIERS[level + 1]) })
     }
   }
 
@@ -86,7 +88,7 @@ export default function BondHearts({
         {/* Hearts row */}
         <div
           className={`flex items-center ${isLg ? 'gap-2.5' : 'gap-1'}`}
-          title={level > 0 ? BOND_TIERS[level] : 'No bond yet'}
+          title={level > 0 ? t(BOND_TIERS[level]) : t('No bond yet')}
         >
           {Array.from({ length: 5 }, (_, i) => (
             <span
@@ -103,7 +105,7 @@ export default function BondHearts({
           ))}
           {isLg && level > 0 && (
             <span className="ml-1.5 font-semibold" style={{ color, fontSize: 17 }}>
-              {BOND_TIERS[level]}
+              {t(BOND_TIERS[level])}
             </span>
           )}
         </div>

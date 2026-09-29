@@ -28,6 +28,12 @@ class _ScanLogHandler(logging.Handler):
 
 WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     # Ratings
+    # WD14 selected_tags.csv uses these unprefixed names for category 9.
+    "general":             ("safe", "rating"),
+    "sensitive":           ("suggestive", "rating"),
+    "questionable":        ("suggestive", "rating"),
+    "explicit":            ("explicit", "rating"),
+    # Keep the older prefixed aliases accepted by imported vocabularies.
     "rating:general":       ("safe", "rating"),
     "rating:sensitive":     ("suggestive", "rating"),
     "rating:questionable":  ("suggestive", "rating"),
@@ -99,6 +105,12 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "convenient_censoring": ("convenient censoring", "nudity_level"),
     "strategic_clothing":   ("convenient censoring", "nudity_level"),
     # Clothing
+    "shirt":               ("shirt", "clothing"),
+    "white_shirt":         ("shirt", "clothing"),
+    "collared_shirt":      ("shirt", "clothing"),
+    "t-shirt":             ("shirt", "clothing"),
+    "tshirt":              ("shirt", "clothing"),
+    "polo_shirt":          ("shirt", "clothing"),
     "bikini":               ("bikini", "clothing"),
     "swimsuit":             ("swimsuit", "clothing"),
     "one-piece_swimsuit":   ("one-piece swimsuit", "clothing"),
@@ -792,6 +804,9 @@ def seed_tag_vocab(db, model: str):
 
     already_seeded = db.query(TagVocabEntry).filter(TagVocabEntry.model == model).first()
     if already_seeded is not None:
+        changed = backfill_builtin_tag_vocab(db, model)
+        if changed:
+            invalidate_tag_vocab_cache(model)
         return
 
     if model == "wd14":
@@ -846,6 +861,34 @@ def seed_tag_vocab(db, model: str):
     invalidate_tag_vocab_cache(model)
     logger.info("Seeded %d tag_vocab_entries for model=%s (%d enabled by default)",
                 len(entries), model, sum(1 for e in entries if e.enabled))
+
+
+def backfill_builtin_tag_vocab(db, model: str) -> int:
+    """Enable newly recognized built-in rows on existing installations.
+
+    Older seeds stored unmapped model tags as disabled ``raw/general`` rows.
+    Only those untouched rows are upgraded.  Rows whose normalized name or
+    category was edited are treated as user vocabulary and are never changed.
+    """
+    from models import TagVocabEntry
+
+    tag_map = WD14_TAG_MAP if model == "wd14" else JOYTAG_TAG_MAP if model == "joytag" else {}
+    changed = 0
+    rows = db.query(TagVocabEntry).filter(TagVocabEntry.model == model).all()
+    for entry in rows:
+        mapped = tag_map.get((entry.raw_tag or "").lower())
+        if not mapped or entry.is_builtin_default:
+            continue
+        if entry.normalized_name != entry.raw_tag or entry.category != "general":
+            continue
+        entry.normalized_name, entry.category = mapped
+        entry.enabled = True
+        entry.is_builtin_default = True
+        changed += 1
+    if changed:
+        db.commit()
+        logger.info("Backfilled %d newly recognized built-in tag vocab entries for model=%s", changed, model)
+    return changed
 
 
 # ── ONNX session helper ───────────────────────────────────────────────────────
@@ -1703,11 +1746,12 @@ def bulk_tag_images(
 
 # ── Model download worker (runs in background thread) ─────────────────────────
 def create_tag_job(db, scope: str, folder_path: Optional[str], threshold: float,
-                   retag: bool, model_override: Optional[str], creator_id: Optional[int]):
+                   retag: bool, model_override: Optional[str], creator_id: Optional[int],
+                   image_id: Optional[int] = None):
     from models import AITagJob
     job = AITagJob(
         status="queued", scope=scope, folder_path=folder_path,
-        creator_id=creator_id, threshold=threshold, retag=retag,
+        creator_id=creator_id, image_id=image_id, threshold=threshold, retag=retag,
         model_override=model_override, message="Waiting in queue…",
     )
     db.add(job)
@@ -1769,6 +1813,8 @@ def _job_query(db, job, after_id: Optional[int] = None):
         q = (q.join(Gallery, Image.gallery_id == Gallery.id)
                .join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
                .filter(gallery_creators.c.creator_id == job.creator_id))
+    elif job.scope == "image" and job.image_id:
+        q = q.filter(Image.id == job.image_id)
     if not job.retag:
         q = q.filter(Image.ai_tagged == False)  # noqa: E712
     if after_id is not None:

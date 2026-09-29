@@ -7,6 +7,14 @@ from services import relocate as relocate_svc
 router = APIRouter()
 
 
+@router.get("/directories")
+def directories(path: str = ""):
+    try:
+        return relocate_svc.browse_directories(path)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/suggest")
 def suggest(body: dict, db: Session = Depends(get_db)):
     """Where these galleries sit now, whether that's their creator's folder, and

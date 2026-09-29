@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timedelta
+from functools import lru_cache
 import hashlib
 import json
 import math
 import random
+import re
+from threading import RLock
 from typing import Iterable
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, object_session
+from sqlalchemy.orm import Session, joinedload, object_session
 
 from models import (
     BondMilestone, Card, CardAcquisition, CardContentClassification, CardPack, CardType,
@@ -26,6 +29,7 @@ from models import (
 )
 from services.cards import _card_to_dict, prepare_card_face_for_reveal
 from services.personal_value import apply_rarity_floor, evaluate_personal_value
+from services.tcg_rarity import earned_card_pack_rarity
 
 
 EXPOSURE_VALUES = (
@@ -33,10 +37,19 @@ EXPOSURE_VALUES = (
     "Nude", "Mixed", "Unknown",
 )
 INTENSITY_VALUES = ("Safe", "Suggestive", "Explicit", "Unknown")
-POLICY_VERSION = "classification-v1"
+POLICY_VERSION = "classification-v2"
 V2_SHARD_YIELD = {"C": 2, "R": 5, "SR": 15, "UR": 40, "SPR": 80}
 PACK_RARITIES = ("C", "R", "SR", "UR", "SPR")
 GENERIC_RELEASE_TEMPLATE_CODES = {"RELEASE-STANDARD", "RELEASE-PREMIUM"}
+FROZEN_ENTRY_QUERY_BATCH_SIZE = 500
+MONTHLY_RELEASE_TYPE_WEIGHTS = {
+    "scene": 248,
+    "gallery": 93,
+    "creator": 93,
+    "character": 93,
+    "cosplay": 62,
+    "collab": 31,
+}
 PACK_PRICE_DEFAULTS = {
     "release_standard": {"regular_price": 550, "launch_price": 700},
     "release_premium": {"regular_price": 1000, "launch_price": 1250},
@@ -69,7 +82,7 @@ MONTHLY_RELEASE_SIZE_ANCHORS = (
 )
 MONTHLY_RELEASE_SIZE_FLOOR = 120
 MONTHLY_RELEASE_REFERENCE_TARGET = 620
-MONTHLY_RELEASE_ALGORITHM_VERSION = "release-v5-dynamic-size"
+MONTHLY_RELEASE_ALGORITHM_VERSION = "release-v6-six-type-mix"
 
 
 def _round_pack_price(value: float) -> int:
@@ -124,11 +137,14 @@ EXPOSURE_TAGS = {
         "lingerie", "underwear", "bikini", "swimsuit", "bra", "panties",
         "thong", "see through", "transparent clothing", "open clothes",
     },
-    "Clothed": {"clothed", "fully clothed", "dress", "shirt", "uniform", "cosplay"},
+    "Clothed": {
+        "clothed", "fully clothed", "dress", "shirt", "white shirt",
+        "collared shirt", "t shirt", "tshirt", "polo shirt", "uniform", "cosplay",
+    },
 }
 
 EXPLICIT_TAGS = {
-    "sex", "sexual intercourse", "penetration", "vaginal", "vaginal sex",
+    "explicit", "sex", "sexual intercourse", "penetration", "vaginal", "vaginal sex",
     "anal", "anal sex", "blowjob", "fellatio", "cunnilingus", "oral sex",
     "masturbation", "fingering", "handjob", "cum", "cumshot", "creampie",
     "double penetration", "threesome", "gangbang", "sex toy", "dildo",
@@ -274,10 +290,12 @@ def infer_classification(tags: list[dict], threshold: float) -> dict:
             continue
         for rank, (value, terms) in enumerate(intensity_maps):
             if tag["normalized"] in terms:
-                candidates.append((tag["source"] == "manual", tag["confidence"] or 1.0, -rank, value, tag))
+                # Manual evidence wins, then the policy precedence wins, then
+                # confidence breaks ties within the same intensity.
+                candidates.append((tag["source"] == "manual", -rank, tag["confidence"] or 1.0, value, tag))
     if candidates:
         candidates.sort(reverse=True, key=lambda item: item[:3])
-        _, intensity_confidence, _, intensity, intensity_tag = candidates[0]
+        _, _, intensity_confidence, intensity, intensity_tag = candidates[0]
 
     return {
         "exposure": exposure,
@@ -315,14 +333,15 @@ def resolve_card_classification(db: Session, card: Card, *, refresh_ai: bool = F
     tags = _tag_evidence(db, image.id) if image else []
     inferred = infer_classification(tags, settings.ai_confidence_threshold)
 
-    if refresh_ai or not row.exposure_ai:
-        row.exposure_ai = inferred["exposure"]
-        row.exposure_confidence = inferred["exposure_confidence"]
-    if refresh_ai or not row.intensity_ai:
-        row.intensity_ai = inferred["intensity"]
-        row.intensity_confidence = inferred["intensity_confidence"]
+    # Re-evaluate the AI cache from current source tags on every resolution.
+    # This refreshes old Unknown values when vocabulary/evidence or this policy
+    # changes, while manual overrides below remain authoritative.
+    row.exposure_ai = inferred["exposure"]
+    row.exposure_confidence = inferred["exposure_confidence"]
+    row.intensity_ai = inferred["intensity"]
+    row.intensity_confidence = inferred["intensity_confidence"]
     row.ai_model = image.ai_tag_model if image else None
-    row.policy_version = settings.policy_version or POLICY_VERSION
+    row.policy_version = POLICY_VERSION
     exposure_omitted = _exposure_omitted(db, card)
     row.evidence_json = json.dumps({
         "image_id": image.id if image else None,
@@ -632,6 +651,15 @@ def _release_pack_definition(product_kind: str) -> dict:
     }
 
 
+_automatic_pack_report_lock = RLock()
+
+
+@lru_cache(maxsize=128)
+def _cached_automatic_pack_report(config_json: str) -> str:
+    """Cache deterministic pack simulations shared by concurrent read requests."""
+    return json.dumps(simulate_pack(json.loads(config_json)), separators=(",", ":"))
+
+
 def _automatic_pack_report(product: TCGPackProduct) -> dict:
     """Validate and simulate a persisted product with a stable evidence seed."""
     config = {
@@ -642,7 +670,11 @@ def _automatic_pack_report(product: TCGPackProduct) -> dict:
         "runs": 20000,
         "seed": f"pack-product:{product.code}:v1",
     }
-    return simulate_pack(config)
+    cache_key = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    # lru_cache protects its data structure, but two simultaneous first calls
+    # can still run the same expensive simulation before either result lands.
+    with _automatic_pack_report_lock:
+        return json.loads(_cached_automatic_pack_report(cache_key))
 
 
 def _backfill_release_products(db: Session) -> None:
@@ -898,16 +930,70 @@ def list_sets(db: Session) -> list[dict]:
     } for item in sets]
 
 
-def _source_key(card: Card) -> str:
+def _source_key(card: Card, creator_types: dict[int, str] | None = None) -> str:
+    """Return the stable identity of one source-card design.
+
+    Audit provenance is authoritative for newer cards. The relationship-based
+    fallback keeps older source cards distinct by card family and selected
+    image, so one image can support its Scene, portrait, Cosplay, and Collab.
+    """
+    audit = _json(card.mint_audit_json, {})
+    audited_key = audit.get("source_key") if isinstance(audit, dict) else None
+    if isinstance(audited_key, str) and audited_key.strip():
+        return audited_key.strip()
+
+    card_type = _enum(card.card_type)
+    if card_type == CardType.image.value and card.source_image_id:
+        return f"image:{card.source_image_id}"
+    if card_type == CardType.gallery.value and card.source_gallery_id:
+        return f"gallery:{card.source_gallery_id}"
+    if card_type == CardType.creator.value and card.source_creator_id:
+        creator_type = (creator_types or {}).get(card.source_creator_id)
+        if creator_type is None and card.source_creator:
+            creator_type = _enum(card.source_creator.creator_type)
+        is_character = creator_type == "character"
+        family = "character" if is_character else "creator"
+        identity = "canon" if card.source_image_id is None else f"portrait:{card.source_image_id}"
+        return f"{family}:{card.source_creator_id}:{identity}"
+    if card_type == CardType.variant.value and card.source_creator_id and card.linked_character_id:
+        if card.source_image_id:
+            return f"cosplay:{card.source_creator_id}:{card.linked_character_id}:image:{card.source_image_id}"
+        return f"cosplay:{card.source_creator_id}:{card.linked_character_id}"
+    if card_type == CardType.collab.value:
+        collab = _json(card.collab_data, {})
+        creator_ids = collab.get("creator_ids", []) if isinstance(collab, dict) else []
+        normalized_ids = sorted({int(value) for value in creator_ids if str(value).isdigit()})
+        prefix = f"collab:{','.join(map(str, normalized_ids))}"
+        if card.source_image_id:
+            return f"{prefix}:image:{card.source_image_id}"
+        if card.source_gallery_id:
+            return f"{prefix}:gallery:{card.source_gallery_id}"
     if card.source_image_id:
         return f"image:{card.source_image_id}"
     if card.source_gallery_id:
         return f"gallery:{card.source_gallery_id}"
-    if card.source_creator_id and card.linked_character_id:
-        return f"cosplay:{card.source_creator_id}:{card.linked_character_id}"
     if card.source_creator_id:
-        return f"creator:{card.source_creator_id}"
+        return f"creator:{card.source_creator_id}:canon"
     return f"card:{card.id}"
+
+
+def _release_card_type(card: Card, creator_types: dict[int, str] | None = None) -> str:
+    """Map storage types to the six visible monthly-release card types."""
+    card_type = _enum(card.card_type)
+    if card_type == CardType.image.value:
+        return "scene"
+    if card_type == CardType.gallery.value:
+        return "gallery"
+    if card_type == CardType.variant.value:
+        return "cosplay"
+    if card_type == CardType.collab.value:
+        return "collab"
+    if card_type == CardType.creator.value:
+        creator_type = (creator_types or {}).get(card.source_creator_id)
+        if creator_type is None and card.source_creator:
+            creator_type = _enum(card.source_creator.creator_type)
+        return "character" if creator_type == "character" else "creator"
+    return ""
 
 
 def _chunks(values: Iterable[int], size: int = 700):
@@ -1107,8 +1193,16 @@ def _candidate_metadata_cached(card: Card, threshold: float, cache: dict, prior_
     gallery_id = image.gallery_id if image else card.source_gallery_id
     gallery = cache["galleries"].get(gallery_id)
     character = cache["creators"].get(card.linked_character_id)
-    source_key = _source_key(card)
+    source_creator = cache["creators"].get(card.source_creator_id)
+    creator_types = (
+        {card.source_creator_id: _enum(source_creator.creator_type)}
+        if source_creator and card.source_creator_id else None
+    )
+    source_key = _source_key(card, creator_types)
     card_type = _enum(card.card_type)
+    release_type = _release_card_type(
+        card, creator_types,
+    )
     personal_value = evaluate_personal_value(
         source_key=source_key,
         card_type=card_type,
@@ -1129,7 +1223,8 @@ def _candidate_metadata_cached(card: Card, threshold: float, cache: dict, prior_
         "period_month": gallery.period_month if gallery else None,
         "character_id": card.linked_character_id,
         "character_name": character.name if character else None,
-        "card_type": card_type, "tags": [tag["normalized"] for tag in tags],
+        "card_type": card_type, "release_type": release_type,
+        "tags": [tag["normalized"] for tag in tags],
         "exposure": classification["exposure"], "intensity": classification["intensity"],
         "confidence": max(classification["exposure_confidence"] or 0, classification["intensity_confidence"] or 0),
         "engagement": round(engagement, 3),
@@ -1164,10 +1259,16 @@ def _candidate_metadata(db: Session, card: Card, threshold: float, prior_printin
         )
     creator = db.get(Creator, creator_id) if creator_id else None
     source_key = _source_key(card)
+    creator_type = _enum(creator.creator_type) if creator else None
     return {
         "source_card_id": card.id, "source_key": source_key, "creator_id": creator_id,
         "creator_name": creator.name if creator else None,
-        "card_type": _enum(card.card_type), "tags": [tag["normalized"] for tag in tags],
+        "card_type": _enum(card.card_type),
+        "release_type": _release_card_type(
+            card, {card.source_creator_id: creator_type}
+            if card.source_creator_id and creator_type else None,
+        ),
+        "tags": [tag["normalized"] for tag in tags],
         "exposure": classification["exposure"], "intensity": classification["intensity"],
         "confidence": max(classification["exposure_confidence"] or 0, classification["intensity_confidence"] or 0),
         "engagement": round(engagement, 3),
@@ -1451,6 +1552,173 @@ def _release_rarity_targets(target: int) -> dict[str, int]:
     }
 
 
+def _release_type_targets(target: int) -> dict[str, int]:
+    """Scale the six-card-face mix from the 620-base monthly reference."""
+    target = max(0, int(target))
+    weight_total = sum(MONTHLY_RELEASE_TYPE_WEIGHTS.values())
+    raw = {
+        card_type: target * weight / weight_total
+        for card_type, weight in MONTHLY_RELEASE_TYPE_WEIGHTS.items()
+    }
+    counts = {card_type: int(math.floor(value)) for card_type, value in raw.items()}
+    remainder = target - sum(counts.values())
+    for card_type in sorted(raw, key=lambda key: (-(raw[key] - counts[key]), key))[:remainder]:
+        counts[card_type] += 1
+    return counts
+
+
+def _select_release_type_candidates(
+    candidates: list[dict], target: int,
+) -> tuple[list[dict], dict[str, int], dict[str, int]]:
+    """Allocate exact family and rarity margins from immutable source printings."""
+    requested_targets = _release_type_targets(target)
+    rarity_targets = _release_rarity_targets(target)
+    rarities = ("C", "R", "SR", "UR")
+    families = tuple(requested_targets)
+    cell_candidates = {
+        (family, rarity): [] for family in families for rarity in rarities
+    }
+    for candidate in candidates:
+        family = candidate.get("release_type")
+        rarity = str(candidate.get("published_rarity") or "").upper()
+        if (family, rarity) in cell_candidates:
+            cell_candidates[(family, rarity)].append(candidate)
+    for pool in cell_candidates.values():
+        pool.sort(key=lambda item: (
+            item.get("prior_printings", 0), -item.get("confidence", 0),
+            -item.get("engagement", 0), item["source_key"],
+        ))
+
+    supply = {
+        family: {rarity: len(cell_candidates[(family, rarity)]) for rarity in rarities}
+        for family in families
+    }
+    family_supply = {family: sum(supply[family].values()) for family in families}
+    targets = {
+        family: min(requested_targets[family], family_supply[family])
+        for family in families
+    }
+    remaining = int(target) - sum(targets.values())
+    while remaining > 0:
+        available_families = [
+            family for family in families if targets[family] < family_supply[family]
+        ]
+        if not available_families:
+            raise ValueError(
+                "Monthly release family supply cannot fill the target after shortage redistribution. "
+                f"Supply matrix={json.dumps(supply, sort_keys=True)}; "
+                f"requested family targets={json.dumps(requested_targets, sort_keys=True)}; "
+                f"adjusted family targets={json.dumps(targets, sort_keys=True)}; "
+                f"rarity targets={json.dumps({rarity: rarity_targets[rarity] for rarity in rarities}, sort_keys=True)}."
+            )
+        weight_total = sum(MONTHLY_RELEASE_TYPE_WEIGHTS[family] for family in available_families)
+        raw_shares = {
+            family: remaining * MONTHLY_RELEASE_TYPE_WEIGHTS[family] / weight_total
+            for family in available_families
+        }
+        additions = {
+            family: min(
+                family_supply[family] - targets[family],
+                int(math.floor(raw_shares[family])),
+            )
+            for family in available_families
+        }
+        placed = sum(additions.values())
+        for family, count in additions.items():
+            targets[family] += count
+        remaining -= placed
+        if remaining == 0:
+            break
+        remainder_order = sorted(
+            available_families,
+            key=lambda family: (
+                -(raw_shares[family] - math.floor(raw_shares[family])),
+                families.index(family),
+            ),
+        )
+        single_placements = 0
+        for family in remainder_order:
+            if remaining <= 0:
+                break
+            if targets[family] < family_supply[family]:
+                targets[family] += 1
+                remaining -= 1
+                single_placements += 1
+        if placed == 0 and single_placements == 0:
+            raise ValueError(
+                "Monthly release family shortage redistribution made no progress. "
+                f"Supply matrix={json.dumps(supply, sort_keys=True)}; "
+                f"requested family targets={json.dumps(requested_targets, sort_keys=True)}; "
+                f"adjusted family targets={json.dumps(targets, sort_keys=True)}; remaining={remaining}; "
+                f"rarity targets={json.dumps({rarity: rarity_targets[rarity] for rarity in rarities}, sort_keys=True)}."
+            )
+
+    source = 0
+    family_start = 1
+    rarity_start = family_start + len(families)
+    sink = rarity_start + len(rarities)
+    residual = [[0] * (sink + 1) for _ in range(sink + 1)]
+
+    for family_index, family in enumerate(families):
+        family_node = family_start + family_index
+        residual[source][family_node] = int(targets[family])
+        for rarity_index, rarity in enumerate(rarities):
+            residual[family_node][rarity_start + rarity_index] = supply[family][rarity]
+    for rarity_index, rarity in enumerate(rarities):
+        residual[rarity_start + rarity_index][sink] = int(rarity_targets[rarity])
+
+    required_flow = int(target)
+    max_flow = 0
+    while max_flow < required_flow:
+        parents = [-1] * (sink + 1)
+        parents[source] = source
+        queue = [source]
+        for node in queue:
+            for neighbor in range(sink + 1):
+                if parents[neighbor] == -1 and residual[node][neighbor] > 0:
+                    parents[neighbor] = node
+                    queue.append(neighbor)
+                    if neighbor == sink:
+                        break
+            if parents[sink] != -1:
+                break
+        if parents[sink] == -1:
+            break
+        amount = required_flow - max_flow
+        node = sink
+        while node != source:
+            previous = parents[node]
+            amount = min(amount, residual[previous][node])
+            node = previous
+        node = sink
+        while node != source:
+            previous = parents[node]
+            residual[previous][node] -= amount
+            residual[node][previous] += amount
+            node = previous
+        max_flow += amount
+
+    if (max_flow != required_flow
+            or sum(targets.values()) != required_flow
+            or sum(int(rarity_targets[rarity]) for rarity in rarities) != required_flow):
+        raise ValueError(
+            "Monthly release sources cannot meet exact family and rarity margins "
+            f"(maximum flow {max_flow}/{required_flow}). Supply matrix={json.dumps(supply, sort_keys=True)}; "
+            f"requested family targets={json.dumps(requested_targets, sort_keys=True)}; "
+            f"family targets={json.dumps(targets, sort_keys=True)}; "
+            f"rarity targets={json.dumps({rarity: rarity_targets[rarity] for rarity in rarities}, sort_keys=True)}."
+        )
+
+    selected = []
+    for family_index, family in enumerate(families):
+        family_node = family_start + family_index
+        for rarity_index, rarity in enumerate(rarities):
+            rarity_node = rarity_start + rarity_index
+            selected_count = residual[rarity_node][family_node]
+            selected.extend(cell_candidates[(family, rarity)][:selected_count])
+    return selected, targets, family_supply
+
+
 def _select_spr_source_keys(allocated: list[dict], spr_target: int) -> list[str]:
     """Choose the fixed UR bases that will receive linked SPR parallels."""
     ur_candidates = [
@@ -1473,12 +1741,21 @@ def _validate_release_proposal(manifest: dict) -> dict:
     rarity = Counter(candidate.get("published_rarity") for candidate in base)
     target = int(manifest.get("target", len(base)))
     expected = _release_rarity_targets(target)
+    expected_types = manifest.get("type_targets") or _release_type_targets(target)
     errors = []
     warnings = []
     if len(themes) < 10:
         errors.append(f"Only {len(themes)} valid themes were found; ten are required.")
     if len(base) != target:
         errors.append(f"Exactly {target} base printings are required; {len(base)} were allocated.")
+    type_distribution = Counter(candidate.get("release_type") for candidate in base)
+    for card_type, expected_count in expected_types.items():
+        actual_count = type_distribution[card_type]
+        if actual_count != int(expected_count):
+            errors.append(
+                f"{card_type.title()} coverage is {actual_count}; "
+                f"exactly {int(expected_count)} is required at this release size."
+            )
     declared_targets = manifest.get("rarity_targets")
     if declared_targets is None:
         errors.append("The release manifest is missing its explicit rarity targets.")
@@ -1522,6 +1799,7 @@ def _validate_release_proposal(manifest: dict) -> dict:
     return {
         "valid": not errors, "errors": errors, "warnings": warnings,
         "base_count": len(base), "theme_count": len(themes), "rarity_distribution": distribution,
+        "type_distribution": dict(type_distribution), "type_targets": expected_types,
         "creator_max": {"creator_id": dominant[0], "count": dominant[1]},
         "rarity_targets": expected,
         "spr_target": spr_target,
@@ -1547,33 +1825,44 @@ def _rebalance_release_rarities(allocated: list[dict], candidates: list[dict], t
         needed = next((rarity for rarity in ("UR", "SR", "R", "C") if counts[rarity] < requirements[rarity]), None)
         if needed is None:
             break
-        pool = [
-            candidate for candidate in candidates
-            if candidate["source_key"] not in used and candidate.get("published_rarity") == needed
-        ]
-        pool.sort(key=lambda item: (
-            item.get("prior_printings", 0), -item.get("confidence", 0),
-            -item.get("engagement", 0), item["source_key"],
-        ))
-        replacement = pool[0] if pool else None
-        if replacement is None:
-            break
         donor_indexes = [
             index for index, donor in enumerate(result)
             if counts[donor.get("published_rarity")] > requirements.get(donor.get("published_rarity"), 0)
         ]
+        replacement_by_donor = {}
+        for index in donor_indexes:
+            donor_type = result[index].get("release_type")
+            pool = [
+                candidate for candidate in candidates
+                if candidate["source_key"] not in used
+                and candidate.get("published_rarity") == needed
+                and candidate.get("release_type") == donor_type
+            ]
+            pool.sort(key=lambda item: (
+                item.get("prior_printings", 0), -item.get("confidence", 0),
+                -item.get("engagement", 0), item["source_key"],
+            ))
+            if pool:
+                replacement_by_donor[index] = pool[0]
+        if not replacement_by_donor:
+            break
         matching_indexes = [
             index for index in donor_indexes
+            if index in replacement_by_donor
             if result[index].get("theme_index") is not None
             and result[index]["theme_index"] < len(themes)
-            and _matches_theme(replacement, themes[result[index]["theme_index"]])
+            and _matches_theme(replacement_by_donor[index], themes[result[index]["theme_index"]])
         ]
-        unthemed_indexes = [index for index in donor_indexes if result[index].get("theme_index") is None]
-        choices = matching_indexes or unthemed_indexes or donor_indexes
+        unthemed_indexes = [
+            index for index in donor_indexes
+            if index in replacement_by_donor and result[index].get("theme_index") is None
+        ]
+        choices = matching_indexes or unthemed_indexes or list(replacement_by_donor)
         if not choices:
             break
         donor_index = choices[-1]
         donor = result[donor_index]
+        replacement = replacement_by_donor[donor_index]
         result[donor_index] = {
             **replacement,
             "theme_index": donor.get("theme_index"),
@@ -1612,6 +1901,7 @@ def _enforce_release_creator_cap(allocated: list[dict], candidates: list[dict], 
             candidate for candidate in candidates
             if candidate["source_key"] not in used
             and candidate.get("published_rarity") == donor.get("published_rarity")
+            and candidate.get("release_type") == donor.get("release_type")
             and candidate.get("creator_id") != dominant[0]
             and (
                 not candidate.get("creator_id")
@@ -1839,23 +2129,40 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
         parsed = _json(reason, {})
         if parsed.get("source_key"):
             prior_printings[parsed["source_key"]] += 1
+    creator_ids = {card.source_creator_id for card in source_cards if card.source_creator_id}
+    creator_types = {
+        row.id: _enum(row.creator_type)
+        for row in db.query(Creator).filter(Creator.id.in_(creator_ids)).all()
+    } if creator_ids else {}
     unique = {}
     for card in source_cards:
-        unique.setdefault(_source_key(card), card)
+        unique.setdefault(_source_key(card, creator_types), card)
     unique_cards = list(unique.values())
     candidate_cache = _release_candidate_cache(db, unique_cards, settings.ai_confidence_threshold)
-    candidates = [
+    source_candidates = [
         _candidate_metadata_cached(card, settings.ai_confidence_threshold, candidate_cache, prior_printings)
         for card in unique_cards
     ]
-    rng.shuffle(candidates)
-    collection_size, collection_size_source = _monthly_collection_size_input(db, len(candidates))
+    rng.shuffle(source_candidates)
+    collection_size, collection_size_source = _monthly_collection_size_input(db, len(source_candidates))
     release_size = _monthly_release_size_metadata(
         collection_size,
-        len(candidates),
+        len(source_candidates),
         collection_size_source=collection_size_source,
     )
     target = release_size["target"]
+    candidates, type_targets, type_supply = _select_release_type_candidates(source_candidates, target)
+    requested_type_targets = _release_type_targets(target)
+    type_target_adjustments = {
+        family: {
+            "requested": requested_type_targets[family],
+            "available": type_supply[family],
+            "adjusted": type_targets[family],
+            "delta": type_targets[family] - requested_type_targets[family],
+        }
+        for family in type_targets
+    }
+    rng.shuffle(candidates)
     themes = _theme_proposals(candidates, _json(settings.enabled_theme_sources, []))
 
     allocated = []
@@ -1883,13 +2190,23 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
     for candidate in fill[:max(0, target - len(allocated))]:
         allocated.append({**candidate, "theme_index": None, "lane": "discovery"}); used.add(candidate["source_key"])
 
-    allocated = _rebalance_release_rarities(allocated, candidates, themes, target)
-    allocated = _enforce_release_creator_cap(allocated, candidates, target)
+    allocated = _rebalance_release_rarities(allocated, source_candidates, themes, target)
+    allocated = _enforce_release_creator_cap(allocated, source_candidates, target)
 
     rarity_targets = _release_rarity_targets(target)
     spr_source_keys = _select_spr_source_keys(allocated, rarity_targets["SPR"])
+    type_distribution = dict(Counter(candidate.get("release_type") for candidate in allocated))
+    type_distribution_percentages = {
+        family: round(count * 100 / max(1, target), 2)
+        for family, count in type_distribution.items()
+    }
     manifest = {
         **release_size,
+        "type_supply": type_supply,
+        "type_target_adjustments": type_target_adjustments,
+        "type_targets": type_targets,
+        "type_distribution": type_distribution,
+        "type_distribution_percentages": type_distribution_percentages,
         "rarity_targets": rarity_targets,
         "spr_target": rarity_targets["SPR"],
         "spr_source_keys": spr_source_keys,
@@ -1917,6 +2234,11 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
     release.generation_report = json.dumps({
         **release_size,
         "allocated": len(allocated),
+        "type_supply": type_supply,
+        "type_target_adjustments": type_target_adjustments,
+        "type_targets": type_targets,
+        "type_distribution": type_distribution,
+        "type_distribution_percentages": type_distribution_percentages,
         "algorithm_version": MONTHLY_RELEASE_ALGORITHM_VERSION,
         "theme_coverage": [{"name": theme["name"], "eligible": theme["eligible"], "confidence": theme["confidence"]} for theme in themes],
         "reprint_statistics": {
@@ -2023,7 +2345,10 @@ def publish_release(db: Session, release_id: int) -> dict:
                 cxp=0, crs=source.crs, rarity_class=candidate["published_rarity"],
                 catalog_code=release.code, collector_number=position,
                 print_rarity=candidate["published_rarity"], is_legacy=False, generated_at=now,
-                mint_audit_json=json.dumps(candidate.get("personal_value") or {}),
+                mint_audit_json=json.dumps({
+                    **(candidate.get("personal_value") or {}),
+                    "source_key": candidate["source_key"],
+                }),
             )
             db.add(printing); db.flush()
             prepare_acquired_visual(db, printing)
@@ -2053,6 +2378,7 @@ def publish_release(db: Session, release_id: int) -> dict:
                     is_legacy=False, generated_at=now,
                     mint_audit_json=json.dumps({
                         **(candidate.get("personal_value") or {}),
+                        "source_key": candidate["source_key"],
                         "published_rarity": "SPR",
                         "parallel_of_id": printing.id,
                     }),
@@ -2388,13 +2714,64 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             ))
         else:
             q = q.filter(or_(TCGChecklistEntry.id.isnot(None), Card.card_type.in_([CardType.hof, CardType.bond])))
-    rows = q.order_by(TCGChecklistEntry.release_id.desc(), TCGChecklistEntry.collector_position, Card.id).all()
     if search and search.strip():
-        needle = search.strip().lower()
-        rows = [row for row in rows if needle in (
-            f"{row[1].catalog_code or ''} {row[1].source_creator.name if row[1].source_creator else ''} "
-            f"{row[1].source_gallery.name if row[1].source_gallery else ''}"
-        ).lower()]
+        tokens = search.casefold().split()
+        card_type_text = func.lower(cast(Card.card_type, String))
+        rarity_text = func.lower(cast(Card.rarity, String))
+        for token in tokens:
+            pattern = f"%{token}%"
+            matches = [
+                cast(Card.id, String).ilike(pattern),
+                Card.catalog_code.ilike(pattern),
+                Card.source_creator.has(or_(
+                    Creator.name.ilike(pattern), cast(Creator.creator_type, String).ilike(pattern),
+                )),
+                Card.linked_character.has(or_(
+                    Creator.name.ilike(pattern), cast(Creator.creator_type, String).ilike(pattern),
+                )),
+                Card.source_gallery.has(or_(
+                    Gallery.name.ilike(pattern), Gallery.creators.any(Creator.name.ilike(pattern)),
+                )),
+                Card.source_image.has(or_(
+                    Image.filename.ilike(pattern),
+                    Image.gallery.has(or_(
+                        Gallery.name.ilike(pattern), Gallery.creators.any(Creator.name.ilike(pattern)),
+                    )),
+                    Image.image_creators.any(Creator.name.ilike(pattern)),
+                )),
+                TCGChecklistEntry.release.has(TCGRelease.code.ilike(pattern)),
+                cast(TCGChecklistEntry.collector_position, String).ilike(pattern),
+                cast(Card.collector_number, String).ilike(pattern),
+                TCGChecklistEntry.collector_suffix.ilike(pattern),
+                card_type_text.ilike(pattern),
+                rarity_text.ilike(pattern),
+                Card.print_rarity.ilike(pattern),
+                Card.rarity_class.ilike(pattern),
+                CardContentClassification.exposure_resolved.ilike(pattern),
+                CardContentClassification.intensity_resolved.ilike(pattern),
+            ]
+            if token.isdigit():
+                number = int(token)
+                matches.extend((Card.id == number, Card.collector_number == number, TCGChecklistEntry.collector_position == number))
+            prefixed_id = re.fullmatch(r"(?:card|earned)-0*(\d+)", token)
+            if prefixed_id:
+                matches.append(Card.id == int(prefixed_id.group(1)))
+            printed_id = re.fullmatch(r"(.+)-0*(\d+)([a-z]?)", token)
+            if printed_id and not token.startswith(("card-", "earned-")):
+                printed_prefix, printed_number, printed_suffix = printed_id.groups()
+                matches.append(and_(
+                    or_(Card.catalog_code.ilike(printed_prefix), TCGChecklistEntry.release.has(TCGRelease.code.ilike(printed_prefix))),
+                    or_(Card.collector_number == int(printed_number), TCGChecklistEntry.collector_position == int(printed_number)),
+                    func.lower(func.coalesce(TCGChecklistEntry.collector_suffix, "")) == printed_suffix,
+                ))
+            if token in {"hall-of-fame", "hof"}:
+                matches.append(Card.card_type == CardType.hof)
+            elif token in {"scene", "image"}:
+                matches.append(Card.card_type == CardType.image)
+            elif token in {"cosplay", "variant"}:
+                matches.append(Card.card_type == CardType.variant)
+            q = q.filter(or_(*matches))
+    rows = q.order_by(TCGChecklistEntry.release_id.desc(), TCGChecklistEntry.collector_position, Card.id).all()
     total = len(rows)
     items = []
     for entry, card, inventory, classification, acquired_at in rows[skip:skip + min(limit, 250)]:
@@ -2426,12 +2803,84 @@ def card_detail(db: Session, card_id: int) -> dict:
     entries = db.query(TCGChecklistEntry).filter(TCGChecklistEntry.card_id == card.id).all()
     milestones = db.query(BondMilestone).filter(BondMilestone.card_id == card.id).order_by(BondMilestone.threshold).all()
     crown = db.query(HofCrown).filter(HofCrown.card_id == card.id).first()
+    hof_category_award = None
+    creator = card.source_creator
+    hof_provenance = None
+    hof_period = None
+    if _enum(card.card_type) == CardType.hof.value:
+        from models import HofCategoryAward
+        from services.hof_cards import format_hof_provenance, hof_source_media_type
+
+        hof_category_award = db.query(HofCategoryAward).filter(HofCategoryAward.card_id == card.id).first()
+
+        try:
+            frozen_recipe = json.loads(card.visual_recipe) if card.visual_recipe else None
+        except (TypeError, ValueError):
+            frozen_recipe = None
+        try:
+            mint_evidence = json.loads(card.mint_audit_json or "{}")
+        except (TypeError, ValueError):
+            mint_evidence = {}
+        if (isinstance(frozen_recipe, dict) and
+                mint_evidence.get("developer_fixture") == "hof-media-ladder-v1"):
+            frozen_recipe.setdefault("snapshot", {}).setdefault("awardCategory", "media")
+        frozen_source = (frozen_recipe or {}).get("source") or {}
+        provenance_image_id = (
+            (crown.image_id if crown else None)
+            or frozen_source.get("historicalImageId")
+            or frozen_source.get("imageId")
+            or (source.id if source else None)
+        )
+        provenance_image = (
+            db.query(Image).filter(Image.id == int(provenance_image_id)).first()
+            if provenance_image_id else None
+        )
+        provenance_gallery = provenance_image.gallery if provenance_image else gallery
+        recipient_creator = creator
+        if not recipient_creator:
+            recipient_creator_id = (
+                hof_category_award.creator_id if hof_category_award else
+                crown.creator_id if crown else None
+            )
+            if not recipient_creator_id and provenance_gallery:
+                recipient_creator_id = provenance_gallery.creator_id
+                if not recipient_creator_id:
+                    linked = db.query(gallery_creators.c.creator_id).filter(
+                        gallery_creators.c.gallery_id == provenance_gallery.id,
+                    ).order_by(gallery_creators.c.creator_id.asc()).first()
+                    recipient_creator_id = linked[0] if linked else None
+            if not recipient_creator_id and provenance_image:
+                linked = db.query(image_creators.c.creator_id).filter(
+                    image_creators.c.image_id == provenance_image.id,
+                ).order_by(image_creators.c.creator_id.asc()).first()
+                recipient_creator_id = linked[0] if linked else None
+            if recipient_creator_id:
+                recipient_creator = db.query(Creator).filter(
+                    Creator.id == recipient_creator_id,
+                ).first()
+        hof_provenance = format_hof_provenance(
+            crown=crown,
+            award=hof_category_award,
+            recipe=frozen_recipe,
+            creator_name=recipient_creator.name if recipient_creator else None,
+            image_kind=hof_source_media_type(provenance_image),
+            gallery_name=provenance_gallery.name if provenance_gallery else None,
+        )
+        hof_period = {
+            "period_type": crown.period_type if crown else hof_category_award.period_type if hof_category_award else (hof_provenance or {}).get("period_type"),
+            "period_key": crown.period_key if crown else hof_category_award.period_key if hof_category_award else None,
+            "field_size": crown.field_size if crown else hof_category_award.field_size if hof_category_award else None,
+            "score": crown.score if crown else hof_category_award.score if hof_category_award else None,
+            "won_at": (crown.won_at.isoformat() if crown and crown.won_at else
+                       hof_category_award.won_at.isoformat() if hof_category_award and hof_category_award.won_at else None),
+            "event_card": True,
+            "provenance": hof_provenance,
+        } if hof_provenance else None
     override = db.query(CardPresentationOverride).filter(CardPresentationOverride.card_id == card.id).first()
     frozen_mint_audit = _json(card.mint_audit_json, {})
     tags = _tag_evidence(db, source.id) if source else []
     manual_names = {tag["normalized"] for tag in tags if tag["source"] == "manual"}
     resolved_tags = [tag for tag in tags if tag["source"] == "manual" or tag["normalized"] not in manual_names]
-    creator = card.source_creator
     links = []
     if source:
         links.append({"label": "Source media", "url": f"/images?selected={source.id}"})
@@ -2474,12 +2923,7 @@ def card_detail(db: Session, card_id: int) -> dict:
             "set_code": entry.set.code if entry.set else None, "set_name": entry.set.name if entry.set else None,
             "collector_position": entry.collector_position, "collector_suffix": entry.collector_suffix,
         } for entry in entries],
-        "hof": ({
-            "event_card": True,
-            "period_type": crown.period_type, "period_key": crown.period_key,
-            "field_size": crown.field_size, "score": crown.score,
-            "won_at": crown.won_at.isoformat() if crown.won_at else None,
-        } if crown else None),
+        "hof": hof_period,
         "bond": ({
             "event_card": True,
             "source_image_id": card.source_image_id,
@@ -2717,8 +3161,12 @@ def award_pack_token(
 def _eligible_pack_entries(db: Session, product: TCGPackProduct, selected_release_id: int | None) -> list[TCGChecklistEntry]:
     query = db.query(TCGChecklistEntry).join(
         TCGRelease, TCGChecklistEntry.release_id == TCGRelease.id,
-    ).join(Card, TCGChecklistEntry.card_id == Card.id)
+    ).join(Card, TCGChecklistEntry.card_id == Card.id).options(joinedload(TCGChecklistEntry.card))
     query = query.filter(TCGRelease.status == "published")
+    # Legacy/pre-V2 cards are never valid pack contents. Keep this invariant
+    # at the shared eligibility authority so room orders and direct openings
+    # cannot diverge.
+    query = query.filter(Card.is_legacy.is_(False))
     query = query.filter(Card.card_type.notin_([CardType.hof, CardType.bond]))
     if product.product_kind in {"release_standard", "release_premium"}:
         query = query.filter(TCGChecklistEntry.release_id == product.release_id)
@@ -2731,6 +3179,41 @@ def _eligible_pack_entries(db: Session, product: TCGPackProduct, selected_releas
         if foundation:
             query = query.filter(TCGChecklistEntry.release_id == foundation)
     return query.order_by(TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix).all()
+
+
+def _earned_card_pack_rarity(card: Card) -> str | None:
+    """Resolve an earned card's fixed rarity to a pullable V2 pack tier."""
+    return earned_card_pack_rarity(card)
+
+
+def _dynamic_earned_pack_entries(
+    db: Session, already_eligible_card_ids: set[int],
+) -> list[TCGChecklistEntry]:
+    """Add every current nonlegacy Bond/HOF mint to this opening's live pool.
+
+    These transient checklist-shaped rows are never persisted or attached to a
+    release. That keeps earned cards live for sealed/prepaid packs while their
+    snapshots continue to freeze only the ordinary release checklist.
+    """
+    cards = db.query(Card).filter(
+        Card.is_legacy.is_(False),
+        Card.card_type.in_([CardType.bond, CardType.hof]),
+    ).order_by(Card.id).all()
+    entries = []
+    for card in cards:
+        if card.id in already_eligible_card_ids:
+            continue
+        rarity = _earned_card_pack_rarity(card)
+        if rarity not in PACK_RARITIES:
+            continue
+        entries.append(TCGChecklistEntry(
+            release_id=0, set_id=None, card_id=card.id,
+            collector_position=card.id, collector_suffix="", lane="earned_dynamic",
+            is_base_printing=True, required_for_complete=False,
+            published_rarity=rarity, selection_reason="Dynamically eligible earned card",
+            card=card,
+        ))
+    return entries
 
 
 def _weighted_rarity(rng: random.Random, odds: dict) -> str:
@@ -2754,6 +3237,23 @@ def _pick_pack_entry(
         if missing:
             pool = missing
     return rng.choice(pool)
+
+
+def _load_frozen_pack_entries(db: Session, frozen_entry_ids: list[int]) -> list[TCGChecklistEntry]:
+    """Load a sealed pack's frozen checklist without exceeding SQLite limits."""
+    unique_ids = list(dict.fromkeys(frozen_entry_ids))
+    entries: list[TCGChecklistEntry] = []
+    for start in range(0, len(unique_ids), FROZEN_ENTRY_QUERY_BATCH_SIZE):
+        chunk = unique_ids[start:start + FROZEN_ENTRY_QUERY_BATCH_SIZE]
+        entries.extend(
+            db.query(TCGChecklistEntry)
+            .join(Card, TCGChecklistEntry.card_id == Card.id)
+            .options(joinedload(TCGChecklistEntry.card))
+            .filter(TCGChecklistEntry.id.in_(chunk))
+            .filter(Card.is_legacy.is_(False))
+            .all()
+        )
+    return sorted(entries, key=lambda entry: (entry.collector_position, entry.collector_suffix or ""))
 
 
 def open_pack_product(
@@ -2787,11 +3287,11 @@ def open_pack_product(
             raise ValueError(f"Need {price} Vault Credits")
     frozen_entry_ids = product_snapshot.get("eligible_entry_ids") if product_snapshot else None
     if prepaid and frozen_entry_ids:
-        entries = db.query(TCGChecklistEntry).filter(TCGChecklistEntry.id.in_(frozen_entry_ids)).order_by(
-            TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix,
-        ).all()
+        entries = _load_frozen_pack_entries(db, frozen_entry_ids)
     else:
         entries = _eligible_pack_entries(db, product, selected_release_id)
+    earned_entries = _dynamic_earned_pack_entries(db, {entry.card_id for entry in entries})
+    entries.extend(earned_entries)
     if not entries:
         raise ValueError("The pack's persisted eligible pool is empty")
     current_owned = {card_id for (card_id,) in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()}
@@ -2835,7 +3335,8 @@ def open_pack_product(
         integrity_json=json.dumps({
             "product_code": product.code, "eligible_count": len(entries),
             "eligible_pool_hash": hashlib.sha256(",".join(str(entry.card_id) for entry in entries).encode("utf-8")).hexdigest(),
-            "eligible_release_ids": sorted({entry.release_id for entry in entries}),
+            "eligible_release_ids": sorted({entry.release_id for entry in entries if entry.release_id > 0}),
+            "dynamic_earned_card_ids": sorted(entry.card_id for entry in earned_entries),
             "guaranteed_slots": guarantees, "odds": odds, "duplicate_protection": rules,
             "replacement_rules": _json(product.replacement_rules, {}),
         }),

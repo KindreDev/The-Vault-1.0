@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Circle, Lock, Target, Trophy, ChevronDown, Zap, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, Gauge, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Pencil, Trash2, Plus, Droplets, Waves, Pause, Play } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi } from '../lib/api'
-import { useVaultStore, PALETTES, FONTS } from '../store/vault'
+import { gamiApi, sessionsApi, scannerApi, systemApi, creatorsApi, cardsApi, taggerApi, galleriesApi, tasksApi, companionApi, themePacksApi } from '../lib/api'
+import { useVaultStore, PALETTES, FONTS, themePackFontOption } from '../store/vault'
 import { useT, LANGUAGES } from '../i18n'
 import HotkeySettings from '../components/settings/HotkeySettings'
+import FolderPicker from '../components/FolderPicker'
 import Almanac from '../components/stats/Almanac'
 import AnalyticsDashboard from '../components/analytics/AnalyticsDashboard'
 import { useSession } from '../hooks/useSession'
@@ -426,10 +427,10 @@ function QuestCard({ quest }) {
           <div className={`text-[12px] font-medium ${done ? 'line-through text-[rgba(255,255,255,0.3)]' : 'text-[rgba(255,255,255,0.85)]'}`}>
             {quest.title}
           </div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.35)] mt-0.5">{quest.description}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5">{quest.description}</div>
           {!done && quest.target > 1 && (
             <>
-              <div className="flex justify-between text-[10px] text-[rgba(255,255,255,0.3)] mt-2 mb-1">
+              <div className="flex justify-between text-[16px] text-[rgba(255,255,255,0.3)] mt-2 mb-1">
                 <span>{quest.progress} / {quest.target}</span>
                 <span>{Math.round(pct)}%</span>
               </div>
@@ -442,7 +443,7 @@ function QuestCard({ quest }) {
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
           <div className="text-[11px] font-medium" style={{ color: ts.color }}>+{quest.xp_reward} {t('XP')}</div>
           {quest.credit_reward > 0 && (
-            <div className="text-[10px] font-medium" style={{ color: 'var(--c-amber-text)' }}>+{quest.credit_reward} 💰</div>
+            <div className="text-[16px] font-medium" style={{ color: 'var(--c-amber-text)' }}>+{quest.credit_reward} 💰</div>
           )}
         </div>
       </div>
@@ -463,14 +464,14 @@ function AchievementCard({ ach }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-[12px] font-medium text-[rgba(255,255,255,0.8)]">{ach.title}</div>
-        <div className="text-[10px] text-[rgba(255,255,255,0.35)]">{ach.description}</div>
+        <div className="text-[16px] text-[rgba(255,255,255,0.35)]">{ach.description}</div>
       </div>
       <div className="flex flex-col items-end gap-0.5">
         <div className="text-[11px] font-medium" style={{ color: ach.unlocked ? 'var(--c-accent)' : 'rgba(255,255,255,0.2)' }}>
           +{ach.xp_reward} {t('XP')}
         </div>
         {ach.credit_reward > 0 && (
-          <div className="text-[10px] font-medium" style={{ color: ach.unlocked ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.15)' }}>
+          <div className="text-[16px] font-medium" style={{ color: ach.unlocked ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.15)' }}>
             +{ach.credit_reward} 💰
           </div>
         )}
@@ -498,12 +499,12 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-medium" style={{ color: textColor }}>{t(label)}</span>
         {claimable ? (
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium animate-pulse"
+          <span className="text-[16px] px-2 py-0.5 rounded-full font-medium animate-pulse"
                 style={{ background: 'color-mix(in srgb, var(--c-amber) 20%, transparent)', color: 'var(--c-amber-text)' }}>
             🎁 {t('Ready!')}
           </span>
         ) : alreadyClaimed ? (
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+          <span className="text-[16px] px-2 py-0.5 rounded-full font-medium"
                 style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)' }}>
             ✓ {t('Claimed')}
           </span>
@@ -526,7 +527,7 @@ function CompletionRewardPanel({ label, accentColor, accentRgb, textColor, progr
         </span>
         <span className="text-[11px] font-semibold" style={{ color: textColor }}>{t(packLabel)}</span>
       </div>
-      <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{t(packNote)}</div>
+      <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{t(packNote)}</div>
 
       {/* Claim button — only shown when reward is ready */}
       {claimable && (
@@ -597,7 +598,7 @@ export function Quests() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="text-[13px] font-semibold" style={{ color: 'var(--c-accent)' }}>{t('Daily')}</div>
-              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets midnight')}</div>
+              <div className="text-[16px] text-[rgba(255,255,255,0.25)]">{t('resets midnight')}</div>
             </div>
             <div className="text-[11px] font-medium" style={{ color: dailyDone === daily.length && daily.length > 0 ? 'var(--c-green-text)' : 'rgba(255,255,255,0.3)' }}>
               {dailyDone}/{daily.length}
@@ -613,7 +614,7 @@ export function Quests() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="text-[13px] font-semibold" style={{ color: 'var(--c-amber)' }}>{t('Weekly')}</div>
-              <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('resets Monday')}</div>
+              <div className="text-[16px] text-[rgba(255,255,255,0.25)]">{t('resets Monday')}</div>
             </div>
             <div className="text-[11px] font-medium" style={{ color: weeklyDone === weekly.length && weekly.length > 0 ? 'var(--c-green-text)' : 'rgba(255,255,255,0.3)' }}>
               {weeklyDone}/{weekly.length}
@@ -670,8 +671,8 @@ export function Quests() {
                 { label: 'Challenge', xp: '+100–500 XP', color: 'var(--c-pink)' },
               ].map(r => (
                 <div key={r.label} className="flex items-center justify-between">
-                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(r.label)}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: r.color }}>{t(r.xp)}</span>
+                  <span className="text-[16px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(r.label)}</span>
+                  <span className="text-[16px] font-semibold" style={{ color: r.color }}>{t(r.xp)}</span>
                 </div>
               ))}
             </div>
@@ -683,7 +684,7 @@ export function Quests() {
       <div>
         <div className="flex items-center gap-2 mb-3">
           <div className="text-[13px] font-semibold" style={{ color: 'var(--c-pink)' }}>⚔ {t('Challenges')}</div>
-          <div className="text-[10px] text-[rgba(255,255,255,0.25)]">{t('permanent · no expiry')}</div>
+          <div className="text-[16px] text-[rgba(255,255,255,0.25)]">{t('permanent · no expiry')}</div>
           <div className="text-[11px] ml-auto" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {boss.filter(q => q.status === 'completed').length}/{boss.length} {t('completed')}
           </div>
@@ -740,6 +741,7 @@ function getLevelColor(lvl) {
 // ── Sessions history modal ────────────────────────────────────────────────────
 function SessionsModal({ onClose }) {
   const t  = useT()
+  const locale = useVaultStore(s => s.locale)
   const qc = useQueryClient()
   const { data: allSessions } = useQuery({
     queryKey: ['all-sessions'],
@@ -769,10 +771,10 @@ function SessionsModal({ onClose }) {
     setBusyIds(prev => new Set([...prev, g.ids[0]]))
     try {
       await sessionsApi.bulkDelete(g.ids)
-      toast.success(g.ids.length > 1 ? `${g.ids.length} session rows deleted` : 'Session deleted')
+      toast.success(g.ids.length > 1 ? t('{count} session rows deleted', { count: g.ids.length }) : t('Session deleted'))
       refresh()
     } catch {
-      toast.error('Could not delete that session')
+      toast.error(t('Could not delete that session'))
     } finally {
       setBusyIds(prev => { const n = new Set(prev); n.delete(g.ids[0]); return n })
     }
@@ -817,15 +819,16 @@ function SessionsModal({ onClose }) {
     const d = Math.floor((Date.now() - tm.getTime()) / 86400000)
     if (d === 0) return t('Today')
     if (d === 1) return t('Yesterday')
-    if (d < 7) return tm.toLocaleDateString('en-US', { weekday: 'long' })
-    if (d < 30) return `${d} days ago`
-    return tm.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    if (d < 7) return tm.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { weekday: 'long' })
+    if (d < 30) return t('{count} days ago', { count: d })
+    return tm.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
   const fullDate = (ts) => {
     const tm = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'))
-    return tm.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
-      ` ${t('at')} ` + tm.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    const dateLocale = locale === 'zh-CN' ? 'zh-CN' : 'en-US'
+    return tm.toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' }) +
+      ` ${t('at')} ` + tm.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' })
   }
 
   const fmtDur = (sec) => {
@@ -1268,6 +1271,7 @@ export function Stats() {
   const { startSession, finishSession } = useSession()
   const sessionTotalMs = useVaultStore(s => s.sessionTotalMs)
   const profile        = useVaultStore(s => s.profile)
+  const locale         = useVaultStore(s => s.locale)
   const accent         = useVaultStore(s => s.accent)
   const t = useT()
   const accentRgb      = React.useMemo(() => {
@@ -1363,7 +1367,7 @@ export function Stats() {
   const totalCount     = stats?.total ?? 0
 
   return (
-    <div className="p-5 flex flex-col gap-5">
+    <div className="vault-stats-page p-5 flex flex-col gap-5">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1480,9 +1484,9 @@ export function Stats() {
                 const d = Math.floor((Date.now() - dt.getTime()) / 86400000)
                 if (d === 0) return t('Today')
                 if (d === 1) return t('Yesterday')
-                if (d < 7) return dt.toLocaleDateString('en-US', { weekday: 'short' })
-                if (d < 30) return `${d}d ago`
-                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                if (d < 7) return dt.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { weekday: 'short' })
+                if (d < 30) return t('{count}d ago', { count: d })
+                return dt.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
               }
               const visible = groups.slice(0, 6)
               return (
@@ -1916,7 +1920,7 @@ function GpuStatusPanel() {
           <span className="text-[11px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
             {t('Downloading GPU support')} ({gpu.package_index}/{gpu.package_total}) — {gpu.package}
           </span>
-          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          <span className="text-[16px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {pct !== null ? `${pct}%` : '…'} · {doneMB} / {totalMB} MB
           </span>
         </div>
@@ -1927,7 +1931,7 @@ function GpuStatusPanel() {
           }
         </div>
         {gpu.phase === 'extracting' && (
-          <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Extracting DLLs…')}</div>
+          <div className="text-[16px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Extracting DLLs…')}</div>
         )}
       </div>
     )
@@ -2160,10 +2164,11 @@ function ChangelogEntry({ entry }) {
 function SettingsSection({ title, icon: Icon, accentColor = 'var(--c-accent)', children, defaultOpen = true }) {
   const [open, setOpen] = React.useState(defaultOpen)
   return (
-    <div className="mb-3 rounded-[10px] overflow-hidden"
+    <div className="vault-theme-settings-section mb-3 rounded-[10px] overflow-hidden"
          style={{ background: 'var(--c-card)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
       <button onClick={() => setOpen(v => !v)}
-              className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+              aria-expanded={open}
+              className="vault-theme-settings-section-toggle w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
               style={{ background: 'transparent' }}>
         <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
              style={{ background: `${accentColor}20` }}>
@@ -2231,6 +2236,7 @@ export function Settings() {
   const [newLabel, setNewLabel]             = React.useState('')
   const [showAllRoots, setShowAllRoots]     = React.useState(false)
   const [browsing, setBrowsing]             = React.useState(false)
+  const [folderPickerTarget, setFolderPickerTarget] = React.useState(null)
   const [selectedRootId, setSelectedRootId] = React.useState('')
   const [folderScanning, setFolderScanning] = React.useState(false)
   const [regenning, setRegenning]           = React.useState(false)
@@ -2264,6 +2270,48 @@ export function Settings() {
   const [storageState, setStorageState]     = React.useState('idle') // idle | saving | saved
   const qc = useQueryClient()
   const [settingsTab, setSettingsTab] = React.useState('library')
+  const packFileRef = React.useRef(null)
+  const [packImporting, setPackImporting] = React.useState(false)
+  const { data: installedThemePacks = [] } = useQuery({
+    queryKey: ['theme-packs'],
+    queryFn: () => themePacksApi.list().then(response => response.data),
+    enabled: settingsTab === 'appearance',
+  })
+  const activePackFont = currentPalette.id.startsWith('pack:')
+    ? installedThemePacks.find(item => `pack:${item.id}` === currentPalette.id)?.font
+    : null
+  const availableFonts = activePackFont
+    ? [...FONTS, themePackFontOption(currentPalette.id.slice(5), activePackFont.label)]
+    : FONTS
+  const importThemePack = async event => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPackImporting(true)
+    try {
+      const response = await themePacksApi.import(file)
+      await qc.invalidateQueries({ queryKey: ['theme-packs'] })
+      const item = response.data
+      await qc.invalidateQueries({ queryKey: ['theme-pack', item.id] })
+      setPalette({ id: `pack:${item.id}`, label: item.name, ...item.palette })
+      toast.success(t('{name} installed', { name: item.name }))
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || t('Could not import theme pack'))
+    } finally {
+      setPackImporting(false)
+    }
+  }
+  const removeThemePack = async item => {
+    if (!window.confirm(`${t('Remove installed theme')} ${item.name}? ${t('A local backup will be kept.')}`)) return
+    try {
+      await themePacksApi.remove(item.id)
+      if (currentPalette.id === `pack:${item.id}`) setPalette(PALETTES[0])
+      await qc.invalidateQueries({ queryKey: ['theme-packs'] })
+      toast.success(t('{name} removed', { name: item.name }))
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || t('Could not remove theme pack'))
+    }
+  }
 
   const { data: compConfig, refetch: refetchComp } = useQuery({
     queryKey: ['companion-config'],
@@ -2444,9 +2492,9 @@ export function Settings() {
       const res = await creatorsApi.syncSourceFolders()
       const { synced_creators, newly_assigned } = res.data
       if (newly_assigned > 0) {
-        toast.success(`Synced ${synced_creators} creator${synced_creators !== 1 ? 's' : ''} — ${newly_assigned} new gallery assignment${newly_assigned !== 1 ? 's' : ''}`)
+        toast.success(t('Synced {count} creator folders — {assignments} new gallery assignments', { count: synced_creators, assignments: newly_assigned }))
       } else {
-        toast.success(`All up to date — ${synced_creators} creator folder${synced_creators !== 1 ? 's' : ''} checked, nothing new to assign`)
+        toast.success(t('All up to date — checked {count} creator folders, nothing new to assign', { count: synced_creators }))
       }
     } catch {
       toast.error(t('Sync failed'))
@@ -2664,7 +2712,7 @@ export function Settings() {
   const downloadModel = async (model) => {
     try {
       await taggerApi.downloadModels({ [model]: true })
-      toast.success(`Downloading ${model === 'wd14' ? 'WD14' : 'JoyTag'}…`)
+      toast.success(t('Downloading {model}…', { model: model === 'wd14' ? 'WD14' : 'JoyTag' }))
       refetchTagModels()
     } catch (err) {
       toast.error(err?.response?.data?.detail || t('Download failed'))
@@ -2688,12 +2736,14 @@ export function Settings() {
     }
   }
 
-  const browseForFolder = async () => {
-    try {
-      const res = await scannerApi.browseFolder()
-      if (res.data?.path) setNewPath(res.data.path)
-    } catch (err) {
-      toast.error(t('Could not open folder picker'))
+  const chooseSettingsFolder = async path => {
+    if (folderPickerTarget === 'library') setNewPath(path)
+    else if (folderPickerTarget === 'funscript') { setFsLibPath(path); setFsLibDirty(true) }
+    else if (folderPickerTarget === 'storage') { setStorageInput(path); setStorageState('idle') }
+    else if (folderPickerTarget?.galleryId) {
+      await scannerApi.relinkGallery(folderPickerTarget.galleryId, path)
+      qc.invalidateQueries({ queryKey: ['missing-galleries'] })
+      qc.invalidateQueries({ queryKey: ['galleries'] })
     }
   }
 
@@ -2720,7 +2770,7 @@ export function Settings() {
     setFolderScanning(true)
     try {
       await fetch(`/api/scanner/scan?root_id=${root.id}`, { method: 'POST' })
-      toast.success(`Scan queued: "${root.label || root.path}"`)
+      toast.success(t('Scan queued: "{name}"', { name: root.label || root.path }))
       qc.invalidateQueries({ queryKey: ['scan-status'] })
       qc.invalidateQueries({ queryKey: ['task-queue'] })
     } catch (err) {
@@ -2731,10 +2781,10 @@ export function Settings() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="vault-settings-page flex flex-col h-full overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-8 pt-8 pb-5"
+      <div className="vault-theme-settings-header flex-shrink-0 px-8 pt-8 pb-5"
            style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: 'var(--c-surface)' }}>
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -2746,11 +2796,12 @@ export function Settings() {
             <p className="text-[18px] text-white/40">{t('Configure your Vault experience.')}</p>
           </div>
         </div>
-        <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <div className="vault-theme-settings-tabs flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {SETTINGS_TABS.map(({ id, label, icon: Icon }) => {
             const active = settingsTab === id
             return (
               <button key={id} onClick={() => setSettingsTab(id)}
+                      data-active={active}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-[17px] font-medium whitespace-nowrap transition-all flex-shrink-0"
                       style={active
                         ? { background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
@@ -2765,7 +2816,7 @@ export function Settings() {
       </div>
 
       {/* ── Tab content ────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="vault-theme-settings-content flex-1 overflow-y-auto">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={settingsTab}
@@ -2773,7 +2824,7 @@ export function Settings() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="px-8 py-6 max-w-4xl"
+            className="vault-theme-settings-panel px-8 py-6 max-w-4xl"
           >
 
             {/* ── Library tab ──────────────────────────── */}
@@ -2817,7 +2868,7 @@ export function Settings() {
                           <button onClick={() => setShowAllRoots(v => !v)}
                                   className="mt-1 text-[14px] cursor-pointer"
                                   style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>
-                            {showAllRoots ? t('▲ Show less') : `▼ Show ${hidden} more folder${hidden !== 1 ? 's' : ''}…`}
+                            {showAllRoots ? t('▲ Show less') : `▼ ${t('Show')} ${hidden} ${t('more folders')}…`}
                           </button>
                         )}
                       </>
@@ -2830,7 +2881,7 @@ export function Settings() {
                              className="flex-1 bg-transparent rounded-[8px] px-3 py-2 text-[16px] text-white/80 placeholder-[rgba(255,255,255,0.2)]"
                              style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}
                              onKeyDown={e => e.key === 'Enter' && addRoot()} />
-                      <button onClick={browseForFolder}
+                      <button onClick={() => setFolderPickerTarget('library')}
                               className="px-3 py-2 rounded-[8px] text-[16px] cursor-pointer whitespace-nowrap"
                               style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
                         {t('📁 Browse')}
@@ -2855,7 +2906,7 @@ export function Settings() {
                   <div className="flex items-center justify-between gap-3 mb-4">
                     <p className="text-base text-white/45">
                       {missingGalleries.length
-                        ? `${missingGalleries.length} galleries are hidden because their folders are unavailable.`
+                        ? `${missingGalleries.length} ${t('galleries are hidden because their folders are unavailable.')}`
                         : t('No missing gallery folders detected.')}
                     </p>
                     <div className="flex items-center gap-2 shrink-0">
@@ -2894,22 +2945,16 @@ export function Settings() {
                             <div className="text-base text-white/80 truncate">{gallery.name}</div>
                             <div className="text-base text-white/35 truncate" title={gallery.folder_path}>{gallery.folder_path}</div>
                             <div className="text-base mt-1" style={{ color: gallery.root_online ? 'var(--c-amber)' : 'var(--c-pink)' }}>
-                              {gallery.root_online ? `${gallery.image_count} files · owning root is online` : 'Owning root is offline — protected from automatic removal'}
+                              {gallery.root_online ? `${gallery.image_count} ${t('files')} · ${t('owning root is online')}` : t('Owning root is offline — protected from automatic removal')}
                             </div>
                           </div>
-                          <button onClick={async () => {
-                                    const result = await scannerApi.browseFolder()
-                                    if (!result.data?.path) return
-                                    await scannerApi.relinkGallery(gallery.id, result.data.path)
-                                    qc.invalidateQueries({ queryKey: ['missing-galleries'] })
-                                    qc.invalidateQueries({ queryKey: ['galleries'] })
-                                  }}
+                          <button onClick={() => setFolderPickerTarget({ galleryId: gallery.id })}
                                   className="px-3 py-2 rounded-lg text-base cursor-pointer"
                                   style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 15%, transparent)' }}>
                             {t('Relink')}
                           </button>
                           <button onClick={async () => {
-                                    if (!window.confirm(`Remove the missing gallery “${gallery.name}” from The Vault? Files on disk are not touched.`)) return
+                                    if (!window.confirm(`${t('Remove the missing gallery')} “${gallery.name}” ${t('from The Vault? Files on disk are not touched.')}`)) return
                                     await scannerApi.removeMissingGallery(gallery.id)
                                     qc.invalidateQueries({ queryKey: ['missing-galleries'] })
                                     qc.invalidateQueries({ queryKey: ['galleries'] })
@@ -3101,12 +3146,7 @@ export function Settings() {
                            placeholder={t('Path to your funscript folder')}
                            className="flex-1 px-3 py-2 rounded-[8px] text-[16px] bg-white/5 text-white/80 outline-none"
                            style={{ border: '0.5px solid rgba(255,255,255,0.1)' }} />
-                    <button onClick={async () => {
-                              try {
-                                const res = await scannerApi.browseFolder()
-                                if (res.data?.path) { setFsLibPath(res.data.path); setFsLibDirty(true) }
-                              } catch { toast.error(t('Could not open folder picker')) }
-                            }}
+                    <button onClick={() => setFolderPickerTarget('funscript')}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-[16px] cursor-pointer flex-shrink-0"
                             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                       <FolderOpen size={15} /> {t('Browse')}
@@ -3165,7 +3205,7 @@ export function Settings() {
                                style={{ background: ready ? 'var(--c-green)' : 'rgba(255,255,255,0.2)' }} />
                           <div>
                             <div className="text-[16px] font-medium text-white/80">{t(label)}</div>
-                            <div className="text-[14px] text-white/35">{ready ? `Downloaded · ${size ?? '?'} MB` : t(desc)}</div>
+                            <div className="text-[14px] text-white/35">{ready ? `${t('Downloaded')} · ${size ?? '?'} MB` : t(desc)}</div>
                           </div>
                         </div>
                         {!ready && (
@@ -3245,13 +3285,13 @@ export function Settings() {
                           etaStr = t('Paused — progress saved')
                         } else if (Number.isFinite(tagStatus.eta_seconds)) {
                           const remaining = tagStatus.eta_seconds
-                          etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)}h left` : remaining >= 60 ? `~${Math.round(remaining/60)}m left` : `~${Math.round(remaining)}s left`
+                          etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)} ${t('hours left')}` : remaining >= 60 ? `~${Math.round(remaining/60)} ${t('minutes left')}` : `~${Math.round(remaining)} ${t('seconds left')}`
                         } else if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
                           const elapsed = (Date.now() - tagRunStartRef.current.ts) / 1000
                           const done = tagStatus.progress - tagRunStartRef.current.progress
                           const remaining = (tagStatus.total - tagStatus.progress) / (done / elapsed)
                           if (remaining > 0) {
-                            etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)}h left` : remaining >= 60 ? `~${Math.round(remaining/60)}m left` : `~${Math.round(remaining)}s left`
+                            etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)} ${t('hours left')}` : remaining >= 60 ? `~${Math.round(remaining/60)} ${t('minutes left')}` : `~${Math.round(remaining)} ${t('seconds left')}`
                             tagEtaRef.current = etaStr
                           } else { etaStr = tagEtaRef.current || '' }
                         } else { etaStr = tagEtaRef.current || '' }
@@ -3415,7 +3455,7 @@ export function Settings() {
                               style={{ background: locale === lang.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${locale === lang.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}` }}>
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="text-[16px] font-medium truncate" style={{ color: locale === lang.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.7)' }}>{lang.native}</span>
-                          <span className="text-[13px] text-white/30 truncate">{lang.label}</span>
+                          <span className="text-[13px] text-white/30 truncate">{t(lang.label)}</span>
                         </div>
                         {locale === lang.id && <Check size={14} className="flex-shrink-0" style={{ color: 'var(--c-accent)' }} />}
                       </button>
@@ -3470,13 +3510,50 @@ export function Settings() {
                   )}
                 </SettingsSection>
 
+                <SettingsSection title={t('Character themes')} icon={Sparkles} accentColor="var(--c-amber)">
+                  {installedThemePacks.map(item => (
+                    <div key={item.id} className="mt-3 flex items-stretch gap-2">
+                    <button type="button"
+                            onClick={() => setPalette({ id: `pack:${item.id}`, label: item.name, ...item.palette })}
+                            aria-pressed={currentPalette.id === `pack:${item.id}`}
+                            className="flex-1 min-w-0 min-h-[108px] flex items-center gap-4 p-4 rounded-[12px] text-left cursor-pointer"
+                            style={{ background: currentPalette.id === `pack:${item.id}` ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,.03)',
+                              border: `1px solid ${currentPalette.id === `pack:${item.id}` ? item.palette.accent : 'rgba(255,255,255,.1)'}` }}>
+                      <span className="vault-theme-option__art" aria-hidden="true">
+                        {item.preview_asset && <img src={`/theme-packs/${encodeURIComponent(item.id)}/${item.preview_asset}`} alt="" />}
+                      </span>
+                      <span className="flex gap-1" aria-hidden="true">
+                        {[item.palette.accent, item.palette.pink, item.palette.amber].map((color, index) =>
+                          <span key={index} className="w-5 h-5 rounded-full" style={{ background: color }} />)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <strong className="block text-[17px]">{item.name}</strong>
+                        <span className="text-[16px] text-white/50">{item.image_count} {t('artwork placements')} · {t('local pack')}</span>
+                      </span>
+                      {currentPalette.id === `pack:${item.id}` && <Check size={20} aria-hidden="true" />}
+                    </button>
+                    <button type="button" onClick={() => removeThemePack(item)}
+                            className="px-3 rounded-[10px] text-[16px] text-white/55 hover:text-white cursor-pointer"
+                            style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.1)' }}>
+                      {t('Remove')}
+                    </button>
+                    </div>
+                  ))}
+                  <input ref={packFileRef} type="file" accept=".vaulttheme" hidden onChange={importThemePack} />
+                  <button type="button" onClick={() => packFileRef.current?.click()} disabled={packImporting}
+                          className="mt-3 px-4 py-2 rounded-[8px] cursor-pointer text-[16px]"
+                          style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.14)' }}>
+                    {packImporting ? t('Installing…') : t('Import theme pack…')}
+                  </button>
+                </SettingsSection>
+
                 <SettingsSection title={t('Typography & Animations')} icon={Type} accentColor="rgba(255,255,255,0.4)" defaultOpen={false}>
                   <div className="mb-5">
                     <div className="text-[16px] font-semibold text-white/55 mb-2">{t('Font')}</div>
                     <div className="flex flex-wrap gap-2">
-                      {FONTS.map(f => (
+                      {availableFonts.map(f => (
                         <button key={f.id} onClick={() => setFont(f)}
-                                className="px-4 py-2 rounded-[8px] cursor-pointer transition-all text-[15px]"
+                                className="px-4 py-2 rounded-[8px] cursor-pointer transition-all text-[16px]"
                                 style={{ fontFamily: f.family, background: currentFont.id === f.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${currentFont.id === f.id ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: currentFont.id === f.id ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}>
                           {t(f.label)}
                         </button>
@@ -3488,13 +3565,13 @@ export function Settings() {
                     <div className="flex gap-2">
                       {[['full', 'Full'], ['reduced', 'Reduced'], ['off', 'Off']].map(([val, label]) => (
                         <button key={val} onClick={() => setAnimSpeed(val)}
-                                className="flex-1 py-2 rounded-[8px] text-[15px] cursor-pointer transition-all"
+                                className="flex-1 py-2 rounded-[8px] text-[16px] cursor-pointer transition-all"
                                 style={{ background: animSpeed === val ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${animSpeed === val ? 'var(--c-accent)' : 'rgba(255,255,255,0.08)'}`, color: animSpeed === val ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}>
                           {t(label)}
                         </button>
                       ))}
                     </div>
-                    <div className="text-[14px] text-white/20 mt-2">{t('"Off" disables all transitions and animations — useful on low-end hardware.')}</div>
+                    <div className="text-[16px] text-white/40 mt-2">{t('"Off" disables all transitions and animations — useful on low-end hardware.')}</div>
                   </div>
                 </SettingsSection>
 
@@ -3570,7 +3647,7 @@ export function Settings() {
                     <div className="text-[15px] text-white/35 mb-4">{t('AI companion powered by Ollama (local, private, uncensored). Requires Ollama to be installed.')}</div>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-[16px] text-white/70">{compConfig?.enabled ? `${compConfig?.name || 'Erika'} is active` : t('Companion disabled')}</div>
+                        <div className="text-[16px] text-white/70">{compConfig?.enabled ? `${compConfig?.name || 'Erika'} ${t('is active')}` : t('Companion disabled')}</div>
                         <div className="text-[14px] text-white/30 mt-0.5">{t('When enabled, she appears in the sidebar and as a floating chat bubble.')}</div>
                       </div>
                       <button onClick={toggleCompanion}
@@ -3716,7 +3793,7 @@ export function Settings() {
                 </SettingsSection>
 
                 <SettingsSection title={t('Storage location')} icon={HardDrive} accentColor="var(--c-accent)" defaultOpen={false}>
-                  <p className="text-[16px] text-white/45 mb-4">{t('Where')} <code className="text-white/50">vault.db</code> {t('and the thumbnail cache are stored. Move to a larger drive if C: space is limited. The server restarts automatically when saved.')}</p>
+                  <p className="text-[16px] text-white/45 mb-4">{t('Storage location for')} <code className="text-white/50">vault.db</code> {t('and the thumbnail cache. Move to a larger drive if C: space is limited. The server restarts automatically when saved.')}</p>
                   {configData && <div className="text-[15px] mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Active:')} <span className="font-mono" style={{ color: 'rgba(255,255,255,0.55)' }}>{configData.effective_data_dir}</span></div>}
                   {configData?.data_dir && configData.data_dir !== configData?.effective_data_dir && (
                     <div className="text-[14px] mb-3" style={{ color: 'var(--c-amber)' }}>{t('⚠ Configured path')} <span className="font-mono">{configData.data_dir}</span> {t('was not available at startup.')}</div>
@@ -3726,6 +3803,7 @@ export function Settings() {
                            placeholder="e.g. D:\VaultData"
                            className="flex-1 px-3 py-2 rounded-[7px] text-[15px] font-mono outline-none"
                            style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }} />
+                    <button onClick={() => setFolderPickerTarget('storage')} className="px-3 py-2 rounded-[7px] text-[16px] cursor-pointer flex-shrink-0" style={{ background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.12)' }}>{t('Browse')}</button>
                     <button onClick={storageState === 'idle' ? handleStorageSave : undefined}
                             disabled={storageState === 'saving' || storageState === 'saved'}
                             className="flex items-center gap-2 px-4 py-2 rounded-[7px] text-[15px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-60"
@@ -3825,7 +3903,7 @@ export function Settings() {
                   )}
                   {(updateState === 'downloading' || updateState === 'installing') && (
                     <div className="space-y-2">
-                      <div className="text-[16px] text-white/50">{updateState === 'installing' ? t('Launching installer — the app will close and restart…') : `Downloading… ${updateProgress}%`}</div>
+                      <div className="text-[16px] text-white/50">{updateState === 'installing' ? t('Launching installer — the app will close and restart…') : `${t('Downloading…')} ${updateProgress}%`}</div>
                       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${updateProgress}%`, background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }} />
                       </div>
@@ -3883,6 +3961,8 @@ export function Settings() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {folderPickerTarget && <FolderPicker onSelect={chooseSettingsFolder} onClose={() => setFolderPickerTarget(null)} />}
 
       {/* ── Factory reset confirmation modal ───────────────────────────────── */}
       {showResetModal && (
@@ -3961,7 +4041,7 @@ export function ScanLog() {
         <ScrollText size={15} style={{ color: 'var(--c-accent)' }} />
         <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)]">{t('Scan Log')}</div>
         {scanStatus?.running && (
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px]"
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[16px]"
                style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--c-green)' }} />
             {t('Scanning…')}
@@ -3969,12 +4049,12 @@ export function ScanLog() {
         )}
         {scanStatus?.running && (
           <button onClick={async () => { await scannerApi.cancel(); qc.invalidateQueries({ queryKey: ['scan-status'] }) }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[16px] cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
             <X size={10} /> {t('Cancel scan')}
           </button>
         )}
-        <button onClick={() => refetch()} className="ml-auto text-[10px] cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
+        <button onClick={() => refetch()} className="ml-auto text-[16px] cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
           {t('Refresh')}
         </button>
       </div>

@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { LockKeyhole, PackageOpen, ShieldCheck } from 'lucide-react'
 import './PackBrowser.css'
@@ -19,10 +20,10 @@ function OddsDisclosure({ pack }) {
   const total = odds.reduce((sum, [, value]) => sum + Number(value), 0) || 1
   return (
     <details className="tcgws-pack-integrity">
-      <summary><ShieldCheck size={17} /> Probabilities</summary>
+      <summary><ShieldCheck size={17} /><LocalizedText text={"Probabilities"} before={" "} /></summary>
       <div className="tcgws-odds-panel">
         <section>
-          <h3>Chance per random slot</h3>
+          <h3><LocalizedText text={"Chance per random slot"} /></h3>
           <div className="tcgws-odds-list">
             {odds.map(([rarity, value]) => {
               const percent = (Number(value) / total) * 100
@@ -82,24 +83,24 @@ function poolSummary(pack) {
   return 'Published Vault pool'
 }
 
-function formatRemaining(milliseconds) {
+function formatRemaining(milliseconds, t) {
   const minutes = Math.max(1, Math.ceil(milliseconds / 60000))
-  if (minutes < 60) return `${minutes} min`
+  if (minutes < 60) return t('{count} min', { count: minutes })
   const hours = Math.ceil(minutes / 60)
   if (hours < 48) return `${hours} ${hours === 1 ? 'hour' : 'hours'}`
   const days = Math.ceil(hours / 24)
   return `${days} ${days === 1 ? 'day' : 'days'}`
 }
 
-function availabilityMessage(pack, now) {
+function availabilityMessage(pack, now, t) {
   if (pack.product_kind === 'weekly_protection') return 'Earned by completing the weekly quest'
   const availableFrom = pack.available_from ? Date.parse(pack.available_from) : NaN
   const availableUntil = pack.available_until ? Date.parse(pack.available_until) : NaN
   if (!pack.active && Number.isFinite(availableFrom) && availableFrom > now) {
-    return `Available in ${formatRemaining(availableFrom - now)}`
+    return `Available in ${formatRemaining(availableFrom - now, t)}`
   }
   if (pack.active && Number.isFinite(availableUntil) && availableUntil > now) {
-    return `Available for ${formatRemaining(availableUntil - now)}`
+    return `Available for ${formatRemaining(availableUntil - now, t)}`
   }
   if (!pack.active) return 'Not currently scheduled'
   return null
@@ -130,12 +131,13 @@ export function BoosterEnvelope({ pack, images }) {
     <div className="tcgws-booster-crimp top" />
     <div className="tcgws-booster-collage">{slots.map((image, index) => image && <img key={`${image}-${index}`} src={image} style={{ '--slot': index }} />)}</div>
     <div className="tcgws-booster-foil" />
-    <div className="tcgws-booster-copy"><span>THE VAULT</span><strong>{pack.name}</strong><small>{pack.card_count} CARD BOOSTER</small></div>
+    <div className="tcgws-booster-copy"><span><LocalizedText text={"THE VAULT"} /></span><strong>{pack.name}</strong><small>{pack.card_count}<LocalizedText text={"CARD BOOSTER"} before={" "} /></small></div>
     <div className="tcgws-booster-crimp bottom" />
   </div>
 }
 
 export default function PackBrowser({ packs, inventory, releases, onOpenPack, pending = false, pendingPackId = null, orderMode = false }) {
+  const t = useT()
   const [selectedReleases, setSelectedReleases] = useState({})
   const [now, setNow] = useState(() => Date.now())
   const images = (inventory || []).map(card => card.thumb_url || card.image_url).filter(Boolean).slice(0, 30)
@@ -144,9 +146,9 @@ export default function PackBrowser({ packs, inventory, releases, onOpenPack, pe
     return () => window.clearInterval(timer)
   }, [])
   return <section className="tcgws-packs">
-    <header><span>Booster ecosystem</span><h1>Published Products</h1></header>
+    <header><span><LocalizedText text={"Booster ecosystem"} /></span><h1><LocalizedText text={"Published Products"} /></h1></header>
     <div className="tcgws-pack-grid">{packs.map(pack => {
-      const schedule = availabilityMessage(pack, now)
+      const schedule = availabilityMessage(pack, now, t)
       const wrapperSrc = WRAPPER_ASSETS[pack.product_kind] || WRAPPER_ASSETS.permanent
       const openingProduct = {
         ...pack,
@@ -159,9 +161,9 @@ export default function PackBrowser({ packs, inventory, releases, onOpenPack, pe
       return <article key={pack.id}>
       <BoosterEnvelope pack={pack} images={images} />
       <section><span>{pack.product_kind.replaceAll('_', ' ')}</span><h2>{pack.name}</h2>
-        <div className="tcgws-pack-facts"><p><PackageOpen size={16} />{pack.card_count} Cards</p><p><ShieldCheck size={16} />{guaranteedLine(pack)}</p><span>{poolSummary(pack)}</span></div>
+        <div className="tcgws-pack-facts"><p><PackageOpen size={16} />{pack.card_count}<LocalizedText text={"Cards"} before={" "} /></p><p><ShieldCheck size={16} />{guaranteedLine(pack)}</p><span>{poolSummary(pack)}</span></div>
         <OddsDisclosure pack={pack} />
-        {isWeekly && pack.tokens > 0 && <label className="tcgws-pack-release"><span>Choose release</span><select value={selectedReleases[pack.id] || ''} onChange={event => setSelectedReleases(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value="">Select a frozen release</option>{releases.filter(release => release.status === 'published').map(release => <option key={release.id} value={release.id}>{release.name}</option>)}</select></label>}
+        {isWeekly && pack.tokens > 0 && <label className="tcgws-pack-release"><span><LocalizedText text={"Choose release"} /></span><select value={selectedReleases[pack.id] || ''} onChange={event => setSelectedReleases(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value=""><LocalizedText text={"Select a frozen release"} /></option>{releases.filter(release => release.status === 'published').map(release => <option key={release.id} value={release.id}>{release.name}</option>)}</select></label>}
         {canOpen ? <button className="tcgws-primary" disabled={pending || (isWeekly && !selectedReleases[pack.id])} onClick={() => onOpenPack(openingProduct, selectedReleases[pack.id] || null)}>{pending && pendingPackId === pack.id ? <><PackageOpen size={16} className="tcgws-pack-button-spin" /> {orderMode ? 'Ordering...' : 'Preparing...'}</> : orderMode && !isWeekly ? `Order online - ${pack.price.toLocaleString()} Credits` : isWeekly ? 'Weekly quest reward' : pack.tokens > 0 ? `Open token (${pack.tokens})` : `${pack.price.toLocaleString()} Credits`}</button> : <button disabled><LockKeyhole size={16} />{isWeekly ? 'Weekly quest reward' : schedule || (pack.purchasable ? 'Not currently scheduled' : 'Coming soon')}</button>}
       </section>
     </article>

@@ -216,7 +216,7 @@ if getattr(sys, 'frozen', False):
 
 from sqlalchemy.orm import Session
 from database import engine, Base, SessionLocal, get_db, DATA_DIR
-from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake, tag_vocab, panel_playlists, funscripts
+from routers import galleries, creators, images, tags, sessions, gamification, scanner, playlists, dedup, tasks, feed, intake, tag_vocab, panel_playlists, funscripts, theme_packs
 from routers.cards import router as cards_router, economy_router
 from routers.system import router as system_router
 from routers.companion import router as companion_router
@@ -470,6 +470,7 @@ def _migrate_add_columns():
         "ALTER TABLE images ADD COLUMN curated_at DATETIME",
         "ALTER TABLE images ADD COLUMN curate_snooze_until DATETIME",
         "ALTER TABLE user_profile ADD COLUMN total_images_curated INTEGER DEFAULT 0",
+        "ALTER TABLE ai_tag_jobs ADD COLUMN image_id INTEGER",
         # The queue filters on these constantly — index or every pull scans 21k rows.
         "CREATE INDEX IF NOT EXISTS ix_galleries_curated_at ON galleries(curated_at)",
         "CREATE INDEX IF NOT EXISTS ix_galleries_curate_snooze ON galleries(curate_snooze_until)",
@@ -487,6 +488,8 @@ def _migrate_add_columns():
                     print(f"[migration] unexpected error running `{sql}`: {e}")
 
 _migrate_add_columns()
+from services.tcg_schema_migrations import migrate_bond_milestone_card_link_nullable
+migrate_bond_milestone_card_link_nullable(engine)
 
 
 def _migrate_physical_card_copies():
@@ -738,7 +741,7 @@ def _backfill_hof_card_visuals():
             if result["prepared"] or result["failed"]:
                 print(
                     "[migration] Hall of Fame visual recipes: "
-                    f"{result['prepared']} prepared, {result['failed']} missing eligible art"
+                    f"{result['prepared']} prepared, {result['failed']} failed reconciliation"
                 )
         finally:
             _db.close()
@@ -1180,10 +1183,15 @@ app.include_router(tcg_v2_router)
 app.include_router(tcg_room_module_router)
 app.include_router(tcg_room_router)
 app.include_router(tcg_traders_router)
+app.include_router(theme_packs.router, prefix="/api/theme-packs", tags=["theme-packs"])
 
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 os.makedirs(THUMBS_DIR, exist_ok=True)
 app.mount("/thumbs", StaticFiles(directory=THUMBS_DIR), name="thumbs")
+
+from services.theme_packs import PACK_ROOT
+PACK_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount("/theme-packs", StaticFiles(directory=str(PACK_ROOT)), name="theme-packs")
 
 # Card foil masks, served the same way thumbs are so any client — the web card
 # or the Unreal one — can fetch them as a plain static texture.

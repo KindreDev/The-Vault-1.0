@@ -20,6 +20,10 @@ MAX_CHARACTER_CUTOUT_COVERAGE = 0.80
 MAX_CHARACTER_MIRROR_DISAGREEMENT = 0.085
 MIN_CHARACTER_SILHOUETTE_SOLIDITY = 0.77
 MAX_CHARACTER_SOFT_INTERIOR_FRACTION = 0.08
+CHARACTER_CANON_PLACEHOLDER_PALETTE = {
+    "background": "#282532", "primary": "#73658B",
+    "secondary": "#D9A9BF", "ink": "#F6E9F1",
+}
 
 
 def _hex(rgb: tuple[int, int, int]) -> str:
@@ -329,17 +333,36 @@ def prepare_character_visual(db, card, character_id: int, *, ensure_mask_fn=None
         if recipe.get("schema") == "vault.character-card-recipe":
             return recipe
 
-    selection = select_character_source(db, character_id)
-    if not selection:
-        raise ValueError("Character has no eligible gallery image or avatar")
-    character = selection["character"]
-    source_kind = selection["kind"]
-    image = selection.get("image")
-    source_path = image.file_path if image else selection["path"]
-    width = int(image.width if image else selection["width"])
-    height = int(image.height if image else selection["height"])
-    focal_x = float(image.focal_x if image and image.focal_x is not None else 0.5)
-    focal_y = float(image.focal_y if image and image.focal_y is not None else 0.25)
+    from models import Creator, Image
+    character = db.query(Creator).filter(Creator.id == character_id).first()
+    if not character or str(getattr(character.creator_type, "value", character.creator_type)) != "character":
+        raise ValueError("Character source identity is missing or invalid")
+    if card.source_image_id:
+        image = db.query(Image).filter(Image.id == card.source_image_id).first()
+        if (not image or image.is_video or not image.width or not image.height
+                or not image.file_path or not os.path.isfile(image.file_path)):
+            raise ValueError("Character portrait printing's frozen source image is unavailable")
+        source_kind, source_path = "image", image.file_path
+        width, height = int(image.width), int(image.height)
+        focal_x = float(image.focal_x if image.focal_x is not None else 0.5)
+        focal_y = float(image.focal_y if image.focal_y is not None else 0.25)
+    else:
+        # Canon identity printings deliberately follow the live profile PFP.
+        source_path = character.avatar_path if character.avatar_path and os.path.isfile(character.avatar_path) else None
+        if source_path:
+            try:
+                with PILImage.open(source_path) as avatar:
+                    width, height = avatar.size
+                if width <= 0 or height <= 0:
+                    source_path = None
+            except Exception:
+                source_path = None
+        if not source_path:
+            # Keep the named canonical card legible until its live PFP exists.
+            width, height = 2, 3
+        source_kind = "avatar"
+        image = None
+        focal_x, focal_y = 0.5, 0.25
 
     metrics: dict[str, Any] = {"accepted": False, "reasons": ["avatar-source"]}
     pipeline_version = CHARACTER_MASK_PIPELINE_VERSION
@@ -368,7 +391,7 @@ def prepare_character_visual(db, card, character_id: int, *, ensure_mask_fn=None
         source_height=height,
         focal_x=focal_x,
         focal_y=focal_y,
-        palette=extract_character_palette(source_path),
+        palette=(extract_character_palette(source_path) if source_path else dict(CHARACTER_CANON_PLACEHOLDER_PALETTE)),
         mask_metrics=metrics,
         mask_pipeline_version=pipeline_version,
         source_kind=source_kind,

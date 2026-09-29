@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -12,6 +13,7 @@ const MAX_TAGS = 10
 // Portals the list to document.body so it is never affected by a transformed
 // ancestor (animate-modal-pop uses transform, which breaks position:fixed).
 function CustomSelect({ value, onChange, options, placeholder }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [pos,  setPos]  = useState({ top: 0, left: 0, width: 0 })
   const triggerRef = useRef(null)
@@ -176,7 +178,7 @@ export default function RandomMixModal({ onClose }) {
         tag_ids:       selectedTags.map(t => t.id),
         name:          name.trim() || undefined,
       })
-      toast.success(`"${res.data.name}" created — ${res.data.image_count} items`)
+      toast.success(t('"{name}" created — {count} items', { name: res.data.name, count: res.data.image_count }))
       onClose()
       navigate(`/galleries/${res.data.id}`)
     } catch (err) {
@@ -198,7 +200,7 @@ export default function RandomMixModal({ onClose }) {
         <div className="flex items-center gap-2.5 px-5 py-4 flex-shrink-0"
              style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
           <Shuffle size={15} style={{ color: 'var(--c-accent)' }} />
-          <div className="flex-1 text-[15px] font-medium text-[rgba(255,255,255,0.9)]">Generate Random Mix</div>
+          <div className="flex-1 text-[15px] font-medium text-[rgba(255,255,255,0.9)]"><LocalizedText text={"Generate Random Mix"} /></div>
           <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
             <X size={14} />
           </button>
@@ -209,11 +211,10 @@ export default function RandomMixModal({ onClose }) {
 
           {/* Name */}
           <div>
-            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-1.5">
-              Name <span className="opacity-50">(optional)</span>
+            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-1.5"><LocalizedText text={"Name"} before=" " after=" " /><span className="opacity-50"><LocalizedText text={"(optional)"} /></span>
             </label>
             <input value={name} onChange={e => setName(e.target.value)}
-                   placeholder="Auto-generated if blank"
+                   placeholder={t("Auto-generated if blank")}
                    className="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none"
                    style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
           </div>
@@ -221,21 +222,20 @@ export default function RandomMixModal({ onClose }) {
           {/* Count */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[12px] text-[rgba(255,255,255,0.5)]">Items</label>
+              <label className="text-[12px] text-[rgba(255,255,255,0.5)]"><LocalizedText text={"Items"} /></label>
               <span className="text-[14px] font-medium" style={{ color: 'var(--c-accent)' }}>{count}</span>
             </div>
             <input type="range" min={5} max={300} step={5} value={count}
                    onChange={e => setCount(Number(e.target.value))}
                    className="w-full cursor-pointer accent-[var(--c-accent)]" />
-            <div className="flex justify-between text-[10px] text-[rgba(255,255,255,0.25)] mt-0.5">
+            <div className="flex justify-between text-[16px] text-[rgba(255,255,255,0.25)] mt-0.5">
               <span>5</span><span>150</span><span>300</span>
             </div>
           </div>
 
           {/* Creator multi-select */}
           <div ref={creatorRef}>
-            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-1.5">
-              Creators <span className="opacity-50">(blank = any)</span>
+            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-1.5"><LocalizedText text={"Creators"} before=" " after=" " /><span className="opacity-50"><LocalizedText text={"(blank = any)"} /></span>
             </label>
 
             {/* Selected creator chips */}
@@ -286,16 +286,14 @@ export default function RandomMixModal({ onClose }) {
 
             {creatorOpen && creatorSearch.trim() && filteredCreators.length === 0 && (
               <div className="mt-1 px-3 py-2 rounded-[8px] text-[12px] animate-dropdown-in origin-top"
-                   style={{ background: '#1c1c1c', border: '0.5px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)' }}>
-                No creators match "{creatorSearch}"
+                   style={{ background: '#1c1c1c', border: '0.5px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"No creators match \""} before=" " />{creatorSearch}"
               </div>
             )}
           </div>
 
           {/* Creator type multi-toggle */}
           <div>
-            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-2">
-              Creator type <span className="opacity-50">(blank = any)</span>
+            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-2"><LocalizedText text={"Creator type"} before=" " after=" " /><span className="opacity-50"><LocalizedText text={"(blank = any)"} /></span>
             </label>
             <div className="flex flex-wrap gap-1.5">
               {CREATOR_TYPES.map(({ value, label }) => {
@@ -322,7 +320,7 @@ export default function RandomMixModal({ onClose }) {
           <div ref={tagRef}>
             <div className="flex items-center justify-between mb-1.5">
               <label className="flex items-center gap-1.5 text-[12px] text-[rgba(255,255,255,0.5)]">
-                <Tag size={11} /> Preferred tags <span className="opacity-50">(optional)</span>
+                <Tag size={11} /><LocalizedText text={"Preferred tags"} before=" " after=" " /><span className="opacity-50"><LocalizedText text={"(optional)"} /></span>
               </label>
               {selectedTags.length > 0 && (
                 <span className="text-[11px]"
@@ -384,15 +382,14 @@ export default function RandomMixModal({ onClose }) {
 
             {tagOpen && tagSearch.trim() && filteredTags.length === 0 && selectedTags.length < MAX_TAGS && (
               <div className="mt-1 px-3 py-2 rounded-[8px] text-[12px] animate-dropdown-in origin-top"
-                   style={{ background: '#1c1c1c', border: '0.5px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)' }}>
-                No tags match "{tagSearch}"
+                   style={{ background: '#1c1c1c', border: '0.5px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"No tags match \""} before=" " />{tagSearch}"
               </div>
             )}
           </div>
 
           {/* Content type */}
           <div>
-            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-2">Content</label>
+            <label className="block text-[12px] text-[rgba(255,255,255,0.5)] mb-2"><LocalizedText text={"Content"} /></label>
             <div className="flex gap-2">
               {[['all', 'Everything'], ['photos', 'Photos only'], ['videos', 'Videos only']].map(([val, label]) => (
                 <button key={val} onMouseDown={() => setContentType(val)}
@@ -415,9 +412,7 @@ export default function RandomMixModal({ onClose }) {
              style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
           <button onMouseDown={onClose}
                   className="flex-1 py-2.5 rounded-[10px] text-[13px] cursor-pointer"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-            Cancel
-          </button>
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}><LocalizedText text={"Cancel"} before=" " after=" " /></button>
           <button onMouseDown={handleGenerate} disabled={busy}
                   className="flex-1 py-2.5 rounded-[10px] text-[13px] font-medium cursor-pointer disabled:opacity-50"
                   style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>

@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
@@ -63,6 +64,7 @@ const RARITY_COLORS = {
 const CO_STATE_KEY = 'vault_collection_state'
 
 export default function Collection() {
+  const t = useT()
   const [tab, setTab]                   = useState('collection')
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -165,18 +167,18 @@ export default function Collection() {
       qc.invalidateQueries({ queryKey: ['tcg-v2-setup'] })
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
       qc.invalidateQueries({ queryKey: ['collection-creators'] })
-      toast.success('TCG V2 started. Publishing your Foundation catalogue now.')
+      toast.success(t("TCG V2 started. Publishing your Foundation catalogue now."))
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Could not start the TCG'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Could not start the TCG")),
   })
 
   const foundationMutation = useMutation({
     mutationFn: () => cardsApi.publishFoundation().then(r => r.data),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tcg-v2-setup'] })
-      toast.success(`${data.base_printings.toLocaleString()} Foundation cards published`)
+      toast.success(t('{count} Foundation cards published', { count: data.base_printings.toLocaleString() }))
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Could not publish the Foundation catalogue'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Could not publish the Foundation catalogue")),
   })
 
   useEffect(() => {
@@ -251,41 +253,41 @@ export default function Collection() {
   const dismantleBatchMutation = useMutation({
     mutationFn: (ids) => cardsApi.dismantleBatch(ids).then(r => r.data),
     onSuccess: (data) => {
-      toast.success(`Dismantled ${data.dismantled}  +${data.shards_earned} shards`)
+      toast.success(t('Dismantled {count} cards · +{shards} shards', { count: data.dismantled, shards: data.shards_earned }))
       setAnimShards(s => s ? { ...s, gained: data.shards_earned } : null)
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
     },
-    onError: () => toast.error('Dismantle failed'),
+    onError: () => toast.error(t("Dismantle failed")),
   })
 
   const dismantleDuplicatesMutation = useMutation({
     mutationFn: () => cardsApi.dismantleDuplicates().then(r => r.data),
     onSuccess: (data) => {
-      if (data.dismantled === 0) { toast('No duplicates found'); return }
-      toast.success(`Dismantled ${data.dismantled} dupes · +${data.shards_earned} shards`)
+      if (data.dismantled === 0) { toast(t("No duplicates found")); return }
+      toast.success(t('Dismantled {count} dupes · +{shards} shards', { count: data.dismantled, shards: data.shards_earned }))
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
     },
-    onError: () => toast.error('Failed to dismantle duplicates'),
+    onError: () => toast.error(t("Failed to dismantle duplicates")),
   })
 
 const feedDuplicateMutation = useMutation({
     mutationFn: (invId) => cardsApi.feedDuplicate(invId).then(r => r.data),
     onSuccess: (data) => {
-      toast.success(`+${data.cxp_gained} CXP (×${data.quantity} remaining)`)
+      toast.success(t('+{cxp} CXP (×{quantity} remaining)', { cxp: data.cxp_gained, quantity: data.quantity }))
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Feed failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Feed failed")),
   })
 
   const craftMutation = useMutation({
     mutationFn: () => cardsApi.craftCatalyst().then(r => r.data),
     onSuccess: () => {
-      toast.success('⚗️ Catalyst Token crafted!')
+      toast.success(t("⚗️ Catalyst Token crafted!"))
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Need 150 shards'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Need 150 shards")),
   })
 
   // ── Forge Variant ─────────────────────────────────────────────────────────
@@ -300,7 +302,7 @@ const feedDuplicateMutation = useMutation({
     mutationFn: ({ creator_id, character_id }) =>
       cardsApi.forgeVariant(creator_id, character_id).then(r => r.data),
     onSuccess: (data) => {
-      toast.success(`✦ ${data.card.creator_name} × ${data.card.character_name} variant forged! +${data.xp_earned} XP`)
+      toast.success(t('✦ {creator} × {character} variant forged! +{xp} XP', { creator: data.card.creator_name, character: data.card.character_name, xp: data.xp_earned }))
       qc.invalidateQueries({ queryKey: ['card-inventory'] })
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
       refetchVariantPairs()
@@ -308,7 +310,7 @@ const feedDuplicateMutation = useMutation({
         setViewCard({ card: data.card, inventoryId: null, sourceRect: null })
       }
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Forge failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Forge failed")),
   })
 
   const [variantSearch, setVariantSearch] = useState('')
@@ -328,11 +330,11 @@ const feedDuplicateMutation = useMutation({
   const exchangeMutation = useMutation({
     mutationFn: () => cardsApi.shardsToCredits(exchangeAmount).then(r => r.data),
     onSuccess: (data) => {
-      toast.success(`🔷 ${data.shards_spent} shards → 💰 ${data.credits_earned} credits`)
+      toast.success(t('🔷 {shards} shards → 💰 {credits} credits', { shards: data.shards_spent, credits: data.credits_earned }))
       qc.invalidateQueries({ queryKey: ['forge-materials'] })
       qc.invalidateQueries({ queryKey: ['economy-balance'] })
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Exchange failed'),
+    onError: (e) => toast.error(e.response?.data?.detail || t("Exchange failed")),
   })
 
   // ── Forge: multi-select dismantle ─────────────────────────────────────────
@@ -392,7 +394,7 @@ const feedDuplicateMutation = useMutation({
   const handleCollect = () => {
     setPackBatches(null)
     qc.invalidateQueries({ queryKey: ['card-inventory'] })
-    toast.success('Cards added to collection!')
+    toast.success(t("Cards added to collection!"))
   }
   const handleSkip = () => {
     setPackBatches(null)
@@ -435,14 +437,12 @@ const feedDuplicateMutation = useMutation({
       <div style={{ minHeight: '70vh', display: 'grid', placeItems: 'center', background: '#080810', padding: 32 }}>
         <div style={{ maxWidth: 620, textAlign: 'center' }}>
           <Loader size={42} style={{ color: 'var(--c-accent)', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }} />
-          <h1 style={{ fontSize: 28, color: '#fff', marginBottom: 12 }}>Publishing your Foundation catalogue</h1>
-          <p style={{ fontSize: 17, lineHeight: 1.6, color: 'rgba(255,255,255,.6)' }}>
-            The Vault is freezing a finite checklist of up to 60,000 real cards. Booster openings will use these stable V2 definitions—not the old random-card generator.
-          </p>
+          <h1 style={{ fontSize: 28, color: '#fff', marginBottom: 12 }}><LocalizedText text={"Publishing your Foundation catalogue"} /></h1>
+          <p style={{ fontSize: 17, lineHeight: 1.6, color: 'rgba(255,255,255,.6)' }}><LocalizedText text={"The Vault is freezing a finite checklist of up to 60,000 real cards. Booster openings will use these stable V2 definitions—not the old random-card generator."} before={" "} after={" "} /></p>
           {foundationMutation.isError && <button onClick={() => foundationMutation.mutate()} style={{
             marginTop: 18, padding: '12px 22px', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer',
             color: '#fff', background: 'color-mix(in srgb, var(--c-accent) 35%, #171724)', border: '1px solid var(--c-accent)',
-          }}>Try publishing again</button>}
+          }}><LocalizedText text={"Try publishing again"} /></button>}
         </div>
       </div>
     )
@@ -492,13 +492,8 @@ const feedDuplicateMutation = useMutation({
             }}
           >
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: 8 }}>
-              Dismantle ALL Cards?
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}>
-              You are about to dismantle all <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{selected.length}</strong> cards
-              in your collection. This cannot be undone.
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', textAlign: 'center', marginBottom: 8 }}><LocalizedText text={"Dismantle ALL Cards?"} before={" "} after={" "} /></div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}><LocalizedText text="You are about to dismantle {count} cards in your collection. This cannot be undone." params={{ count: selected.length }} /></div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => setConfirmDismantleAll(false)}
@@ -508,9 +503,7 @@ const feedDuplicateMutation = useMutation({
                   background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
                   border: '0.5px solid rgba(255,255,255,0.1)',
                 }}
-              >
-                Cancel
-              </button>
+              ><LocalizedText text={"Cancel"} before={" "} after={" "} /></button>
               <button
                 onClick={executeDismantleSelected}
                 style={{
@@ -520,9 +513,7 @@ const feedDuplicateMutation = useMutation({
                   border: '1px solid color-mix(in srgb, var(--c-pink) 50%, transparent)',
                   boxShadow: '0 0 16px color-mix(in srgb, var(--c-pink) 20%, transparent)',
                 }}
-              >
-                Yes, Dismantle All
-              </button>
+              ><LocalizedText text={"Yes, Dismantle All"} before={" "} after={" "} /></button>
             </div>
           </div>
         </div>
@@ -541,10 +532,9 @@ const feedDuplicateMutation = useMutation({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Card Collection</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}><LocalizedText text={"Card Collection"} /></h1>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
-            {total} card{total !== 1 ? 's' : ''} owned
-          </div>
+            {total}<LocalizedText text={"card"} before={" "} />{total !== 1 ? 's' : ''}<LocalizedText text={"owned"} before={" "} after={" "} /></div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
@@ -554,8 +544,7 @@ const feedDuplicateMutation = useMutation({
             border: '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)',
             color: 'var(--c-amber-text)', fontSize: 13, fontWeight: 600,
           }}>
-            💰 {credits.toLocaleString()} Credits
-          </div>
+            💰 {credits.toLocaleString()}<LocalizedText text={"Credits"} before={" "} after={" "} /></div>
         </div>
       </div>
 
@@ -616,8 +605,7 @@ const feedDuplicateMutation = useMutation({
               color: showEffects ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.35)',
               border: showEffects ? '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
             }}>
-              <Sparkles size={11} /> Effects
-            </button>
+              <Sparkles size={11} /><LocalizedText text={"Effects"} before={" "} after={" "} /></button>
 
             {tcgSetup.has_legacy_cards && (
               <button onClick={() => setShowLegacy(v => {
@@ -645,8 +633,7 @@ const feedDuplicateMutation = useMutation({
               color: showCxpBar ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.35)',
               border: showCxpBar ? '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' : '0.5px solid rgba(255,255,255,0.08)',
             }}>
-              <BarChart2 size={11} /> CXP
-            </button>
+              <BarChart2 size={11} /><LocalizedText text={"CXP"} before={" "} after={" "} /></button>
             </>}
           />
 
@@ -661,7 +648,7 @@ const feedDuplicateMutation = useMutation({
           ) : items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 80, color: 'rgba(255,255,255,0.2)' }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🃏</div>
-              <div style={{ fontSize: 14 }}>No cards yet — open a pack in The Shop!</div>
+              <div style={{ fontSize: 14 }}><LocalizedText text={"No cards yet — open a pack in The Shop!"} /></div>
             </div>
           ) : (
             <>
@@ -706,7 +693,7 @@ const feedDuplicateMutation = useMutation({
                         <div style={{
                           position: 'absolute', top: 6, right: 6,
                           background: 'rgba(0,0,0,0.75)', borderRadius: 10,
-                          padding: '2px 6px', fontSize: 10, color: 'var(--c-amber-text)', fontWeight: 700,
+                          padding: '2px 6px', fontSize: 16, color: 'var(--c-amber-text)', fontWeight: 700,
                         }}>
                           ×{inv.quantity}
                         </div>
@@ -782,8 +769,7 @@ const feedDuplicateMutation = useMutation({
           <div style={{ flex: '1 1 400px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Hammer size={14} style={{ color: 'var(--c-amber-text)' }} /> Dismantle Cards
-              </div>
+                <Hammer size={14} style={{ color: 'var(--c-amber-text)' }} /><LocalizedText text={"Dismantle Cards"} before={" "} after={" "} /></div>
               <button
                 onClick={() => dismantleDuplicatesMutation.mutate()}
                 disabled={dismantleDuplicatesMutation.isPending}
@@ -794,9 +780,7 @@ const feedDuplicateMutation = useMutation({
                   border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)',
                   opacity: dismantleDuplicatesMutation.isPending ? 0.5 : 1,
                 }}
-              >
-                Dismantle Dupes
-              </button>
+              ><LocalizedText text={"Dismantle Dupes"} before={" "} after={" "} /></button>
             </div>
 
             {/* Selection helpers */}
@@ -808,9 +792,7 @@ const feedDuplicateMutation = useMutation({
                   background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
                   border: '0.5px solid rgba(255,255,255,0.1)',
                 }}
-              >
-                Select Commons
-              </button>
+              ><LocalizedText text={"Select Commons"} before={" "} after={" "} /></button>
               <button
                 onClick={selectRareOrBelow}
                 style={{
@@ -818,9 +800,7 @@ const feedDuplicateMutation = useMutation({
                   background: 'rgba(70,130,220,0.1)', color: '#7AB8E8',
                   border: '0.5px solid rgba(70,130,220,0.3)',
                 }}
-              >
-                Select Epic &amp; Below
-              </button>
+              ><LocalizedText text={"Select Epic & Below"} before={" "} after={" "} /></button>
               <button
                 onClick={selectAll}
                 style={{
@@ -828,9 +808,7 @@ const feedDuplicateMutation = useMutation({
                   background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)',
                   border: '0.5px solid rgba(255,255,255,0.08)',
                 }}
-              >
-                Select All
-              </button>
+              ><LocalizedText text={"Select All"} before={" "} after={" "} /></button>
               {selected.length > 0 && (
                 <button
                   onClick={() => { setSelected([]); setIsSelectAll(false) }}
@@ -839,9 +817,7 @@ const feedDuplicateMutation = useMutation({
                     background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)',
                     border: 'none',
                   }}
-                >
-                  Clear
-                </button>
+                ><LocalizedText text={"Clear"} before={" "} after={" "} /></button>
               )}
             </div>
 
@@ -853,8 +829,7 @@ const feedDuplicateMutation = useMutation({
                 background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)',
               }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                  {selected.length} card{selected.length > 1 ? 's' : ''} selected
-                </span>
+                  {selected.length}<LocalizedText text={"cards"} before={" "} /><LocalizedText text={"selected"} before={" "} after={" "} /></span>
                 <button
                   onClick={dismantleSelected}
                   style={{
@@ -863,14 +838,12 @@ const feedDuplicateMutation = useMutation({
                     background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#F4C0D1',
                     border: '0.5px solid color-mix(in srgb, var(--c-pink) 50%, transparent)',
                   }}
-                >
-                  Dismantle Selected
-                </button>
+                ><LocalizedText text={"Dismantle Selected"} before={" "} after={" "} /></button>
               </div>
             )}
 
             {invLoading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>Loading cards…</div>
+              <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}><LocalizedText text={"Loading cards…"} /></div>
             ) : (
               <>
                 <div className="forge-no-anim" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
@@ -904,9 +877,7 @@ const feedDuplicateMutation = useMutation({
                               background: 'color-mix(in srgb, var(--c-green) 30%, transparent)', color: '#6EE7C3',
                               border: '0.5px solid color-mix(in srgb, var(--c-green) 50%, transparent)',
                             }}
-                          >
-                            +CXP
-                          </button>
+                          ><LocalizedText text={"+CXP"} before={" "} after={" "} /></button>
                         )}
                         {isSel && (
                           <div style={{
@@ -920,9 +891,7 @@ const feedDuplicateMutation = useMutation({
                     )
                   })}
                   {items.length === 0 && (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', padding: 20 }}>
-                      No cards to dismantle. Open packs first!
-                    </div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', padding: 20 }}><LocalizedText text={"No cards to dismantle. Open packs first!"} before={" "} after={" "} /></div>
                   )}
                 </div>
 
@@ -941,7 +910,7 @@ const feedDuplicateMutation = useMutation({
                         color: forgePage === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
                         border: '0.5px solid rgba(255,255,255,0.08)',
                       }}
-                    >‹ Prev</button>
+                    ><LocalizedText text={"‹ Prev"} /></button>
 
                     {Array.from({ length: forgeTotalPages }, (_, i) => i + 1)
                       .filter(p => p === 1 || p === forgeTotalPages || Math.abs(p - forgePage) <= 2)
@@ -977,11 +946,10 @@ const feedDuplicateMutation = useMutation({
                         color: forgePage === forgeTotalPages ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
                         border: '0.5px solid rgba(255,255,255,0.08)',
                       }}
-                    >Next ›</button>
+                    ><LocalizedText text={"Next ›"} /></button>
 
-                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginLeft: 4 }}>
-                      {items.length} total
-                    </span>
+                    <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', marginLeft: 4 }}>
+                      {items.length}<LocalizedText text={"total"} before={" "} after={" "} /></span>
                   </div>
                 )}
               </>
@@ -990,9 +958,7 @@ const feedDuplicateMutation = useMutation({
 
           {/* Craft panel */}
           <div style={{ flex: '0 0 240px' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}>
-              ⚗️ Craft Materials
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}><LocalizedText text={"⚗️ Craft Materials"} before={" "} after={" "} /></div>
             <div style={{
               borderRadius: 12,
               background: 'rgba(255,255,255,0.02)',
@@ -1000,7 +966,7 @@ const feedDuplicateMutation = useMutation({
               padding: 20, marginBottom: 16,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 13 }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)' }}>🔷 Shards</span>
+                <span style={{ color: 'rgba(255,255,255,0.45)' }}><LocalizedText text={"🔷 Shards"} /></span>
                 <span
                   ref={shardsRef}
                   style={{
@@ -1014,7 +980,7 @@ const feedDuplicateMutation = useMutation({
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)' }}>⚗️ Catalyst Tokens</span>
+                <span style={{ color: 'rgba(255,255,255,0.45)' }}><LocalizedText text={"⚗️ Catalyst Tokens"} /></span>
                 <span style={{ color: 'var(--c-amber-text)', fontWeight: 700 }}>{materials?.catalyst_tokens ?? 0}</span>
               </div>
             </div>
@@ -1033,23 +999,18 @@ const feedDuplicateMutation = useMutation({
             >
               {craftMutation.isPending ? 'Crafting…' : '⚗️ Craft Token (150 shards)'}
             </button>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 10, lineHeight: 1.5 }}>
-              Use Catalyst Tokens on any card to instantly evolve it one rarity tier up.
-              Tokens are also deposited when you level up.
-            </div>
+            <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.2)', marginTop: 10, lineHeight: 1.5 }}><LocalizedText text={"Use Catalyst Tokens on any card to instantly evolve it one rarity tier up. Tokens are also deposited when you level up."} before={" "} after={" "} /></div>
 
             {/* ── Shards → Credits exchange ─────────────────────────── */}
             <div style={{ marginTop: 24, paddingTop: 18, borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>
-                💱 Exchange Shards
-              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}><LocalizedText text={"💱 Exchange Shards"} before={" "} after={" "} /></div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
                 fontSize: 11, color: 'rgba(255,255,255,0.3)',
               }}>
-                <span>🔷 1 shard</span>
-                <span style={{ color: 'rgba(255,255,255,0.15)' }}>→</span>
-                <span style={{ color: 'var(--c-green-text)' }}>💰 3 credits</span>
+                <span><LocalizedText text={"🔷 1 shard"} /></span>
+                <span style={{ color: 'rgba(255,255,255,0.15)' }}><LocalizedText text={"→"} /></span>
+                <span style={{ color: 'var(--c-green-text)' }}><LocalizedText text={"💰 3 credits"} /></span>
               </div>
 
               {/* Amount picker */}
@@ -1073,7 +1034,7 @@ const feedDuplicateMutation = useMutation({
 
               {/* Preview */}
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-                {exchangeAmount} shards → <span style={{ color: 'var(--c-green-text)', fontWeight: 700 }}>{exchangeAmount * 3} credits</span>
+                {exchangeAmount}<LocalizedText text={"shards →"} before={" "} after={" "} /><span style={{ color: 'var(--c-green-text)', fontWeight: 700 }}>{exchangeAmount * 3}<LocalizedText text={"credits"} before={" "} /></span>
               </div>
 
               <button
@@ -1103,9 +1064,7 @@ const feedDuplicateMutation = useMutation({
               paddingTop: 20,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
-                  ✦ Forge a Variant Card
-                </div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}><LocalizedText text={"✦ Forge a Variant Card"} before={" "} after={" "} /></div>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '3px 10px', borderRadius: 20, fontSize: 14,
@@ -1115,23 +1074,16 @@ const feedDuplicateMutation = useMutation({
                 }}>
                   500 🔷 + 1 ⚗️
                 </div>
-                <div style={{ marginLeft: 'auto', fontSize: 14, color: 'rgba(255,255,255,0.25)' }}>
-                  Legendary baseline · max 3 per pair
-                </div>
+                <div style={{ marginLeft: 'auto', fontSize: 14, color: 'rgba(255,255,255,0.25)' }}><LocalizedText text={"Legendary baseline · max 3 per pair"} before={" "} after={" "} /></div>
               </div>
-              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', marginBottom: 16, lineHeight: 1.5 }}>
-                Pairs shown below are backed by real galleries where both the creator and character are linked.
-                Link a gallery to a creator <em>and</em> set its character to unlock new pairs.
-              </div>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', marginBottom: 16, lineHeight: 1.5 }}><LocalizedText text={"Pairs shown below are backed by real galleries where both the creator and character are linked. Link a gallery to a creator"} before={" "} after={" "} /><em><LocalizedText text={"and then"} /></em><LocalizedText text={"set its character to unlock new pairs."} before={" "} after={" "} /></div>
 
               {!Array.isArray(variantPairs) || variantPairs.length === 0 ? (
                 <div style={{
                   padding: '20px 24px', borderRadius: 12, fontSize: 14,
                   background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)',
                   color: 'rgba(255,255,255,0.25)', textAlign: 'center',
-                }}>
-                  No eligible pairs yet. Open a gallery, assign it to a creator, and set a linked character.
-                </div>
+                }}><LocalizedText text={"No eligible pairs yet. Open a gallery, assign it to a creator, and set a linked character."} before={" "} after={" "} /></div>
               ) : (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
@@ -1142,7 +1094,7 @@ const feedDuplicateMutation = useMutation({
                       type="text"
                       value={variantSearch}
                       onChange={e => { setVariantSearch(e.target.value); setVariantPage(1) }}
-                      placeholder="Search creator or character…"
+                      placeholder={t("Search creator or character…")}
                       style={{
                         flex: 1, background: 'transparent', border: 'none', outline: 'none',
                         fontSize: 15, color: 'rgba(255,255,255,0.85)',
@@ -1218,8 +1170,7 @@ const feedDuplicateMutation = useMutation({
                             {pair.character_name}
                           </div>
                           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
-                            {pair.existing_variants} / {pair.cap} forged
-                          </div>
+                            {pair.existing_variants} / {pair.cap}<LocalizedText text={"forged"} before={" "} after={" "} /></div>
                         </div>
 
                         {/* Result label */}
@@ -1231,10 +1182,8 @@ const feedDuplicateMutation = useMutation({
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {pair.creator_name} × {pair.character_name}
                           </div>
-                          <div style={{ fontWeight: 700, color: 'var(--c-accent)', fontSize: 14 }}>→ Variant Card</div>
-                          <div style={{ marginTop: 4, color: 'rgba(255,255,255,0.3)' }}>
-                            Cost: 500 🔷 + 1 ⚗️
-                          </div>
+                          <div style={{ fontWeight: 700, color: 'var(--c-accent)', fontSize: 14 }}><LocalizedText text={"→ Variant Card"} /></div>
+                          <div style={{ marginTop: 4, color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Cost: 500 🔷 + 1 ⚗️"} before={" "} after={" "} /></div>
                         </div>
 
                         {/* Forge button */}
@@ -1287,7 +1236,7 @@ const feedDuplicateMutation = useMutation({
                           color: variantPage === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
                           border: '0.5px solid rgba(255,255,255,0.08)',
                         }}
-                      >‹ Prev</button>
+                      ><LocalizedText text={"‹ Prev"} /></button>
 
                       {Array.from({ length: variantTotalPages }, (_, i) => i + 1)
                         .filter(p => p === 1 || p === variantTotalPages || Math.abs(p - variantPage) <= 2)
@@ -1323,11 +1272,10 @@ const feedDuplicateMutation = useMutation({
                           color: variantPage === variantTotalPages ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
                           border: '0.5px solid rgba(255,255,255,0.08)',
                         }}
-                      >Next ›</button>
+                      ><LocalizedText text={"Next ›"} /></button>
 
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
-                        {visiblePairs.length} pair{visiblePairs.length !== 1 ? 's' : ''} total
-                      </span>
+                        {visiblePairs.length}<LocalizedText text={"pair"} before={" "} />{visiblePairs.length !== 1 ? 's' : ''}<LocalizedText text={"total"} before={" "} after={" "} /></span>
                     </div>
                   )}
                 </>

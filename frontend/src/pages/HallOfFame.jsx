@@ -1,3 +1,4 @@
+import { LocalizedText, useT } from '../i18n'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -91,10 +92,11 @@ const PERIOD_EMPTY = {
 // creators.py) — views/cum alone don't explain a creator's rank, watch time and
 // session count are weighted far more heavily, so surface watch time here too.
 function StatRow({ views, cum, viewSeconds, dwell, engagement, size = 12 }) {
+  const t = useT()
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="flex items-center gap-1" style={{ fontSize: size, color: 'rgba(255,255,255,0.45)' }}
-            title="Total views — every gallery open plus every photo and video viewed">
+            title={t("Total views — every gallery open plus every photo and video viewed")}>
         <Eye size={size - 2} /> {(views ?? 0).toLocaleString()}
       </span>
       {(cum ?? 0) > 0 && (
@@ -103,15 +105,14 @@ function StatRow({ views, cum, viewSeconds, dwell, engagement, size = 12 }) {
         </span>
       )}
       {(viewSeconds ?? 0) > 0 && (
-        <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-accent-text)' }} title="Time spent viewing — a major factor in Hall of Fame ranking">
+        <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-accent-text)' }} title={t("Time spent viewing — a major factor in Hall of Fame ranking")}>
           <Clock size={size - 2} /> {formatViewTimeFull(viewSeconds)}
         </span>
       )}
       {(dwell ?? 0) > 0 && (
         <span className="flex items-center gap-1" style={{ fontSize: size, color: 'var(--c-green-text)' }}
               title={`You linger ${dwell}s on each of her photos — attention per photo scales her ranking${engagement ? ` (×${engagement})` : ''}`}>
-          <TrendingUp size={size - 2} /> {dwell}s
-        </span>
+          <TrendingUp size={size - 2} /> {dwell}<LocalizedText text={"s"} after={" "} /></span>
       )}
     </div>
   )
@@ -170,7 +171,7 @@ function RarityPill({ rarity }) {
   const rc = RARITY_COLORS[rarity] || RARITY_COLORS.common
   const label = RARITY_LABELS[rarity] || rarity
   return (
-    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0"
+    <span className="text-[16px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0"
           style={{ background: `${rc}22`, color: rc, border: `0.5px solid ${rc}66` }}>
       {label}
     </span>
@@ -364,9 +365,7 @@ function CreatorHero({ creator, onClick }) {
           <div className="flex items-center gap-2">
             <Crown size={16} style={{ color: 'var(--c-amber-text)' }} />
             <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
-                           letterSpacing: '0.14em', color: 'var(--c-amber-text)' }}>
-              #1 · Most Visited Creator
-            </span>
+                           letterSpacing: '0.14em', color: 'var(--c-amber-text)' }}><LocalizedText text={"#1 · Most Visited Creator"} before={" "} after={" "} /></span>
             <RankChange change={creator.rank_change} size={13} />
             <CrownCount n={creator.crown_count} />
           </div>
@@ -386,8 +385,7 @@ function CreatorHero({ creator, onClick }) {
                  style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)',
                           borderRadius: 10, padding: '10px 14px' }}>
               <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-                            letterSpacing: '0.1em', color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }}>
-                Time spent with {creator.name}
+                            letterSpacing: '0.1em', color: 'color-mix(in srgb, var(--c-accent) 60%, transparent)' }}><LocalizedText text={"Time spent with"} before={" "} after={" "} />{creator.name}
               </div>
               <div className="flex items-center gap-2">
                 <Clock size={14} style={{ color: 'var(--c-accent-text)' }} />
@@ -400,7 +398,7 @@ function CreatorHero({ creator, onClick }) {
             <div className="flex items-center gap-1.5 mt-1"
                  style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>
               <Clock size={11} />
-              <span>No viewing time tracked yet</span>
+              <span><LocalizedText text={"No viewing time tracked yet"} /></span>
             </div>
           )}
         </div>
@@ -506,6 +504,7 @@ function CreatorGridCard({ creator, rank, onClick }) {
 }
 
 function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
+  const t = useT()
   if (!creators || creators.length === 0) return null
   const top3 = creators.slice(0, 3)
   const rest = creators.slice(3)
@@ -518,11 +517,8 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
           <Trophy size={17} style={{ color: 'var(--c-amber-text)' }} />
         </div>
         <div>
-          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]">Creator Hall of Fame</div>
-          <div className="text-[12px] text-[rgba(255,255,255,0.3)]">
-            Ranked by overall engagement — views, orgasms, watch time, and logged sessions combined.
-            All of that is shown beneath each entry, along with assigned rarity.
-          </div>
+          <div className="text-[20px] font-bold text-[rgba(255,255,255,0.92)]"><LocalizedText text={"Creator Hall of Fame"} /></div>
+          <div className="text-[12px] text-[rgba(255,255,255,0.3)]"><LocalizedText text={"Ranked by overall engagement — views, orgasms, watch time, and logged sessions combined. All of that is shown beneath each entry, along with assigned rarity."} before={" "} after={" "} /></div>
         </div>
       </div>
 
@@ -545,7 +541,7 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
 
       {rest.length > 0 && (
         <>
-          <TierLabel label="Honourable Mentions" color="color-mix(in srgb, var(--c-amber) 35%, transparent)" />
+          <TierLabel label={t("Honourable Mentions")} color="color-mix(in srgb, var(--c-amber) 35%, transparent)" />
           <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
             {rest.map((c, i) => (
               <CreatorGridCard key={c.id} creator={c} rank={i + 4}
@@ -554,7 +550,7 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
           </div>
         </>
       )}
-      {onKnowMore && <KnowMoreButton onClick={onKnowMore} label="See all creators" />}
+      {onKnowMore && <KnowMoreButton onClick={onKnowMore} label={t("See all creators")} />}
     </section>
   )
 }
@@ -702,6 +698,7 @@ function GalleryCard({ gallery, rank, imgHeight = 220, showRank = false, onClick
 
 // ── Tiered section ────────────────────────────────────────────────────────────
 function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg, renderCard, onKnowMore, knowMoreLabel }) {
+  const t = useT()
   if (!items) return null
 
   const inner    = items.slice(0, 3)
@@ -730,7 +727,7 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
         <>
           {inner.length > 0 && (
             <>
-              <TierLabel label="Inner Circle" color={`${iconColor}80`} />
+              <TierLabel label={t("Inner Circle")} color={`${iconColor}80`} />
               <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 {inner.map((item, i) => renderCard(item, i + 1, 390, true))}
               </div>
@@ -738,7 +735,7 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
           )}
           {devoted.length > 0 && (
             <>
-              <TierLabel label="The Devoted" color="rgba(255,255,255,0.2)" />
+              <TierLabel label={t("The Devoted")} color="rgba(255,255,255,0.2)" />
               <div className="grid gap-3 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                 {devoted.map((item, i) => renderCard(item, i + 4, 200, true))}
               </div>
@@ -746,7 +743,7 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
           )}
           {mentions.length > 0 && (
             <>
-              <TierLabel label="Honourable Mentions" color="rgba(255,255,255,0.12)" />
+              <TierLabel label={t("Honourable Mentions")} color="rgba(255,255,255,0.12)" />
               <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                 {mentions.map((item, i) => renderCard(item, i + 11, 160, false))}
               </div>
@@ -765,6 +762,7 @@ function TieredSection({ icon: Icon, iconColor, title, subtitle, items, emptyMsg
 // PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function HallOfFame() {
+  const t = useT()
   const navigate = useNavigate()
   const [statsId, setStatsId] = useState(null)
   const [fullList, setFullList] = useState(null)   // which section's full list is open
@@ -855,9 +853,7 @@ export default function HallOfFame() {
               <Trophy size={26} style={{ color: 'var(--c-amber-text)' }} />
             </div>
             <div>
-              <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]">
-                Hall of Fame
-                {period !== 'all' && (
+              <h1 className="text-[32px] font-bold text-[rgba(255,255,255,0.95)]"><LocalizedText text={"Hall of Fame"} before={" "} after={" "} />{period !== 'all' && (
                   <span className="ml-3 text-[20px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>
                     {periodLabel}
                   </span>
@@ -867,8 +863,7 @@ export default function HallOfFame() {
                 {PERIOD_SUBTITLE[period]}
               </p>
               {partialSince && (
-                <p className="text-[16px] mt-1" style={{ color: 'color-mix(in srgb, var(--c-amber) 75%, transparent)' }}>
-                  Partial — engagement has only been tracked since {partialSince}
+                <p className="text-[16px] mt-1" style={{ color: 'color-mix(in srgb, var(--c-amber) 75%, transparent)' }}><LocalizedText text={"Partial — engagement has only been tracked since"} before={" "} after={" "} />{partialSince}
                 </p>
               )}
             </div>
@@ -892,9 +887,7 @@ export default function HallOfFame() {
                 <button onClick={() => selectPeriod('all')}
                         className="mt-5 px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
                         style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
-                                 border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)', color: 'var(--c-amber-text)' }}>
-                  See all time instead
-                </button>
+                                 border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)', color: 'var(--c-amber-text)' }}><LocalizedText text={"See all time instead"} before={" "} after={" "} /></button>
               )}
             </div>
           ) : (
@@ -905,32 +898,32 @@ export default function HallOfFame() {
           <TieredSection
             icon={Film}
             iconColor="var(--c-pink)"
-            title="Media Hall of Fame"
-            subtitle="Individual photos and videos ranked by view count. High-view images with many cum taps earn their place here."
+            title={t("Media Hall of Fame")}
+            subtitle={t("Individual photos and videos ranked by view count. High-view images with many cum taps earn their place here.")}
             items={imageHof}
-            emptyMsg="Open images and videos in galleries to start building this list"
+            emptyMsg={t("Open images and videos in galleries to start building this list")}
             renderCard={(item, rank, h, showRank) => (
               <MediaCard key={item.id} item={item} rank={rank} imgHeight={h} showRank={showRank}
                          onClick={() => setMediaStatsId(item.id)} />
             )}
             onKnowMore={() => setFullList('media')}
-            knowMoreLabel="See all photos & videos"
+            knowMoreLabel={t("See all photos & videos")}
           />
 
           {(galleryHof ?? []).length > 0 && (
             <TieredSection
               icon={Images}
               iconColor="var(--c-accent)"
-              title="Gallery Hall of Fame"
-              subtitle="Full galleries ranked by total view count. Reflects which collections you return to most — not just opened once."
+              title={t("Gallery Hall of Fame")}
+              subtitle={t("Full galleries ranked by total view count. Reflects which collections you return to most — not just opened once.")}
               items={galleryHof}
-              emptyMsg="Browse galleries to build this list"
+              emptyMsg={t("Browse galleries to build this list")}
               renderCard={(g, rank, h, showRank) => (
                 <GalleryCard key={g.id} gallery={g} rank={rank} imgHeight={h} showRank={showRank}
                              onClick={() => setGalleryStatsId(g.id)} />
               )}
               onKnowMore={() => setFullList('galleries')}
-              knowMoreLabel="See all galleries"
+              knowMoreLabel={t("See all galleries")}
             />
           )}
           </>

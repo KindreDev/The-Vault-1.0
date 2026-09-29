@@ -568,34 +568,12 @@ def _hof_top_creators(db: Session, limit: int = 5) -> list:
 
 
 def mint_hof_cards(db: Session) -> int:
-    """Mint the permanent Hall of Fame memento for any creator currently in the
-    HOF who doesn't have one yet. The card records that she made it — it stays
-    in the pool forever, even if she later drops out. Top-3 mint CELESTIAL,
-    the rest Legendary. Idempotent: one HOF card per creator, ever."""
-    hof = _hof_top_creators(db, limit=5)
-    minted = 0
-    for i, creator in enumerate(hof):
-        exists = (db.query(Card)
-                    .filter(Card.card_type == CardType.hof,
-                            Card.source_creator_id == creator.id,
-                            Card.is_legacy.is_(False))
-                    .first())
-        if exists:
-            continue
-        img = (db.query(Image).join(Gallery, Image.gallery_id == Gallery.id)
-                 .filter(Gallery.creator_id == creator.id)
-                 .order_by(Image.cum_count.desc(), Image.view_count.desc())
-                 .first())
-        generate_card(
-            db, "hof",
-            source_creator_id=creator.id,
-            source_image_id=img.id if img else None,
-            baseline_override="celestial" if i < 3 else "legendary",
-        )
-        minted += 1
-    if minted:
-        db.flush()
-    return minted
+    """Legacy no-op: HOF cards are minted only from a category award record.
+
+    The former top-five shortcut created creator cards without a specific win,
+    which made their award category ambiguous. Real wins are minted by crowns.
+    """
+    return 0
 
 
 def _pick_hof_card(db: Session) -> Optional[Card]:
@@ -2057,6 +2035,7 @@ def _card_to_dict(db: Session, card: Card) -> dict:
     creator_avatar = None
     creator_type = None
     creator_created_at = None
+    c = None
     if card.source_creator_id:
         c = db.query(Creator).filter(Creator.id == card.source_creator_id).first()
         if c:
@@ -2192,16 +2171,21 @@ def _card_to_dict(db: Session, card: Card) -> dict:
     # older than the day she won it, so the gallery's month is the wrong date.
     hof_board = hof_period_type = hof_period_key = None
     hof_won_at = None
+    category_award = None
     if ct == "hof":
-        from models import HofCrown
+        from models import HofCategoryAward, HofCrown
         crown = db.query(HofCrown).filter(HofCrown.card_id == card.id).first()
+        category_award = db.query(HofCategoryAward).filter(HofCategoryAward.card_id == card.id).first()
         if crown:
             hof_period_type = crown.period_type
             hof_period_key = crown.period_key
             hof_won_at = crown.won_at.isoformat() if crown.won_at else None
+        elif category_award:
+            hof_period_type = category_award.period_type
+            hof_period_key = category_award.period_key
+            hof_won_at = category_award.won_at.isoformat() if category_award.won_at else None
         else:
-            # Pre-crown mementos from the original top-5 mint have no period;
-            # they are the standing all-time board.
+            # Preserved cards from the original top-five creator memento mint.
             hof_period_type = "alltime"
         hof_board = HOF_BOARD_LABEL.get(hof_period_type)
 
@@ -2373,11 +2357,107 @@ def _card_to_dict(db: Session, card: Card) -> dict:
                 "recipe": frozen_visual,
             }
         elif frozen_visual and frozen_visual.get("schema") == "vault.hall-of-fame-card-recipe":
+            from services.hof_cards import hof_source_media_type
+
+            frozen_snapshot = frozen_visual.setdefault("snapshot", {})
+            if crown:
+                frozen_snapshot["awardCategory"] = "creator"
+            elif category_award:
+                frozen_snapshot["awardCategory"] = category_award.category_type
+            else:
+                try:
+                    mint_evidence = json.loads(card.mint_audit_json or "{}")
+                except (TypeError, ValueError):
+                    mint_evidence = {}
+                frozen_snapshot.setdefault(
+                    "awardCategory",
+                    "media" if mint_evidence.get("developer_fixture") == "hof-media-ladder-v1" else "legacy",
+                )
+
+            frozen_source = frozen_visual.get("source") or {}
+            avatar_creator_id = (
+                frozen_source.get("creatorId")
+                or frozen_visual.get("snapshot", {}).get("creatorId")
+                or card.source_creator_id
+            )
+            # Hall of Fame is allowed one deliberate exception to the normal
+            # card-art rule: if the preserved winning source is a video, the
+            # HOF face can play that source directly.  Normal cards still use
+            # a poster/preview for videos because their SVG faces need static
+            # artwork and their masks cannot track moving frames.
+            historical_source = src_img
+            historical_image_id = frozen_source.get("historicalImageId")
+            if historical_image_id and (
+                not historical_source or historical_source.id != historical_image_id
+            ):
+                try:
+                    historical_source = db.query(Image).filter(
+                        Image.id == int(historical_image_id)
+                    ).first() or historical_source
+                except (TypeError, ValueError):
+                    pass
+            live_avatar_available = bool(
+                avatar_creator_id and c and c.id == avatar_creator_id
+                and c.avatar_path and os.path.isfile(c.avatar_path)
+            )
+            hof_art_url = image_url
+            hof_media_type = "image"
+            hof_poster_url = None
+            hof_preview_url = None
+            historical_media_type = hof_source_media_type(historical_source)
+            renderable_hof_video = bool(
+                historical_media_type == "video"
+                and historical_source.file_path
+                and os.path.isfile(historical_source.file_path)
+            )
+            renderable_hof_gif = bool(
+                historical_media_type == "gif"
+                and historical_source.file_path
+                and os.path.isfile(historical_source.file_path)
+            )
+            renderable_hof_image = bool(
+                src_img and not src_img.is_video and src_img.file_path and os.path.isfile(src_img.file_path)
+            )
+            hof_readiness = "ready" if renderable_hof_image else "source_missing"
+            if renderable_hof_video:
+                hof_art_url = f"/api/images/{historical_source.id}/file"
+                hof_media_type = "video"
+                hof_preview_url = f"/api/images/{historical_source.id}/video-preview"
+                if historical_source.thumb_path and os.path.isfile(historical_source.thumb_path):
+                    # Derived video posters can be regenerated without changing
+                    # the source video. Include the file mtime so the browser
+                    # and Collection Room texture capture cannot retain an old
+                    # letterboxed poster after that targeted repair.
+                    poster_version = int(os.path.getmtime(historical_source.thumb_path))
+                    hof_poster_url = f"/thumbs/{os.path.basename(historical_source.thumb_path)}?v={poster_version}"
+                hof_readiness = "ready"
+            elif frozen_source.get("kind") in {"avatar", "placeholder"}:
+                hof_art_url = (
+                    f"/api/creators/{avatar_creator_id}/avatar"
+                    if live_avatar_available else None
+                )
+                hof_readiness = "ready" if hof_art_url else "placeholder"
+            elif not renderable_hof_image:
+                # Old frozen image recipes can outlive their source file. Keep
+                # their crown metadata and use the winner's current PFP when it
+                # exists, otherwise let the HOF face render its neutral base.
+                hof_art_url = (
+                    f"/api/creators/{avatar_creator_id}/avatar"
+                    if live_avatar_available else None
+                )
+                hof_readiness = "ready" if hof_art_url else "placeholder"
+            if renderable_hof_gif:
+                hof_art_url = f"/api/images/{historical_source.id}/file"
+                hof_media_type = "gif"
+                hof_readiness = "ready"
             hof_visual = {
                 "card_type": "hall-of-fame",
                 "template_id": frozen_visual.get("templateId"),
-                "readiness": "ready" if image_url else "source_missing",
-                "art_url": image_url,
+                "readiness": hof_readiness,
+                "art_url": hof_art_url,
+                "media_type": hof_media_type,
+                "poster_url": hof_poster_url,
+                "preview_url": hof_preview_url,
                 "mask_url": mask_url,
                 "recipe": frozen_visual,
             }
@@ -2410,7 +2490,11 @@ def _card_to_dict(db: Session, card: Card) -> dict:
                          else LEVEL_CXP_STEP.get(rarity, 100) * card_level(card)),
         "rarity_score": rarity_score(card),
         "crs": round(card.crs or 0, 2),
-        "rarity_class": card.rarity_class or "C",
+        "rarity_class": (
+            card.print_rarity
+            if ct == "hof" and not card.is_legacy and card.print_rarity
+            else card.rarity_class or "C"
+        ),
         "generated_at": card.generated_at.isoformat() if card.generated_at else None,
         # Art
         "image_url": image_url,

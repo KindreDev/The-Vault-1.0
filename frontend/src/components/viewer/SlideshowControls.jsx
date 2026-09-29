@@ -9,7 +9,7 @@
  */
 import React, { useState, useRef, useEffect } from 'react'
 import { Play, Pause } from 'lucide-react'
-import { useT } from '../../i18n'
+import { LocalizedText, useT } from '../../i18n'
 
 export const SLIDESHOW_SPEEDS = [3, 5, 8, 12, 20, 30]
 
@@ -71,8 +71,7 @@ export default function SlideshowControls({
             style={{ background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.55)',
                      border: '0.5px solid rgba(255,255,255,0.15)' }}
             title={t('Slideshow speed')}>
-            {speed}s
-          </button>
+            {speed}<LocalizedText text={"s"} after=" " /></button>
           {menuOpen && (
             <div className="absolute top-full right-0 mt-1 rounded-[8px] overflow-hidden shadow-xl z-50"
                  style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.12)' }}>
@@ -81,8 +80,7 @@ export default function SlideshowControls({
                         onMouseDown={() => { onSpeedChange(s); setMenuOpen(false) }}
                         className="w-full text-left px-4 py-1.5 text-[16px] cursor-pointer hover:bg-[rgba(255,255,255,0.06)]"
                         style={{ color: s === speed ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)' }}>
-                  {s}s
-                </button>
+                  {s}<LocalizedText text={"s"} after=" " /></button>
               ))}
             </div>
           )}

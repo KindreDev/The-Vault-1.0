@@ -1,4 +1,5 @@
 import React from 'react'
+import { LocalizedText } from '../../i18n'
 import { motion } from 'framer-motion'
 import { Flame, Droplets, Clock, Crown, Sparkles, Images, TrendingUp, Zap } from 'lucide-react'
 
@@ -81,8 +82,7 @@ function Delta({ pct }) {
   const up = pct >= 0
   return (
     <span style={{ fontSize: 17, fontWeight: 700, color: up ? 'var(--c-green)' : 'var(--c-pink)' }}>
-      {up ? '▲' : '▼'} {Math.abs(pct)}% vs last
-    </span>
+      {up ? '▲' : '▼'} {Math.abs(pct)}<LocalizedText text={"% vs last"} after={"\n    "} /></span>
   )
 }
 
@@ -91,7 +91,7 @@ function Delta({ pct }) {
 function Opening({ card }) {
   return (
     <div className="flex flex-col justify-center h-full gap-5">
-      <Line i={0}><Label>The Vault Recap</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"The Vault Recap"} /></Label></Line>
       <Line i={1}><Big size={92} color={ACCENT}>{card.title}</Big></Line>
       <Line i={2}>
         <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.6)' }}>{card.range}</div>
@@ -100,11 +100,11 @@ function Opening({ card }) {
         <div className="flex gap-8 mt-6">
           <div>
             <Big size={44}>{card.active_days}</Big>
-            <Label>active days</Label>
+            <Label><LocalizedText text={"active days"} /></Label>
           </div>
           <div>
             <Big size={44}>{(card.xp || 0).toLocaleString()}</Big>
-            <Label>xp earned</Label>
+            <Label><LocalizedText text={"xp earned"} /></Label>
           </div>
         </div>
       </Line>
@@ -115,11 +115,11 @@ function Opening({ card }) {
 function Volume({ card }) {
   return (
     <div className="flex flex-col justify-center h-full gap-7">
-      <Line i={0}><Label>What you actually did</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"What you actually did"} /></Label></Line>
       <Line i={1}>
         <Big size={100} color={ACCENT}>{fmtHM(card.session_secs)}</Big>
         <div className="mt-2 flex items-center gap-3">
-          <span style={{ fontSize: 20, color: 'rgba(255,255,255,0.5)' }}>logged across {card.sessions} sessions</span>
+          <span style={{ fontSize: 20, color: 'rgba(255,255,255,0.5)' }}><LocalizedText text={"logged across"} after={" "} />{card.sessions}<LocalizedText text={"sessions"} before={" "} /></span>
         </div>
         <div className="mt-1"><Delta pct={card.deltas?.session_secs} /></div>
       </Line>
@@ -130,21 +130,20 @@ function Volume({ card }) {
               <Big size={52} color="var(--c-pink)">{card.cum}</Big>
               <Droplets size={22} style={{ color: 'var(--c-pink)' }} />
             </div>
-            <Label>orgasms</Label>
+            <Label><LocalizedText text={"orgasms"} /></Label>
             <div className="mt-1"><Delta pct={card.deltas?.cum} /></div>
           </div>
           {card.edges > 0 && (
             <div>
               <Big size={52} color="var(--c-accent)">{card.edges}</Big>
-              <Label>edges</Label>
+              <Label><LocalizedText text={"edges"} /></Label>
             </div>
           )}
         </div>
       </Line>
       {card.longest_sec > 0 && (
         <Line i={3}>
-          <div style={{ fontSize: 19, color: 'rgba(255,255,255,0.45)' }}>
-            Longest single session — <span style={{ color: '#fff', fontWeight: 700 }}>{fmtHM(card.longest_sec)}</span>
+          <div style={{ fontSize: 19, color: 'rgba(255,255,255,0.45)' }}><LocalizedText text={"Longest single session —"} before={"\n            "} after={" "} /><span style={{ color: '#fff', fontWeight: 700 }}>{fmtHM(card.longest_sec)}</span>
           </div>
         </Line>
       )}
@@ -163,7 +162,7 @@ function ClockCard({ card }) {
   const reach = (v) => (v > 0 ? Math.max(0.09, Math.sqrt(v / max)) : 0)
   return (
     <div className="flex flex-col justify-center h-full gap-6">
-      <Line i={0}><Label>Your clock</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"Your clock"} /></Label></Line>
       <Line i={1} className="flex justify-center">
         <svg width="350" height="350" viewBox="0 0 350 350">
           <circle cx={CX} cy={CY} r={R0 - 10} fill="none" stroke="rgba(255,255,255,0.07)" />
@@ -197,13 +196,10 @@ function ClockCard({ card }) {
       </Line>
       <Line i={2}>
         <Big size={62} color={ACCENT}>{hourLabel(card.peak_hour)}</Big>
-        <div style={{ fontSize: 20, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}>
-          is your hour — {card.peak_share}% of everything happens then
-        </div>
+        <div style={{ fontSize: 20, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}><LocalizedText text={"is your hour —"} before={"\n          "} after={" "} />{card.peak_share}<LocalizedText text={"% of everything happens then"} after={"\n        "} /></div>
         {card.night_share >= 25 && (
           <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>
-            {card.night_share}% of it after dark
-          </div>
+            {card.night_share}<LocalizedText text={"% of it after dark"} after={"\n          "} /></div>
         )}
       </Line>
     </div>
@@ -214,7 +210,7 @@ function Rhythm({ card }) {
   const max = Math.max(...card.days) || 1
   return (
     <div className="flex flex-col justify-center h-full gap-7">
-      <Line i={0}><Label>Your week</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"Your week"} /></Label></Line>
       <Line i={1}>
         <div className="flex items-end gap-3" style={{ height: 190 }}>
           {card.days.map((v, i) => (
@@ -225,7 +221,7 @@ function Rhythm({ card }) {
                                    background: i === card.peak_day ? ACCENT : 'color-mix(in srgb, var(--c-accent) 55%, transparent)' }} />
               <span style={{ fontSize: 16, fontWeight: i === card.peak_day ? 700 : 500,
                              color: i === card.peak_day ? ACCENT : 'rgba(255,255,255,0.4)' }}>
-                {DAY_NAMES[i]}
+                <LocalizedText text={DAY_NAMES[i]} />
               </span>
             </div>
           ))}
@@ -233,8 +229,7 @@ function Rhythm({ card }) {
       </Line>
       <Line i={2}>
         <div style={{ fontSize: 24, color: 'rgba(255,255,255,0.75)' }}>
-          <b style={{ color: ACCENT }}>{DAY_NAMES[card.peak_day]}</b> is when it happens.
-        </div>
+          <b style={{ color: ACCENT }}><LocalizedText text={DAY_NAMES[card.peak_day]} /></b><LocalizedText text={"is when it happens."} before={" "} after={"\n        "} /></div>
       </Line>
       <Line i={3}>
         <div className="flex gap-10 mt-2">
@@ -243,11 +238,11 @@ function Rhythm({ card }) {
               <Big size={50} color="var(--c-amber)">{card.streak.longest}</Big>
               <Flame size={22} style={{ color: 'var(--c-amber)' }} />
             </div>
-            <Label>longest streak</Label>
+            <Label><LocalizedText text={"longest streak"} /></Label>
           </div>
           <div>
             <Big size={50}>{card.active_days}</Big>
-            <Label>days active</Label>
+            <Label><LocalizedText text={"days active"} /></Label>
           </div>
         </div>
       </Line>
@@ -285,7 +280,7 @@ function CountdownEntry({ card }) {
         <div className="flex gap-6 flex-wrap" style={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>
           {c.view_seconds > 0 && <span><Clock size={16} className="inline mr-1.5" />{fmtHM(c.view_seconds)}</span>}
           {c.cum > 0 && <span style={{ color: 'var(--c-pink)' }}><Droplets size={16} className="inline mr-1.5" />{c.cum}</span>}
-          {c.sessions > 0 && <span>{c.sessions} session{c.sessions === 1 ? '' : 's'}</span>}
+          {c.sessions > 0 && <span>{c.sessions}<LocalizedText text={"session"} before={" "} />{c.sessions === 1 ? '' : 's'}</span>}
         </div>
       </Line>
       {isTop && (
@@ -293,7 +288,7 @@ function CountdownEntry({ card }) {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mt-2"
                style={{ background: 'color-mix(in srgb, var(--c-amber) 14%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 40%, transparent)' }}>
             <Crown size={17} style={{ color: ACCENT }} />
-            <span style={{ fontSize: 17, fontWeight: 700, color: ACCENT }}>{card.periodLabel} champion</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: ACCENT }}>{card.periodLabel}<LocalizedText text={"champion"} before={" "} /></span>
           </div>
         </Line>
       )}
@@ -306,7 +301,7 @@ function Devotion({ card }) {
   const C = 2 * Math.PI * 76
   return (
     <div className="flex flex-col justify-center h-full gap-7">
-      <Line i={0}><Label>Where the attention went</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"Where the attention went"} /></Label></Line>
       <Line i={1} className="flex justify-center">
         <svg width="200" height="200" viewBox="0 0 200 200">
           <circle cx="100" cy="100" r="76" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="20" />
@@ -321,10 +316,8 @@ function Devotion({ card }) {
         </svg>
       </Line>
       <Line i={2}>
-        <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.7)', lineHeight: 1.45 }}>
-          of your attention went to just <b style={{ color: ACCENT }}>three</b> of the{' '}
-          <b style={{ color: '#fff' }}>{card.roster}</b> creators you engaged with.
-        </div>
+        <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.7)', lineHeight: 1.45 }}><LocalizedText text={"of your attention went to just"} before={"\n          "} after={" "} /><b style={{ color: ACCENT }}><LocalizedText text={"three"} /></b><LocalizedText text={"of the"} before={" "} />{' '}
+          <b style={{ color: '#fff' }}>{card.roster}</b><LocalizedText text={"creators you engaged with."} before={" "} after={"\n        "} /></div>
       </Line>
       <Line i={3}>
         <div className="flex flex-col gap-1.5 mt-1">
@@ -343,7 +336,7 @@ function Newcomer({ card }) {
   const c = card.creator
   return (
     <div className="flex flex-col justify-center h-full gap-6">
-      <Line i={0}><Label>New in the rotation</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"New in the rotation"} /></Label></Line>
       <Line i={1}>
         <div style={{ width: 150, height: 200, borderRadius: 16, overflow: 'hidden',
                       border: '1px solid color-mix(in srgb, var(--c-green) 45%, transparent)',
@@ -353,9 +346,7 @@ function Newcomer({ card }) {
       </Line>
       <Line i={2}><Big size={44} color="var(--c-green-text)">{c.name}</Big></Line>
       <Line i={3}>
-        <div style={{ fontSize: 21, color: 'rgba(255,255,255,0.55)', lineHeight: 1.45 }}>
-          Didn't exist to you before this. {c.sessions} session{c.sessions === 1 ? '' : 's'} later, she does.
-        </div>
+        <div style={{ fontSize: 21, color: 'rgba(255,255,255,0.55)', lineHeight: 1.45 }}><LocalizedText text={"Didn't exist to you before this."} before={"\n          "} after={" "} />{c.sessions}<LocalizedText text={"session"} before={" "} />{c.sessions === 1 ? '' : 's'}<LocalizedText text={"later, she does."} before={" "} after={"\n        "} /></div>
       </Line>
     </div>
   )
@@ -365,7 +356,7 @@ function Relic({ card }) {
   const img = card.image
   return (
     <div className="flex flex-col justify-center h-full gap-6">
-      <Line i={0}><Label>The relic</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"The relic"} /></Label></Line>
       <Line i={1}>
         <div style={{ width: '100%', maxWidth: 320, aspectRatio: '3/4', borderRadius: 16,
                       overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--c-pink) 45%, transparent)',
@@ -377,7 +368,7 @@ function Relic({ card }) {
       <Line i={2}>
         <div className="flex items-baseline gap-3">
           <Big size={64} color="var(--c-pink)">{img.cum}</Big>
-          <span style={{ fontSize: 22, color: 'rgba(255,255,255,0.55)' }}>times, this one</span>
+          <span style={{ fontSize: 22, color: 'rgba(255,255,255,0.55)' }}><LocalizedText text={"times, this one"} /></span>
         </div>
       </Line>
       <Line i={3}>
@@ -392,17 +383,17 @@ function Relic({ card }) {
 function Growth({ card }) {
   return (
     <div className="flex flex-col justify-center h-full gap-7">
-      <Line i={0}><Label>The collection grew</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"The collection grew"} /></Label></Line>
       <Line i={1}>
         <div className="flex items-baseline gap-3">
           <Big size={92} color="var(--c-accent)">{card.files.toLocaleString()}</Big>
           <Images size={28} style={{ color: 'var(--c-accent)' }} />
         </div>
-        <Label>files added</Label>
+        <Label><LocalizedText text={"files added"} /></Label>
       </Line>
       <Line i={2}>
         <Big size={52}>{card.galleries.toLocaleString()}</Big>
-        <Label>new galleries</Label>
+        <Label><LocalizedText text={"new galleries"} /></Label>
       </Line>
     </div>
   )
@@ -411,7 +402,7 @@ function Growth({ card }) {
 function Archetype({ card }) {
   return (
     <div className="flex flex-col justify-center h-full gap-6">
-      <Line i={0}><Label>Your type</Label></Line>
+      <Line i={0}><Label><LocalizedText text={"Your type"} /></Label></Line>
       <Line i={1}>
         <div style={{ fontSize: 62, fontWeight: 800, lineHeight: 1.02, letterSpacing: '-0.03em',
                       background: 'linear-gradient(100deg, var(--c-amber-text), var(--c-pink) 55%, var(--c-accent))',
@@ -432,9 +423,9 @@ function Archetype({ card }) {
               <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: 16, fontWeight: 700, color: ACCENT,
                             background: 'color-mix(in srgb, var(--c-amber) 13%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 32%, transparent)',
                             minWidth: 116, textAlign: 'center' }}>
-                {a.label}
+                <LocalizedText text={a.label} />
               </span>
-              <span style={{ fontSize: 17, color: 'rgba(255,255,255,0.45)' }}>{a.copy}</span>
+              <span style={{ fontSize: 17, color: 'rgba(255,255,255,0.45)' }}><LocalizedText text={a.copy} /></span>
             </motion.div>
           ))}
         </div>
@@ -450,17 +441,16 @@ function Closing({ card }) {
       <Line i={1}><Big size={72} color={ACCENT}>{card.title}</Big></Line>
       <Line i={2}>
         <div className="grid grid-cols-2 gap-x-8 gap-y-6 mt-4">
-          <div><Big size={40}>{fmtHM(card.session_secs)}</Big><Label>logged</Label></div>
-          <div><Big size={40} color="var(--c-pink)">{card.cum}</Big><Label>orgasms</Label></div>
-          <div><Big size={40}>{card.sessions}</Big><Label>sessions</Label></div>
-          <div><Big size={40}>{card.active_days}</Big><Label>active days</Label></div>
+          <div><Big size={40}>{fmtHM(card.session_secs)}</Big><Label><LocalizedText text={"logged"} /></Label></div>
+          <div><Big size={40} color="var(--c-pink)">{card.cum}</Big><Label><LocalizedText text={"orgasms"} /></Label></div>
+          <div><Big size={40}>{card.sessions}</Big><Label><LocalizedText text={"sessions"} /></Label></div>
+          <div><Big size={40}>{card.active_days}</Big><Label><LocalizedText text={"active days"} /></Label></div>
         </div>
       </Line>
       {card.top_name && (
         <Line i={3}>
-          <div className="mt-4" style={{ fontSize: 21, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
-            Ruled by <b style={{ color: '#fff' }}>{card.top_name}</b>
-            {card.archetype && <> — and you were <b style={{ color: ACCENT }}>{card.archetype}</b>.</>}
+          <div className="mt-4" style={{ fontSize: 21, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}><LocalizedText text={"Ruled by"} before={"\n            "} after={" "} /><b style={{ color: '#fff' }}>{card.top_name}</b>
+            {card.archetype && <><LocalizedText text={"— and you were"} before={" "} after={" "} /><b style={{ color: ACCENT }}><LocalizedText text={card.archetype} /></b>.</>}
           </div>
         </Line>
       )}

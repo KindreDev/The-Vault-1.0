@@ -1,8 +1,9 @@
 $ErrorActionPreference = 'Stop'
-$dest = Join-Path $PSScriptRoot 'tools\ffmpeg.exe'
+$ffmpegDest = Join-Path $PSScriptRoot 'tools\ffmpeg.exe'
+$ffprobeDest = Join-Path $PSScriptRoot 'tools\ffprobe.exe'
 
-if (Test-Path $dest) {
-    Write-Host "    ffmpeg.exe already present in tools\"
+if ((Test-Path $ffmpegDest) -and (Test-Path $ffprobeDest)) {
+    Write-Host "    ffmpeg.exe and ffprobe.exe already present in tools\"
     exit 0
 }
 
@@ -19,8 +20,10 @@ if (Test-Path $extr) { Remove-Item $extr -Recurse -Force }
 Expand-Archive $zip -DestinationPath $extr -Force
 
 $ffmpeg = Get-ChildItem -Recurse $extr -Filter 'ffmpeg.exe' | Select-Object -First 1
-if (-not $ffmpeg) { Write-Host "ERROR: ffmpeg.exe not found in archive"; exit 1 }
+$ffprobe = Get-ChildItem -Recurse $extr -Filter 'ffprobe.exe' | Select-Object -First 1
+if (-not $ffmpeg -or -not $ffprobe) { Write-Host "ERROR: ffmpeg.exe or ffprobe.exe not found in archive"; exit 1 }
 
-Copy-Item $ffmpeg.FullName $dest
+if (-not (Test-Path $ffmpegDest)) { Copy-Item $ffmpeg.FullName $ffmpegDest }
+if (-not (Test-Path $ffprobeDest)) { Copy-Item $ffprobe.FullName $ffprobeDest }
 Remove-Item $zip, $extr -Recurse -Force
-Write-Host "    FFmpeg ready."
+Write-Host "    FFmpeg and FFprobe ready."

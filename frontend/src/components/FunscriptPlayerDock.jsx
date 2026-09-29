@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react'
 import { CircleStop, GripVertical, Play, Pause, Repeat, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react'
 import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore'
 import { useDeviceStore } from '../store/deviceStore'
+import { useT } from '../i18n'
 import '../pages/funscripts.css'
 
 const panelStyle = {
@@ -17,6 +18,7 @@ function formatTime(seconds) {
 }
 
 function Waveform({ payload, currentTime, duration }) {
+  const t = useT()
   const points = useMemo(() => {
     const axes = payload?.axes && typeof payload.axes === 'object' ? payload.axes : { L0: payload?.actions || [] }
     const actions = Object.values(axes).find(a => Array.isArray(a) && a.length) || []
@@ -30,7 +32,7 @@ function Waveform({ payload, currentTime, duration }) {
   }, [payload, duration])
   const progress = duration ? Math.max(0, Math.min(1, currentTime / duration)) : 0
   return <div className="fs-dock-waveform">
-    <svg viewBox="0 0 900 64" preserveAspectRatio="none" aria-label="Funscript waveform">
+    <svg viewBox="0 0 900 64" preserveAspectRatio="none" aria-label={t('Funscript waveform')}>
       {points && <polyline points={points} fill="none" stroke="color-mix(in srgb, var(--c-accent) 86%, white)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />}
       <line x1={progress * 900} x2={progress * 900} y1="0" y2="64" stroke="var(--c-pink, #D4537E)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
     </svg>
@@ -50,6 +52,7 @@ function hiddenTabStyle(edge, offset) {
 }
 
 export default function FunscriptPlayerDock() {
+  const t = useT()
   const current = useFunscriptPlayerStore(s => s.current)
   const payload = useFunscriptPlayerStore(s => s.payload)
   const queue = useFunscriptPlayerStore(s => s.queue)
@@ -73,6 +76,10 @@ export default function FunscriptPlayerDock() {
   const setDockHidden = useFunscriptPlayerStore(s => s.setDockHidden)
   const setDockPosition = useFunscriptPlayerStore(s => s.setDockPosition)
   const device = useDeviceStore(s => s.status) === 'connected'
+  const warningMatch = compatibilityWarning?.match(/^(.+?) supports L0 only; (.+) will be skipped$/)
+  const displayedWarning = warningMatch
+    ? t('{provider} supports L0 only; {axes} will be skipped', { provider: warningMatch[1] === 'This device' ? t('This device') : warningMatch[1], axes: warningMatch[2] })
+    : compatibilityWarning && t(compatibilityWarning)
   const dragRef = useRef(null)
 
   if (!current && !queue.length) return null
@@ -107,22 +114,22 @@ export default function FunscriptPlayerDock() {
     window.addEventListener('pointerup', onUp, { once: true })
   }
 
-  if (dockHidden) return <button type="button" className="fs-dock-tab" style={hiddenTabStyle(dockEdge, dockOffset)} title="Show independent funscript player" aria-label="Show independent funscript player" onPointerDown={handleTabPointerDown}><GripVertical size={17} /></button>
+  if (dockHidden) return <button type="button" className="fs-dock-tab" style={hiddenTabStyle(dockEdge, dockOffset)} title={t('Show independent funscript player')} aria-label={t('Show independent funscript player')} onPointerDown={handleTabPointerDown}><GripVertical size={17} /></button>
 
-  const title = current?.title || current?.name || 'Funscript'
-  return <section className="fs-dock" style={panelStyle} aria-label="Independent funscript player">
+  const title = current?.title || current?.name || t('Funscript')
+  return <section className="fs-dock" style={panelStyle} aria-label={t('Independent funscript player')}>
     <div className="fs-dock-row">
-      <div className="fs-dock-title"><Volume2 size={18} /><span title={title}>{title}</span><small>{device ? 'Device connected' : 'Device disconnected'} · {queue.length} queued</small></div>
-      <IconButton title="Previous script" onClick={previous} disabled={!queue.length}><SkipBack size={20} /></IconButton>
-      <IconButton title={playing ? 'Pause script' : 'Play script'} onClick={playing ? pause : play} disabled={!payload} active={playing}>{playing ? <Pause size={21} /> : <Play size={21} />}</IconButton>
-      <IconButton title="Next script" onClick={next} disabled={!queue.length}><SkipForward size={20} /></IconButton>
+      <div className="fs-dock-title"><Volume2 size={18} /><span title={title}>{title}</span><small>{t(device ? 'Device connected' : 'Device disconnected')} · {t('{count} queued', { count: queue.length })}</small></div>
+      <IconButton title={t('Previous script')} onClick={previous} disabled={!queue.length}><SkipBack size={20} /></IconButton>
+      <IconButton title={t(playing ? 'Pause script' : 'Play script')} onClick={playing ? pause : play} disabled={!payload} active={playing}>{playing ? <Pause size={21} /> : <Play size={21} />}</IconButton>
+      <IconButton title={t('Next script')} onClick={next} disabled={!queue.length}><SkipForward size={20} /></IconButton>
       <div className="fs-dock-track"><Waveform payload={payload} currentTime={currentTime} duration={duration} /><div><span>{formatTime(currentTime)}</span><span>{formatTime(duration)}</span></div></div>
-      <IconButton title="Loop script" onClick={() => setLoop(!loop)} active={loop}><Repeat size={19} /></IconButton>
-      <IconButton title="Shuffle queue" onClick={() => setShuffle(!shuffle)} active={shuffle}><Shuffle size={19} /></IconButton>
-      <IconButton title="Stop device output (keeps connection)" onClick={stopOutput}><CircleStop size={20} color="var(--c-pink, #D4537E)" /></IconButton>
-      <IconButton title="Hide player" onClick={() => setDockHidden(true)}><X size={19} /></IconButton>
+      <IconButton title={t('Loop script')} onClick={() => setLoop(!loop)} active={loop}><Repeat size={19} /></IconButton>
+      <IconButton title={t('Shuffle queue')} onClick={() => setShuffle(!shuffle)} active={shuffle}><Shuffle size={19} /></IconButton>
+      <IconButton title={t('Stop device output (keeps connection)')} onClick={stopOutput}><CircleStop size={20} color="var(--c-pink, #D4537E)" /></IconButton>
+      <IconButton title={t('Hide player')} onClick={() => setDockHidden(true)}><X size={19} /></IconButton>
     </div>
-    <input aria-label="Script position" type="range" min="0" max={Math.max(duration, 0.01)} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={e => seek(Number(e.target.value))} className="fs-dock-seek" />
-    {compatibilityWarning && <div className="fs-dock-warning">{compatibilityWarning}</div>}
+    <input aria-label={t('Script position')} type="range" min="0" max={Math.max(duration, 0.01)} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={e => seek(Number(e.target.value))} className="fs-dock-seek" />
+    {displayedWarning && <div className="fs-dock-warning">{displayedWarning}</div>}
   </section>
 }

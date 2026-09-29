@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useT, LocalizedText } from '../../i18n'
 import { Send, Loader2, Sparkles, ImagePlus, X, ChevronDown, User, Check, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -120,7 +121,7 @@ function resolveVaultLinkLabel(path, creators, galleries) {
   return g ? g.name : `Gallery #${id}`
 }
 
-function renderContent(text, navigate, creators, galleries) {
+function renderContent(text, navigate, creators, galleries, t) {
   if (!text) return <span className="opacity-40 italic">…</span>
   // Strip any device tags that made it into saved history
   const clean = text.replace(DEVICE_TAG_RE, '').replace(/\n{3,}/g, '\n\n')
@@ -131,7 +132,7 @@ function renderContent(text, navigate, creators, galleries) {
     if (photo) {
       // A vault photo the user linked — show it as a thumbnail chip
       return (
-        <img key={i} src={`/api/images/${photo[1]}/thumb`} alt="linked photo"
+        <img key={i} src={`/api/images/${photo[1]}/thumb`} alt={t("linked photo")}
              className="inline-block rounded-lg my-1 cursor-pointer align-middle"
              style={{ maxHeight: 120, maxWidth: '70%', border: '1px solid rgba(255,255,255,0.12)' }} />
       )
@@ -141,7 +142,7 @@ function renderContent(text, navigate, creators, galleries) {
       return (
         <span key={i}
               onClick={() => navigate(part)}
-              title={`Open ${part}`}
+              title={t('Open {name}', { name: part })}
               className="cursor-pointer inline-flex items-center rounded-md px-1.5 py-0.5 mx-0.5 transition-all hover:brightness-125 active:scale-95"
               style={{
                 background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)',
@@ -158,6 +159,7 @@ function renderContent(text, navigate, creators, galleries) {
 }
 
 function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
+  const t = useT()
   const isUser = msg.role === 'user'
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
@@ -179,7 +181,7 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
       )}
       <div className="flex flex-col gap-1 max-w-[80%]">
         {msg.imageUrl && (
-          <img src={msg.imageUrl} alt="attached"
+          <img src={msg.imageUrl} alt={t("attached")}
                className="rounded-xl object-cover max-h-48"
                style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
         )}
@@ -193,7 +195,7 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
              }}>
           {/* Render both sides through renderContent so a vault photo you paste
               shows as a thumbnail in your own bubble too */}
-          {renderContent(msg.content, navigate, creators, galleries)}
+          {renderContent(msg.content, navigate, creators, galleries, t)}
         </div>
       </div>
     </div>
@@ -202,6 +204,7 @@ function MessageBubble({ msg, navigate, activeCreator, creators, galleries }) {
 
 // ── Persona switcher dropdown content ─────────────────────────────────────────
 function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, onSearch, onSelect, align = 'left' }) {
+  const t = useT()
   if (!open) return null
   const filtered = (creators || []).filter(c =>
     c.name.toLowerCase().includes((search || '').toLowerCase())
@@ -221,7 +224,7 @@ function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, 
                     boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
         <div className="p-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <input autoFocus value={search} onChange={e => onSearch(e.target.value)}
-                 placeholder="Search…"
+                 placeholder={t("Search…")}
                  className="w-full px-2.5 py-1.5 rounded-lg text-[13px] outline-none bg-transparent"
                  style={{ color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.08)' }} />
         </div>
@@ -232,8 +235,7 @@ function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, 
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             <Sparkles size={13} style={{ color: 'var(--accent, var(--c-accent))', flexShrink: 0 }} />
             <span className="flex-1 text-[13px]" style={{ color: !personaId ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.7)' }}>
-              {compName} (default)
-            </span>
+              {compName}<LocalizedText text={"(default)"} before={" "} after={"\n            "} /></span>
             {!personaId && <Check size={12} style={{ color: 'var(--accent, var(--c-accent))' }} />}
           </button>
           {/* Creator list */}
@@ -263,6 +265,7 @@ function PersonaSwitcherDropdown({ open, creators, personaId, compName, search, 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CompanionChat({ config, creators = [], onPersonaChange, compact = false }) {
+  const t = useT()
   const [input, setInput]               = useState('')
   const [messages, setMessages]         = useState([])
   const [streaming, setStreaming]       = useState(false)
@@ -279,7 +282,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   const [unlockPassword, setUnlockPassword]     = useState('')
   const [unlockError, setUnlockError]           = useState(false)
 
-  const bottomRef   = useRef(null)
+  const messagesRef = useRef(null)
   const inputRef    = useRef(null)
   const imageRef    = useRef(null)
   const personaRef  = useRef(null)
@@ -365,7 +368,12 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   }, [config?.enabled, personaId])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Keep scrolling inside the message list. scrollIntoView() can bubble out
+    // through the app shell and move the whole Erika page, leaving the input
+    // stranded at the top of the viewport (especially with theme artwork).
+    const container = messagesRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
   }, [messages, thinking])
 
   const handleImageSelect = (e) => {
@@ -515,7 +523,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       {compact ? (
@@ -540,7 +548,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                 onClick={() => { setPersonaOpen(!personaOpen); setPersonaSearch('') }}
                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[12px] transition-all hover:bg-white/10"
                 style={{ border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.45)' }}
-                title="Switch persona">
+                title={t("Switch persona")}>
                 <User size={12} />
                 <ChevronDown size={10}
                   style={{ transform: personaOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
@@ -609,7 +617,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               <>
                 {/* Personality pill + stats in one row */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Personality</span>
+                  <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Personality"} /></span>
                   <span className="text-[12px] font-medium capitalize px-2 py-0.5 rounded-lg"
                         style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
                     {activeCreator.personality_type || 'bold'}
@@ -645,13 +653,12 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
       )}
 
       {/* ── Messages ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0"
+      <div ref={messagesRef} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0"
            style={{ scrollbarWidth: 'thin' }}>
         {messages.length === 0 && !streaming && !thinking && (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
             <Sparkles size={32} style={{ color: 'color-mix(in srgb, var(--c-accent) 30%, transparent)' }} />
-            <p className="text-[17px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              Say hello to {compName}…
+            <p className="text-[17px]" style={{ color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Say hello to"} before={"\n              "} after={" "} />{compName}…
             </p>
           </div>
         )}
@@ -660,9 +667,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
             return (
               <div key={m.id ?? i} className="flex items-center gap-3 py-1">
                 <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
-                <span className="text-[12px] px-2 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                  — new session —
-                </span>
+                <span className="text-[12px] px-2 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"— new session —"} before={"\n                  "} after={"\n                "} /></span>
                 <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
               </div>
             )
@@ -682,7 +687,6 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* ── Device controls ──────────────────────────────────────────────────── */}
@@ -692,17 +696,14 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
 
           {/* Header row — always visible */}
           <div className="flex items-center gap-1.5 px-3 py-2">
-            <span className="text-[11px] flex-shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              Device{deviceMode !== 'off' ? ' · active' : ''}
+            <span className="text-[11px] flex-shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }}><LocalizedText text={"Device"} before={"\n              "} />{deviceMode !== 'off' ? ' · active' : ''}
             </span>
             <button onClick={() => deviceService.stop()}
                     className="px-2.5 py-1 rounded-lg text-[12px] transition-all"
                     style={{
                       background: deviceMode === 'off' ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.04)',
                       border: '1px solid color-mix(in srgb, var(--c-pink) 30%, transparent)', color: 'var(--c-pink)',
-                    }}>
-              Stop
-            </button>
+                    }}><LocalizedText text={"Stop"} before={"\n              "} after={"\n            "} /></button>
             {/* Collapse toggle */}
             <button onClick={() => setDeviceOpen(v => !v)}
                     className="ml-auto px-2 py-1 rounded-lg text-[11px] transition-all hover:bg-white/5"
@@ -764,7 +765,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
       {pendingImage && (
         <div className="px-4 pt-2 flex-shrink-0">
           <div className="relative inline-block">
-            <img src={pendingImage.dataUrl} alt="pending"
+            <img src={pendingImage.dataUrl} alt={t("pending")}
                  className="h-20 rounded-xl object-cover"
                  style={{ border: '1px solid rgba(255,255,255,0.15)' }} />
             <button onClick={() => setPendingImage(null)}
@@ -773,9 +774,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               <X size={10} style={{ color: 'rgba(255,255,255,0.7)' }} />
             </button>
           </div>
-          <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            ⚠ Not all models support images — vision models only (e.g. llava, bakllava)
-          </p>
+          <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}><LocalizedText text={"⚠ Not all models support images — vision models only (e.g. llava, bakllava)"} before={"\n            "} after={"\n          "} /></p>
         </div>
       )}
 
@@ -786,7 +785,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
           <input ref={imageRef} type="file" accept="image/*" className="hidden"
                  onChange={handleImageSelect} />
           <button onClick={() => imageRef.current?.click()} disabled={streaming}
-                  title="Attach image (vision models only)"
+                  title={t("Attach image (vision models only)")}
                   className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/10"
                   style={{ border: '1px solid rgba(255,255,255,0.1)',
                            color: pendingImage ? 'var(--accent, var(--c-accent))' : 'rgba(255,255,255,0.3)' }}>
@@ -812,13 +811,13 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                      color: 'rgba(255,255,255,0.7)',
                      boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                    }}>
-                <p className="font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>New session</p>
-                <p style={{ color: 'rgba(255,255,255,0.4)' }}>Keeps history · resets context window</p>
+                <p className="font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}><LocalizedText text={"New session"} /></p>
+                <p style={{ color: 'rgba(255,255,255,0.4)' }}><LocalizedText text={"Keeps history · resets context window"} /></p>
               </div>
             )}
           </div>
           <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-                    onKeyDown={onKeyDown} placeholder={`Message ${compName}…`}
+                    onKeyDown={onKeyDown} placeholder={t('Message {name}…', { name: compName })}
                     rows={1} disabled={streaming}
                     className="flex-1 resize-none rounded-xl px-4 py-2.5 text-[17px] outline-none transition-all"
                     style={{
@@ -835,9 +834,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
             {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
           </button>
         </div>
-        <p className="text-[13px] mt-1.5" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          Enter to send · Shift+Enter for newline
-        </p>
+        <p className="text-[13px] mt-1.5" style={{ color: 'rgba(255,255,255,0.2)' }}><LocalizedText text={"Enter to send · Shift+Enter for newline"} before={"\n          "} after={"\n        "} /></p>
       </div>
 
       {/* ── /secrets password prompt ────────────────────────────────────────── */}
@@ -848,7 +845,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
           <div className="rounded-[16px] p-7 max-w-sm w-full"
                style={{ background: '#1a1a1a', border: '1px solid color-mix(in srgb, var(--c-accent) 40%, transparent)', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
                onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}>Password</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}><LocalizedText text={"Password"} /></div>
             <input
               type="password"
               autoFocus
@@ -858,19 +855,15 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
               className="w-full px-4 py-3 rounded-[8px] text-[16px] outline-none mb-3"
               style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${unlockError ? 'color-mix(in srgb, var(--c-pink) 50%, transparent)' : 'rgba(255,255,255,0.1)'}`, color: 'rgba(255,255,255,0.9)' }}
             />
-            {unlockError && <div style={{ fontSize: 15, color: '#F4C0D1', marginBottom: 10 }}>Incorrect.</div>}
+            {unlockError && <div style={{ fontSize: 15, color: '#F4C0D1', marginBottom: 10 }}><LocalizedText text={"Incorrect."} /></div>}
             <div className="flex gap-3">
               <button onClick={() => unlockMutation.mutate(unlockPassword)}
                       disabled={!unlockPassword || unlockMutation.isPending}
                       className="flex-1 px-4 py-3 rounded-[8px] text-[15px] font-medium cursor-pointer disabled:opacity-40"
-                      style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-                Unlock
-              </button>
+                      style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}><LocalizedText text={"Unlock"} before={"\n                "} after={"\n              "} /></button>
               <button onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}
                       className="px-4 py-3 rounded-[8px] text-[15px] cursor-pointer"
-                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
-                Cancel
-              </button>
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}><LocalizedText text={"Cancel"} before={"\n                "} after={"\n              "} /></button>
             </div>
           </div>
         </div>

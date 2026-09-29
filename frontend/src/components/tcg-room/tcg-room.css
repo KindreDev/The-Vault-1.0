@@ -255,18 +255,28 @@
 .placement-context-hud__info::before { position: absolute; top: 50%; left: -62px; width: 62px; height: 1px; background: linear-gradient(90deg, rgba(171,142,255,0), rgba(182,155,255,.85)); content: ''; }
 .placement-context-hud__info::after { position: absolute; top: calc(50% - 5px); left: -67px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #38dc75; box-shadow: 0 0 16px rgba(56,220,117,.85); content: ''; }
 .placement-context-hud__info strong { display: block; overflow: hidden; font-size: 20px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
-.placement-context-hud__wheel { position: relative; width: 294px; height: 294px; overflow: hidden; border: 1px solid rgba(222,211,255,.72); border-radius: 50%; background: radial-gradient(circle at 50% 48%, rgba(20,17,28,.99) 0 27%, transparent 27.5%), conic-gradient(from -45deg, rgba(105,83,166,.88) 0 25%, rgba(27,24,33,.96) 25% 50%, rgba(42,33,67,.92) 50% 75%, rgba(27,24,33,.96) 75% 100%); box-shadow: 0 0 0 1px rgba(170,148,255,.24), inset 0 0 34px rgba(162,126,255,.18), 0 16px 36px rgba(0,0,0,.42); }
+.placement-context-hud__wheel { position: relative; width: 294px; height: 294px; overflow: hidden; border: 1px solid rgba(222,211,255,.72); border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(20,17,28,.99) 0 27%, rgba(27,24,33,.96) 27.5% 100%); box-shadow: 0 0 0 1px rgba(170,148,255,.24), inset 0 0 34px rgba(162,126,255,.18), 0 16px 36px rgba(0,0,0,.42); }
 .placement-context-hud__wheel::before, .placement-context-hud__wheel::after { position: absolute; z-index: 1; background: rgba(231,223,255,.66); content: ''; pointer-events: none; }
 .placement-context-hud__wheel::before { top: 0; bottom: 0; left: calc(50% - .5px); width: 1px; }
 .placement-context-hud__wheel::after { top: calc(50% - .5px); right: 0; left: 0; height: 1px; }
-.placement-context-hud__action { position: absolute; z-index: 2; display: grid; box-sizing: border-box; place-items: center; gap: 6px; width: 50%; height: 50%; overflow: hidden; padding: 12px; border: 0; border-radius: 0; color: rgba(255,255,255,.9); background: transparent; font-size: 16px; font-weight: 800; cursor: pointer; transition: background .16s ease, color .16s ease, transform .16s ease; }
-.placement-context-hud__action:hover:not(:disabled), .placement-context-hud__action:focus-visible:not(:disabled) { z-index: 3; color: #fff; background: rgba(181,157,255,.28); outline: none; }
+.placement-context-hud__action { position: absolute; z-index: 2; display: grid; box-sizing: border-box; place-items: center; gap: 6px; width: 50%; height: 50%; overflow: hidden; padding: 12px; border: 0; border-radius: 0; color: rgba(255,255,255,.9); background: var(--placement-action-base); font-size: 16px; font-weight: 800; cursor: pointer; transition: background .16s ease, color .16s ease, transform .16s ease; }
+.placement-context-hud__action:hover:not(:disabled), .placement-context-hud__action:focus-visible:not(:disabled) { z-index: 3; color: #fff; background: var(--placement-action-hover); outline: none; }
 .placement-context-hud__action:active:not(:disabled) { transform: scale(.96); }
 .placement-context-hud__action:disabled { color: rgba(255,255,255,.35); cursor: not-allowed; }
-.placement-context-hud__action--place { top: 0; left: 25%; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 58%, 0 100%); }
-.placement-context-hud__action--return { top: 25%; left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-.placement-context-hud__action--rotate { top: 25%; right: 0; clip-path: polygon(0 50%, 100% 0, 100% 100%); }
-.placement-context-hud__action--deselect { bottom: 0; left: 25%; clip-path: polygon(0 0, 50% 42%, 100% 0, 100% 100%, 0 100%); }
+.placement-context-hud__action--place { --placement-action-base: rgba(105,83,166,.88); --placement-action-hover: rgba(139,111,207,.96); top: 0; left: 25%; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.placement-context-hud__action--place > * { transform: translateY(-22px); }
+.placement-context-hud__action--return { --placement-action-base: rgba(27,24,33,.96); --placement-action-hover: rgba(58,51,70,.98); top: 25%; left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.placement-context-hud__action--return > * { transform: translateX(-18px); }
+.placement-context-hud__action--rotate { --placement-action-base: rgba(27,24,33,.96); --placement-action-hover: rgba(58,51,70,.98); top: 25%; right: 0; clip-path: polygon(0 50%, 100% 0, 100% 100%); }
+.placement-context-hud__action--rotate > * { transform: translateX(18px); }
+.placement-context-hud__action--deselect { --placement-action-base: rgba(42,33,67,.92); --placement-action-hover: rgba(76,59,111,.96); bottom: 0; left: 25%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.placement-context-hud__action--deselect > * { transform: translateY(14px); }
+.placement-context-hud__action-label { position: absolute; z-index: 4; color: rgba(255,255,255,.92); font-size: 16px; font-weight: 800; line-height: 1; white-space: nowrap; pointer-events: none; }
+.placement-context-hud__action-label--place { top: 42%; left: 50%; transform: translate(-50%, -50%); }
+.placement-context-hud__action-label--return { top: 50%; left: 25%; transform: translate(-50%, -50%); }
+.placement-context-hud__action-label--rotate { top: 50%; right: 25%; transform: translate(50%, -50%); }
+.placement-context-hud__action-label--deselect { bottom: 9%; left: 50%; transform: translateX(-50%); }
+.placement-context-hud__action:disabled + .placement-context-hud__action-label { color: rgba(255,255,255,.35); }
 .furniture-store__photo { width: min(94%, 240px); height: 168px; object-fit: contain; background: transparent; }
 .tcg-room-parcel__packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .tcg-room-parcel__packs figure { margin: 0; padding: 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; background: rgba(255,255,255,.04); }
@@ -605,9 +615,98 @@
 .vault-hud__brand { position: absolute; top: 18px; left: 20px; display: flex; align-items: center; gap: 12px; }
 .vault-hud__brand img { width: 36px; height: 36px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
 .vault-hud__brand strong { display: block; letter-spacing: .08em; font-size: 15px; }
-.vault-hud__brand small { display: block; color: rgba(255,255,255,.55); letter-spacing: .18em; font-size: 10px; }
+.vault-hud__brand small { display: block; color: rgba(255,255,255,.55); letter-spacing: .18em; font-size: 16px; }
 .vault-hud__exit { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; min-height: 34px; padding: 0 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: rgba(12,14,20,.72); }
 .vault-hud__title { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(12,14,20,.7); letter-spacing: .14em; font-size: 12px; backdrop-filter: blur(12px); }
+
+/* One responsive storefront for booster packs and room furniture. */
+.room-shop { min-height: 100%; padding-bottom: 32px; color: var(--room-text); background: var(--room-page); }
+.room-shop__masthead { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 24px; padding: 20px 24px 16px; border-bottom: 1px solid var(--room-border); background: var(--room-surface); }
+.room-shop__masthead > div:first-child > span { color: var(--room-accent); font-weight: 900; letter-spacing: .1em; }
+.room-shop__masthead h1 { margin: 2px 0 4px; color: var(--room-text); font-size: 25px; }
+.room-shop__masthead p { margin: 0; color: var(--room-muted); }
+.room-shop__wallet { display: grid; justify-items: end; gap: 4px; color: var(--room-muted); }
+.room-shop__wallet > span { color: var(--room-muted); }
+.room-shop__wallet strong, .room-shop__wallet small { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; color: var(--room-text); }
+.room-shop__wallet strong { font-size: 18px; }
+.room-shop__wallet small { color: var(--room-muted); font-size: 16px; }
+.room-shop__wallet svg { color: var(--room-accent); flex: 0 0 auto; }
+.room-shop__toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 14px; padding: 14px 24px 4px; }
+.room-shop__toolbar > label:first-child { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 46px; padding: 0 14px; border: 1px solid var(--room-border); border-radius: 8px; color: var(--room-muted); background: var(--room-control); }
+.room-shop__toolbar input { flex: 1 1 auto; min-width: 0; min-height: 42px; border: 0; outline: 0; color: var(--room-text); background: transparent; font-size: 16px; }
+.room-shop__toolbar input::placeholder { color: var(--room-muted); opacity: .85; }
+.room-shop__sort { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 46px; color: var(--room-muted); white-space: nowrap; }
+.room-shop__sort select { min-height: 42px; max-width: 220px; padding: 0 10px; border: 1px solid var(--room-border); border-radius: 7px; color: var(--room-text); background: var(--room-control); font-size: 16px; }
+.room-shop__families, .room-shop__subcategories { display: flex; gap: 8px; padding: 12px 24px; overflow-x: auto; border-bottom: 1px solid var(--room-border); }
+.room-shop__families button, .room-shop__subcategories button { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid var(--room-border); border-radius: 999px; color: var(--room-text); background: var(--room-control); white-space: nowrap; }
+.room-shop__families button.active, .room-shop__subcategories button.active { color: var(--room-accent-contrast); background: var(--room-accent); border-color: var(--room-accent); }
+.room-shop__subcategories { padding-top: 10px; padding-bottom: 10px; background: color-mix(in srgb, var(--room-surface) 58%, var(--room-page)); }
+.room-shop__results { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 24px 8px; color: var(--room-muted); }
+.room-shop__results strong { color: var(--room-text); font-size: 18px; }
+.room-shop__results span { text-align: right; }
+.room-store--embedded, .furniture-store--embedded { min-height: 0; padding: 0 24px 18px; color: var(--room-text); background: transparent; }
+.room-store__section-title, .furniture-store__section-title { display: flex; align-items: center; gap: 10px; margin: 12px 0 14px; color: var(--room-text); font-size: 20px; }
+.room-store__section-title > span, .furniture-store__section-title > span { display: grid; min-width: 28px; height: 28px; padding: 0 7px; place-items: center; border-radius: 999px; color: var(--room-accent); background: color-mix(in srgb, var(--room-accent) 16%, var(--room-surface)); font-size: 16px; }
+.room-store__grid, .furniture-store__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); align-items: stretch; gap: 16px; padding: 0 0 12px; }
+.room-store__grid article, .furniture-store__grid article { display: grid; grid-template-rows: auto minmax(0,1fr); min-width: 0; overflow: hidden; border: 1px solid var(--room-border); border-radius: 12px; color: var(--room-text); background: var(--room-panel); box-shadow: 0 8px 24px rgba(0,0,0,.14); }
+.room-store__grid article.unavailable { opacity: .72; }
+.room-store__grid article { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.room-store__product-image, .furniture-store__visual { position: relative; display: grid; box-sizing: border-box; width: 100%; min-width: 0; min-height: 218px; padding: 16px; place-items: center; color: var(--room-text); background: radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--room-accent) 25%, var(--room-panel)), var(--room-page)); }
+.room-store__product-image > span { position: absolute; z-index: 4; top: 12px; left: 12px; max-width: calc(100% - 24px); padding: 5px 9px; border: 1px solid var(--room-border); border-radius: 999px; color: var(--room-accent); background: var(--room-surface); font-weight: 800; overflow-wrap: anywhere; }
+.room-store__product-image > .room-store__product-kind-badge--premium { color: #252a31; border-color: #aeb7c2; background: #d9dee4; box-shadow: 0 1px 6px rgba(0,0,0,.28); }
+.room-store__wrapper-stage { position: relative; display: block; width: min(78%, 160px); aspect-ratio: 1065 / 1477; }
+.room-store__product-image--premium .room-store__wrapper-stage { aspect-ratio: 1066 / 1475; }
+.room-store__wrapper-stage > img { position: absolute; display: block; max-width: none; max-height: none; object-fit: contain; }
+.room-store__wrapper-stage > img.room-store__wrapper { z-index: 2; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 12px 12px rgba(0,0,0,.32)); }
+.room-store__wrapper-stage > img.room-store__product-art { z-index: 3; top: var(--room-pack-art-top, 20.5%); left: var(--room-pack-art-left, 20%); width: var(--room-pack-art-width, 59%); height: var(--room-pack-art-height, 58%); object-fit: cover; filter: none; }
+.room-store__product-image--permanent { --room-pack-art-top: 20.45%; --room-pack-art-left: 20.85%; --room-pack-art-width: 58.55%; --room-pack-art-height: 57.75%; }
+.room-store__product-image--standard { --room-pack-art-top: 20.85%; --room-pack-art-left: 19.82%; --room-pack-art-width: 58.59%; --room-pack-art-height: 57.62%; }
+.room-store__product-image--premium { --room-pack-art-top: 20.34%; --room-pack-art-left: 20.83%; --room-pack-art-width: 58.34%; --room-pack-art-height: 58.1%; }
+.room-store__product-image--limited { --room-pack-art-top: 20.58%; --room-pack-art-left: 20.09%; --room-pack-art-width: 58.6%; --room-pack-art-height: 57.9%; }
+.room-store__product-body { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 10px; padding: 14px 14px 16px; text-align: center; }
+.room-store__product-body h2 { margin: 0; color: var(--room-text); font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
+.room-store__product-body > p { margin: 0; color: var(--room-muted); line-height: 1.4; }
+.room-store__product-body ul { display: grid; justify-items: center; gap: 6px; width: 100%; margin: 0; padding: 0; list-style: none; color: var(--room-muted); }
+.room-store__product-body li { display: flex; align-items: center; gap: 8px; }
+.room-store__product-body li svg { flex: 0 0 auto; }
+.room-store__availability, .furniture-store__owned { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 38px; padding: 6px 10px; border: 1px solid var(--room-border); border-radius: 7px; color: var(--room-muted); background: color-mix(in srgb, var(--room-muted) 9%, var(--room-panel)); text-align: center; }
+.room-store__availability.is-available { color: var(--room-text); border-color: color-mix(in srgb, #35c787 45%, var(--room-border)); background: color-mix(in srgb, #35c787 14%, var(--room-panel)); }
+.room-store__availability svg, .furniture-store__owned svg { flex: 0 0 auto; }
+.room-store__release { display: grid; gap: 6px; width: 100%; color: var(--room-muted); text-align: left; }
+.room-store__release select { width: 100%; min-height: 42px; padding: 0 9px; border: 1px solid var(--room-border); border-radius: 7px; color: var(--room-text); background: var(--room-control); font-size: 16px; }
+.room-store__buy { display: grid; justify-items: center; gap: 10px; width: 100%; margin-top: auto; padding-top: 2px; }
+.room-store__buy > span, .furniture-store__grid footer > div > span { display: none; }
+.room-store__buy > strong, .furniture-store__grid footer > div > strong { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 30px; color: var(--room-text); font-size: 18px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.room-store__buy > strong svg, .furniture-store__grid footer > div > strong svg { flex: 0 0 auto; color: var(--room-accent); }
+.room-store__buy button, .furniture-store__grid footer button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 8px; color: var(--room-accent-contrast); background: var(--room-accent); font-size: 16px; font-weight: 800; line-height: 1.2; text-align: center; }
+.room-store__buy button:disabled, .furniture-store__grid footer button:disabled { color: var(--room-muted); background: var(--room-control); cursor: not-allowed; }
+.furniture-store__grid article { grid-template-rows: auto minmax(0,1fr) auto; }
+.furniture-store__visual { min-height: 218px; align-content: center; gap: 7px; }
+.furniture-store__visual > span, .furniture-store__visual small { color: var(--room-muted); font-size: 16px; }
+.furniture-store__visual > span { align-self: end; }
+.furniture-store__photo { display: block; width: min(88%, 220px); height: 176px; object-fit: contain; background: transparent; }
+.furniture-store__poster-stack { position: relative; width: min(150px, 80%); height: 160px; }
+.furniture-store__poster { position: absolute; inset: 6px 28px; margin: 0; overflow: hidden; border: 7px solid #161616; background: #101010; box-shadow: 0 12px 28px rgba(0,0,0,.4); }
+.furniture-store__poster img, .furniture-store__poster i { display: block; width: 100%; height: 100%; object-fit: cover; background: #2a2433; }
+.furniture-store__body { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 10px; padding: 14px 14px 0; text-align: center; }
+.furniture-store__body h3 { margin: 0; color: var(--room-text); font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
+.furniture-store__body p { margin: 0; color: var(--room-muted); line-height: 1.4; }
+.furniture-store__owned { color: var(--room-muted); }
+.furniture-store__grid footer { display: grid; justify-items: center; gap: 10px; padding: 14px; border: 0; }
+.furniture-store__grid footer > div { display: grid; justify-items: center; min-width: 0; }
+.furniture-store__empty, .room-store__empty { padding: 28px 16px; color: var(--room-muted); text-align: center; }
+@media (max-width: 720px) {
+  .room-shop__masthead { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
+  .room-shop__wallet { justify-items: start; }
+  .room-shop__wallet strong, .room-shop__wallet small { justify-content: flex-start; }
+  .room-shop__toolbar { grid-template-columns: 1fr; padding: 12px 16px 4px; }
+  .room-shop__sort { justify-content: space-between; }
+  .room-shop__sort select { max-width: none; }
+  .room-shop__families, .room-shop__subcategories { padding-right: 16px; padding-left: 16px; }
+  .room-shop__results { align-items: flex-start; flex-direction: column; gap: 5px; padding-right: 16px; padding-left: 16px; }
+  .room-shop__results span { text-align: left; }
+  .room-store--embedded, .furniture-store--embedded { padding-right: 16px; padding-left: 16px; }
+}
 .vault-hud__actions { position: absolute; top: 18px; right: 20px; display: flex; gap: 8px; }
 .vault-hud__actions button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 13px; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; background: rgba(12,14,20,.72); backdrop-filter: blur(12px); }
 .vault-hud__summary { position: absolute; top: 72px; right: 20px; width: min(360px, calc(100vw - 40px)); padding: 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; background: rgba(14,16,24,.82); box-shadow: 0 18px 50px rgba(0,0,0,.35); backdrop-filter: blur(16px); }
@@ -658,7 +757,12 @@
 .vault-inv__toolbar p { margin: 4px 0 0; color: rgba(255,255,255,.55); }
 .vault-inv__search { display: flex; align-items: center; gap: 8px; min-width: 200px; padding: 0 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.04); }
 .vault-inv__search input { flex: 1; min-height: 40px; border: 0; background: transparent; color: #fff; }
-.vault-inv__select { min-height: 40px; padding: 0 12px; color: #fff; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.04); }
+.vault-inv__select { min-height: 40px; padding: 0 12px; color: #fff; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.04); color-scheme: dark; }
+.vault-inv__select option,
+.vault-inv__select option:checked,
+.vault-inv__select option:hover { color: #fff; background: #17191f; }
+.vault-inv__select option:checked,
+.vault-inv__select option:hover { background: var(--c-accent, #326dcc); }
 .vault-inv__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .vault-inv__chips button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; background: rgba(255,255,255,.04); }
 .vault-inv__chips button.active { border-color: rgba(110,168,255,.75); background: rgba(80,130,255,.22); color: #dbe5ff; }

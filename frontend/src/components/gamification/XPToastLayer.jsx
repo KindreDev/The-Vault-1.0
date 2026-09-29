@@ -1,4 +1,5 @@
 import React from 'react'
+import { LocalizedText } from '../../i18n'
 import { useVaultStore } from '../../store/vault'
 
 const TOAST_STYLES = {
@@ -56,15 +57,11 @@ function PackToast({ t }) {
     >
       <span style={{ fontSize: 36, lineHeight: 1 }}>🎴</span>
       <div className="flex flex-col gap-0.5">
-        <span style={{ fontSize: 13, opacity: 0.75, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Quest reward
-        </span>
+        <span style={{ fontSize: 13, opacity: 0.75, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}><LocalizedText text={"Quest reward"} before=" " after=" " /></span>
         <span style={{ fontSize: 24, lineHeight: 1.15 }}>
           {t.quantity} {isPremium ? 'Premium' : 'Booster'} {t.quantity === 1 ? 'Pack' : 'Packs'}
         </span>
-        <span style={{ fontSize: 13, opacity: 0.65, fontWeight: 400 }}>
-          Added to your collection
-        </span>
+        <span style={{ fontSize: 13, opacity: 0.65, fontWeight: 400 }}><LocalizedText text={"Added to your collection"} before=" " after=" " /></span>
       </div>
     </div>
   )

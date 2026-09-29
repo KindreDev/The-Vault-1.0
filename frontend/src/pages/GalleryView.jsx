@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Star, Droplets, Shuffle, Heart, ChevronLeft, ChevronRight,
-  X, Images, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
+  X, Images, GalleryThumbnails, ZoomIn, ZoomOut, UserPlus, Maximize, Minimize,
   Play, Pause, ExternalLink, Pencil, Trash2, ImagePlus, Sparkles, GitMerge,
   FolderOpen, Zap, CheckSquare, Square, FolderOutput, HardDrive, Tag, Copy, ListMusic,
   Waves, Search,
@@ -12,6 +13,7 @@ import {
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
+import { stopVideoPreview } from '../lib/videoPreview'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
@@ -25,6 +27,7 @@ import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
+import { readFilmstripVisibility, saveFilmstripVisibility } from '../lib/viewerPreferences'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
 // Large galleries can contain several thousand files. Keep the full metadata
@@ -148,7 +151,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
       setSearch('')
       setOpen(false)
     },
-    onError: (err) => toast.error(`Failed to assign creator: ${err.message}`)
+    onError: (err) => toast.error(t('Failed to assign creator: {details}', { details: err.message }))
   })
 
   const removeMutation = useMutation({
@@ -157,7 +160,7 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
       qc.invalidateQueries({ queryKey: ['gallery', String(galleryId)] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
     },
-    onError: (err) => toast.error(`Failed to remove creator: ${err.message}`)
+    onError: (err) => toast.error(t('Failed to remove creator: {details}', { details: err.message }))
   })
 
   return (
@@ -331,40 +334,28 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
     setConfirmDelete(false)
   }, [image.is_video])
 
-  // Release video connection when component unmounts (e.g. navigating away from gallery).
-  // Without this, detached <video> elements hold open HTTP connections until GC runs,
-  // which saturates Chrome's 6-connection-per-origin limit and blocks the video viewer.
-  useEffect(() => {
-    return () => {
-      const vid = videoRef.current
-      if (!vid) return
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
-    }
-  }, [])
-
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (hoverVideo) {
-      // Set src here, not in JSX — prevents initial metadata requests for every video
-      // in the gallery grid from consuming connection slots before the user even hovers.
-      vid.src = `/api/images/${image.id}/file`
-      const seekAndPlay = () => {
-        if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
-        vid.play().catch(() => {})
-      }
-      if (vid.readyState >= 1) seekAndPlay()
-      else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-    } else {
-      // Tear down the media pipeline completely — pause() alone leaves the HTTP
-      // connection open and buffering, saturating Chrome's 6-connection limit.
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
+    if (!hoverVideo) {
+      stopVideoPreview(vid)
+      return
     }
-    return () => clearTimeout(hoverTimerRef.current)
+
+    // Attach only while hovered, then release the captured element even if
+    // React has detached it and cleared videoRef during unmount.
+    vid.src = `/api/images/${image.id}/file`
+    const seekAndPlay = () => {
+      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
+      vid.play().catch(() => {})
+    }
+    if (vid.readyState >= 1) seekAndPlay()
+    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
+    return () => {
+      clearTimeout(hoverTimerRef.current)
+      vid.removeEventListener('loadedmetadata', seekAndPlay)
+      stopVideoPreview(vid)
+    }
   }, [hoverVideo, image.id])
 
   return (
@@ -437,7 +428,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
           </div>
         )}
         {image.rating > 0 && (
-          <div className="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded-full z-[3] font-medium"
+          <div className="absolute top-1 left-1 text-[16px] px-1.5 py-0.5 rounded-full z-[3] font-medium"
                style={{ background: 'rgba(0,0,0,0.75)', color: '#EF9F27' }}>
             ★ {image.rating}
           </div>
@@ -533,7 +524,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [slideshowActive, setSlideshowActive] = useState(false)
   const [slideshowSpeed, setSlideshowSpeed] = useState(5)
-  const [showFilmstrip, setShowFilmstrip] = useState(true)
+  const [showFilmstrip, setShowFilmstrip] = useState(readFilmstripVisibility)
+  const [showViewerChrome, setShowViewerChrome] = useState(true)
   const [showSidebar, setShowSidebar] = useState(true)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
@@ -633,8 +625,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       isFullscreenRef.current = next
       setIsFullscreen(next)
       clearTimeout(filmstripTimer.current)
-      if (next) setShowFilmstrip(false)
-      else setShowFilmstrip(true)
+      setShowViewerChrome(!next)
     } else if (!document.fullscreenElement) {
       viewerRef.current?.requestFullscreen().catch(() => {})
     } else {
@@ -649,11 +640,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       isFullscreenRef.current = fs
       setIsFullscreen(fs)
       clearTimeout(filmstripTimer.current)
-      if (fs) {
-        setShowFilmstrip(false)
-      } else {
-        setShowFilmstrip(true)
-      }
+      setShowViewerChrome(!fs)
     }
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
@@ -741,7 +728,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}) }
       isFullscreenRef.current = false
       setIsFullscreen(false)
-      setShowFilmstrip(true)
+      setShowViewerChrome(true)
       return
     }
     if (zoom > 1) resetZoom(); else onClose()
@@ -763,10 +750,10 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       setIdx(i => { let n = i; while (n === i) n = Math.floor(Math.random() * images.length); return n })
     },
     viewer_slideshow_faster: () => setSlideshowSpeed(s => {
-      const n = Math.max(1, s - 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+      const n = Math.max(1, s - 1); toast(t('⏱ {seconds}s per photo', { seconds: n }), { id: 'slide-speed' }); return n
     }),
     viewer_slideshow_slower: () => setSlideshowSpeed(s => {
-      const n = Math.min(60, s + 1); toast(`⏱ ${n}s per photo`, { id: 'slide-speed' }); return n
+      const n = Math.min(60, s + 1); toast(t('⏱ {seconds}s per photo', { seconds: n }), { id: 'slide-speed' }); return n
     }),
     viewer_fullscreen: toggleFullscreen,
     viewer_keep_going: () => { setSlideshowActive(false); setShowEndScreen(true) },
@@ -787,9 +774,9 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       setPan({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y })
     }
     if (!isFullscreenRef.current) return
-    setShowFilmstrip(true)
+    setShowViewerChrome(true)
     clearTimeout(filmstripTimer.current)
-    filmstripTimer.current = setTimeout(() => setShowFilmstrip(false), 2000)
+    filmstripTimer.current = setTimeout(() => setShowViewerChrome(false), 2000)
   }, [dragging])
 
   // Non-passive wheel listener for zoom (works for both images and videos)
@@ -870,6 +857,12 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
   if (!image) return null
   const isZoomed = zoom > 1
+  const toggleFilmstrip = () => {
+    const next = !showFilmstrip
+    setShowFilmstrip(next)
+    saveFilmstripVisibility(next)
+  }
+  const filmstripVisible = !image.is_video && showFilmstrip && (!isFullscreen || showViewerChrome)
 
   return createPortal((
     <div
@@ -877,20 +870,20 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       className="vault-image-viewer fixed inset-0 z-50 flex"
       style={{
         background: '#090909',
-        cursor: isFullscreen && !showFilmstrip ? 'none' : 'default',
+        cursor: isFullscreen && !showViewerChrome ? 'none' : 'default',
       }}
       onMouseMove={handleMouseMove}
     >
-      {/* Main stage — always relative so absolute children fill it */}
-      <div className="flex-1 relative min-w-0">
+      {/* Main stage and thumbnail rail share height instead of overlapping the image. */}
+      <div className="flex-1 relative min-w-0 min-h-0 flex flex-col">
         {/* Topbar — always an absolute overlay; fades out only in fullscreen when mouse idle */}
         <div
           style={{
             position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
             height: 44, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
             background: 'linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, transparent 100%)',
-            opacity: isFullscreen && !showFilmstrip ? 0 : 1,
-            pointerEvents: isFullscreen && !showFilmstrip ? 'none' : 'auto',
+            opacity: isFullscreen && !showViewerChrome ? 0 : 1,
+            pointerEvents: isFullscreen && !showViewerChrome ? 'none' : 'auto',
             transition: 'opacity 0.25s ease',
           }}>
           <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white">
@@ -899,13 +892,24 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           <span className="text-[16px] text-[rgba(255,255,255,0.4)]">{idx + 1} / {images.length}</span>
           <span className="text-[16px] text-[rgba(255,255,255,0.55)] truncate">{image.filename}</span>
           <div className="ml-auto flex items-center gap-1.5">
+            {!image.is_video && (
+              <button
+                type="button"
+                onClick={toggleFilmstrip}
+                aria-label={t(showFilmstrip ? 'Hide filmstrip' : 'Show filmstrip')}
+                aria-pressed={showFilmstrip}
+                className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white p-1 rounded transition-colors"
+                title={t(showFilmstrip ? 'Hide filmstrip' : 'Show filmstrip')}>
+                <GalleryThumbnails size={18} />
+              </button>
+            )}
             {/* Quick favorite star */}
             <button
               onMouseDown={() => { const next = !isFavorite; setIsFavorite(next); favMutation.mutate(next) }}
               className="cursor-pointer p-1 rounded transition-colors"
               style={{ color: isFavorite ? '#EF9F27' : 'rgba(255,255,255,0.3)' }}
               title={isFavorite ? t('Remove favorite') : t('Add to favorites')}>
-              <Star size={14} fill={isFavorite ? '#EF9F27' : 'none'} />
+              <Star size={18} fill={isFavorite ? '#EF9F27' : 'none'} />
             </button>
             {/* Slideshow controls — shared component, see SlideshowControls.jsx */}
             <SlideshowControls
@@ -947,10 +951,10 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           </div>
         </div>
 
-        {/* Image/Video stage — always fills parent via absolute inset-0 */}
+        {/* Image/Video stage fills the space above the optional thumbnail rail. */}
         <div
           ref={stageRef}
-          className="absolute inset-0 flex items-center justify-center overflow-hidden select-none"
+          className="relative flex-1 min-h-0 flex items-center justify-center overflow-hidden select-none"
           style={{
             background: '#060606',
             cursor: isZoomed ? (dragging ? 'grabbing' : 'grab') : (image.is_video ? 'crosshair' : 'zoom-in'),
@@ -971,7 +975,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               videoZoom={zoom}
               videoPan={pan}
               isFullscreen={isFullscreen}
-              showControls={showFilmstrip}
+              showControls={showViewerChrome}
               // During a slideshow the video decides when to move on — the
               // slide timer deliberately doesn't run for videos.
               shuffle={shuffle}
@@ -1037,8 +1041,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                     className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
-                      opacity: isFullscreen && !showFilmstrip ? 0 : 1,
-                      pointerEvents: isFullscreen && !showFilmstrip ? 'none' : 'auto',
+                      opacity: isFullscreen && !showViewerChrome ? 0 : 1,
+                      pointerEvents: isFullscreen && !showViewerChrome ? 'none' : 'auto',
                       transition: 'opacity 0.25s ease',
                     }}>
               <ChevronLeft size={18} />
@@ -1050,8 +1054,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
-                      opacity: isFullscreen && !showFilmstrip ? 0 : 1,
-                      pointerEvents: isFullscreen && !showFilmstrip ? 'none' : 'auto',
+                      opacity: isFullscreen && !showViewerChrome ? 0 : 1,
+                      pointerEvents: isFullscreen && !showViewerChrome ? 'none' : 'auto',
                       transition: 'opacity 0.25s ease',
                     }}>
               <ChevronRight size={18} />
@@ -1083,37 +1087,34 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
                    background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)',
                    color: 'var(--c-accent-text)',
                    border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)',
-                   opacity: isFullscreen && !showFilmstrip ? 0 : 1,
+                   opacity: isFullscreen && !showViewerChrome ? 0 : 1,
                    transition: 'opacity 0.25s ease',
                  }}>
-              <Play size={15} /> {t('Slideshow')} · {slideshowSpeed}s · {t('Space to pause')}
+              <Play size={15} /> {t('Slideshow')} · {slideshowSpeed}<LocalizedText text={"s ·"} after=" " />{t('Space to pause')}
             </div>
           )}
         </div>
 
-        {/* Filmstrip — always absolute overlay at bottom; fades out in fullscreen when mouse idle */}
-        <div
-          className="flex gap-1.5 px-3 py-2 overflow-x-auto"
-          style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
-            height: 64,
-            background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)',
-            opacity: image.is_video || (isFullscreen && !showFilmstrip) ? 0 : 1,
-            pointerEvents: image.is_video || (isFullscreen && !showFilmstrip) ? 'none' : 'auto',
-            transition: 'opacity 0.25s ease',
-          }}>
-          {images.map((img, i) => (
-            <div key={img.id}
-                 onMouseDown={() => { setSlideshowActive(false); setIdx(i) }}
-                 className="w-12 h-12 rounded-[5px] overflow-hidden flex-shrink-0 cursor-pointer"
-                 style={{ border: `1.5px solid ${i === idx ? 'var(--c-accent)' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
-              <img src={`/api/images/${img.id}/thumb`} alt=""
-                   loading="lazy" decoding="async"
-                   className="w-full h-full object-cover"
-                   onError={e => { e.target.style.display = 'none' }} />
-            </div>
-          ))}
-        </div>
+        {filmstripVisible && (
+          <div
+            className="flex flex-shrink-0 gap-1.5 px-3 py-2 overflow-x-auto"
+            style={{
+              boxSizing: 'border-box', height: 65,
+              background: '#111111', borderTop: '1px solid rgba(255,255,255,0.08)',
+            }}>
+            {images.map((img, i) => (
+              <div key={img.id}
+                   onMouseDown={() => { setSlideshowActive(false); setIdx(i) }}
+                   className="w-12 h-12 rounded-[5px] overflow-hidden flex-shrink-0 cursor-pointer"
+                   style={{ border: `1.5px solid ${i === idx ? 'var(--c-accent)' : 'rgba(255,255,255,0.06)'}`, background: 'rgba(255,255,255,0.04)' }}>
+                <img src={`/api/images/${img.id}/thumb`} alt=""
+                     loading="lazy" decoding="async"
+                     className="w-full h-full object-cover"
+                     onError={e => { e.target.style.display = 'none' }} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Right panel — hidden in fullscreen */}
@@ -1315,7 +1316,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           {image.file_size && (
             <div className="flex justify-between py-0.5">
               <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
-              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)} MB</span>
+              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)}<LocalizedText text={"MB"} before=" " /></span>
             </div>
           )}
           <div className="flex justify-between py-0.5">
@@ -1397,6 +1398,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
   const t = useT()
   const qc = useQueryClient()
   const [search, setSearch]             = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [targetId, setTargetId]         = useState(null)
   const [targetGallery, setTargetGallery] = useState(null)
   const [moveFiles, setMoveFiles]       = useState(true)
@@ -1404,19 +1406,23 @@ function MergeModal({ gallery, onClose, onMerged }) {
   const [step, setStep]                 = useState('pick')    // pick | confirm
   const [merging, setMerging]           = useState(false)
 
-  const { data: allGalleries } = useQuery({
-    queryKey: ['galleries-mini'],
-    queryFn: () => galleriesApi.list({ limit: 2000, sort_by: 'name' }).then(r => r.data),
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const { data: matchingGalleries, isLoading: loadingMatches, isFetchingNextPage, hasNextPage, fetchNextPage, error: searchError } = useInfiniteQuery({
+    queryKey: ['merge-gallery-targets', debouncedSearch],
+    queryFn: ({ pageParam = 0 }) => galleriesApi.list({ search: debouncedSearch, limit: 50, skip: pageParam * 50, sort_by: 'name' }).then(r => r.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => lastPage.length === 50 ? pages.length : undefined,
+    enabled: !!debouncedSearch,
     staleTime: 30000,
   })
 
   const filtered = useMemo(() => {
-    if (!allGalleries) return []
-    const q = search.toLowerCase().trim()
-    return allGalleries
-      .filter(g => g.id !== gallery.id && (!q || g.name.toLowerCase().includes(q)))
-      .slice(0, 40)
-  }, [allGalleries, search, gallery.id])
+    return (matchingGalleries?.pages.flat() || []).filter(g => g.id !== gallery.id)
+  }, [matchingGalleries, gallery.id])
 
   const selectTarget = (g) => {
     setTargetId(g.id)
@@ -1440,10 +1446,10 @@ function MergeModal({ gallery, onClose, onMerged }) {
       const d = res.data
       const parts = []
       const totalMoved = (d.moved ?? 0) + (d.renamed ?? 0) + (d.replaced ?? 0) + (d.db_only ?? 0)
-      if (totalMoved > 0) parts.push(`${totalMoved} images merged`)
-      if (d.reconciled > 0) parts.push(`${d.reconciled} already-present files reconciled`)
-      if (d.skipped > 0)  parts.push(`${d.skipped} skipped`)
-      if (d.errors?.length > 0) parts.push(`${d.errors.length} could not be moved`)
+      if (totalMoved > 0) parts.push(t('{count} images merged', { count: totalMoved }))
+      if (d.reconciled > 0) parts.push(t('{count} already-present files reconciled', { count: d.reconciled }))
+      if (d.skipped > 0)  parts.push(t('{count} skipped', { count: d.skipped }))
+      if (d.errors?.length > 0) parts.push(t('{count} could not be moved', { count: d.errors.length }))
       toast[d.errors?.length > 0 ? 'error' : 'success'](parts.join(', ') || t('Merged'))
       qc.invalidateQueries({ queryKey: ['gallery', String(gallery.id)] })
       qc.invalidateQueries({ queryKey: ['gallery', String(targetId)] })
@@ -1510,10 +1516,13 @@ function MergeModal({ gallery, onClose, onMerged }) {
                     </button>
                   </div>
                 ) : (
-                  filtered.length > 0 && search && (
+                  !!search.trim() && (
                     <div className="mt-1 rounded-[8px] overflow-hidden overflow-y-auto"
                          style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 180 }}>
-                      {filtered.map(g => (
+                      {search.trim() !== debouncedSearch || loadingMatches ? <div className="px-3 py-2" style={{ fontSize: 16 }}>{t('Searching galleries…')}</div>
+                        : searchError ? <div role="alert" className="px-3 py-2" style={{ fontSize: 16, color: 'var(--c-pink)' }}>{t('Could not search galleries')}</div>
+                        : !filtered.length ? <div className="px-3 py-2" style={{ fontSize: 16 }}>{t('No matching galleries')}</div>
+                        : <>{filtered.map(g => (
                         <button key={g.id} onClick={() => selectTarget(g)}
                                 className="w-full text-left px-3 py-2 flex items-center justify-between cursor-pointer transition-colors"
                                 style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
@@ -1522,7 +1531,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                           <span>{g.name}</span>
                           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{g.image_count ?? 0} {t('imgs')}</span>
                         </button>
-                      ))}
+                      ))}{hasNextPage && <button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} className="w-full px-3 py-2 text-left disabled:opacity-50" style={{ fontSize: 16, color: 'var(--c-accent-text)' }}>{isFetchingNextPage ? t('Searching galleries…') : t('More matches')}</button>}</>}
                     </div>
                   )
                 )}
@@ -1561,7 +1570,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                                 border: `0.5px solid ${collision === key ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                               }}>
                         <div style={{ fontSize: 12, color: collision === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{t(label)}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
+                        <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>{t(desc)}</div>
                       </button>
                     ))}
                   </div>
@@ -1582,7 +1591,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-amber-text)' }}>{t('⚠ Confirm merge')}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginTop: 2 }}>
                   <b style={{ color: 'rgba(255,255,255,0.85)' }}>{gallery.name}</b> {t('will be merged into')} <b style={{ color: 'rgba(255,255,255,0.85)' }}>{targetGallery?.name}</b>.
-                  {gallery.image_count > 0 && <> Its {gallery.image_count} images will be reassigned.</>}
+                  {gallery.image_count > 0 && t('Its {count} images will be reassigned.', { count: gallery.image_count })}
                 </div>
               </div>
 
@@ -1691,8 +1700,8 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
     onSuccess: (res) => {
       const g = res.data
       const errs = g.errors?.length ?? 0
-      if (errs > 0) toast.error(`Extracted with ${errs} file error(s)`)
-      else toast.success(`${g.moved ?? selectedImages.length} images → "${g.name}"`)
+      if (errs > 0) toast.error(t('Extracted with {count} file errors', { count: errs }))
+      else toast.success(t('{count} images → "{name}"', { count: g.moved ?? selectedImages.length, name: g.name }))
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onExtracted(g)
     },
@@ -1800,6 +1809,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
 
 export default function GalleryView() {
   const t = useT()
+  const locale = useVaultStore(s => s.locale)
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -2063,7 +2073,7 @@ export default function GalleryView() {
               retagPollRef.current = null
             }
             setRetagging(false)
-            toast.success(`Tagged ${data.tagged} images`)
+            toast.success(t('Tagged {count} images', { count: data.tagged }))
             qc.invalidateQueries({ queryKey: ['gallery-images', id] })
           }
         } catch {
@@ -2152,14 +2162,14 @@ export default function GalleryView() {
             {gallery?.period_month && gallery?.period_year ? (
               <button
                 onClick={() => setShowPeriodPicker(p => !p)}
-                className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer"
+                className="text-[16px] px-2 py-0.5 rounded-full cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
-                {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
+                {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })}
               </button>
             ) : (
               <button
                 onClick={() => setShowPeriodPicker(p => !p)}
-                className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer opacity-40 hover:opacity-70"
+                className="text-[16px] px-2 py-0.5 rounded-full cursor-pointer opacity-40 hover:opacity-70"
                 style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                 {t('+ period')}
               </button>
@@ -2192,13 +2202,13 @@ export default function GalleryView() {
               <button
                 onClick={() => periodMutation.mutate({ month: periodMonth, year: periodYear })}
                 disabled={periodMutation.isPending}
-                className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer"
+                className="text-[16px] px-2.5 py-1 rounded-full cursor-pointer"
                 style={{ background: 'color-mix(in srgb, var(--c-green) 20%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
                 {t('Save')}
               </button>
               <button
                 onClick={() => setShowPeriodPicker(false)}
-                className="text-[10px] text-[rgba(255,255,255,0.3)] hover:text-white cursor-pointer">
+                className="text-[16px] text-[rgba(255,255,255,0.3)] hover:text-white cursor-pointer">
                 ✕
               </button>
             </div>
@@ -2266,7 +2276,7 @@ export default function GalleryView() {
                           rateGalleryMutation.mutate(next)
                         }}
                         className="cursor-pointer transition-transform hover:scale-125"
-                        title={`Rate ${n}/10`}>
+                        title={t('Rate {level} out of 10', { level: n })}>
                   <Star size={9}
                         fill={filled ? (ratingHover ? 'color-mix(in srgb, var(--c-amber) 70%, transparent)' : 'var(--c-amber)') : 'none'}
                         stroke={filled ? 'var(--c-amber)' : 'rgba(255,255,255,0.2)'}
@@ -2275,7 +2285,7 @@ export default function GalleryView() {
               )
             })}
             {galleryRating > 0 && !ratingHover && (
-              <span className="text-[10px] ml-1" style={{ color: 'var(--c-amber)' }}>{galleryRating}</span>
+              <span className="text-[16px] ml-1" style={{ color: 'var(--c-amber)' }}>{galleryRating}</span>
             )}
           </div>
           <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} />
@@ -2435,8 +2445,8 @@ export default function GalleryView() {
                   for (const tg of bulkPendingTags)
                     try { await imagesApi.addTag(img.id, tg) } catch { errs++ }
                 setBulkTagging(false)
-                if (errs) toast.error(`Done with ${errs} errors`)
-                else toast.success(`Tagged ${targets.length} ${targets.length === 1 ? 'file' : 'files'}`)
+                if (errs) toast.error(t('Done with {count} errors', { count: errs }))
+                else toast.success(t('Tagged {count} files', { count: targets.length }))
                 qc.invalidateQueries({ queryKey: ['gallery-images', String(id)] })
                 qc.invalidateQueries({ queryKey: ['tags'] })
                 setBulkPendingTags([])
@@ -2687,8 +2697,8 @@ export default function GalleryView() {
               const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
               if (ok) added++; else skipped++
             }
-            if (added > 0) toast.success(`${added} ${added === 1 ? 'image' : 'images'} sent to Playlists`)
-            if (skipped > 0) toast(`${skipped} already queued or queue full`, { icon: 'ℹ️' })
+            if (added > 0) toast.success(t('{count} images sent to Playlists', { count: added }))
+            if (skipped > 0) toast(t('{count} already queued or queue full', { count: skipped }), { icon: 'ℹ️' })
           }}
           onCopyTo={() => setTransferCtx({ images: contextImages })}
           onRelocate={() => setRelocatingImages(contextImages)}
@@ -2758,11 +2768,11 @@ export default function GalleryView() {
                 : `${removedIds.length} ${removedIds.length === 1 ? 'file' : 'files'} deleted from disk`)
               if (failures.length) {
                 const reason = failures[0]?.message
-                toast.error(`${failures.length} deletion${failures.length === 1 ? '' : 's'} failed${reason ? `: ${reason}` : ''}`)
+                toast.error(t('{count} deletions failed{details}', { count: failures.length, details: reason ? `: ${reason}` : '' }))
               }
             } catch (error) {
               toast.dismiss(tid)
-              toast.error(`Deletion failed: ${apiErrorMessage(error, 'Could not complete deletion')}`)
+              toast.error(t('Deletion failed: {details}', { details: apiErrorMessage(error, t('Could not complete deletion')) }))
             } finally {
               qc.invalidateQueries({ queryKey: ['gallery', String(id)] })
             }

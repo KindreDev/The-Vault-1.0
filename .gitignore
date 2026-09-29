@@ -154,6 +154,10 @@ _frames/sheet_c1.jpg
 _frames/sheet_c2.jpg
 allow-mobile-firewall.bat
 backend/companion_avatars/companion_avatar.jpg
+backend/theme_packs/
+frontend/src/chloe-theme.css
+frontend/src/assets/themes/chloe/
+*.vaulttheme
 VAULT_1.1.2_GUIDE.md
 .vs/The Vault/FileContentIndex/f2965799-3621-4f1b-8817-1c287a1d691f.vsidx
 .vs/The Vault/FileContentIndex/ed41833b-eb73-4047-a608-9c5729acf07a.vsidx
@@ -188,3 +192,12 @@ TCG_V2_VISUAL_SYSTEM.md
 THIRD_PARTY_NOTICES.md
 Vault_Analytics_2.0_Feature_Ideas.md
 backend/repair_foundation_sprs.py
+backend/tests/test_credit_economy.py
+backend/tests/test_foundation_spr_economy.py
+backend/tests/test_scene_masking.py
+backend/tests/test_tcg_room_placement.py
+backend/tests/test_tcg_v2_release_rarity.py
+backend/tests/test_tcg_room_placement.py
+
+# ── Agent-generated local test files (never commit) ──────────────────────────
+/.codex-test-artifacts/

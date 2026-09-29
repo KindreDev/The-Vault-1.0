@@ -1,8 +1,9 @@
+import { LocalizedText, useT } from '../../i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Armchair, Box, Eye, Layers, PackageOpen, Search, Star, X } from 'lucide-react'
-import { imagesApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
+import { Armchair, Box, Eye, Layers, PackageOpen, Search, X } from 'lucide-react'
+import { apiErrorMessage, imagesApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import PackOpening from '../PackOpening'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
 import { BoosterEnvelope } from '../tcg-workspace/PackBrowser'
@@ -32,7 +33,7 @@ const FURNITURE_BLURB = {
 }
 
 function apiError(error, fallback) {
-  return error?.response?.data?.detail || fallback
+  return apiErrorMessage(error, fallback)
 }
 
 function cardCode(item) {
@@ -159,7 +160,7 @@ function InventoryLoading({ label = 'Loading inventory…' }) {
   return <div className="vault-inv__loading" role="status" aria-live="polite">
     <span className="vault-inv__loading-spinner" aria-hidden="true" />
     <strong>{label}</strong>
-    <small>Fetching your collection…</small>
+    <small><LocalizedText text={"Fetching your collection…"} /></small>
   </div>
 }
 
@@ -176,6 +177,7 @@ async function hydratePacks(results, contents = []) {
 }
 
 export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 'cards', onTabChange }) {
+  const t = useT()
   const qc = useQueryClient()
   const [tab, setTab] = useState(initialTab === 'packs' ? 'packs' : initialTab)
   const [selectedWeeklyReleases, setSelectedWeeklyReleases] = useState({})
@@ -254,14 +256,14 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     onSuccess: packs => {
       setOpeningLabel('')
       if (!packs?.length || packs.every(pack => !pack.cards?.length)) {
-        toast.error('The booster packs opened, but no cards came back to reveal.')
+        toast.error(t("The booster packs opened, but no cards came back to reveal."))
         refresh()
         return
       }
       setOpenedPacks(packs)
       refresh()
     },
-    onError: error => { setOpeningLabel(''); toast.error(apiError(error, 'Booster pack opening failed')) },
+    onError: error => { setOpeningLabel(''); toast.error(apiError(error, t("Booster pack opening failed"))) },
   })
   const openToken = useMutation({
     mutationFn: async token => {
@@ -281,14 +283,14 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     onSuccess: packs => {
       setOpeningLabel('')
       if (!packs?.length || packs.every(pack => !pack.cards?.length)) {
-        toast.error('The pack opened, but the reveal did not load.')
+        toast.error(t("The pack opened, but the reveal did not load."))
         refresh()
         return
       }
       setOpenedPacks(packs)
       refresh()
     },
-    onError: error => { setOpeningLabel(''); toast.error(apiError(error, 'Pack opening failed')) },
+    onError: error => { setOpeningLabel(''); toast.error(apiError(error, t("Pack opening failed"))) },
   })
 
   const furniture = inventory.data?.furniture || []
@@ -319,31 +321,29 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   return <section className={`vault-inv vault-inv--${tab}`} role="dialog" aria-modal="true" aria-labelledby="room-inventory-title">
     {tab === 'cards' && <header className="vault-inv__masthead">
       <Box size={22} />
-      <div><h1 id="room-inventory-title">Inventory</h1><p>Manage your cards, packs, and room items.</p></div>
-      <Star size={18} />
+      <div><h1 id="room-inventory-title"><LocalizedText text={"Inventory"} /></h1><p><LocalizedText text={"Manage your cards, packs, and room items."} /></p></div>
     </header>}
     {tab === 'furniture' && <header className="vault-inv__masthead">
       <Box size={22} />
-      <div><h1 id="room-inventory-title">Inventory</h1><p>Manage your cards, packs, and room items.</p></div>
-      <Star size={18} />
+      <div><h1 id="room-inventory-title"><LocalizedText text={"Inventory"} /></h1><p><LocalizedText text={"Manage your cards, packs, and room items."} /></p></div>
     </header>}
     <aside className="vault-inv__nav">
-      <button type="button" className={tab === 'cards' ? 'active' : ''} onClick={() => selectTab('cards')}><Layers size={18} /> Cards <span>{cardsLoading ? '…' : cardTotal.toLocaleString()}</span></button>
-      <button type="button" className={tab === 'packs' ? 'active' : ''} onClick={() => selectTab('packs')}><PackageOpen size={18} /> Booster Packs <span>{inventoryLoading ? '…' : packCount}</span></button>
-      <button type="button" className={tab === 'furniture' ? 'active' : ''} onClick={() => selectTab('furniture')}><Armchair size={18} /> Furniture <span>{inventoryLoading ? '…' : furniture.length}</span></button>
+      <button type="button" className={tab === 'cards' ? 'active' : ''} onClick={() => selectTab('cards')}><Layers size={18} /><LocalizedText text={"Cards"} before={" "} after={" "} /><span>{cardsLoading ? '…' : cardTotal.toLocaleString()}</span></button>
+      <button type="button" className={tab === 'packs' ? 'active' : ''} onClick={() => selectTab('packs')}><PackageOpen size={18} /><LocalizedText text={"Booster Packs"} before={" "} after={" "} /><span>{inventoryLoading ? '…' : packCount}</span></button>
+      <button type="button" className={tab === 'furniture' ? 'active' : ''} onClick={() => selectTab('furniture')}><Armchair size={18} /><LocalizedText text={"Furniture"} before={" "} after={" "} /><span>{inventoryLoading ? '…' : furniture.length}</span></button>
     </aside>
     <div className="vault-inv__main">
       {inventoryLoading && <InventoryLoading />}
       {!inventoryLoading && tab === 'cards' && <>
         <header className="vault-inv__toolbar">
-          <h2>Cards ({cardsLoading ? '…' : cardTotal.toLocaleString()})</h2>
-          <label className="vault-inv__search"><Search size={16} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder="Search cards…" /></label>
-          <select className="vault-inv__select" value={rarity} onChange={event => setRarity(event.target.value)} aria-label="Rarity">
-            <option value="">Rarity</option>
-            {RARITIES.map(value => <option key={value} value={value}>{value}</option>)}
+          <h2><LocalizedText text={"Cards ("} />{cardsLoading ? '…' : cardTotal.toLocaleString()})</h2>
+          <label className="vault-inv__search"><Search size={16} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder={t("Search cards…")} /></label>
+          <select className="vault-inv__select" value={rarity} onChange={event => setRarity(event.target.value)} aria-label={t("Rarity")}>
+            <option value=""><LocalizedText text={"All rarities"} /></option>
+            {RARITIES.map(value => <option key={value} value={value}>{value} — {RARITY_LABEL[value]}</option>)}
           </select>
         </header>
-        {cardsLoading ? <InventoryLoading label="Loading cards…" /> : <>
+        {cardsLoading ? <InventoryLoading label={t("Loading cards…")} /> : <>
           <div className="vault-inv__card-grid">
             {catalogItems.map(item => {
               const klass = String(item.rarity || item.card.rarity_class || 'C').toUpperCase()
@@ -359,7 +359,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       </>}
       {!inventoryLoading && tab === 'packs' && <>
         <header className="vault-inv__toolbar">
-          <div><h2>Booster Packs</h2><p>Open packs, find rare cards, and expand your collection.</p></div>
+          <div><h2><LocalizedText text={"Booster Packs"} /></h2><p><LocalizedText text={"Open packs, find rare cards, and expand your collection."} /></p></div>
         </header>
         <div className="vault-inv__pack-grid">
           {tokens.map(token => (
@@ -367,18 +367,18 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
               {packVisual(token.product, token.product_id)}
               <div className="vault-inv__pack-meta">
                 <h3>{token.product?.name || 'Booster pack'}</h3>
-                <p>{token.product?.card_count || '?'} cards each</p>
-                <strong>x{token.token_count}</strong>
+                <p>{token.product?.card_count || '?'}<LocalizedText text={"cards each"} before={" "} /></p>
+                <strong><LocalizedText text={"x"} />{token.token_count}</strong>
               </div>
               {token.product?.product_kind === 'weekly_protection' && (
                 <label className="vault-inv__release-picker">
-                  <span>Choose release</span>
+                  <span><LocalizedText text={"Choose release"} /></span>
                   <select
                     value={selectedWeeklyReleases[token.product_id] || ''}
                     onChange={event => setSelectedWeeklyReleases(current => ({ ...current, [token.product_id]: Number(event.target.value) }))}
                     disabled={busy || releasesQuery.isLoading}
                   >
-                    <option value="">Select a published release</option>
+                    <option value=""><LocalizedText text={"Select a published release"} /></option>
                     {publishedReleases.map(release => <option key={release.id} value={release.id}>{release.name}</option>)}
                   </select>
                 </label>
@@ -391,9 +391,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
                   ...token,
                   selected_release_id: selectedWeeklyReleases[token.product_id] || undefined,
                 })}
-              >
-                Open
-              </button>
+              ><LocalizedText text={"Open"} before={" "} after={" "} /></button>
             </article>
           ))}
           {parcels.flatMap(parcel => (parcel.contents?.length ? parcel.contents : [{ product: {}, quantity: parcel.pack_count || 0 }])
@@ -409,11 +407,11 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
             </article>
           )))}
         </div>
-        {!tokens.length && !parcels.length && <div className="vault-inv__empty">No booster packs waiting. Order from the computer, then collect them from the crate.</div>}
+        {!tokens.length && !parcels.length && <div className="vault-inv__empty"><LocalizedText text={"No booster packs waiting. Order from the computer, then collect them from the crate."} /></div>}
       </>}
       {!inventoryLoading && tab === 'furniture' && <>
         <header className="vault-inv__toolbar">
-          <div><h2>Furniture ({furniture.length})</h2><p>Choose an owned item to inspect or place in your room.</p></div>
+          <div><h2><LocalizedText text={"Furniture ("} />{furniture.length})</h2><p><LocalizedText text={"Choose an owned item to inspect or place in your room."} /></p></div>
         </header>
         <div className="vault-inv__chips">{['All', 'Display', 'Storage', 'Decor', 'Utility'].map(value => (
           <button key={value} type="button" className={furnitureFilter === value ? 'active' : ''} onClick={() => setFurnitureFilter(value)}>{value}</button>
@@ -425,7 +423,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
               <span>{furnitureDisplayName(item.name, item.asset_id, item.variant_key)}</span>
             </button>
           ))}
-          {!filteredFurniture.length && <div className="vault-inv__empty">No furniture in this category.</div>}
+          {!filteredFurniture.length && <div className="vault-inv__empty"><LocalizedText text={"No furniture in this category."} /></div>}
         </div>
       </>}
     </div>
@@ -434,7 +432,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
         className={`vault-inv__hero vault-inv__card--${rarityClass}`}
         role="button"
         tabIndex={0}
-        aria-label="Open selected card focus viewer"
+        aria-label={t("Open selected card focus viewer")}
         onClick={() => setCardFocusOpen(true)}
         onKeyDown={event => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -448,12 +446,12 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       <h3>{activeCard.identity?.display_name || activeCard.card.display_title || activeCard.card.display_name || cardCode(activeCard)}</h3>
       <strong>{cardCode(activeCard)}</strong>
       <dl>
-        <div><dt>Rarity</dt><dd><b>{rarityClass}</b> {RARITY_LABEL[rarityClass] || ''}</dd></div>
-        <div><dt>Type</dt><dd>{detailValue(activeCard.card.card_type)}</dd></div>
+        <div><dt><LocalizedText text={"Rarity"} /></dt><dd><b>{rarityClass}</b> {RARITY_LABEL[rarityClass] || ''}</dd></div>
+        <div><dt><LocalizedText text={"Type"} /></dt><dd>{detailValue(activeCard.card.card_type)}</dd></div>
       </dl>
       {cardDetailsOpen && <div className="vault-inv__card-details">
-        {cardDetailQuery.isLoading && <p className="vault-inv__expanded-detail">Loading card details…</p>}
-        {cardDetailQuery.isError && <p className="vault-inv__expanded-detail">Some card details are unavailable right now.</p>}
+        {cardDetailQuery.isLoading && <p className="vault-inv__expanded-detail"><LocalizedText text={"Loading card details…"} /></p>}
+        {cardDetailQuery.isError && <p className="vault-inv__expanded-detail"><LocalizedText text={"Some card details are unavailable right now."} /></p>}
         {(() => {
           const detail = cardDetailQuery.data || {}
           const card = detail.card || activeCard.card
@@ -479,14 +477,14 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
               {rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{detailValue(value)}</dd></div>)}
             </dl>
             {!!(card.creator_name || card.character_name || card.gallery_name) && <p className="vault-inv__card-context">{[card.creator_name, card.character_name, card.gallery_name].filter(Boolean).join(' · ')}</p>}
-            {!!detail.tags?.length && <div className="vault-inv__detail-links"><dt>Tags</dt><div>{detail.tags.map(tag => <span key={tag.id || tag.normalized || tag.name}>{tag.name || tag.normalized}</span>)}</div></div>}
-            {!!detail.source_links?.length && <div className="vault-inv__detail-links"><dt>Sources</dt><div>{detail.source_links.map(link => <a key={`${link.label}-${link.url}`} href={link.url}>{link.label}</a>)}</div></div>}
+            {!!detail.tags?.length && <div className="vault-inv__detail-links"><dt><LocalizedText text={"Tags"} /></dt><div>{detail.tags.map(tag => <span key={tag.id || tag.normalized || tag.name}>{tag.name || tag.normalized}</span>)}</div></div>}
+            {!!detail.source_links?.length && <div className="vault-inv__detail-links"><dt><LocalizedText text={"Sources"} /></dt><div>{detail.source_links.map(link => <a key={`${link.label}-${link.url}`} href={link.url}>{link.label}</a>)}</div></div>}
           </>
         })()}
       </div>}
       <div className="vault-inv__actions">
         <button type="button" className="vault-inv__ghost" onClick={() => setCardDetailsOpen(open => !open)}>{cardDetailsOpen ? 'Hide Details' : 'View Details'}</button>
-        <button type="button" className="vault-inv__place" onClick={() => toast('Walk up to a stand and press E to display this card.')}>Place in Room</button>
+        <button type="button" className="vault-inv__place" onClick={() => toast(t("Walk up to a stand and press E to display this card."))}><LocalizedText text={"Place in Room"} /></button>
       </div>
     </aside>}
     {tab === 'furniture' && activeFurniture && <aside className="vault-inv__detail">
@@ -494,13 +492,13 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       <FurniturePreview item={activeFurniture} posterImageUrl={posterImageUrl} className="vault-inv__detail-preview" />
       <p>{FURNITURE_BLURB[activeFurniture.asset_id] || 'Owned furniture. Place it in your room when you are ready.'}</p>
       <div className="vault-inv__tags"><span>{furnitureGroup(activeFurniture.asset_id)}</span><span>{activeFurniture.status === 'placed' ? 'Placed' : 'In inventory'}</span></div>
-      <p className="vault-inv__own">You own: 1</p>
+      <p className="vault-inv__own"><LocalizedText text={"You own: 1"} /></p>
       <button type="button" className="vault-inv__place" onClick={() => onPlaceFurniture(activeFurniture.instance_id)}>{activeFurniture.status === 'placed' ? 'Adjust in room' : 'Place in Room'}</button>
       <button type="button" className="vault-inv__ghost" onClick={() => setFurnitureDetailsOpen(open => !open)}><Eye size={16} /> {furnitureDetailsOpen ? 'Hide Details' : 'View Details'}</button>
-      {furnitureDetailsOpen && <p className="vault-inv__expanded-detail">{furnitureGroup(activeFurniture.asset_id)} item · {activeFurniture.status === 'placed' ? 'Currently placed in your room.' : 'Ready to place in your room.'}</p>}
+      {furnitureDetailsOpen && <p className="vault-inv__expanded-detail">{furnitureGroup(activeFurniture.asset_id)}<LocalizedText text={"item ·"} before={" "} after={" "} />{activeFurniture.status === 'placed' ? 'Currently placed in your room.' : 'Ready to place in your room.'}</p>}
     </aside>}
-    <button type="button" className="vault-inv__close" onClick={onClose} aria-label="Close inventory"><X size={18} /></button>
-    <p className="vault-inv__hint"><kbd>Esc</kbd> Close</p>
+    <button type="button" className="vault-inv__close" onClick={onClose} aria-label={t("Close inventory")}><X size={18} /></button>
+    <p className="vault-inv__hint"><kbd><LocalizedText text={"Esc"} /></kbd><LocalizedText text={"Close"} before={" "} /></p>
     {openingLabel && <div className="vault-inv__busy">{openingLabel}</div>}
     {cardFocusOpen && activeCard?.card && (
       <CardFocusViewer
