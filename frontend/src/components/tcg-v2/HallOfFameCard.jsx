@@ -1,3 +1,4 @@
+import VaultVideo from '../VaultVideo'
 import { useEffect, useId, useMemo, useState } from 'react'
 
 import rarityBounds from '../../assets/tcg-v2/shared/rarity/bounds.json'
@@ -135,7 +136,7 @@ export default function HallOfFameCard({ recipe: input, artUrl, mediaType = 'ima
        {playFullVideo && (
          <div className="hall-of-fame-card-v2__video-layer" aria-hidden="true">
            {posterUrl && <img className="hall-of-fame-card-v2__video-poster" src={posterUrl} alt="" />}
-           <video className={`hall-of-fame-card-v2__video${videoStatus === 'ready' ? ' is-ready' : ''}`} src={artUrl}
+           <VaultVideo className={`hall-of-fame-card-v2__video${videoStatus === 'ready' ? ' is-ready' : ''}`} src={artUrl}
                   poster={posterUrl || undefined} autoPlay muted playsInline
                   preload="auto"
                   onLoadedData={() => setVideoStatus('ready')}

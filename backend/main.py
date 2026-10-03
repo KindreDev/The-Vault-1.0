@@ -1359,16 +1359,8 @@ if __name__ == "__main__":
         try:
             import webview  # pywebview — installed via requirements.txt
 
-            class _VaultApi:
-                """Methods callable from JS via window.pywebview.api.*"""
-                _win = None
-
-                def toggle_fullscreen(self):
-                    """Toggle native OS fullscreen — hides taskbar & title bar."""
-                    if self._win:
-                        self._win.toggle_fullscreen()
-
-            _api = _VaultApi()
+            from desktop_api import VaultDesktopApi
+            _api = VaultDesktopApi()
 
             _wv_storage = os.path.join(DATA_DIR, "webview_data")
             os.makedirs(_wv_storage, exist_ok=True)
@@ -1408,12 +1400,16 @@ if __name__ == "__main__":
                 js_api=_api,
             )
             _api._win = _win   # back-reference so the API can reach the window
+            def _release_native_players():
+                threading.Thread(target=_api.native_video_close_all, daemon=True).start()
+            _win.events.before_load += _release_native_players
+            _win.events.closing += _api._on_closing
 
             # F5 → reload is handled inside the React app (App.jsx) so the listener
             # is re-attached on every page load. Injecting it once here via
             # evaluate_js only worked until the first reload, which replaced the
             # document and discarded the listener.
-            webview.start(debug=False, private_mode=False, storage_path=_wv_storage)
+            webview.start(gui="edgechromium", debug=False, private_mode=False, storage_path=_wv_storage)
             # webview.start() blocks until the window is closed.
             # os._exit() is a hard exit — it kills all threads (including uvicorn's
             # asyncio ThreadPoolExecutor non-daemon threads) instead of waiting for

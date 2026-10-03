@@ -13,6 +13,9 @@ The Vault is a local-first Windows media collection application with a React fro
 
 Use `start.bat` for the Windows development launcher, or start the backend and frontend separately.
 
+`start.bat` opens the desktop window with VLC playback. The development browser
+UI remains available at `http://localhost:5173` with browser-compatible playback.
+
 Backend:
 
 ```powershell
@@ -49,7 +52,7 @@ Vite proxies API and thumbnail requests to the backend. Packaged builds serve th
 | `backend/schemas.py` | Request and response validation |
 | `backend/routers/` | API endpoints |
 | `backend/services/` | Collection, scanning, tagging, gamification, cards, and device-related business logic |
-| `backend/tests/` | Backend regression tests |
+| `TEST STUFF CAN DELETE/` | Archived tests, diagnostics, scratch helpers, and build intermediates; not required to run or package the app |
 | `frontend/src/pages/` | Desktop screens |
 | `frontend/src/components/` | Shared components, viewers, TCG, and Collection Room |
 | `frontend/src/lib/api.js` | Desktop API client |
@@ -80,6 +83,14 @@ Stored activity timestamps use UTC. Hall of Fame periods follow local calendar b
 
 Development uses the backend configuration location. Inspect `backend/database.py` and the effective configuration before choosing an isolated development database. `VAULT_DB` overrides the database path only; original media and other configured resources have separate paths.
 
+The Windows desktop viewer uses bundled libVLC to decode original local videos,
+with frames shared in memory with the existing viewer. Browser and mobile clients
+retain browser-compatible playback. `get_vlc.ps1` prepares the verified official
+Windows runtime for packaging; the desktop build requires it. For native desktop
+development, start the normal backend and Vite servers, then run
+`backend\venv\Scripts\python.exe scripts\run_desktop.py`. Development can use an
+installed VLC runtime if `tools/vlc` has not been prepared.
+
 Changing the data directory through Settings writes configuration and restarts the application. Database backups do not include original media. Copies of the installed executable under the same Windows account share the installed configuration unless explicitly isolated.
 
 ## Frontend builds and mobile
@@ -104,7 +115,7 @@ The mobile client connects to the desktop backend over the local network. Androi
 
 ## Validation
 
-Run focused existing tests for the affected behavior. Backend tests live in `backend/tests/`; frontend checks live in the frontend scripts and tests directories. Consult package scripts and actual test files before selecting a check. Build the affected frontend when changing application code, and verify interactive changes in the browser.
+Project tests and temporary validation files have been moved into `TEST STUFF CAN DELETE/` at the user's request. The cleanup batch preserves their original relative paths and records each move in `MOVE-MANIFEST.json`. Restore the relevant files to those original paths before running archived tests; the archive may be deleted without affecting app operation or packaging. Build the affected frontend when changing application code, and verify interactive changes in the browser.
 
 Use isolated data for migration, transaction, deletion, and installation checks. Preserve unrelated working-tree changes and avoid leaving temporary test artifacts in the repository.
 

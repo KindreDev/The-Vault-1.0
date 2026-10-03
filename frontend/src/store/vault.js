@@ -471,15 +471,12 @@ export const useVaultStore = create((set, get) => ({
 
   // Playlist queue — files or galleries queued for the panel viewer
   // Item format: { id: string (e.g. 'img-1' or 'gal-1'), type: 'image'|'gallery', media: Object, images?: Array }
-  // Was 999, which put ~95% of a 21k-gallery library out of reach of "Send to
-  // viewer". Entries are lightweight references plus their image list; the
-  // expensive part was never the count but fetching each gallery separately,
-  // which galleriesApi.bulkImages now does in one request.
-  MULTIVIEWER_MAX: 25000,
+  // Compatibility for older queue callers: there is no arbitrary entry cap.
+  // The picker bounds its browsed results independently through pagination.
+  MULTIVIEWER_MAX: Infinity,
   multiViewerQueue: [],
   addToMultiViewer: (item) => {
     const s = get()
-    if (s.multiViewerQueue.length >= s.MULTIVIEWER_MAX) return false  // at capacity
     if (s.multiViewerQueue.some(q => q.id === item.id)) return false  // already queued
     set(st => ({ multiViewerQueue: [...st.multiViewerQueue, item] }))
     return true
@@ -496,12 +493,12 @@ export const useVaultStore = create((set, get) => ({
   setMultiViewerQueue: (items) => set(s => {
     const seen = new Set()
     const unique = items.filter(i => !seen.has(i.id) && seen.add(i.id))
-    return { multiViewerQueue: unique.slice(0, s.MULTIVIEWER_MAX) }
+    return { multiViewerQueue: unique }
   }),
   appendMultiViewerQueue: (items) => set(s => {
     const have = new Set(s.multiViewerQueue.map(q => q.id))
     const fresh = items.filter(i => !have.has(i.id) && have.add(i.id))
-    return { multiViewerQueue: [...s.multiViewerQueue, ...fresh].slice(0, s.MULTIVIEWER_MAX) }
+    return { multiViewerQueue: [...s.multiViewerQueue, ...fresh] }
   }),
   reorderMultiViewer: (from, to) => set(s => {
     const q = [...s.multiViewerQueue]

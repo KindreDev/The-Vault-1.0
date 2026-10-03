@@ -8,6 +8,8 @@ import { useVaultStore } from '../../store/vault'
 import { useScrollLock } from '../../hooks/useScrollLock'
 import { useT } from '../../i18n'
 import { useVideoLoop } from '../../lib/videoLoop'
+import { rememberVideoElementVolume, restoreVideoVolume } from '../../lib/videoVolume'
+import VaultVideo from '../VaultVideo'
 import FileCurationEditor from './FileCurationEditor'
 import RelocateModal from '../RelocateModal'
 
@@ -223,7 +225,9 @@ export default function FileCurationRun({ onClose }) {
         <main className="flex-1 min-w-0 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 flex items-center justify-center p-6 overflow-hidden" style={{ background: '#090909' }}>
             {file.is_video
-              ? <video src={file.file_url} controls autoPlay loop={loopVideo} preload="metadata"
+              ? <VaultVideo src={file.file_url} controls autoPlay loop={loopVideo} preload="metadata"
+                       onLoadedMetadata={event => restoreVideoVolume(event.currentTarget)}
+                       onVolumeChange={rememberVideoElementVolume}
                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
               : <img src={file.file_url} alt={file.filename}
                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}

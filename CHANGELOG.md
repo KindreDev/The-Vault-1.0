@@ -30,6 +30,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - ComfyUI workflow metadata now adds the `AI generated` provenance tag automatically during import.
 
 ### Changed
+- Playlist media selection now searches the full collection with paged results, including gallery contents, and no longer truncates queues at 25,000 entries.
+- The Windows app now plays original local videos through bundled VLC, including playlist and curation, with in-place controls, overlays, zoom, and the existing funscript clock, without creating playback copies.
 - Moved catalogue restore out of the main collection screen into Advanced settings, made the Advanced button reopen the panel reliably, and added a separate persisted Advanced Mode toggle.
 - Fresh card collections now offer TCG setup and catalogue creation; tag switches show clear on/off tracks, background jobs remain visible during preparation, and bulk menus preserve selected items.
 - Creator assignments, media edits, sessions, tags, and purchases now refresh related screens automatically; open viewers keep counters current without discarding note drafts, and completed background jobs refresh library data.
@@ -72,6 +74,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Compatible video streams are remuxed for browser playback before falling back to re-encoding; phone MOV playback skips unsupported auxiliary audio tracks, and loading explains the one-time playback copy.
 
 ### Fixed
+- Viewer previous/next arrows stay in place when hovered or pressed.
 - Rating galleries from Gallery View now advances the daily Gallery judge quest and awards the correct rating XP.
 - Random Mix, Help achievements, and playlist deletion now use their translation helpers without undefined-variable errors.
 - Clicking a creator in any Hall of Fame period now opens their statistics without a translation error.

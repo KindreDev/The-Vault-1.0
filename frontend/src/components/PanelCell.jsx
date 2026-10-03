@@ -312,12 +312,12 @@ const PanelCell = forwardRef(function PanelCell({
           {items.length > 1 && (
             <>
               <button onMouseDown={(e) => { e.stopPropagation(); prev() }}
-                      className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer z-20"
+                      className="fx-btn absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer z-20"
                       style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
                 <ChevronLeft size={14} />
               </button>
               <button onMouseDown={(e) => { e.stopPropagation(); next() }}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer z-20"
+                      className="fx-btn absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer z-20"
                       style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.15)' }}>
                 <ChevronRight size={14} />
               </button>

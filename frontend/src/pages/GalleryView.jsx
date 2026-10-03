@@ -1,3 +1,4 @@
+import VaultVideo from '../components/VaultVideo'
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
@@ -402,7 +403,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
             </div>
         }
         {image.is_video && (
-          <video ref={videoRef}
+          <VaultVideo ref={videoRef}
                  muted playsInline preload="none"
                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
                  style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }} />
@@ -1048,7 +1049,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           {!isZoomed && idx > 0 && (
             <button onMouseDown={(e) => { e.stopPropagation(); setSlideshowActive(false); setIdx(i => i - 1) }}
                     onDoubleClick={e => e.stopPropagation()}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
+                    className="fx-btn absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
                       opacity: isFullscreen && !showViewerChrome ? 0 : 1,
@@ -1061,7 +1062,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
           {!isZoomed && idx < images.length - 1 && (
             <button onMouseDown={(e) => { e.stopPropagation(); setSlideshowActive(false); setIdx(i => i + 1) }}
                     onDoubleClick={e => e.stopPropagation()}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
+                    className="fx-btn absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
                     style={{
                       background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
                       opacity: isFullscreen && !showViewerChrome ? 0 : 1,

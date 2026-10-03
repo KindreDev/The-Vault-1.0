@@ -1,3 +1,4 @@
+import VaultVideo from '../VaultVideo'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -150,7 +151,7 @@ export default function StoryViewer({ groups, startGroup = 0, onClose, onSeen, o
                  style={{ filter: 'blur(30px) brightness(0.5)', transform: 'scale(1.3)' }}
                  onError={e => { e.target.style.opacity = 0 }} />
             {story.is_video ? (
-              <video
+              <VaultVideo
                 ref={videoRef}
                 src={`/api/images/${story.image_id}/file`}
                 autoPlay muted={muted} playsInline

@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { Heart } from 'lucide-react'
 import { rememberVideoElementVolume, restoreVideoVolume } from '../lib/videoVolume'
 import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
+import VaultVideo from '../components/VaultVideo'
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ images, startIdx, onClose }) {
@@ -35,18 +36,8 @@ function Lightbox({ images, startIdx, onClose }) {
   const next = useCallback(() => setIdx(i => Math.min(images.length - 1, i + 1)), [images.length])
   const videoRef = useRef(null)
 
-  // Release the media pipeline when the lightbox closes or the slide changes
-  useEffect(() => {
-    return () => {
-      const v = videoRef.current
-      if (!v) return
-      v.pause()
-      v.removeAttribute('src')
-      v.load()
-    }
-  }, [idx])
-
-  // This lightbox drives a plain <video> rather than InlineVideoPlayer, so the
+  // VaultVideo releases the media pipeline on source changes and unmount.
+  // This lightbox drives the media facade rather than InlineVideoPlayer, so the
   // transport keys act on the element directly. Same bindings as everywhere
   // else — the keys you learn in the gallery viewer work here too.
   const seekBy = useCallback((secs) => {
@@ -121,7 +112,7 @@ function Lightbox({ images, startIdx, onClose }) {
       <div className="flex-1 flex items-center justify-center relative min-h-0"
            onClick={e => e.stopPropagation()}>
         {img.is_video
-          ? <video ref={videoRef} src={`/api/images/${img.id}/file`} controls autoPlay loop={loopVideo}
+          ? <VaultVideo ref={videoRef} src={`/api/images/${img.id}/file`} controls autoPlay loop={loopVideo}
                    onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
                    onVolumeChange={rememberVideoElementVolume}
                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
@@ -132,14 +123,14 @@ function Lightbox({ images, startIdx, onClose }) {
         {/* Prev / Next arrows */}
         {idx > 0 && (
           <button onMouseDown={prev}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
+                  className="fx-btn absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
                   style={{ background: 'rgba(0,0,0,0.6)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
             <ChevronLeft size={20} color="#fff" />
           </button>
         )}
         {idx < images.length - 1 && (
           <button onMouseDown={next}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
+                  className="fx-btn absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
                   style={{ background: 'rgba(0,0,0,0.6)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
             <ChevronRight size={20} color="#fff" />
           </button>

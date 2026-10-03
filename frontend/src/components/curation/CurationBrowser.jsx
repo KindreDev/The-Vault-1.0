@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, X, Star, ImageIcon, Crown, Play, Check } from 'lucide-react'
 import { useT } from '../../i18n'
 import { rememberVideoElementVolume, restoreVideoVolume } from '../../lib/videoVolume'
+import VaultVideo from '../VaultVideo'
 
 // Judging a gallery means actually seeing it, so these start large. The choice
 // persists — the right size depends on the display, not on the gallery.
@@ -195,7 +196,7 @@ export default function CurationBrowser({
              onClick={() => setLightbox(null)}>
 
           {current.is_video
-            ? <video src={`/api/images/${current.id}/file`} controls autoPlay loop
+            ? <VaultVideo src={`/api/images/${current.id}/file`} controls autoPlay loop
                      onLoadedMetadata={e => restoreVideoVolume(e.currentTarget)}
                      onVolumeChange={rememberVideoElementVolume}
                      onClick={e => e.stopPropagation()}

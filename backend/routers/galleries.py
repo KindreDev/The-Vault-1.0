@@ -368,7 +368,7 @@ def list_galleries(
         col = Gallery.created_at
         q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
 
-    galleries = q.offset(skip).limit(limit).all()
+    galleries = q.order_by(Gallery.id.desc()).offset(skip).limit(limit).all()
     return [_enrich(g) for g in galleries]
 
 
@@ -1135,6 +1135,19 @@ def bulk_gallery_images(body: dict, db: Session = Depends(get_db)):
             "is_favorite": bool(img.is_favorite),
         })
     return out
+
+
+@router.get("/{gallery_id}/picker-media")
+def gallery_picker_media(gallery_id: int, response: Response, search: str = '',
+                         skip: int = Query(0, ge=0), limit: int = Query(96, ge=1, le=200),
+                         db: Session = Depends(get_db)):
+    from services.playlist_media import gallery_media_page
+    try:
+        images, total = gallery_media_page(db, gallery_id, search=search, skip=skip, limit=limit)
+    except LookupError as error:
+        raise HTTPException(404, str(error))
+    response.headers['X-Total-Count'] = str(total)
+    return [_enrich_image(image) for image in images]
 
 
 @router.get("/{gallery_id}/images")

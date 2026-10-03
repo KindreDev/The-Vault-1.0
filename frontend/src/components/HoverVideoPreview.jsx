@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { stopVideoPreview } from '../lib/videoPreview'
+import VaultVideo from './VaultVideo'
 
 /**
  * Lightweight hover-to-play video overlay for thumbnail cards.
@@ -45,7 +46,7 @@ export default function HoverVideoPreview({ imageId, hovered }) {
   }, [hovered, imageId])
 
   return (
-    <video
+    <VaultVideo
       ref={videoRef}
       muted
       playsInline

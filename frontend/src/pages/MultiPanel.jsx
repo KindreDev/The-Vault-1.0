@@ -11,6 +11,7 @@ import { useDeviceStore } from '../store/deviceStore'
 import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore'
 import { galleriesApi, imagesApi, sessionsApi, panelPlaylistsApi } from '../lib/api'
 import PanelCell from '../components/PanelCell'
+import PlaylistMediaPicker from '../components/PlaylistMediaPicker'
 import DeviceControls from '../components/DeviceControls'
 import toast from 'react-hot-toast'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
@@ -548,173 +549,6 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
   )
 }
 
-// ── Add Media Modal ───────────────────────────────────────────────────────────
-function AddMediaModal({ onClose }) {
-  const t = useT()
-  const [tab, setTab]         = useState('galleries')
-  const [search, setSearch]   = useState('')
-  const [galleryId, setGalleryId] = useState(null)
-  const [loadingGalId, setLoadingGalId] = useState(null)
-  
-  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
-  const queue            = useVaultStore(s => s.multiViewerQueue)
-  const MAX              = useVaultStore(s => s.MULTIVIEWER_MAX)
-
-  const { data: galleries } = useQuery({
-    queryKey: ['galleries-mini-mv'],
-    queryFn: () => galleriesApi.list({ limit: 500 }).then(r => r.data),
-    enabled: tab === 'galleries',
-  })
-  const { data: galleryImages } = useQuery({
-    queryKey: ['gallery-images-mv', galleryId],
-    queryFn: () => galleriesApi.images(galleryId).then(r => r.data),
-    enabled: !!galleryId,
-  })
-  const { data: allImages } = useQuery({
-    queryKey: ['images-mv', tab],
-    queryFn: () => imagesApi.list({ is_video: tab === 'videos', limit: 200, sort_by: 'rating' }).then(r => r.data),
-    enabled: tab === 'images' || tab === 'videos',
-  })
-
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase()
-    if (galleryId) return (galleryImages ?? []).filter(i => i.filename.toLowerCase().includes(s))
-    if (tab === 'galleries') return (galleries ?? []).filter(g => g.name.toLowerCase().includes(s))
-    return (allImages ?? []).filter(i => i.filename.toLowerCase().includes(s))
-  }, [tab, search, galleries, galleryImages, allImages, galleryId])
-
-  const queuedIds = new Set(queue.map(q => q.id))
-  const atMax = queue.length >= MAX
-
-  const handleAddImage = (img) => {
-    if (atMax) { toast.error(t('Max {count} items reached', { count: MAX })); return }
-    const ok = addToMultiViewer({ id: `img-${img.id}`, type: 'image', media: img })
-    if (!ok) toast.error(t("Already in queue or queue full"))
-    else toast.success(t("Added to Playlists"))
-  }
-
-  const handleAddGallery = async (e, g) => {
-    e.stopPropagation()
-    if (atMax) { toast.error(t('Max {count} items reached', { count: MAX })); return }
-    
-    setLoadingGalId(g.id)
-    try {
-      const res = await galleriesApi.images(g.id)
-      const ok = addToMultiViewer({ id: `gal-${g.id}`, type: 'gallery', media: g, images: res.data })
-      if (!ok) toast.error(t("Already in queue or queue full"))
-      else toast.success(t("Added gallery to Playlists"))
-    } catch (err) {
-      toast.error(t("Failed to load gallery images"))
-    } finally {
-      setLoadingGalId(null)
-    }
-  }
-
-  const displayList = galleryId ? (galleryImages ?? []) : filtered
-
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
-         style={{ background: 'rgba(0,0,0,0.8)' }}
-         onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="flex flex-col rounded-[16px] overflow-hidden shadow-2xl animate-modal-pop"
-           style={{ width: 'clamp(380px, 60vw, 960px)', height: 'clamp(380px, 60vh, 820px)', background: '#161616', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[rgba(255,255,255,0.07)]">
-          {galleryId ? (
-            <button onMouseDown={() => { setGalleryId(null); setSearch('') }}
-                    className="text-[11px] cursor-pointer text-[rgba(255,255,255,0.45)] hover:text-white flex items-center gap-1">
-              <ChevronDown size={12} className="rotate-90" /><LocalizedText text={"Back"} before={" "} after={"\n            "} /></button>
-          ) : (
-            <div className="flex gap-1">
-              {[{ id: 'galleries', icon: Images, label: 'Galleries' },
-                { id: 'images',    icon: Images, label: 'Photos'    },
-                { id: 'videos',    icon: Video,  label: 'Videos'    }].map(t => (
-                <button key={t.id} onMouseDown={() => { setTab(t.id); setSearch('') }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
-                        style={tab === t.id
-                          ? { background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }
-                          : { background: 'transparent', color: 'rgba(255,255,255,0.4)' }}>
-                  <t.icon size={11} />{t.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex-1 flex items-center gap-2 px-2.5 py-1 rounded-full mx-2"
-               style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-            <Search size={11} className="text-[rgba(255,255,255,0.3)]" />
-            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                   placeholder={t("Search…")}
-                   className="bg-transparent text-[11px] outline-none text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-full" />
-          </div>
-          <span className="text-[16px] text-[rgba(255,255,255,0.35)]">{queue.length}/{MAX}</span>
-          <button onMouseDown={onClose} className="cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-white ml-1"><X size={15} /></button>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-2">
-          {tab === 'galleries' && !galleryId ? (
-            <div className="grid grid-cols-3 gap-2">
-              {filtered.map(g => {
-                const inQ = queuedIds.has(`gal-${g.id}`)
-                return (
-                  <button key={g.id} onMouseDown={() => { setGalleryId(g.id); setSearch('') }}
-                          className="relative rounded-[10px] overflow-hidden cursor-pointer group text-left"
-                          style={{ aspectRatio: '1', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                    {g.cover_thumb && <img src={g.cover_thumb} alt={g.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />}
-                    <div className="absolute inset-0 flex items-end p-1.5" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
-                      <span className="text-[9px] text-white font-medium leading-tight line-clamp-2">{g.name}</span>
-                    </div>
-                    {/* Add entire gallery button */}
-                    <div onMouseDown={(e) => !inQ && handleAddGallery(e, g)}
-                         className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-opacity z-10"
-                         style={{ 
-                           background: inQ ? 'color-mix(in srgb, var(--c-accent) 70%, transparent)' : 'rgba(0,0,0,0.6)',
-                           opacity: inQ ? 1 : 0 
-                         }}
-                         onMouseEnter={e => { if(!inQ) e.currentTarget.style.opacity = '1' }}
-                         onMouseLeave={e => { if(!inQ) e.currentTarget.style.opacity = '0' }}>
-                      {loadingGalId === g.id ? (
-                        <span className="w-3 h-3 border-2 border-[rgba(255,255,255,0.3)] border-t-white rounded-full animate-spin" />
-                      ) : inQ ? (
-                        <span className="text-[16px] text-white">✓</span>
-                      ) : (
-                        <Plus size={12} color="#fff" />
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="grid grid-cols-4 gap-1.5">
-              {displayList.map(img => {
-                const inQ = queuedIds.has(`img-${img.id}`)
-                return (
-                  <button key={img.id} onMouseDown={() => !inQ && handleAddImage(img)}
-                          className="relative rounded-[8px] overflow-hidden cursor-pointer group"
-                          style={{ aspectRatio: '1', background: 'rgba(255,255,255,0.04)',
-                            border: `0.5px solid ${inQ ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-                            opacity: inQ ? 0.6 : 1 }}>
-                    <img src={`/api/images/${img.id}/thumb`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" onError={e => { e.target.style.display = 'none' }} />
-                    {img.is_video && (
-                      <div className="absolute top-1 left-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
-                        <Video size={8} color="#fff" />
-                      </div>
-                    )}
-                    {inQ
-                      ? <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)' }}><span className="text-[9px] font-medium text-[var(--c-accent-text)]">✓</span></div>
-                      : <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.4)' }}><Plus size={18} color="rgba(255,255,255,0.8)" /></div>
-                    }
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          {atMax && <div className="text-center text-[11px] py-3" style={{ color: '#F4C0D1' }}><LocalizedText text={"Queue full ("} />{MAX}/{MAX})</div>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Queue strip ───────────────────────────────────────────────────────────────
 // The strip opens on hover, then stays open until the user explicitly collapses
 // it. This is important for drag-to-panel: leaving the strip must not make it
@@ -906,7 +740,6 @@ export default function MultiPanel() {
   const clearViewer      = useVaultStore(s => s.clearMultiViewer)
   const reorderViewer    = useVaultStore(s => s.reorderMultiViewer)
   const addXpToast       = useVaultStore(s => s.addXpToast)
-  const MAX                    = useVaultStore(s => s.MULTIVIEWER_MAX)
   const sessionActive          = useVaultStore(s => s.sessionActive)
   const startSession           = useVaultStore(s => s.startSession)
   const endSession             = useVaultStore(s => s.endSession)
@@ -1315,7 +1148,7 @@ export default function MultiPanel() {
           ))}
         </div>
 
-        <span className="text-[16px] text-[rgba(255,255,255,0.3)] tabular-nums">{queue.length}/{MAX}</span>
+        <span className="text-[16px] text-[rgba(255,255,255,0.3)] tabular-nums">{queue.length.toLocaleString()} {t('queued')}</span>
 
         <button onMouseDown={() => setShowAdd(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] cursor-pointer"
@@ -1500,7 +1333,7 @@ export default function MultiPanel() {
         />
       )}
 
-      {showAdd && <AddMediaModal onClose={() => setShowAdd(false)} />}
+      {showAdd && <PlaylistMediaPicker onClose={() => setShowAdd(false)} />}
       {showPlaylists && (
         <PlaylistsModal
           onClose={() => { setShowPlaylists(false); setLoadTarget(null) }}

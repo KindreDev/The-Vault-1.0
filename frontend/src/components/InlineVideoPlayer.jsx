@@ -7,6 +7,7 @@ import { useDeviceStore } from '../store/deviceStore'
 import { imagesApi } from '../lib/api'
 import { getSavedVideoVolume, saveVideoVolume } from '../lib/videoVolume'
 import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
+import VaultVideo from './VaultVideo'
 
 function fmtTime(s) {
   if (!s || !isFinite(s)) return '0:00'
@@ -464,6 +465,10 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     setPreparingVideo(false)
     const v = videoRef.current
     const code = v?.error?.code
+    if (v?.engine === 'libVLC') {
+      setVideoError(v.error?.message || 'VLC could not play this video. Retry to try again.')
+      return
+    }
     // MP4/WebM can still contain a browser-incompatible codec such as HEVC.
     // Give the server one chance to convert it before showing an error.  WMV,
     // MKV, AVI, MOV and M4V are converted automatically by the file endpoint.
@@ -614,11 +619,11 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
              style={{ background: 'rgba(0,0,0,0.68)', color: 'var(--c-text)' }}>
           <Loader2 size={28} className="animate-spin" style={{ color: 'var(--c-accent-text)' }} />
           <span style={{ fontSize: 16, fontWeight: 600 }}><LocalizedText text={"Loading video…"} /></span>
-          <span style={{ fontSize: 16, maxWidth: 460, textAlign: 'center', padding: '0 20px' }}><LocalizedText text={"If this format needs conversion, The Vault saves a compatible playback copy once. Your original stays unchanged."} /></span>
+          {videoRef.current?.engine !== 'libVLC' && <span style={{ fontSize: 16, maxWidth: 460, textAlign: 'center', padding: '0 20px' }}><LocalizedText text={"If this format needs conversion, The Vault saves a compatible playback copy once. Your original stays unchanged."} /></span>}
         </div>
       )}
 
-      <video
+      <VaultVideo
         ref={videoRef}
         src={playbackSrc}
         autoPlay loop={loopVideo}

@@ -84,9 +84,11 @@ exit /b 1
 
 :backend_ready
 echo  Backend is ready.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0get_vlc.ps1"
+if errorlevel 1 ( echo [ERROR] VLC runtime preparation failed. & pause & exit /b 1 )
 start "The Vault — Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
 timeout /t 4 /nobreak >nul
-start http://localhost:5173
+start "The Vault" /D "%~dp0" "%~dp0backend\venv\Scripts\pythonw.exe" "%~dp0scripts\run_desktop.py"
 
-echo  The Vault is running. Browser should open automatically.
+echo  The Vault desktop window is opening. Browser access remains at http://localhost:5173.
 pause

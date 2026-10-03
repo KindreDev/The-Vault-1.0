@@ -1,3 +1,4 @@
+import VaultVideo from '../VaultVideo'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -95,7 +96,7 @@ export function VideoSlide({ image, onClick }) {
            className="absolute inset-0 w-full h-full object-cover"
            style={{ filter: 'blur(28px) brightness(0.55)', transform: 'scale(1.25)' }}
            onError={e => { e.target.style.opacity = 0 }} />
-      <video
+      <VaultVideo
         ref={videoRef}
         muted={muted}
         loop

@@ -1,3 +1,4 @@
+import VaultVideo from '../components/VaultVideo'
 import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
@@ -312,7 +313,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         }
         
         {firstVideo && (
-          <video
+          <VaultVideo
             ref={videoRef}
             muted
             playsInline

@@ -1,3 +1,4 @@
+import VaultVideo from '../components/VaultVideo'
 import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
@@ -180,7 +181,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
 
       {/* Video hover preview */}
       {image.is_video && (
-        <video
+        <VaultVideo
           ref={videoRef}
           muted
           playsInline
@@ -740,7 +741,7 @@ function ImageViewer({ images, startIdx, onClose }) {
           {/* Nav arrows */}
           {(!isZoomed || image.is_video) && idx > 0 && (
             <button type="button" onMouseDown={() => setIdx(i => i - 1)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
+              className="fx-btn absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
                 opacity: isFullscreen && !showViewerChrome ? 0 : 1,
@@ -752,7 +753,7 @@ function ImageViewer({ images, startIdx, onClose }) {
           )}
           {(!isZoomed || image.is_video) && idx < images.length - 1 && (
             <button type="button" onMouseDown={() => setIdx(i => i + 1)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
+              className="fx-btn absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-20"
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '0.5px solid rgba(255,255,255,0.15)',
                 opacity: isFullscreen && !showViewerChrome ? 0 : 1,

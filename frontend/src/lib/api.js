@@ -141,6 +141,7 @@ export const galleriesApi = {
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
+  pickerMedia:   (id, params)      => api.get(`/galleries/${id}/picker-media`, { params }),
   // Many galleries in one round trip — used when queueing into Playlists.
   bulkImages:    (galleryIds)      => api.post('/galleries/bulk-images', { gallery_ids: galleryIds }),
   cum:           (id)              => api.post(`/galleries/${id}/cum`),

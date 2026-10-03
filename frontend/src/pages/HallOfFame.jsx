@@ -1,3 +1,4 @@
+import VaultVideo from '../components/VaultVideo'
 import { LocalizedText, useT } from '../i18n'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -672,7 +673,7 @@ function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
           onError={e => { e.target.style.display = 'none' }}
         />
         {item.is_video && (
-          <video
+          <VaultVideo
             ref={videoRef}
             muted playsInline preload="none"
             className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"

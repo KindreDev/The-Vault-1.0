@@ -43,6 +43,9 @@ if %errorlevel% neq 0 (
 echo.
 
 REM Step 2 - Build React frontend
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0get_vlc.ps1"
+if %errorlevel% neq 0 ( echo [ERROR] VLC runtime preparation failed. & pause & exit /b 1 )
+
 echo [2/5] Building React frontend...
 cd /d "%~dp0frontend"
 

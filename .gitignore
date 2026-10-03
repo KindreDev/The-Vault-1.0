@@ -202,3 +202,8 @@ backend/tests/test_tcg_room_placement.py
 
 # ── Agent-generated local test files (never commit) ──────────────────────────
 /.codex-test-artifacts/
+/TEST STUFF CAN DELETE/
+/tools/vlc/
+/tools/vlc-download/
+!/scripts/run_desktop.py
+!/THIRD_PARTY_NOTICES.md

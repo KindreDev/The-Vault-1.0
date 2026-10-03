@@ -273,7 +273,7 @@ def list_images(
         return [_enrich_image(img, db) for img in images]
     else:  # date_added
         q = q.order_by(Image.created_at.asc() if (use_asc if use_asc is not None else False) else Image.created_at.desc())
-    images = q.offset(skip).limit(limit).all()
+    images = q.order_by(Image.id.desc()).offset(skip).limit(limit).all()
     return [_enrich_image(img, db) for img in images]
 
 
