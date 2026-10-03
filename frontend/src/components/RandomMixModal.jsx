@@ -79,6 +79,7 @@ function CustomSelect({ value, onChange, options, placeholder }) {
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function RandomMixModal({ onClose }) {
+  const t = useT()
   const navigate = useNavigate()
 
   const { data: creators } = useQuery({

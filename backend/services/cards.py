@@ -1742,9 +1742,23 @@ def prepare_card_face_for_reveal(db: Session, card: Card) -> tuple[Card, dict]:
             ) from exc
         temporal = is_temporal_source(source_image)
         rarity = authoritative.print_rarity or authoritative.rarity_class or "C"
+        # Mask generation can succeed while the quality gate rejects the
+        # resulting subject extraction (Scene masks report specific reasons
+        # such as ``subject-dominates-frame``). Those cards have a valid
+        # generated artifact and quality score, so the renderer can safely use
+        # its flat fallback and retain the quality diagnostic. Preparation
+        # failures (including source-missing and generation-error results) do
+        # not have that artifact/score contract and must still abort the reveal.
+        quality_rejected = bool(
+            mask_info
+            and not mask_info.get("usable")
+            and mask_info.get("path")
+            and mask_info.get("quality") is not None
+            and not mask_info.get("failure_detail")
+            and mask_info.get("failure_reason") != "generation-error"
+        )
         if (rarity in MASKED_RARITIES and not temporal and mask_info
-                and not mask_info.get("usable")
-                and mask_info.get("failure_reason") != "quality-below-threshold"):
+                and not mask_info.get("usable") and not quality_rejected):
             detail = mask_info.get("failure_detail") or source_image.mask_failure_reason
             raise ValueError(
                 f"Card {card_id} mask preparation failed for static {rarity} source "
@@ -2020,7 +2034,7 @@ def compose_display_name(card_type, creator_name=None, gallery_name=None,
     return creator_name or gallery_name or "Unknown"
 
 
-def _card_to_dict(db: Session, card: Card) -> dict:
+def _card_to_dict(db: Session, card: Card, *, include_scene_mask_editor: bool = False) -> dict:
     rarity = norm_rarity(card.rarity)
     ct = card.card_type.value if hasattr(card.card_type, "value") else card.card_type
     earned_event = ct in {"hof", "bond"}
@@ -2157,6 +2171,73 @@ def _card_to_dict(db: Session, card: Card) -> dict:
                 image_url = thumb_url
                 if src_img.preview_path and os.path.exists(src_img.preview_path):
                     image_url = f"/thumbs/{os.path.basename(src_img.preview_path)}"
+
+    # A Scene card may explicitly accept one stored candidate whose only hard
+    # rejection is subject coverage. The setting lives on this card's
+    # presentation override; it never changes the shared Image mask status.
+    scene_mask_editor = None
+    if (ct == "image" and src_img and mask_failure_reason == "subject-dominates-frame"
+            and not src_img.is_video and src_img.mask_path and os.path.isfile(src_img.mask_path)
+            and src_img.width and src_img.height):
+        from models import CardPresentationOverride
+        from services.scene_cards import (
+            MAX_SCENE_COVERAGE_OVERRIDE, MAX_COVERAGE,
+            apply_scene_coverage_tolerance, inspect_packed_scene_mask,
+            scene_coverage_tolerance,
+        )
+
+        if mask_pipeline_version == "scene-mask-hybrid-v2":
+            presentation = db.query(CardPresentationOverride).filter(
+                CardPresentationOverride.card_id == card.id,
+            ).first()
+            try:
+                mask_override = json.loads(presentation.mask_override_json or "{}") if presentation else {}
+            except (TypeError, ValueError):
+                mask_override = {}
+            saved_mask_tolerance = (mask_override.get("subject_coverage_tolerance")
+                                    if isinstance(mask_override, dict) else None)
+            tolerance = scene_coverage_tolerance(saved_mask_tolerance)
+            # Ordinary collection serialization only opens the PNG when a
+            # saved per-card override can change the default decision. The
+            # detail view opts in so the Editor can inspect a default-rejected
+            # candidate without forcing mask I/O across the whole catalog.
+            inspect_candidate = include_scene_mask_editor or (
+                saved_mask_tolerance is not None and tolerance > MAX_COVERAGE
+            )
+            if not inspect_candidate:
+                candidate_metrics = None
+            else:
+                candidate_metrics = inspect_packed_scene_mask(
+                    src_img.mask_path,
+                    source_width=int(src_img.width),
+                    source_height=int(src_img.height),
+                    focal_x=src_img.focal_x if src_img.focal_x is not None else 0.5,
+                    focal_y=src_img.focal_y if src_img.focal_y is not None else 0.5,
+                )
+            if candidate_metrics and candidate_metrics.get("reasons") == ["subject-dominates-frame"]:
+                effective_metrics = apply_scene_coverage_tolerance(candidate_metrics, tolerance)
+                candidate_mask_url = (
+                    f"/masks/{os.path.basename(src_img.mask_path)}?v={mask_pipeline_version}"
+                )
+                if include_scene_mask_editor:
+                    scene_mask_editor = {
+                        "available": True,
+                        "override_allowed": True,
+                        "source_failure_reason": "subject-dominates-frame",
+                        "metrics": candidate_metrics,
+                        "effective_metrics": effective_metrics,
+                        "subject_coverage_tolerance": tolerance,
+                        "default_tolerance": MAX_COVERAGE,
+                        "minimum_tolerance": MAX_COVERAGE,
+                        "maximum_tolerance": MAX_SCENE_COVERAGE_OVERRIDE,
+                        "candidate_mask_url": candidate_mask_url,
+                        "subject_channel_url": f"/api/masks/channels/{src_img.id}/subject",
+                    }
+                if effective_metrics.get("accepted"):
+                    mask_url = candidate_mask_url
+                    mask_status = "usable"
+                    mask_failure_reason = None
+                    mask_visual_mode = "layered"
 
     # Collab metadata
     collab_info = None
@@ -2511,6 +2592,7 @@ def _card_to_dict(db: Session, card: Card) -> dict:
         # V2 Scene rendering contract. The existing collection UI can ignore
         # this until the complete family of card-type templates is activated.
         "scene_visual": scene_visual,
+        "scene_mask_editor": scene_mask_editor,
         "character_visual": character_visual,
         "cosplay_visual": cosplay_visual,
         "collab_visual": collab_visual,

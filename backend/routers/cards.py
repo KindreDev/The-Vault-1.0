@@ -19,6 +19,9 @@ class OpenPackRequest(BaseModel):
 class AddCreditsRequest(BaseModel):
     amount: int = 1000
 
+class WipeOwnedCardsRequest(BaseModel):
+    confirmation: str
+
 class DismantleBatchRequest(BaseModel):
     inventory_ids: List[int]
 
@@ -128,6 +131,26 @@ def publish_foundation_catalog(db: Session = Depends(get_db)):
         return build_foundation_catalog(db)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.post("/foundation/refresh")
+def refresh_foundation_catalog(db: Session = Depends(get_db)):
+    """Enqueue a versioned, staged Foundation snapshot rebuild in Task Q."""
+    from services.foundation_refresh import enqueue_refresh
+    try:
+        return enqueue_refresh(db)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.post("/owned/wipe")
+def wipe_owned_cards(req: WipeOwnedCardsRequest, db: Session = Depends(get_db)):
+    """Remove current owned TCG copies only; preserve the catalogue and ledgers."""
+    from services.tcg_v2 import wipe_owned_cards as wipe_service
+    try:
+        return wipe_service(db, req.confirmation)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.get("/rarity-distribution")

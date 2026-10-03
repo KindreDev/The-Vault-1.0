@@ -2,6 +2,7 @@
 title Build The Vault EXE
 setlocal
 chcp 65001 >nul
+cd /d "%~dp0"
 
 echo.
 echo  THE VAULT - EXE BUILDER
@@ -23,6 +24,9 @@ if %errorlevel% neq 0 (
 )
 
 REM Step 1 - Get FFmpeg and FFprobe
+python scripts\prepare_release.py --check
+if errorlevel 1 ( echo [ERROR] Release versions do not agree. & pause & exit /b 1 )
+
 echo [1/5] Checking for FFmpeg and FFprobe...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0get_ffmpeg.ps1"
 if %errorlevel% neq 0 (
@@ -130,11 +134,13 @@ if "%ISCC%"=="" (
     echo     Install from https://jrsoftware.org/isinfo.php to get VaultSetup.exe
 ) else (
     "%ISCC%" installer.iss
-    if %errorlevel% equ 0 (
-        echo     Installer built: dist\VaultSetup.exe
-    ) else (
+    if errorlevel 1 (
         echo     Inno Setup failed. Raw exe still at dist\vault\vault.exe
+        pause & exit /b 1
     )
+    python scripts\prepare_release.py
+    if errorlevel 1 ( echo [ERROR] Release staging failed. & pause & exit /b 1 )
+    echo     Installer and Cloudflare manifest prepared in dist\cloudflare\
 )
 
 echo.

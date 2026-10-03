@@ -268,6 +268,10 @@ def _migrate_add_columns():
         "ALTER TABLE creators ADD COLUMN banner_zoom FLOAT DEFAULT 1.0",
         # TCG: vault credits on user profile
         "ALTER TABLE user_profile ADD COLUMN vault_credits INTEGER DEFAULT 0",
+        # Daily trader preferences are frozen with each visit seed.
+        "ALTER TABLE tcg_trader_visits ADD COLUMN focus_json TEXT DEFAULT '{}' NOT NULL",
+        # Per-physical-copy collector grades persist across trader visits.
+        "ALTER TABLE tcg_physical_card_copies ADD COLUMN grade VARCHAR(1)",
         # sessions — duration tracking
         "ALTER TABLE session_logs ADD COLUMN duration_sec INTEGER",
         # Phase 9: character link on galleries
@@ -324,6 +328,7 @@ def _migrate_add_columns():
         "ALTER TABLE tcg_setup_state ADD COLUMN foundation_status VARCHAR DEFAULT 'pending' NOT NULL",
         "ALTER TABLE tcg_setup_state ADD COLUMN foundation_total INTEGER DEFAULT 0 NOT NULL",
         "ALTER TABLE tcg_setup_state ADD COLUMN foundation_target INTEGER DEFAULT 0 NOT NULL",
+        "ALTER TABLE tcg_setup_state ADD COLUMN active_foundation_release_id INTEGER REFERENCES tcg_releases(id)",
         # Image focal point for card display
         "ALTER TABLE images ADD COLUMN focal_x FLOAT DEFAULT 0.5",
         "ALTER TABLE images ADD COLUMN focal_y FLOAT DEFAULT 0.0",
@@ -774,30 +779,6 @@ def _compute_collection_rarity():
 # opening its port for minutes on every launch.
 
 
-def _award_hof_crowns():
-    """Crown every Hall of Fame period that has closed since the last boot.
-
-    Also the retroactive backfill: the first run walks back through all recorded
-    history and crowns every finished day, week and month. A fresh install has
-    no history to walk, so it awards nothing — new users start accumulating from
-    the version that introduced this, which is the intent.
-    """
-    try:
-        from services.crowns import award_due_crowns
-        db = SessionLocal()
-        try:
-            n = award_due_crowns(db)
-            if n:
-                print(f"[startup] awarded {n} Hall of Fame crown(s)")
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"[startup] crown awarding failed: {e}")
-
-
-_award_hof_crowns()
-
-
 def _backfill_personalities():
     """One-time per creator: give everyone a random personality (seeded, stable) and
     a baseline vulgarity ('dirty mouth') level. Guarded so it never overwrites a
@@ -955,7 +936,9 @@ def _seed_ai_tag_vocab():
 
 _seed_ai_tag_vocab()
 
-app = FastAPI(title="The Vault", version="1.7.2")
+from app_version import APP_VERSION
+
+app = FastAPI(title="The Vault", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1098,9 +1081,31 @@ async def stream_console_log(request: Request):
 
 
 @app.on_event("startup")
+async def _start_hof_schedule():
+    from services.hof_schedule import run
+    app.state.hof_schedule = asyncio.create_task(run())
+
+
+@app.on_event("shutdown")
+async def _stop_hof_schedule():
+    task = getattr(app.state, "hof_schedule", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@app.on_event("startup")
 async def _on_startup():
     """Write a startup banner directly to the log buffer."""
     import platform
+    try:
+        from services.task_queue import recover_durable_tasks
+        recover_durable_tasks()
+    except Exception as e:
+        _log_direct("WARN", f"Durable Task Q jobs were not restored: {e}")
     try:
         from services.ai_tagger import restore_interrupted_jobs
         restore_interrupted_jobs()

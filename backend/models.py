@@ -787,6 +787,7 @@ class TCGPhysicalCardCopy(Base):
     location_ref   = Column(String, nullable=True, index=True)
     location_slot  = Column(Integer, nullable=True)
     trade_locked   = Column(Boolean, default=False, nullable=False, index=True)
+    grade          = Column(String(1), nullable=True)
     created_at     = Column(DateTime, default=func.now(), nullable=False)
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -1029,6 +1030,7 @@ class TCGTraderVisit(Base):
     requests_used = Column(Integer, default=0, nullable=False)
     conversation_json = Column(Text, default="[]", nullable=False)
     offer_state_json = Column(Text, default="{}", nullable=False)
+    focus_json = Column(Text, default="{}", nullable=False)
     status = Column(String, default="active", nullable=False)
 
 
@@ -1173,6 +1175,41 @@ class TCGSetupState(Base):
     foundation_status = Column(String, default="pending", nullable=False)
     foundation_total  = Column(Integer, default=0, nullable=False)
     foundation_target = Column(Integer, default=0, nullable=False)
+    # The published Foundation snapshot used by permanent products. Older
+    # databases resolve this lazily to FND-CORE until the first refresh.
+    active_foundation_release_id = Column(Integer, ForeignKey("tcg_releases.id"), nullable=True)
+
+
+class TCGFoundationRefreshJob(Base):
+    """Durable Task Q record for a staged Foundation snapshot refresh."""
+    __tablename__ = "tcg_foundation_refresh_jobs"
+
+    id                = Column(String, primary_key=True)
+    status            = Column(String, default="queued", nullable=False, index=True)
+    phase             = Column(String, default="queued", nullable=False)
+    progress          = Column(Integer, default=0, nullable=False)
+    total             = Column(Integer, default=0, nullable=False)
+    message           = Column(Text, default="Waiting in Task Q", nullable=False)
+    catalog_code      = Column(String, nullable=False, unique=True)
+    release_code      = Column(String, nullable=False, unique=True)
+    error             = Column(Text, nullable=True)
+    created_at        = Column(DateTime, default=func.now(), nullable=False)
+    started_at        = Column(DateTime, nullable=True)
+    finished_at       = Column(DateTime, nullable=True)
+    activated_at      = Column(DateTime, nullable=True)
+
+
+class TCGFoundationRefreshStage(Base):
+    """Unpublished card definitions staged independently of pack queries."""
+    __tablename__ = "tcg_foundation_refresh_stage"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    job_id        = Column(String, ForeignKey("tcg_foundation_refresh_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_key    = Column(String, nullable=False)
+    payload_json  = Column(Text, nullable=False)
+    card_id       = Column(Integer, ForeignKey("cards.id"), nullable=True, index=True)
+
+    __table_args__ = (UniqueConstraint("job_id", "source_key", name="uq_foundation_stage_source"),)
 
 
 # ── TCG: Crafting materials (shards & catalyst tokens) ────────────────────────
@@ -1339,6 +1376,18 @@ class TCGPackOpening(Base):
     opening_seed   = Column(String, nullable=False)
     selected_release_id = Column(Integer, ForeignKey("tcg_releases.id"), nullable=True)
     integrity_json = Column(Text, default="{}", nullable=False)
+
+
+class TCGPackPurchase(Base):
+    """Durable response receipt for a direct purchase, committed with its cards."""
+    __tablename__ = "tcg_pack_purchases"
+
+    request_id = Column(String(64), primary_key=True)
+    # Retain replay protection even if an explicit catalogue rebuild removes
+    # the historical opening. Never turn its old request into a new purchase.
+    opening_id = Column(Integer, ForeignKey("tcg_pack_openings.id", ondelete="SET NULL"), nullable=True)
+    request_json = Column(Text, nullable=False)
+    response_json = Column(Text, nullable=False)
 
 
 class TCGPackOpeningCard(Base):

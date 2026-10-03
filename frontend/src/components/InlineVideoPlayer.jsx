@@ -468,15 +468,16 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     // Give the server one chance to convert it before showing an error.  WMV,
     // MKV, AVI, MOV and M4V are converted automatically by the file endpoint.
     if (imageId && !transcodeFallback) {
-      setVideoError('Preparing browser-compatible playback…')
+      setVideoError(null)
+      setPreparingVideo(true)
       setTranscodeFallback(true)
       return
     }
     const msgs = {
       1: 'Playback aborted.',
       2: 'Network error while loading video.',
-      3: 'Video decoding failed — the codec or encoding is not supported by this browser.\nThe file likely plays fine in VLC. Common culprits: H.265/HEVC, Xvid/DivX, WMV.',
-      4: 'Video format or codec not supported by this browser.\nTry H.264 MP4 — it plays everywhere. VLC can re-encode it.',
+      3: 'The Vault could not play this video after trying a compatible playback copy.\nRetry to try again.',
+      4: 'The Vault could not load this video or create a compatible playback copy.\nRetry to try again.',
     }
     setVideoError(msgs[code] ?? 'Unknown video error.')
   }, [imageId, transcodeFallback])
@@ -612,7 +613,8 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 pointer-events-none"
              style={{ background: 'rgba(0,0,0,0.68)', color: 'var(--c-text)' }}>
           <Loader2 size={28} className="animate-spin" style={{ color: 'var(--c-accent-text)' }} />
-          <span style={{ fontSize: 16, fontWeight: 600 }}><LocalizedText text={"Preparing video for playback…"} /></span>
+          <span style={{ fontSize: 16, fontWeight: 600 }}><LocalizedText text={"Loading video…"} /></span>
+          <span style={{ fontSize: 16, maxWidth: 460, textAlign: 'center', padding: '0 20px' }}><LocalizedText text={"If this format needs conversion, The Vault saves a compatible playback copy once. Your original stays unchanged."} /></span>
         </div>
       )}
 

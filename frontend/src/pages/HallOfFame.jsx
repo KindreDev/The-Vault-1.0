@@ -68,7 +68,9 @@ function partialWindowNote(period, trackingSince) {
   if (!start) return null
   // No events recorded yet means tracking effectively begins now — which is the
   // state where this warning matters most, so it must not be the silent case.
-  const since = trackingSince ? new Date(trackingSince) : new Date()
+  const since = trackingSince
+    ? new Date(/(?:Z|[+-]\d{2}:\d{2})$/.test(trackingSince) ? trackingSince : `${trackingSince}Z`)
+    : new Date()
   if (since <= start) return null
   return since.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
@@ -555,6 +557,46 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
   )
 }
 
+function FullPageHofState({ loading, onRetry, t }) {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6"
+         style={{ background: 'var(--c-bg, #0e0e0e)' }}>
+      <div className="flex flex-col items-center gap-6 text-center" role={loading ? 'status' : 'alert'} aria-live="polite">
+        <div className="flex h-16 w-16 items-center justify-center rounded-[18px]"
+             style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+                      border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)',
+                      boxShadow: '0 0 32px 4px color-mix(in srgb, var(--c-amber) 12%, transparent)' }}>
+          <Trophy size={30} style={{ color: 'var(--c-amber-text)' }} />
+        </div>
+        {loading ? (
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-9 w-9 animate-spin rounded-full border-2"
+                 style={{ borderColor: 'rgba(255,255,255,0.14)', borderTopColor: 'var(--c-amber-text)' }} />
+            <div>
+              <p className="text-[20px] font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                {t('Loading Creator Hall of Fame')}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-[20px] font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              {t('Creator Hall of Fame could not load.')}
+            </p>
+            <button onClick={onRetry}
+                    className="px-5 py-3 rounded-[10px] text-[16px] font-semibold transition-colors"
+                    style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+                             border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)',
+                             color: 'var(--c-amber-text)' }}>
+              {t('Retry')}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MEDIA CARD — photo or video with hover preview from middle of video
 // ══════════════════════════════════════════════════════════════════════════════
@@ -793,9 +835,22 @@ export default function HallOfFame() {
   }
   const activeList = fullList ? LISTS[fullList] : null
 
-  const { data: imageHof }   = useQuery({ queryKey: ['hof',         30, period], queryFn: () => galleriesApi.hof(30, 0, period).then(r => r.data),   staleTime: 0 })
-  const { data: galleryHof } = useQuery({ queryKey: ['gallery-hof', 30, period], queryFn: () => galleriesApi.galleryHof(30, 0, period).then(r => r.data), staleTime: 0 })
-  const { data: creatorHof } = useQuery({ queryKey: ['creator-hof', 30, period], queryFn: () => creatorsApi.hof(30, 0, period).then(r => r.data),   staleTime: 0, refetchInterval: 15000 })
+  const refreshPeriod = period === 'all' ? false : 30_000
+  const { data: creatorHof, isPending: creatorHofPending, isFetching: creatorHofFetching, isError: creatorHofError, refetch: refetchCreatorHof } = useQuery({
+    queryKey: ['creator-hof', 30, period],
+    queryFn: () => creatorsApi.hof(30, 0, period).then(r => r.data),
+    staleTime: 15_000, refetchInterval: refreshPeriod,
+  })
+  const { data: imageHof, isPending: imageHofPending, isError: imageHofError, refetch: refetchImageHof } = useQuery({
+    queryKey: ['hof', 30, period],
+    queryFn: () => galleriesApi.hof(30, 0, period).then(r => r.data),
+    staleTime: 15_000, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
+  })
+  const { data: galleryHof, isPending: galleryHofPending, isError: galleryHofError, refetch: refetchGalleryHof } = useQuery({
+    queryKey: ['gallery-hof', 30, period],
+    queryFn: () => galleriesApi.galleryHof(30, 0, period).then(r => r.data),
+    staleTime: 15_000, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
+  })
 
   // When engagement logging started. A window that opened before this date is
   // genuinely partial, so the page says so rather than passing off four days as
@@ -808,10 +863,21 @@ export default function HallOfFame() {
 
   const periodLabel = HOF_PERIODS.find(p => p.id === period)?.label ?? 'All time'
   const partialSince = partialWindowNote(period, trackingSince)
+  const hasBoardData = [creatorHof, imageHof, galleryHof].some(items => (items ?? []).length > 0)
+  const boardLoading = !hasBoardData && (imageHofPending || galleryHofPending || creatorHofPending)
+  const boardFailed = !hasBoardData && (imageHofError || galleryHofError || creatorHofError)
 
   // The backdrop follows whoever leads the board you're looking at, so switching
   // to "This week" swaps the whole page's identity to that week's girl.
   const topCreatorId = creatorHof?.[0]?.id ?? null
+
+  // The creator board is the centrepiece. Keep the whole viewport covered until
+  // the selected period's creator ranking is available, and surface a retry if
+  // the request fails instead of leaving an empty hero above the other boards.
+  if (!Array.isArray(creatorHof)) {
+    return <FullPageHofState loading={creatorHofFetching || creatorHofPending}
+                              onRetry={refetchCreatorHof} t={t} />
+  }
 
   return (
     <div className="flex-1" style={{ background: '#0e0e0e', position: 'relative', minHeight: '100%' }}>
@@ -876,7 +942,23 @@ export default function HallOfFame() {
 
           {/* CreatorSection renders nothing when empty, which on a freshly-reset
               board reads as a broken page rather than an empty one. */}
-          {(creatorHof ?? []).length === 0 && (imageHof ?? []).length === 0 ? (
+          {boardLoading ? (
+            <div className="rounded-[14px] p-16 text-center"
+                 style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{t('Loading…')}</p>
+            </div>
+          ) : boardFailed ? (
+            <div className="rounded-[14px] p-16 text-center"
+                 style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-[18px] mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>{t('Hall of Fame could not load.')}</p>
+              <button onClick={() => { refetchCreatorHof(); refetchImageHof(); refetchGalleryHof() }}
+                      className="px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
+                      style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+                               border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)', color: 'var(--c-amber-text)' }}>
+                {t('Retry')}
+              </button>
+            </div>
+          ) : !hasBoardData ? (
             <div className="rounded-[14px] p-16 text-center"
                  style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
               <Trophy size={32} style={{ color: 'color-mix(in srgb, var(--c-amber) 35%, transparent)', margin: '0 auto 16px' }} />

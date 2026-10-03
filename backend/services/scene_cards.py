@@ -21,6 +21,7 @@ CANVAS_WIDTH = 1024
 CANVAS_HEIGHT = 1536
 MIN_COVERAGE = 0.07
 MAX_COVERAGE = 0.72
+MAX_SCENE_COVERAGE_OVERRIDE = 0.98
 MAX_TOUCHED_EDGES = 1
 MAX_AUTO_FILLED_HOLE_FRACTION = 0.01
 MAX_MIRROR_DISAGREEMENT = 0.085
@@ -183,6 +184,8 @@ def evaluate_scene_matte(matte: np.ndarray, *, person_count: int | None = None,
         "bottom": bool(hard[-margin:, :].any()),
         "left": bool(hard[:, :margin].any()),
     }
+
+
     zone_occupancy = {
         name: round(float(hard[y:y + height, x:x + width].mean()), 4)
         for name, (x, y, width, height) in TEXT_ZONES.items()
@@ -223,6 +226,57 @@ def evaluate_scene_matte(matte: np.ndarray, *, person_count: int | None = None,
         "reasons": reasons,
         "warnings": warnings,
     }
+
+
+def scene_coverage_tolerance(value: Any = None) -> float:
+    """Resolve a card-level subject-coverage tolerance without changing defaults."""
+    if value is None:
+        return MAX_COVERAGE
+    try:
+        tolerance = float(value)
+    except (TypeError, ValueError):
+        return MAX_COVERAGE
+    if not np.isfinite(tolerance) or not MAX_COVERAGE <= tolerance <= MAX_SCENE_COVERAGE_OVERRIDE:
+        return MAX_COVERAGE
+    return tolerance
+
+
+def apply_scene_coverage_tolerance(metrics: dict[str, Any], tolerance: Any = None) -> dict[str, Any]:
+    """Allow only the over-coverage rejection to use a per-card tolerance.
+
+    Every other hard reason remains blocking. This is a presentation-time
+    eligibility decision over the existing matte; it never edits that matte.
+    """
+    result = dict(metrics or {})
+    reasons = [str(reason) for reason in (result.get("reasons") or [])]
+    limit = scene_coverage_tolerance(tolerance)
+    coverage = result.get("coverage")
+    if ("subject-dominates-frame" in reasons and coverage is not None
+            and float(coverage) <= limit):
+        reasons = [reason for reason in reasons if reason != "subject-dominates-frame"]
+        result["coverageTolerance"] = limit
+        result["coverageOverrideApplied"] = True
+        result["warnings"] = list(result.get("warnings") or [])
+        if "subject-coverage-tolerance-override" not in result["warnings"]:
+            result["warnings"].append("subject-coverage-tolerance-override")
+    result["reasons"] = reasons
+    result["accepted"] = not reasons
+    return result
+
+
+def inspect_packed_scene_mask(mask_path: str, *, source_width: int,
+                              source_height: int, focal_x: float = 0.5,
+                              focal_y: float = 0.5) -> dict[str, Any]:
+    """Measure the existing packed artifact with the Scene card projection."""
+    if source_width <= 0 or source_height <= 0:
+        raise ValueError("Scene mask inspection requires valid source dimensions")
+    with PILImage.open(mask_path) as packed:
+        matte = np.asarray(packed.convert("RGBA").getchannel(0), dtype=np.uint8)
+    projected = project_scene_matte(
+        matte, source_width=source_width, source_height=source_height,
+        focal_x=focal_x, focal_y=focal_y,
+    )
+    return evaluate_scene_matte(projected)
 
 
 def scene_mask_quality(metrics: dict[str, Any]) -> float:

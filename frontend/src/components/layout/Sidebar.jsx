@@ -11,9 +11,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
-import { gamiApi, companionApi, recapApi } from '../../lib/api'
+import { gamiApi, companionApi, recapApi, tasksApi } from '../../lib/api'
 import { useT } from '../../i18n'
 import { deviceService } from '../../services/device'
+import queryClient from '../../lib/queryClient'
+import { createTaskRefreshTracker } from '../../../../shared/queryRefresh.mjs'
 
 const NAV = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -232,12 +234,18 @@ export default function Sidebar() {
 
   const { data: taskState } = useQuery({
     queryKey: ['task-queue'],
-    queryFn:  () => fetch('/api/tasks').then(r => r.json()),
+    queryFn:  () => tasksApi.queue().then(r => r.data),
     refetchInterval: q => {
       const d = q.state.data
       return (d?.current || d?.queued?.length > 0) ? 600 : 8000
     },
   })
+
+  const taskRefresh = useRef(null)
+  if (!taskRefresh.current) taskRefresh.current = createTaskRefreshTracker(queryClient)
+  useEffect(() => {
+    void taskRefresh.current(taskState).catch(() => {})
+  }, [taskState])
 
   const activeTask    = taskState?.current ?? null
   const queuedCount   = taskState?.queued?.length ?? 0

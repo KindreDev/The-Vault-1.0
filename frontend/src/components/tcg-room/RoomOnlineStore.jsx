@@ -1,6 +1,8 @@
 import { LocalizedText } from '../../i18n'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Clock3, Coins, PackageOpen, ShieldCheck, Sparkles } from 'lucide-react'
+import { sampleBoosterArt } from '../tcg-workspace/boosterArt'
+import TargetCardTypePicker from '../tcg-workspace/TargetCardTypePicker'
 
 const WRAPPERS = {
   permanent: '/tcg-booster-permanent-cutout.png',
@@ -31,8 +33,20 @@ function guarantee(pack) {
   return pack.rarity_floor ? `1 ${pack.rarity_floor} guaranteed` : 'Published odds'
 }
 
+function RotatingProductArt({ candidates }) {
+  const [image, setImage] = useState(() => sampleBoosterArt(candidates, 1)[0] || null)
+  useEffect(() => {
+    const rotate = () => setImage(sampleBoosterArt(candidates, 1)[0] || null)
+    rotate()
+    const timer = window.setInterval(rotate, 5200)
+    return () => window.clearInterval(timer)
+  }, [candidates])
+  return image ? <img className="room-store__product-art" src={image} alt="" /> : null
+}
+
 export default function RoomOnlineStore({ packs, releases, productImages = [], pending, pendingPackId, onOrder, query = '', category = 'all', sort = 'featured' }) {
   const [releaseByPack, setReleaseByPack] = useState({})
+  const [targetByPack, setTargetByPack] = useState({})
   const products = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const filtered = packs.filter(pack => (category === 'all' || pack.product_kind === category) && (!normalized || `${pack.name} ${pack.pool_summary || ''}`.toLowerCase().includes(normalized)))
@@ -48,15 +62,19 @@ export default function RoomOnlineStore({ packs, releases, productImages = [], p
       const weekly = pack.product_kind === 'weekly_protection'
       const available = Boolean(pack.active && (pack.purchasable || pack.tokens > 0))
       const releaseId = releaseByPack[pack.id] || ''
+      const selectedPreview = pack.preview_art_urls_by_release?.[String(releaseId)]
+      const previewImages = weekly ? (releaseId ? (selectedPreview || []) : []) : (pack.preview_art_urls || [])
+      const safePreviewImages = [...new Set((previewImages || []).filter(Boolean))]
       const wrapperKind = WRAPPER_KIND[pack.product_kind] || 'standard'
       return <article key={pack.id} className={!available ? 'unavailable' : ''}>
-        <div className={`room-store__product-image room-store__product-image--${wrapperKind}`}><span className={`room-store__product-kind-badge${pack.product_kind === 'release_premium' ? ' room-store__product-kind-badge--premium' : ''}`}>{LABELS[pack.product_kind] || 'Booster pack'}</span><div className="room-store__wrapper-stage"><img className="room-store__wrapper" src={pack.wrapper_src || WRAPPERS[pack.product_kind] || WRAPPERS.permanent} alt="" />{productImages.length > 0 && <img className="room-store__product-art" src={productImages[pack.id % productImages.length]} alt="" />}</div></div>
+        <div className={`room-store__product-image room-store__product-image--${wrapperKind}`}><span className={`room-store__product-kind-badge${pack.product_kind === 'release_premium' ? ' room-store__product-kind-badge--premium' : ''}`}>{LABELS[pack.product_kind] || 'Booster pack'}</span><div className="room-store__wrapper-stage"><img className="room-store__wrapper" src={pack.wrapper_src || WRAPPERS[pack.product_kind] || WRAPPERS.permanent} alt="" /><RotatingProductArt candidates={safePreviewImages} /></div></div>
         <div className="room-store__product-body">
           <h2>{pack.name}</h2>
           <ul><li><PackageOpen size={18} /><strong>{pack.card_count}<LocalizedText text={"cards"} before={" "} /></strong></li><li><ShieldCheck size={18} /><strong>{guarantee(pack)}</strong></li></ul>
           <div className={`room-store__availability${available ? ' is-available' : ''}`}>{available ? <CheckCircle2 size={17} /> : <Clock3 size={17} />}<strong>{available ? <LocalizedText text={"Available now"} /> : <LocalizedText text={"Not currently scheduled"} />}</strong></div>
           {weekly && pack.tokens > 0 && <label className="room-store__release"><LocalizedText text={"Choose release"} /><select value={releaseId} onChange={event => setReleaseByPack(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value=""><LocalizedText text={"Select a frozen release"} /></option>{releases.filter(item => item.status === 'published').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-          <div className="room-store__buy"><span><LocalizedText text={"Price"} /></span><strong>{weekly ? <><Sparkles size={18} /> <LocalizedText text={"Quest reward"} /></> : <><Coins size={19} /> {Number(pack.price || 0).toLocaleString()} <LocalizedText text={"Credits"} before={" "} /></>}</strong><button disabled={!available || pending || (weekly && !releaseId)} onClick={() => onOrder(pack, releaseId || null)}>{pending && pendingPackId === pack.id ? 'Ordering...' : 'Order online'}</button></div>
+          {pack.targetable_card_type && <TargetCardTypePicker value={targetByPack[pack.id] || ''} onChange={value => setTargetByPack(current => ({ ...current, [pack.id]: value }))} id={`room-target-${pack.id}`} />}
+          <div className="room-store__buy"><span><LocalizedText text={"Price"} /></span><strong>{weekly ? <><Sparkles size={18} /> <LocalizedText text={"Quest reward"} /></> : <><Coins size={19} /> {Number(pack.price || 0).toLocaleString()} <LocalizedText text={"Credits"} before={" "} /></>}</strong><button disabled={!available || pending || (weekly && !releaseId)} onClick={() => onOrder(pack, releaseId || null, pack.targetable_card_type ? targetByPack[pack.id] || null : null)}>{pending && pendingPackId === pack.id ? 'Ordering...' : 'Order online'}</button></div>
         </div>
       </article>
     })}</div>

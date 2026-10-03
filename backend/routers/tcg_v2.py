@@ -3,12 +3,11 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
 from services import tcg_v2
-import services.gamification as gami
 
 
 router = APIRouter(prefix="/api/tcg-v2", tags=["tcg-v2"])
@@ -26,6 +25,14 @@ class ClassificationRequest(BaseModel):
     intensity: str | None = None
 
 
+class MaskPresentationRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    background_strength: float | None = Field(default=None, ge=0, le=1)
+    subject_strength: float | None = Field(default=None, ge=0, le=1)
+    subject_coverage_tolerance: float | None = Field(default=None, ge=0.72, le=0.98)
+
+
 class PresentationRequest(BaseModel):
     signature_x: float | None = None
     signature_y: float | None = None
@@ -34,7 +41,7 @@ class PresentationRequest(BaseModel):
     artwork_x: float | None = None
     artwork_y: float | None = None
     artwork_scale: float | None = None
-    mask: dict[str, Any] | None = None
+    mask: MaskPresentationRequest | None = None
 
 
 class BinderRequest(BaseModel):
@@ -84,6 +91,8 @@ class SimulationRequest(BaseModel):
 class OpenPackRequest(BaseModel):
     selected_release_id: int | None = None
     use_token: bool = False
+    target_card_type: str | None = None
+    request_id: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class ReleaseGenerationRequest(BaseModel):
@@ -214,12 +223,10 @@ def simulate(request: SimulationRequest):
 @router.post("/packs/{product_id}/open")
 def open_pack(product_id: int, request: OpenPackRequest, db: Session = Depends(get_db)):
     result = _result(
-        tcg_v2.open_pack_product, db, product_id,
+        tcg_v2.purchase_pack_product, db, product_id, request_id=request.request_id,
         selected_release_id=request.selected_release_id, use_token=request.use_token,
+        target_card_type=request.target_card_type,
     )
-    # The current collection opens packs through TCG V2, so keep the live
-    # quest/achievement counters on that path too.
-    gami.notify_action(db, "pack_opened", count=1, override_amount=75)
     return result
 
 

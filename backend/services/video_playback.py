@@ -70,17 +70,13 @@ def _remove_stale_caches(cache_path: str, cache_key: str | int) -> None:
         pass
 
 
-def _can_remux_to_mp4(source_path: str, ffmpeg: str) -> bool:
-    """Check whether stream copy can make a browser-playable MP4.
-
-    MKV is only a container. Re-encoding H.264/AAC inside it can take longer
-    than the entire video, while copying those streams takes seconds.
-    """
+def _probe_streams(source_path: str, ffmpeg: str) -> list[dict] | None:
+    """Inspect tracks, including unsupported auxiliary tracks in phone videos."""
     ffprobe = str(Path(ffmpeg).with_name("ffprobe.exe" if os.name == "nt" else "ffprobe"))
     try:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-show_entries",
-             "stream=codec_type,codec_name,pix_fmt", "-of", "json", source_path],
+             "stream=index,codec_type,codec_name,pix_fmt", "-of", "json", source_path],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -88,19 +84,31 @@ def _can_remux_to_mp4(source_path: str, ffmpeg: str) -> bool:
             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
         )
         if result.returncode != 0:
-            return False
-        streams = json.loads(result.stdout).get("streams", [])
+            return None
+        return json.loads(result.stdout).get("streams", [])
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
-        return False
+        return None
 
+
+def _playback_tracks(streams: list[dict] | None) -> tuple[list[str], bool]:
+    """Select the main audio, skipping tracks without a recognized codec.
+
+    iPhone MOVs may contain an additional audio track with no decoder. Mapping
+    every audio track makes an otherwise healthy video fail conversion.
+    """
+    if streams is None:
+        return ["-map", "0:a:0?"], False
     video = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
-    audio = [stream for stream in streams if stream.get("codec_type") == "audio"]
-    return bool(
+    audio = next((stream for stream in streams if stream.get("codec_type") == "audio"
+                  and stream.get("codec_name") not in {None, "", "none", "unknown"}), None)
+    audio_map = ["-map", f"0:{audio['index']}"] if audio else []
+    remux = bool(
         video
         and video.get("codec_name") == "h264"
         and video.get("pix_fmt") in {"yuv420p", "yuvj420p"}
-        and all(stream.get("codec_name") == "aac" for stream in audio)
+        and (audio is None or audio.get("codec_name") == "aac")
     )
+    return audio_map, remux
 
 
 def ensure_browser_playback(
@@ -133,7 +141,8 @@ def ensure_browser_playback(
         temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             ffmpeg = _get_ffmpeg_exe()
-            remux = not force and _can_remux_to_mp4(source_path, ffmpeg)
+            audio_map, compatible_streams = _playback_tracks(_probe_streams(source_path, ffmpeg))
+            remux = not force and compatible_streams
             for copy_streams in ([True, False] if remux else [False]):
                 codec_args = (
                     ["-c:v", "copy", "-c:a", "copy"] if copy_streams else [
@@ -153,7 +162,7 @@ def ensure_browser_playback(
                     "-y",
                     "-i", source_path,
                     "-map", "0:v:0",
-                    "-map", "0:a?",
+                    *audio_map,
                     "-sn",
                     *codec_args,
                     "-movflags", "+faststart",

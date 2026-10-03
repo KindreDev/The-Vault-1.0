@@ -1,13 +1,12 @@
 import { LocalizedText, useT } from '../../i18n'
-import { Archive, BookOpen, Cuboid, Layers3, PackageOpen, Settings2, Sparkles, Wrench } from 'lucide-react'
+import { Archive, BookOpen, Cuboid, Layers3, Settings2, Sparkles, ShoppingCart } from 'lucide-react'
 
 export const TCG_VIEWS = [
   { id: 'releases', label: 'Releases', icon: Sparkles },
   { id: 'sets', label: 'Sets', icon: Layers3 },
   { id: 'cards', label: 'All Cards', icon: Archive },
-  { id: 'packs', label: 'Boosters', icon: PackageOpen },
   { id: 'binders', label: 'Binders', icon: BookOpen },
-  { id: 'workshop', label: 'Shop', icon: Wrench },
+  { id: 'workshop', label: 'Shop', icon: ShoppingCart },
   { id: 'room', label: 'Collection Room', icon: Cuboid },
 ]
 

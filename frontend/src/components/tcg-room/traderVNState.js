@@ -1,20 +1,38 @@
 export const TRADER_TABS = Object.freeze([
-  ['dialogue', 'Dialogue'],
   ['cards', 'Her Cards'],
-  ['sell', 'Sell'],
   ['trade', 'Trade'],
+  ['grading', 'Grading'],
   ['requests', 'Requests'],
   ['history', 'Deal History'],
 ])
 
-export function traderGate(visit) {
-  if (!visit) return { locked: true, title: 'Checking this week\'s visit', detail: 'The saved visitor and approval state are loading.' }
-  if (!visit.production_enabled) return {
-    locked: true,
-    title: 'Trading is safely locked',
-    detail: 'Her stock and transactions stay disabled until the required economy simulation is reviewed and approved. This visit and conversation still persist.',
+const ERROR_FIELD_LABELS = Object.freeze({
+  card_id: 'Card catalog code',
+  card_code: 'Card catalog code',
+  copy_ids: 'Selected cards',
+  visit_id: 'Trader visit',
+})
+
+function readableErrorValue(value) {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map(readableErrorValue).filter(Boolean).join(' · ')
+  if (!value || typeof value !== 'object') return ''
+  if (value.detail !== undefined) return readableErrorValue(value.detail)
+  if (Array.isArray(value.errors)) return readableErrorValue(value.errors)
+  const message = value.msg || value.message || value.error_description || value.title
+  if (message) {
+    const location = Array.isArray(value.loc) ? value.loc.filter(part => !['body', 'query', 'path'].includes(String(part).toLowerCase())) : []
+    const field = location.map(part => ERROR_FIELD_LABELS[String(part)] || String(part).replaceAll('_', ' ')).join(' · ')
+    return field ? `${field}: ${readableErrorValue(message)}` : readableErrorValue(message)
   }
-  return { locked: false, title: '', detail: '' }
+  try { return JSON.stringify(value) } catch { return '' }
+}
+
+export function readableTraderError(error) {
+  const responseData = error?.response?.data
+  const detail = responseData?.detail ?? responseData ?? error?.message
+  return readableErrorValue(detail) || 'Something went wrong. Please try again.'
 }
 
 export function cardLabel(cardId, details = {}) {

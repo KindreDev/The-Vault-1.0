@@ -9,7 +9,7 @@ Recording is best-effort on purpose: an engagement action must never fail
 because its bookkeeping did. A dropped event costs one row in a leaderboard, a
 raised exception costs the user their cum tap.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,16 @@ IMAGE_KINDS   = ("view", "seconds", "cum", "edge")
 GALLERY_KINDS = ("gallery_view", "gallery_cum", "gallery_edge")
 
 PERIODS = ("day", "week", "month", "all")
+
+
+def local_to_utc_naive(value: datetime) -> datetime:
+    """Convert a local wall-clock datetime to the naive UTC used by the DB."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def utc_naive_to_local(value: datetime) -> datetime:
+    """Convert a naive UTC DB timestamp to a local wall-clock datetime."""
+    return value.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
 
 
 def record(db: Session, kind: str, *, image_id=None, gallery_id=None, amount: int = 1,
@@ -53,7 +63,7 @@ def record_many(db: Session, kind: str, *, image_ids=None, gallery_ids=None,
 
 
 def period_start(period: str) -> datetime | None:
-    """Local-calendar start of a period, or None for all-time.
+    """Naive UTC DB timestamp for a local-calendar start, or None for all-time.
 
     Calendar boundaries rather than rolling windows: "today" resets at midnight
     and starts empty, which is what makes a daily leaderboard feel like a fresh
@@ -66,12 +76,14 @@ def period_start(period: str) -> datetime | None:
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if period == "day":
-        return today
-    if period == "week":
-        return today - timedelta(days=today.weekday())   # Monday
-    if period == "month":
-        return today.replace(day=1)
-    return None
+        local_start = today
+    elif period == "week":
+        local_start = today - timedelta(days=today.weekday())   # Monday
+    elif period == "month":
+        local_start = today.replace(day=1)
+    else:
+        return None
+    return local_to_utc_naive(local_start)
 
 
 def tracking_since(db: Session) -> datetime | None:

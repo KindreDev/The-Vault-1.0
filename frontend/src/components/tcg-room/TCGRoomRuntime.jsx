@@ -28,7 +28,7 @@ const DEV_FOCUS = Object.freeze({
   computer: { interactive: 'computer', position: [-4.45, 1.25, -3.58], copy: ['Use computer', 'Browse the real TCG collection and order packs online'] },
   binder: { interactive: 'binder', position: [3.02, .93, -.8], copy: ['Open binder', 'Manage the same binder used by the 2D collection'] },
   parcel: { interactive: 'parcel', position: [3.02, .93, -.8], copy: ['Open booster packs', 'Unseal the delivered booster packs before revealing them'] },
-  door: { interactive: 'door', position: [3.06, 1.1, 4.89], copy: ['Visit trader', "Step outside to meet this week's visitor"] },
+  door: { interactive: 'door', position: [3.06, 1.1, 4.89], copy: ['Visit trader', "Step outside to meet today's trader"] },
 })
 
 function isTextEntryTarget(target) {

@@ -15,361 +15,81 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
-- Added separate permanent Creator, Media, and Gallery Hall of Fame cards for each category and period win.
-- Added a conditional Legacy cards toggle to the card collection for databases that contain legacy records.
-- Added a one-time local HOF media ladder fixture with image and video cards at every HOF print rarity for renderer testing.
-- Added plain-language Hall of Fame award provenance and rarity-matched Metal Signature highlights to HOF image cards, video cards, and GIFs.
+- Advanced collection settings now include a confirmed owned-card wipe that preserves the catalogue, releases, binders, room layout, receipts, trade history, Vault Credits, and XP.
+- The card collection can queue a staged, versioned Foundation catalogue restore with Task Q progress and restart recovery, preserving prior snapshots and owned history.
+- Founder's Catalogue Standard Boosters now include a plain Founder Standard Booster and a selectable Selection Founders Standard Booster with matching pack odds, contents, and price.
+- A complete TCG V2 collection built around a finite 60,000-card Foundation catalogue, five rarity bands, release sets and packs, card provenance, physical binders, and preservation of existing cards. Scene publication and booster pools exclude sources missing the identity or metadata needed to display their card faces.
+- Personalized printings now use collection engagement, with deterministic rarity rules and linked SPR parallels.
+- The optional first-person Collection Room adds saved layouts, furniture inventory and shop, parcel delivery, binders, displays, and visitor and trader experiences.
+- Hall of Fame now tracks champion reigns and awards a distinct, provenance-backed card for each category and period win.
+- Local theme packs can be installed and edited with custom artwork, colors, textures, and optional fonts.
+- Dedicated Videos and Funscripts workflows add independent script playlists, media filters, statistics, and queues.
+- Expanded Loading Bay intake and file-level curation support folder imports, unsorted files, duplicate review, creator assignment, and relocation.
+- Scene card Editor now previews rejected subject masks and supports a card-specific coverage tolerance for subject-dominance cases.
+- Session Analytics adds selectable time ranges, labeled trends, and clearer session summaries.
+- ComfyUI workflow metadata now adds the `AI generated` provenance tag automatically during import.
 
 ### Changed
-- Made Collection card tiles transparent behind the card faces and metadata.
-- Folder browsing now remembers the last location, supports typed addresses and back/forward navigation, and is used throughout Settings, Loading Bay, creator folder assignment, relocation, relinking, and ZIP export.
-- Deferred Collection card-face rendering until cards approach the viewport to reduce first-load and scroll work without changing card visuals.
-- Reused deterministic booster validation results during Collection startup instead of repeating identical pack simulations for concurrent requests.
-- Collection card faces now mount in smaller batches and keep their loading veil until the main artwork is decoded.
-- Collection search now matches card IDs, printed codes and numbers, names, rarity, card type, and content classification.
-- Video loop now stays on across videos, viewer screens, and app restarts until you turn it off.
-- Changed HOF award wording to name the recipient and state the category and period in natural order.
-- Extended HOF's pointer-reactive Metal Signature across every card's metallic frame, lettering, stars, and flowers.
-- Increased Silver-and-higher HOF metallic highlights and restored the pointer-following light reflection on Common cards.
-- Consolidated Collection Room booster packs and furniture in a responsive Shop with artwork-first product tiles and prices below each item.
-- Changed Hall of Fame cards with video-winning sources to play the preserved video inside the HOF face while retaining the existing frame and effects.
-- Changed HOF video cards to fill the complete card frame, use short low-resolution looping previews in grids and the Collection Room, and reserve full-video playback for opened card views.
-- Changed full-video Hall of Fame foil to keep transparent star-only VFX with pointer-reactive per-speck highlights instead of a flat overlay.
-- Unified the transparent, reactive foil composition across preview and opened views for video-backed Hall of Fame cards while preserving their separate media playback.
-- Strengthened video-card star foil with clearly visible pointer-shifting rainbow color while keeping the video unobscured.
-- Added an experimental rarity-matched Metal Signature treatment to video-backed Hall of Fame cards.
-- Extended video HOF Metal Signature highlights to the four metal ribbons and masked rarity letter.
-- Kept HOF video card names fixed to their face during Collection Room focus rotation without changing the metal finish.
-- Fixed the HOF-061653 Collection Room poster's inherited letterbox bars and reduced full-view video foil to a sparse reactive star layer.
-- Fixed the HOF-061653 full-view foil layer so its sparse reactive stars render when the card is picked up.
-- Fixed HOF-061653's opened-card foil fallback to use its transparent star texture and kept the special treatment scoped to that card.
+- Moved catalogue restore out of the main collection screen into Advanced settings, made the Advanced button reopen the panel reliably, and added a separate persisted Advanced Mode toggle.
+- Fresh card collections now offer TCG setup and catalogue creation; tag switches show clear on/off tracks, background jobs remain visible during preparation, and bulk menus preserve selected items.
+- Creator assignments, media edits, sessions, tags, and purchases now refresh related screens automatically; open viewers keep counters current without discarding note drafts, and completed background jobs refresh library data.
+- Updated developer documentation and consolidated project instructions, replacing obsolete planning and handoff documents.
+- Booster purchases can recover an interrupted response without charging again, and pack selection loads only the card details needed for the reveal.
+- Trader browsing pages card previews, reuses copy valuations, and keeps stock available when an individual face cannot be prepared; grading bonuses require a paid grade.
+- Desktop, installer, and mobile release versions are aligned to 2.0.0, with a build-generated Cloudflare update manifest.
+- The trader screen now shows your current Credits balance in the top bar.
+- Trader card grades now follow one rarity-based rubric across traders and physical copies, while preserving per-copy rarity fees.
+- Trader stock and eligible card details now load automatically when you open the trading screen.
+- The Trade screen now combines selling and bartering, searches both card lists, and accepts catalog-code card requests.
+- Hall of Fame now prioritizes the creator ranking and keeps a full-screen loading state visible until it is ready.
+- Trader visits now rotate daily, card requests can join a trader's next stock by chance, and offers use trader-specific card values without a five-copy cap.
+- Daily trader wants and avoids now shape card values and stock; all owned copies can be offered with simple Value labels and no copy cap.
+- Trader barter supports multiple cards on both sides, uses the same live preference-based quote through acceptance, and prepares acquired cards through the booster reveal path.
+- Barter now returns a trader-specific share of overpayment, and trader replies state sale payouts and barter refunds.
+- Trader requests accept catalog codes, while rarity-priced grades persist per copy and boost value only when they match a trader's daily interests.
+- Each daily trader visit pairs a two-sided conversation with matching card previews, clear trade status, and refresh feedback.
+- Trader stock and transactions are available without simulation approval, and published SPR cards can enter the daily stock.
+- Daily visits rotate among Yoru, Rika, and Lisa, each with a finished transparent portrait.
+- Trader conversations now show both sides of the chat, and matching card previews make trade choices visible.
+- Trade cards now show their value to the trader, and the offered total updates as cards are selected.
+- Mask regeneration now distinguishes candidates accepted by the Editor's tolerance from failures of the default check.
+- Pack opening now keeps cards visible without falling back to legacy faces when V2 card details are unavailable.
+- Pack openings use a flat-card fallback when a generated mask fails its quality check.
+- Card Collection now has one image-led Shop for booster packs and all four binder finishes, with category filters, repeat purchases, direct Buy-and-open boosters, and a binder quantity cart instead of placeholder accessories.
+- Booster previews now rotate through random existing thumbnails from the published V2 card pool, independently of pack contents and collection ownership.
+- Booster wrapper artwork now rotates through random thumbnails from the entire published V2 catalogue, independently of pack pulls.
+- Booster wrappers no longer overlay card-count text; pack details remain beside the artwork.
+- Card Collection now centers on release-aware sets, complete card records, acquisition history, binders, boosters, and workshop customization.
+- TCG V2 uses fixed C/R/SR/UR/SPR print rarities; Foundation and monthly releases use deterministic scaled pools, with personal-value scoring shaping eligible printings.
+- TCG cards use frozen source artwork, type-specific layouts, masks, and rarity effects; missing source data remains clearly unavailable.
+- Collection Room now uses saved physical copies and placements, with clearer inventory and shop flows, validated floor and wall placement, and adjustable graphics quality.
+- Collection Room parcel openings now support reliable completion and retry recovery during slow reveal preparation.
+- Large Collection Room booster sets now open faster by preparing only the cards you pull.
+- Booster orders now save a compact delivery summary while keeping the exact frozen pull pool on the order line, reducing checkout work for large packs.
+- Large library, collection, and Loading Bay views now search and page through full datasets while incrementally loading cards and thumbnails.
+- Funscript output now coalesces acknowledged device commands and smooths fast movements; video loop and volume preferences persist across sessions.
+- Theme packs apply custom artwork and appearance colors across more screens; readability and Simplified Chinese coverage have expanded.
+- Compatible video streams are remuxed for browser playback before falling back to re-encoding; phone MOV playback skips unsupported auxiliary audio tracks, and loading explains the one-time playback copy.
 
 ### Fixed
-- Fixed hover video previews holding files and gallery folders open after the preview ends, so Relocate and folder renaming can proceed; move failures now show their specific errors.
-- Fixed Gallery View merge search so it finds matching galleries across the full library.
-- Fixed Relocate's Browse button by opening an in-app folder chooser instead of relying on a hidden Windows dialog.
-- Fixed Loading Bay new-creator imports silently failing when no destination folder was set; the destination can now be chosen in-app and import errors are shown.
-- Fixed the Collection Room rarity dropdown showing blank, unusable options in its native popup menu.
-- Fixed Hall of Fame identity text being truncated by the artwork clip during steep Collection Room focus-view rotations.
-- Fixed the HOF metal highlight lagging behind card rotation while dragging in the Collection Room focus viewer.
-- Fixed pointer-reactive HOF metal highlights staying aligned with the creator name while rotating cards in the Collection Room focus viewer.
-- Fixed weekly Hall of Fame cards so their SR print rarity persists through pack pulls and collection display.
-- Fixed All-Time Hall of Fame cards to display as SPR while Monthly cards remain UR, with matching frozen recipes.
-- Fixed full-video playback in the Collection Room card inspection view by using a reliable DOM video layer beneath the HOF frame effects.
-- Added a visible loading and failure state for full-video HOF card views while the browser starts or rejects the source.
-- Fixed Collection Room pack opening to consume serialized card payloads correctly, prevent legacy cards from entering pack pools, and suppress the subject outline only for Common cards.
-- Fixed Chloe theme readability for low-opacity inline labels in Settings, Help, Stats, and Erika AI.
-- Added: Theme packs can choose an Appearance preview image in the private editor, shown for inactive packs with aligned settings cards.
-- Changed: Funscript filters stay on one horizontal strip with compact overflow-safe controls, and Device Control supports right-click quick reconnect/disconnect with a timed failure indicator.
-- Changed: Chloe-compatible leather interaction states now cover Help, Settings, filter toolbars, and Funscripts controls where the pack texture is used.
-- Changed: Chloe-compatible theme-pack buttons now use distinct leather-tinted hover, active, focus, and pressed states without adding new premium texture assets.
-- Fixed: Collection Room navigation no longer crashes from a missing localized-text import.
-- Changed: Selection highlights remain transparent over thumbnails in Gallery, Image, and Video lists when theme-pack textures are enabled.
-- Changed: Funscript output now uses acknowledged device commands, latest-value coalescing, and MFP-matched curve samples for Intiface and The Handy, preventing stale backlogs and coarse fast sections.
-- Changed: Funscript playback now uses shape-preserving interpolation on a regular provider-aware clock, keeping fast script sections smooth instead of jumping between raw keyframes.
-- Changed: Dashboard duration labels now use the active locale safely without crashing when a time formatter is called without a translator.
-- Changed: Video playback now initializes its translation helper before rendering localized player actions and errors.
-- Changed: Video funscript stats, axis controls, and sync offset now share the bottom control band so the waveform and video retain more viewing space.
-
-- Fixed: Erika AI chat keeps its header and input inside the viewport when message history or theme artwork changes.
-- Changed: File curation now mirrors gallery curation with a reason row, matching run header, and full action footer.
-- Changed: Collection Curating now treats automatic gallery covers as valid, keeps the Vault name tied to the folder name, removes gallery tags from curation debt labels, and lets file curation create missing creators while showing each file's disk directory.
-- Added: Installed theme packs can bundle an optional local font that appears in Typography settings only while that pack is active.
-- Changed: Simplified Chinese now covers the Vault frontend, including Help, gallery and creator workflows, collection, device control, funscripts, companion, and statistics screens.
-- Added: Theme packs can set Vault-wide primary, secondary, and muted text colors in the private editor, with leather textures reaching Funscripts and Card Collection.
-- Fixed: Chloe filter toolbars now use the private editor's readable warm text colors across Galleries, Photos, Videos, and Creators instead of low-contrast gray.
-- Changed: Tiny 10px labels are now readable throughout the Vault, Device Control uses at least 16px text, and Card Collection opens with a more spacious header.
-
-- Added: Delete script playlists directly from the Funscripts sidebar.
-- Added: Import, update, select, and remove local character theme packs in Appearance, with responsive page and dialog artwork.
-- Added: Installed theme packs can texture panels and controls across the Vault, plus the sidebar, with editable local images and edge color.
-- Changed: The private theme editor previews local artwork and textures reliably, uses a native texture picker, and keeps its controls on screen when preview sizes change.
-- Changed: Character theme packs now support shared sidebar and heading artwork, Dashboard tools art, and empty-state artwork across pages.
-- Changed: The private theme editor can resize, mirror, and rotate each image.
-- Changed: Dashboard tile artwork stays anchored while moving or resizing it in the private theme editor.
-- Changed: Theme pack artwork supports precise position controls and Z depth in front of or behind Vault content, and Help heading artwork now uses the full top header.
-- Removed: The bundled character artwork and palette; character themes are installed from private local packs.
-
-- Fixed: Hall of Fame cards with missing crown artwork now use the winner's live profile avatar or a readable placeholder while retaining the original crown image record.
-
-- Changed: MKV videos with browser-compatible streams now prepare quickly without full re-encoding and show a loading message while preparing.
-
-- Changed: Foundation and September TCG releases now cover Scene, Gallery, Creator, Character, Cosplay, and Collab sources with canonical live-PFP identity cards and frozen portrait editions.
-- Changed: Bond and Hall of Fame cards now use the same fixed rarity mapping in every pack path, with their explicit rarity preserved during prelaunch rebuilds.
-
-- Changed: Rebalanced recurring Vault Credit income, quest rewards, and monthly release pack prices with deterministic persona simulation targets.
-- Changed: Help & Reference now documents current navigation, Library and Loading Bay workflows, Collection Curating, Stats, TCG V2 releases and economy, Collection Room, settings, and current quest rewards.
-
-### Fixed
-- Opening a photo no longer crashes the viewer because of a missing translation helper in the creator panel.
-- WD14 sexual classification now recognizes plain ratings and clearly clothed shirt evidence while preserving explicit/suggestive precedence.
-- The Vault theme preview now keeps its own violet accent when other palettes are selected.
-- Collection Room furniture now keeps all shelf and panel meshes visible from either side, with readable cabinet glass during placement.
-- Collection Room placement hitboxes remain raycastable without writing invisible depth over furniture geometry while arranging.
-- Collection Room placement wheel hover states now match each radial sector instead of applying one purple overlay across every action.
-- Collection Room placement wheel sectors now keep their radial wedge shape on hover, with accurate selection instructions below.
-- Collection Room placement wheel base sectors now use the same geometry as their hover states.
-- Collection Room placement action labels now sit outside clipped hitboxes so Return and Rotate remain fully readable.
-- Collection Room cards now open a clean dark focus stage with active idle foil VFX, unrestricted drag rotation, wide-range zoom, a clean two-sided card back, and Escape or X close while keeping the inventory selection intact without nested tilt clipping.
-- Collection Room inventory headers no longer show the stray decorative star.
-- Collection Room now labels black/white furniture variants explicitly and turns compact card stands to face the room in both placement and display rendering.
-- Collection Room inventory now uses a narrower responsive card grid, a larger selected-card preview, and static non-selected inventory cards.
-- Collection Room stand previews now face the room correctly, remain visible in the dark rail, and glass cabinets render without pane shadows or transparency depth artifacts.
-
-- Collection Room inventory now shows loading state/count placeholders instead of a false zero-card flash, and furniture previews use transparent cleaned assets plus real framed Vault-photo poster previews.
-- Collection Room inventory now opens sealed booster packs with large frozen card pools without exceeding SQLite query limits.
-- Collection Room placement rail now uses larger physical-item previews, supports mouse-wheel horizontal scrolling, and keeps the rail centered instead of expanding off-screen.
-- Collection Room Controls is now a readable key/action list, and parcel booster reveals return resolved card payloads directly so opening does not fail during a second detail lookup.
-- Collection Room poster previews now retain their assigned Vault image while moving, and placement-wheel hover feedback stays contained inside its action button.
-- Fixed Scene card masking so subject and background foil effects stay separated instead of applying an unmasked effect across the whole card.
-- Fixed R-card masked foil surfaces by applying each channel mask directly to its foreignObject surface.
-- Collection Room placement thumbnails no longer expand over the interface and block clicks, and their rail cards now keep readable names and proportions.
-- Collection Room card displays nested inside cabinets now follow their parent shelf when it moves or rotates, while remaining blocked from floor placement.
-- Collection Room wall posters now face into the room correctly on every wall instead of rendering edge-on at side-wall corners.
-- Collection Room placement now targets the full walkable floor, repairs stale pre-category wall placements, and no longer rejects new furniture because of legacy center-of-room wall items.
-- Collection Room placement now validates furniture against the authored apartment’s real wall faces and floor surfaces instead of rectangular room bounds.
-- Collection Room placement now clears stale movement input, keeps previews fully visible while intersecting room geometry, and reserves right-click for deselecting instead of selecting furniture.
-- Fixed library scans failing on moved or deleted media that still had Vault history or other database references.
-- Fixed file-level Collection Curating repeatedly reloading its queue instead of opening a file, and made large dump queues avoid an expensive random database sort.
-- Fixed the Glass theme showing its selected background image immediately and across every page.
-- Fixed quest completion rewards so the Quests page describes the real V2 booster products and Collection Room can open weekly protection tokens after choosing a published release.
-- Fixed WMV and other VLC/FFmpeg-compatible videos not playing in Chromium by adding cached browser-compatible playback.
-- Fixed booster pack reveals so mouse and touch swipes reliably advance the top card and expose the card underneath.
-- Fixed the Photos/Videos viewer overlay appearing beneath the library filter toolbar.
-- Fixed the legacy video-length repair control so it disappears after every video has a known duration.
-- Fixed Settings restoring the configured funscript library path and waiting for the replacement backend before reporting a restart complete.
-- Fixed the Videos sort menu so Length remains reachable in its own contained scroll area instead of being clipped or scrolling the whole page.
-- Fixed video cards so scanned durations are visible in a themed top-right badge, including an honest unavailable marker when a duration is missing.
-- Fixed Stats styling so accent surfaces, progress colors, and rarity/type accents follow the active Vault theme.
-- Fixed session statistics to use the browser's local timezone for date/hour buckets and to count multi-creator rows as one elapsed session.
-- Fixed Session History creator attribution so the "more" link opens the complete creator list and sessions can add or remove credited creators.
-- Fixed Session History edits after removing creators so only surviving session rows are updated.
-- Fixed the Session History "+N more" creator list so it opens inline instead of being clipped as a tooltip.
-- Fixed expanded Session History creator details so the list grows the row and keeps the date and Edit/Delete actions visible.
-- Fixed gallery multi-selection actions so context-menu operations apply to every selected file instead of only the right-clicked file.
+- Rating galleries from Gallery View now advances the daily Gallery judge quest and awards the correct rating XP.
+- Random Mix, Help achievements, and playlist deletion now use their translation helpers without undefined-variable errors.
+- Clicking a creator in any Hall of Fame period now opens their statistics without a translation error.
+- Session analytics include freshly recorded UTC activity without a timezone-dependent delay.
+- Hall of Fame awards closed periods in the background at startup and after midnight, keeping tracking active without delaying ranking requests.
+- In-app updates verify installer integrity, prevent duplicate downloads, preserve the installation folder, and detect completion after restart.
+- Hall of Fame creator rankings include every creator assignment and use consistent local-calendar period boundaries.
+- Scanning, moving, merging, deleting, and relinking now keep files and Vault records in sync, including locked files and offline library roots.
+- Loading Bay now retains files when deletion fails, shows actionable errors, and handles large queues and duplicate and video comparisons reliably.
+- Collection Room placement, pack opening, parcel delivery, and binder filing now preserve the correct physical inventory state.
+- TCG release generation and pack opening now enforce frozen eligibility and rarity rules, preserve earned cards, and report foil preparation failures.
+- Gallery, media, and creator dialogs and viewers now stay within the viewport and restore background scrolling correctly.
+- Session and quest history now use local-time boundaries and preserve creator attribution.
 
 ### Removed
-
-- Removed obsolete card-dismantling achievements and weekly quest, plus the dead tag-challenge spin reward.
-
-### Changed
-
-- Collection Room placement now uses a world-attached contextual action wheel tied to the live furniture preview, with working Place, Return, Rotate, and Deselect actions.
-- Collection Room placement now shows transparent furniture thumbnails in the item rail and separates selecting, locking, and committing an item into three explicit stages; Tab opens the mode without selecting anything.
-- Monthly TCG V2 releases now scale their base-card target from the published Foundation size, freeze the formula and economy modifier in each manifest, and show the calculation during release review.
-- Collection Room furniture now keeps floor-standing shelves free-placeable, wall shelves and posters wall-only, and card stands placeable inside authored shelf levels.
-- Card Collection now keeps Legacy cards outside current rarity/type categories and shows a Legacy scope only when legacy cards are owned.
-- Reconciled quest and achievement checks with current curation actions, local-time session behavior, and TCG V2 SR/UR/SPR card rarities.
-- TCG V2 releases now enforce scaled C/R/SR/UR targets and mint deterministic linked SPR parallels without making SPRs required for base completion.
-- TCG V2 release generation now swaps same-rarity candidates to satisfy the creator-diversity guard before publication.
-- Foundation now scales C/R/SR/UR and additive SPR supply from the approved release economy, ranks SPRs by personal engagement and resolved creator context, and appends linked SPRs at the six-cum milestone without replacing owned base cards.
-- Gallery View now remembers the last selected media sort when navigating between galleries.
-- Large gallery views now mount thumbnail tiles in incremental browse batches while preserving full-list search, selection, and viewer navigation.
-- Image viewers now remember the filmstrip visibility choice and resize the photo area around a separate thumbnail row.
-- Queue strips now stay expanded after hover and drag/drop until manually collapsed with the themed chevron control, while preserving horizontal scroll position.
-
-### Added
-- Gallery image context menus now offer Extract to gallery for single files and multi-selections.
-- Gallery view now supports sorting media by date modified.
-- Dashboard Collection Curating now offers a file-level mode for large mixed dump folders.
-- Script-first Funscripts collection with independent script playlists, metrics, compatibility filters, and manual tags.
-- Videos now have their own page module and can be sorted by length, with unknown durations kept at the end.
-- Session History now lets manual session entries credit selected creators, with searchable creator selection shared by add and edit flows.
-- Gallery detail now searches filenames in place, and image/video viewers persist readable per-file notes alongside ten cumulative-hover rating stars.
-- Help now documents a temporary `ollama pull --insecure` workaround for Hugging Face redirect errors while keeping the normal model download command as the recommended path.
-- ComfyUI images are now identified from embedded workflow metadata during import and automatically receive an `AI generated` provenance tag without running an AI tagger.
-- Character creation now searches both AniList and a no-key game-character catalogue, including titles such as Stellar Blade and Resident Evil.
-- Creators without a profile picture now automatically choose an existing portrait from their linked Vault media without background folder scanning.
-- Missing folders now has a one-click Resolve all action that scans online roots, relinks confidently moved folders, removes genuinely stale records, and protects offline libraries.
-- Collection Room now has a persistent I-key/HUD inventory for placing exact owned furniture instances and opening collected parcels or earned booster tokens through the authoritative pack reveal.
-- Analytics trend graphics now fill their allocated compact chart space without changing the surrounding layout.
-- Analytics now has a page-wide range control with in-place loading, undistorted labeled charts, clear new-versus-rewatched history, distinct personal bests, a balanced timing-and-edges row, and all session summary metrics removed from Overview.
-- Long AI-tagging runs can now be paused, survive a Vault restart, and resume from their last committed checkpoint.
-- Settings now identifies unavailable gallery folders with safe Relink and Remove controls while protecting offline library roots.
-- Collection Room furniture is now purchased into a persistent inventory and manually placed, moved, rotated, returned, undone, and redone without resizing.
-- The Collection Room door now opens a persistent weekly visitor scene with authored dialogue, protected card deals, requests, and immutable deal history behind the economy approval gate.
-- Visible Collection Room cards now use their authoritative faces, separated masks, rarity-specific WebGL foil, angle-reactive Gallery artwork, and independent protective layers without flat premium fallbacks.
-- The optional Collection Room now provides a first-person 3D home for persisted pack ordering, parcel opening, copy placement, binders, cabinets, posters, and display layouts.
-- The optional Collection Room asset module now ships a verified 57-asset Blender environment with detailed technology, mailed parcels, lighting, and bedroom decor.
-- Weekly trader visits now persist deterministic adult visitors, frozen gated stock and requests, shared valuation audits, reservations, and atomic buy, sell, barter, and transaction ledgers behind simulation approval.
-- Collection Room state now persists revision-safe layouts, owned display-item instances, and delayed mailed pack parcels whose cards are granted only after collection, placement, and atomic opening.
-- TCG cards now have durable physical-copy identities, normalized binder locations, atomic legacy reconciliation, and explicit ledger audit and repair controls.
-- Collection Room now has an optional versioned module manager with resumable downloads, integrity verification, repair, updates, cancellation, and collection-safe uninstall.
-- Collection filters now include searchable creator, character, and binder-assignment selectors with inherited source relationships.
-- HOF and Bond card records now expose their earned-event ownership policy and canonical event detail in the collection API.
-- Binder shelves now paginate after nine binders, and cover customization offers a searchable Vault-photo chooser with direct drag-and-drop replacement.
-- All-Time Hall of Fame now records durable champion reigns and mints a distinct SR-or-higher card for each lead transition.
-- Favorite tags can now be curated in Tag Manager and contribute a deterministic R or SR floor to half of matching future printings.
-- New TCG printings now freeze an auditable personal-value score built from viewing time, duration-normalized video replays, sexual engagement, ratings, favorites, favorite creators, and favorite tags.
-- Card Collection now includes a physical binder cabinet with purchasable material covers, custom Vault-photo crops, animated page spreads, card pockets, range selection, and bulk binder placement.
-- The Founder's Catalogue now contains twenty compact, memorable sets built from galleries, years, card formats, rarity finishes, and erotic collection themes.
-- TCG V2 now has a release-aware collection workspace with frozen Sets, truthful missing slots, full card records, independent Exposure and Sexual Intensity classification, acquisition history, source provenance, Binders, Boosters, Workshop customization, and Advanced Mode controls.
-- Release products now use metallic collage booster envelopes that cycle real eligible artwork, disclose guarantees and pool integrity, and support persisted pack openings and targeted weekly protection rewards.
-- Missed monthly releases now resume sequentially in the background from oldest to newest, stopping safely on failed validation or Manual Review.
-- Hioshi and Narga UR Scene cards now test source-aligned foil surface maps generated from image detail and the existing packed subject masks.
-- TCG V2 now publishes a finite 60,000-card Foundation catalogue with stable collector numbers and persisted C/R/SR/UR rarity, scarce qualifying SPR parallels, a real ten-card Permanent Vault Booster, approved V2 faces throughout pack reveals and the collection, and visible placeholders for upcoming release, limited, and weekly-protection packs.
-- Starting TCG V2 now safely preserves every previously owned card as an internally marked Legacy card, hides Legacy cards by default behind a conditional collection toggle, and uses neutral placeholder booster artwork until the final pack designs are ready.
-- TCG V2 now has one safe card-face adapter that routes real persisted Scene, Character, Cosplay, Collab, Creator, Gallery, Bond, and Hall of Fame contracts into their approved renderers without inventing missing art, metadata, or signatures.
-- Every TCG V2 card type now shares one packed-mask contract with independent subject, background, and edge effect surfaces for future rarity-specific foil, while failed masks retain a seamless whole-card fallback; Hall of Fame mementos now use their approved regal-gold frozen renderer on the same system.
-- Bond cards are now earned at five real cum logs and evolve through authenticated 15 and 25 milestones, using the accepted pearlescent-hearts design with aligned face-safe corner medallions and independent art, mask, frame, heart, text, signature, count, and future foil layers while leaving unknown legacy crossing dates honestly blank.
-- Gallery cards now have a frozen scrapbook-Polaroid renderer that preserves the real gallery, optional assigned creator and period, source photo, palette, rarity, and mint ID as independently effectable layers.
-- Gallery cards now fan up to three additional frozen photographs behind the hero print, using only real images from that gallery to make each card read as a complete photoset.
-- Creator cards now have a frozen editorial portrait renderer with a vertical archival rail, prominent creator subtype and card ID, eligibility limited to cosplayers, e-thots, artists, actresses, and Model/Other entities, optional real provenance fields, type-specific rarity, serial, and separate future foil/signature layers.
-- Collab cards now have a layered physical gold gift-frame renderer and frozen multi-creator recipe that preserves verified participant, gallery, period, source, palette, rarity, and signature data.
-- Cosplay cards now have an accepted-style comic-print renderer with frozen creator, character, gallery, period, palette, source, and modular hero-motif data for real creator×character cards.
-- Character cards now have a deterministic mint-preparation bridge that prefers explicitly linked full-resolution collection images, safely falls back to the character avatar, and freezes the source, palette, text, and extraction decision into the card record.
-- The TCG V2 asset system now includes forty transparent rarity labels: C, R, SR, UR, and SPR rendered in the distinct accepted style of each of the eight card types, with matching masks for coded foil effects.
-- Galleries, Photos, and Videos now have a compact tag-filter popover with separate include/exclude groups, All/Any matching, category-aware autocomplete, stable shareable filters, and theme-independent semantic colors.
-- Viewer hotkeys can now open the slideshow Keep Going menu, hide Erika's bubble, or enable and disable Erika entirely.
-- Loading Bay can now import complete gallery folders into a creator without flattening them, preserving nested folders, sidecars, and the folder-as-gallery structure.
-- Loading Bay now has permanent ignore, temporary hide-until-next-scan, explicit permanent deletion, playable video previews, duplicate-only filters, exact/visual match explanations, and bulk duplicate actions.
-- Loading Bay duplicate comparisons now show resolution and file size on both sides, plus duration for videos; archive inspection has a visible elapsed-time progress bar.
-- Loading Bay gallery cards now open into a paginated file inspector, cycle available covers on hover, and explain when video poster generation failed.
-- Loading Bay can now import files and complete galleries without a creator into a configurable Unsorted folder for later in-app relocation.
-
-### Changed
-- Sidebar navigation now uses animated collapsible Goon, Social, Collect, and Tools groups; Social sits under Goon and the standalone Device Off/On control is replaced by a live green check indicator on Device Control.
-- Funscripts now use EroScripts-style Max Speed/Avg Speed metrics, inline animated tag and playlist controls, tag search/autocomplete, ratings, a reorderable queue, sticky collection columns, and a collapsible edge-tab player.
-- Funscript filters and sorting now use animated Vault-native dropdowns with rating sorting, and the queue is wider with readable multi-line titles; misleading universal vibrator badges are removed.
-- Funscripts now follow the active Vault theme, support native drag-and-drop queue ordering, use a searchable scrollable playlist picker, and match EroScripts' peak/action speed statistics.
-- Funscript accents now follow the selected Vault palette, and every collection metric header plus the sort control supports reversible ascending/descending sorting.
-- GalleryView now keeps rapid viewer arrow navigation from triggering image zoom and adds a one-click Reshuffle control for Random sorting.
-- Library scans and Loading Bay now ignore hidden/system files and metadata folders by default, with an explicit Scanner setting to include them.
-- File-level creator assignment now stays attached to the selected image or video, refreshes GalleryView coverage immediately, and keeps many-creator summaries contained in a scrollable card grid.
-- Viewer creator controls now use compact theme-aware labels: `+file` is removed, the action reads `Assign creator`, and clearing uses a compact `Clear` control.
-- AI hair and eye colors now require stronger confidence, preserve multiple strong colors for detected collabs, and support per-tag confidence overrides in Tag Manager with the global threshold as fallback.
-- Single-creator GalleryView cards now grow to show the creator name before falling back to constrained truncation when space is genuinely limited.
-- Dashboard Random Mix, Stats, and Daily Spin overlays now lock the underlying viewport; Daily Spin appears under Tools and becomes unavailable after that day's spin is consumed.
-- GalleryView creator summaries now use visual creator cards with real file-coverage counts and percentages, without tag chips or overflow menus.
-- Image and video viewers now use 16px minimum readable controls, with existing 16px viewer text promoted to 18px.
-- Gallery editing now uses the real folder rename flow, keeps media handles from blocking Windows renames, and updates image and funscript paths immediately.
-- GalleryView toolbar controls now share the Filename control's 16px baseline, replaces the gallery cum control with a Send to Playlists action, and keeps folder metadata synchronized after renames.
-- The former multi-panel wording is now presented as Playlists throughout the Vault while retaining the legacy route for existing links.
-- Gallery selection mode can now add gallery-level tags to every selected gallery.
-- Creator edit dialogs now render in a viewport-level portal so the profile page cannot scroll underneath or carry the dialog away during page transitions.
-- Gallery, image, and video selection menus now stay above the bulk-action bar, remove the redundant gallery context-menu selection entry, and preserve Shift-click range selection when bulk mode starts from a context menu.
-- Gallery, image, video, and creator filter toolbars now use consistent 16px text and rounded controls, including search fields.
-- Collection Room now offers explicit High, Medium, and Low graphics budgets for card texture resolution, anisotropy, shadows, and render resolution.
-- Collection Room card snapshots now use quality-tier resolutions and release distant foil masks to reduce GPU memory and upload work.
-- Purchased booster packs now retain a deterministic set of product-specific artwork snapshots so separate packs do not all display the same face.
-- Collection Room now shows every active booster delivery and includes mailed or ready packs in the unopened-pack summary.
-- Collection Room poster prints now fill the measured 0.66 × 0.96 m inner frame aperture, preserving source aspect ratio with only the required pure-black matte.
-- Collection Room compact stands now render card artwork on the correct display face while preserving the holder's established lean and placement.
-- Collection Room crouch control now uses the C key.
-- Collection Room compact-stand card artwork now flips on its local horizontal axis while preserving its established placement.
-- Collection Room booster piles now use thin flat wrapper geometry resting inside the blue box, with later packs stacked at varied angles.
-- Collection Room posters now remove the authored glass pane, preserve source colour, and use matte-black aspect-ratio fill only where needed inside the frame.
-- Collection Room booster packs now preserve a purchased artwork snapshot on the physical sealed pack.
-- Collection Room compact stands now render the card face reliably in the authored holder.
-- Collection Room targeting now uses the visible mesh reticle, with recessed posters, correctly positioned card stands, and reliable card interaction prompts.
-- Collection Room booster deliveries now display the real Vault wrapper artwork in the blue box and use booster-pack language throughout the player-facing UI.
-- Collection Room card inventory details now expose richer card metadata and inspection information.
-- Collection Room movement now supports vertical lift and crouch controls, with card inspection locking movement while allowing hover-effect rotation.
-- Collection Room card stands now keep card bottoms visible and correctly face their displayed cards, while posters stay inside their frames with preserved aspect ratios and premium black letterboxing.
-- Collection Room deliveries and the blue box are now booster-pack-only; furniture purchases go directly to Furniture Inventory for placement.
-- Collection Room inventory and furniture shop cleanup removes the summary tagline, collapses duplicate furniture products, and gives furniture previews more room.
-- Collection Room furniture previews now use a seamless dark studio background with subtle grounding shadows and accessible loading failures.
-- Collection Room Booster Packs now show each delivered product's real wrapper artwork and remove the furniture strip from the pack browser.
-- Collection Room display previews now keep cards framed cleanly on their authored stands.
-- Collection Room inventory now uses a consistent dark-glass cards, packs, and furniture workspace with clearer owned-item previews and inspection actions.
-- Creator, gallery, photo, video, and gallery-detail toolbars now keep controls in the same row at a consistent height.
-- Booster reveals now advance only by physically dragging the top card left or right, with no substitute direction buttons.
-- Help now documents the current C/R/SR/UR/SPR card system, expanded Hall of Fame, Recap, Stats and Analytics views, and the Playlists experience, with a proper trading-cards icon for Cards.
-- Collection Room computer hardware now rests on the authored desk surface, shows a lightweight Vault OS screen, and keeps physical cards stable while room state refreshes.
-- Collection Room computer tabs now share a persisted dark/light theme, and the furniture shop presents a distinct recognizable preview for every real catalogue asset.
-- Collection Room furniture shop controls now keep wallet, filters, summaries, and finish selection aligned and readable across desktop and narrow layouts.
-- Analytics chart axis titles now stay clear of the vertical tick labels, including longer metric names.
-- Analytics compact trend charts are now taller so percentage axis labels have comfortable separation.
-- AI tagging now streams media in bounded chunks, prefetches original-file decoding, batches GPU inference, and extracts video samples in one FFmpeg process.
-- The Collection Room is now a bright 12-by-12-metre home with a sparse permanent layout, aligned windows, a usable kitchen, clear routes, distinct materials, corrected computer and store surfaces, crisp binders, safe menu exits, and inspection-only live foil.
-- Binder-assignment filtering now supports an explicit Unassigned option alongside current binders.
-- Binder cover selection now searches and paginates through the entire owned-card collection instead of stopping after the first 250 cards.
-- Release and set browsers now use player-facing publication wording with taller set previews and larger multi-photo release detail previews.
-- Binder customization now lives on each owned binder, while new binders are purchased from Shop with Vault Credits and displayed directly inside the physical shelf bays.
-- Card Collection now opens to All Cards and uses rounded Vault-native navigation, identifiable missing slots, animated card inspection, physical page-turning binders, streamlined floating booster products, and viewport-locked pack reveals.
-- Published release boosters now identify their release pools clearly and become purchasable after automatic validation instead of exposing simulation approval jargon.
-- Booster openings now use a correctly sized split wrapper, full-size rapid card extraction, click-to-turn face-up pile, persistent-stack swipe reveals, rarity-ordered pulls, skip-to-grid, and multi-pack progression.
-- Strong personal engagement now protects future printings from Common and can force SR or UR rarity, while exceptional eligible sources can receive linked SPR signature printings without changing pack odds.
-- Card Collection now follows the active Vault appearance, uses a compact Vault-native navigation bar, folds creator, character, Hall of Fame, Bond, missing, and duplicate browsing into All Cards, and presents releases and boosters as large visual products.
-- Booster pack availability now distinguishes unscheduled limited products and weekly quest rewards, while drag-to-tear controls remain interactive during opening.
-- Monthly release generation now batches evidence across large catalogs and deterministically satisfies the 50 UR / 120 SR release floors without changing any card's published rarity.
-- TCG V2 published rarity is immutable: legacy card leveling, rarity evolution, Prestige, and card crafting are retired in favor of duplicate-derived Shards and physical collection customization.
-- R, SR, SPR, and UR rarity artwork now behaves as escalating emissive material with breathing inner cores, expanding bloom, luminance pulses, and restrained white shimmer instead of passive hue-cycling gradients.
-- Gallery SR and SPR cards now reveal alternate photos by viewing angle; R uses the separated Cosmos textures without tinting the source photo, SR backgrounds layer fixed Cosmos and Glitter over a densely repeating tilt-reactive metal surface without touching subjects, and animated GIF sources remain unmasked.
-- R, SPR, and UR rarity artwork now cycles through independent side-to-side color and brightness sweeps; Gallery UR photographs retain only the clean rainbow finish while SPR frame assets gain a separate light-reactive paper grain.
-- The revised source-aligned UR finish now applies automatically to every reliably masked non-Gallery UR; Gallery URs remain reserved for their separate multi-photo treatment.
-- SPR backgrounds now follow the complete VMAX interference stack, staying restrained at rest and blooming through both texture passes as the card tilts.
-- UR Full-Art cards retain their exclusion shimmer without the former rectangular boundary, and R-or-higher rarity letters keep a permanent animated rainbow finish.
-- UR radial lighting now remains full-card sized while tracking the cursor, eliminating its translated tile edge without dropping any foil pass; rarity-letter rainbows are clearer at rest.
-- UR Full-Art gradients now move on bounded, non-tiling surfaces, deliver stronger chroma through a clearer overlay, use seamless card-spanning light falloff, and reveal a finely repeated, light-reactive physical texture behind the subject.
-- R, SR, SPR, and UR rarity letters now carry an always-moving, tilt-reactive alpha-clipped rainbow shine across every card type; UR Gallery cards reveal two additional real photos by viewing angle, and Scene signatures sit in the open lower-art area.
-- SPR signatures are larger and their finer repeating texture is slightly softer; UR backgrounds now use the reference Full-Art gradient hierarchy with the dedicated metal texture and improved art visibility.
-- All-Time Hall of Fame finishes now preserve the source photo's original contrast and color while retaining their opaline material treatment.
-- TCG V2 cards now use cursor-reactive physical finishes: reference-tuned Cosmos R with a maskless fallback, tilt-weighted layer-separated SR with base-light-only subjects, balanced masked SPR texture, slower translucent UR foil, independently reactive full-alpha frame and rarity artwork, source-matched Scene outlines, mandatory handwritten neon SPR signatures on existing cards, and a smaller Gallery hero print that reveals its photo stack.
-- Legacy Standard and Premium generators can no longer service the TCG V2 shop; earned old pack tokens convert to Permanent Vault Boosters while unpublished release packs remain unavailable instead of minting old cards.
-- The former Goon card domain is now Bond everywhere—storage type, recipes, milestones, IDs, filters, showcase slots, UI, tests, and documentation—with existing owned cards migrated automatically without losing progress.
-- Hall of Fame cards now preserve one approved layout while their real winning period determines the physical honor treatment: one-star bronze Daily, two-star silver Weekly, three-star gold Monthly, and four-star opaline All-Time.
-- Hall of Fame cards now feature a dedicated honor plaque and larger, clearer period and card-code lettering.
-- Collab cards now reserve their lowered top heading for verified assigned characters, omit it when none exist, and keep gallery names out of that field.
-- Cosplay cards now identify the cosplay itself: the franchise owns the top label and the banner names the creator-character pairing once, without the redundant generic creator role.
-- Character cards now reserve the pop-art cutout for stable, compact, well-framed subjects and preserve small, hazy, irregular, or unstable silhouettes with the full-bleed fallback.
-- Character cards now use a palette-matched pop-art cutout when extraction is reliable and the approved full-bleed layout when it is not, with independent future foil hooks for the background, subject, frame, rarity, signature, and orb.
-- Scene cards now have a production-ready composer with readable live mint data, accepted type-specific rarity typography, separate foil/signature layers, hybrid subject extraction for reliable two-color outlines, and an automatic full-card fallback that keeps failed masks mintable.
-- The new TCG character template now uses a properly scaled modular orb whose housing, icon, glass, and foil surfaces remain independent, with nine consistently sized icon choices.
-- Slideshow and multi-panel fullscreen controls now hide while idle and return on mouse movement, with a larger video-labelled funscript sync control.
-- Dashboard favorites, discovery, and recently added rows now fill their available width with as many cards as fit without crossing into the sidebar.
-- **Card classes are now C / R / SR / SPR / UR** — five bands instead of four. SSR is renamed **SPR**, and a new **C** band sits below R, so the bottom of a tier reads as common rather than every card being at least Rare. Classes are still ranked within each tier, so a Core-UR remains its own chase. Existing cards are re-scored automatically.
-- Loading Bay now fully follows appearance palettes, including dedicated frosted shells, cards, backdrops, and comparison modals for the Glass theme.
-- Loading Bay duplicate previews use a clearly labelled, full-size side-by-side comparison again, and video previews now stay contained below the modal header.
-- Loading Bay results are now filtered, sorted, and paginated by the server with infinite scrolling, so every pending file and gallery remains reachable instead of stopping at 500.
-
-### Fixed
-- Creator profile avatar lightboxes now portal to the viewport and keep the underlying page locked while open.
-- Factory reset now removes the complete collection database and thumbnail cache, waits for the old process to release the server port, and reconnects only after a genuinely new backend instance is online.
-- Gallery title renaming no longer fires a false failure after a successful Enter-and-blur submission.
-- Gallery merges now reconcile files already present in the target folder, retire the stale source gallery, and report the reconciliation instead of leaving the database incomplete.
-- Gallery merges now move each file exactly once, retire replaced database rows, preserve video funscript links, and keep skipped or missing files in their source gallery instead of creating filesystem/database mismatches.
-- Collection Room wall-mounted posters and furniture now accept ray hits on the authored interior wall envelope, including the PC area, while retaining wall-attachment and footprint checks.
-- Booster Packs inventory previews now honor each sealed pack's frozen purchase-time artwork instead of reusing one shared collage.
-- The gallery zip-export (and Relocate custom-destination) folder picker now opens on top of other windows instead of appearing behind them.
-- Disk-backed gallery and media deletion now handles transient file locks, clears every dependent history/card/playlist link, and processes bulk video removal as one visible operation instead of silently failing.
-- Bulk tag dropdowns now layer above gallery and media cards, so suggestions remain usable at the edges of dense grids.
-- Gallery, photo, video, and creator sorting now matches the surrounding toolbar controls and follows the active Vault theme.
-- Character import now uses the reliable public AniList character catalogue instead of the repeatedly unavailable Jikan/MAL path.
-- Creator body measurements now use the simple `91-61-91` example without extra explanatory wording.
-- Country flags now cover every selectable country, including Latvia.
-- Creator and other modal overlays now lock background scrolling and restore it cleanly when they close; card inspectors now cover the full viewport.
-- Emergency Stop now halts each Intiface device's outputs without dropping its connection, so playback can restart immediately.
-- Deleted folders no longer leave browsable broken galleries, while manually renamed folders are relinked without losing gallery or image metadata.
-- Collection Room now opens with clean interior framing, safe streamed-asset disposal across quality changes, authoritative physical-copy binder filing, PC-only purchases, and visible carried and placed parcel states.
-- HOF and Bond cards are excluded from every release and booster eligibility pool, including weekly protection, and cannot be dismantled through any card endpoint.
-- Daily and weekly quest completion now awards current V2 pack tokens without changing legacy standard or premium pack counters.
-- Booster reveals now prepare one mask-ready face synchronously across release and Permanent products, retry failed inference on a clean CPU session, and expose readiness errors instead of publishing silent flat static foils.
-- Binder customization now opens independently from the binder cover instead of opening the binder.
-- Binder and release browsing now keep page navigation stable, align binders to cabinet bays, and remove redundant preview labels.
-- Booster reveals now prepare source-aligned foil maps for usable non-gallery UR cards while preserving Gallery UR texture behavior.
-
-- Booster purchases now show themed indeterminate preparation feedback while foil masks are built, and pack wrappers use transparent cutouts without opaque canvas residue.
-- Booster pack products and the opening reveal are now larger and card-proportioned, with a smooth wrapper fade after extraction.
-- Booster reveals now prepare and serialize subject masks before displaying foil cards, pack probabilities use a readable disclosure instead of raw JSON, and card audits provide a direct return to card details.
-
-- R cards now preserve the source photo's color and contrast under a localized neutral plastic reflection instead of flooding the full card with tinted glare.
-- UR foil-map prototypes now keep subjects clear with only a faint physical response, a subtle foreground lift, and softened moving gradient boundaries.
-- UR card foil now preserves the direct Pokemon V Full-Art behavior while compositing it translucently over the source image and using its texture as a cursor-lit physical specular map.
-- SR, SPR, and UR rarity badges now retain their original full-color artwork under a clearly reactive alpha-clipped foil sweep instead of bleaching most letters white.
-- Generated SPR signatures now use the locally bundled Mr De Haviland script with their existing palette-matched neon foil treatment.
-- Restored mask-separated UR and SPR card finishes and made cached mask files read-only during card viewing, preventing dev and installed builds from silently rewriting shared masks.
-- Prevented legacy rarity maintenance from scanning the full media library and stalling application startup.
-- The development launcher now waits for the backend health check before starting Vite, preventing slow database startup from becoming a wall of misleading proxy errors and stopping cleanly when the backend genuinely fails.
-- Video volume now stays at the last chosen level across every video player until it is changed again.
-- Video period choices now respect the Funscript-only filter instead of counting unscripted videos.
-- Pack opening now covers the whole screen instead of being trapped inside the page area, so cards are no longer cut off with the shop showing through underneath.
-- Loading Bay keeps files visible and reports the exact error when permanent deletion fails instead of silently dropping the entry.
-- Loading Bay now repairs legacy duplicate evidence instead of showing `None/64`, always loads the original Vault thumbnail in comparisons, keeps the matched original visible in regular previews, and gives video previews an explicit Back to Loading Bay control.
-
-### Removed
-- The redundant display-name rename action was removed; gallery renaming now consistently means renaming the folder on disk.
-- Obsolete Legacy cards and their owned copies were removed while current Vault TCG cards remain intact.
+- Removed the unused trader profiles and placeholder portrait entries from the active roster.
+- Retired card evolution, Prestige, and crafting paths for published TCG V2 cards; duplicates now support Shards and physical customization.
+- Removed obsolete dismantling and tag-challenge rewards, plus the separate gallery display-name rename action.
 
 ## [1.8.0] - 2026-08-13
 

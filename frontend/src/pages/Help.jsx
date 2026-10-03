@@ -573,6 +573,7 @@ function BossQuestTable({ rows }) {
 }
 
 function AchievementsContent() {
+  const t = useT()
   const groups = [
     {
       label: 'First-time milestones', color: 'var(--c-green)', items: [

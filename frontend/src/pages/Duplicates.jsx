@@ -832,8 +832,8 @@ export default function Duplicates() {
   const startMutation = useMutation({
     mutationFn: () => dedupApi.computeHashes(),
     onSuccess: () => {
-      qc.invalidateQueries(['task-queue'])
-      qc.invalidateQueries(['dedup-stats'])
+      qc.invalidateQueries({ queryKey: ['task-queue'] })
+      qc.invalidateQueries({ queryKey: ['dedup-stats'] })
       refetchStatus(); refetchStats()
       toast.success(t('Building hash index — queued in Task Queue'), { duration: 4000, icon: '🔍' })
     },
@@ -842,7 +842,7 @@ export default function Duplicates() {
 
   const cancelMutation = useMutation({
     mutationFn: () => tasksApi.cancelCurrent(),
-    onSuccess: () => { qc.invalidateQueries(['task-queue']); refetchStatus(); toast(t('Cancelled'), { icon: '✋' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['task-queue'] }); refetchStatus(); toast(t('Cancelled'), { icon: '✋' }) },
   })
 
   const [autoSearched, setAutoSearched] = React.useState(false)

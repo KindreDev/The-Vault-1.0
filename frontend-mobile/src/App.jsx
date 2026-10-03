@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { hasServerBase } from './lib/server.js'
-import { gamiApi, systemApi } from './lib/api.js'
+import { gamiApi, systemApi, tasksApi } from './lib/api.js'
+import queryClient from './lib/queryClient.js'
+import { createTaskRefreshTracker } from '../../shared/queryRefresh.mjs'
 import { useVaultStore } from './store/vault.js'
 
 import ServerSetup from './components/ServerSetup.jsx'
@@ -31,6 +34,24 @@ export default function App() {
   const [phase, setPhase] = useState(hasServerBase() ? 'verifying' : 'setup')
   const setProfile = useVaultStore(s => s.setProfile)
 
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => gamiApi.profile().then(r => r.data),
+    enabled: phase === 'ready',
+  })
+  useEffect(() => { if (profile) setProfile(profile) }, [profile, setProfile])
+
+  const { data: tasks } = useQuery({
+    queryKey: ['task-queue'],
+    queryFn: () => tasksApi.queue().then(r => r.data),
+    enabled: phase === 'ready',
+    retry: false,
+    refetchInterval: query => query.state.data?.current || query.state.data?.queued?.length ? 1200 : 8000,
+  })
+  const taskRefresh = useRef(null)
+  if (!taskRefresh.current) taskRefresh.current = createTaskRefreshTracker(queryClient)
+  useEffect(() => { void taskRefresh.current(tasks).catch(() => {}) }, [tasks])
+
   // On launch, confirm the stored server is actually reachable. If the PC is off
   // or its IP changed, this fails fast (6s timeout) and drops to the setup screen
   // so the user can re-enter the address instead of staring at a dead app.
@@ -47,7 +68,6 @@ export default function App() {
   useEffect(() => {
     if (phase !== 'ready') return
     gamiApi.login().catch(() => {})
-    gamiApi.profile().then(r => setProfile(r.data)).catch(() => {})
   }, [phase, setProfile])
 
   // Android hardware back button → browser history back.

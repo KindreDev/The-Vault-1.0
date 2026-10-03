@@ -17,8 +17,7 @@ router = APIRouter()
 
 
 def _launch_in_thread(fn, *args):
-    t = threading.Thread(target=fn, args=args, daemon=True)
-    t.start()
+    return task_queue.launch_background(fn, *args)
 
 
 # ── Intake roots ───────────────────────────────────────────────────────────────

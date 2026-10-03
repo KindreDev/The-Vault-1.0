@@ -19,6 +19,7 @@ import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowC
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
+import { useViewerDataSync } from '../hooks/useViewerDataSync'
 import ImageContextMenu from '../components/ImageContextMenu'
 import RelocateModal from '../components/RelocateModal'
 import AvatarFramePicker from '../components/AvatarFramePicker'
@@ -551,7 +552,13 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
   const qc              = useQueryClient()
   const t               = useT()
-  const image = images[idx]
+  const queuedImage = images[idx]
+  const { data: currentQueueImage } = useQuery({
+    queryKey: ['image', String(queuedImage?.id)],
+    queryFn: () => imagesApi.get(queuedImage.id).then(response => response.data),
+    enabled: Boolean(queue && queuedImage?.id),
+  })
+  const image = queue ? (currentQueueImage ?? queuedImage) : queuedImage
 
   // Tell the app what's on screen, so Edge Mode and the log-cum hotkey know
   // what to credit. Cleared on unmount so a closed viewer stops counting.
@@ -612,6 +619,9 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
       }
     }
   }, [image?.id])
+
+  useViewerDataSync(image, { setRating, setIsFavorite, setCumCount, setLocalTags,
+    setLocalCreators, setHasImageCreators, setFileCreatorIds, setNotes })
 
   const resetZoom = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
   useEffect(() => { resetZoom() }, [idx])
@@ -808,8 +818,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
     // A loaded queue can hold photos from other galleries, so credit the one
     // the image actually belongs to rather than the page's gallery.
     mutationFn: () => imagesApi.cum(image.id, { gallery_id: image.gallery_id ?? galleryId }),
-    onSuccess: () => {
-      setCumCount(c => c + 1)
+    onSuccess: response => {
+      setCumCount(c => response.data?.cum_count ?? c + 1)
       addXpToast('+5 XP')
       qc.invalidateQueries({ queryKey: ['gallery-images', String(galleryId)] })
     }
@@ -1935,7 +1945,7 @@ export default function GalleryView() {
   // selection. Right-clicking an unselected tile intentionally targets only it.
   const contextImages = imgCtx
     ? (bulkMode && selectedIdKeys.has(String(imgCtx.image.id))
-        ? displayedImages.filter(image => selectedIdKeys.has(String(image.id)))
+        ? selectedImages
         : [imgCtx.image])
     : []
   const contextBulkImages = contextImages.length > 1 ? contextImages : null
@@ -2029,9 +2039,8 @@ export default function GalleryView() {
   useEffect(() => { setGalleryRating(gallery?.rating ?? 0) }, [gallery?.rating])
 
   const rateGalleryMutation = useMutation({
-    mutationFn: (r) => galleriesApi.update(id, { rating: r }),
+    mutationFn: (r) => galleriesApi.rate(id, r),
     onSuccess: () => {
-      addXpToast('+3 XP')
       qc.invalidateQueries({ queryKey: ['gallery', id] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
     },
@@ -2061,19 +2070,21 @@ export default function GalleryView() {
     if (retagging || !gallery?.folder_path) return
     setRetagging(true)
     try {
-      await taggerApi.start({ scope: 'folder', folder_path: gallery.folder_path, threshold: 0.35, retag: true })
+      const { data: started } = await taggerApi.start({ scope: 'folder', folder_path: gallery.folder_path, threshold: 0.35, retag: true })
       // Poll until the tagger finishes
       if (retagPollRef.current) clearInterval(retagPollRef.current)
       retagPollRef.current = setInterval(async () => {
         try {
-          const { data } = await taggerApi.status()
-          if (!data.running) {
+          const { data } = await taggerApi.status(started.job_id)
+          if (data.job_id !== started.job_id || data.running || ['queued', 'running'].includes(data.status)) return
+          {
             if (retagPollRef.current) {
               clearInterval(retagPollRef.current)
               retagPollRef.current = null
             }
             setRetagging(false)
-            toast.success(t('Tagged {count} images', { count: data.tagged }))
+            if (data.status === 'failed') toast.error(data.message || t('Tagging failed'))
+            else if (data.status === 'done') toast.success(t('Tagged {count} images', { count: data.tagged }))
             qc.invalidateQueries({ queryKey: ['gallery-images', id] })
           }
         } catch {

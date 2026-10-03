@@ -1,3 +1,4 @@
+import { createUpdatePoll } from '../lib/updatePolling'
 import React from 'react'
 import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -2393,7 +2394,7 @@ export function Settings() {
     try {
       await systemApi.setConfig(storageInput.trim())
       setStorageState('saved')
-      qc.invalidateQueries(['system-config'])
+      qc.invalidateQueries({ queryKey: ['system-config'] })
       // Auto-restart so the new path takes effect immediately
       await systemApi.restart()
     } catch (err) {
@@ -2526,22 +2527,31 @@ export function Settings() {
     setUpdateState('downloading')
     setUpdateProgress(0)
     try {
-      await systemApi.installUpdate(updateInfo.download_url)
+      const response = await systemApi.installUpdate(updateInfo.download_url)
       if (updatePollRef.current) clearInterval(updatePollRef.current)
-      updatePollRef.current = setInterval(async () => {
-        try {
-          const r = await systemApi.updateStatus()
-          const s = r.data
-          if (s.status === 'downloading') setUpdateProgress(s.progress || 0)
-          if (s.status === 'installing') { setUpdateState('installing'); setUpdateProgress(100) }
-          if (s.status === 'error') {
-            setUpdateError(s.error || t('Installation failed.'))
-            setUpdateState('error')
-            clearInterval(updatePollRef.current)
-            updatePollRef.current = null
+      const stopPolling = () => {
+        if (updatePollRef.current) clearInterval(updatePollRef.current)
+        updatePollRef.current = null
+      }
+      const poll = createUpdatePoll({
+        api: systemApi,
+        targetVersion: response.data.version || updateInfo.latest_version,
+        onStatus: state => {
+          if (state.status === 'downloading') setUpdateProgress(state.progress || 0)
+          if (state.status === 'installing' || state.status === 'idle') {
+            setUpdateState('installing')
+            setUpdateProgress(100)
           }
-        } catch {}
-      }, 500)
+        },
+        onComplete: () => { stopPolling(); window.location.reload() },
+        onError: message => {
+          stopPolling()
+          setUpdateError(t(message || 'Installation failed.'))
+          setUpdateState('error')
+        },
+      })
+      updatePollRef.current = setInterval(poll, 1000)
+
     } catch (e) {
       setUpdateError(e?.response?.data?.detail || t('Update failed.'))
       setUpdateState('error')
@@ -2650,7 +2660,7 @@ export function Settings() {
   const { data: tagStatus } = useQuery({
     queryKey: ['ai-tag-status'],
     queryFn: () => taggerApi.status().then(r => r.data),
-    refetchInterval: (query) => (query.state.data?.running || aiTaskQueued) ? 1500 : 8000,
+    refetchInterval: (query) => (query.state.data?.running || aiTaskQueued || aiTaskRunning) ? 1500 : 8000,
   })
 
   const { data: tagModels, refetch: refetchTagModels } = useQuery({

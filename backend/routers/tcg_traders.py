@@ -1,6 +1,8 @@
-"""Thin deterministic weekly trader API."""
+"""Thin deterministic daily trader API."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,12 +15,14 @@ router = APIRouter(prefix="/api/tcg-traders", tags=["TCG traders"])
 
 class DialogueRequest(BaseModel): action: str
 class SellQuoteRequest(BaseModel):
-    visit_id: int; copy_ids: list[int] = Field(min_length=1, max_length=5); currency: str
+    visit_id: int; copy_ids: list[int] = Field(min_length=1); currency: str
 class BuyRequest(BaseModel): visit_id: int; inventory_id: int; currency: str = "credits"
 class BarterRequest(BaseModel):
-    visit_id: int; inventory_id: int; copy_ids: list[int] = Field(min_length=1, max_length=5)
+    visit_id: int
+    inventory_ids: list[int] = Field(default_factory=list)
+    inventory_id: int | None = None
+    copy_ids: list[int] = Field(default_factory=list)
     credits: int = Field(default=0, ge=0); shards: int = Field(default=0, ge=0)
-class CardRequest(BaseModel): visit_id: int; card_id: int
 class SimulationRequest(BaseModel):
     version: str; weeks_simulated: int = Field(ge=0); seed: str; report: dict
 
@@ -29,8 +33,59 @@ def _call(fn, db, *args, **kwargs):
         db.rollback(); raise HTTPException(400, str(exc))
 
 
+def _barter_inventory_ids(req: BarterRequest) -> list[int]:
+    """Keep legacy single-card clients working alongside multi-card clients."""
+    ids = list(req.inventory_ids)
+    if req.inventory_id is not None and req.inventory_id not in ids:
+        ids.append(req.inventory_id)
+    return ids
+
+
+def _payload_object(payload: Any) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Send the trader request as a JSON object.")
+    return payload
+
+
+def _positive_id(payload: dict, field: str, label: str) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise HTTPException(400, f"Enter a valid {label}.")
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"Enter a valid {label}.")
+    if parsed <= 0:
+        raise HTTPException(400, f"Enter a valid {label}.")
+    return parsed
+
+
+def _physical_copy_ids(payload: dict) -> list[int]:
+    raw = payload.get("copy_ids")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(400, "Choose at least one card copy.")
+    values = []
+    for value in raw:
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise HTTPException(400, "Card copy IDs must be whole numbers.")
+        try:
+            copy_id = int(str(value).strip())
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Card copy IDs must be whole numbers.")
+        if copy_id <= 0:
+            raise HTTPException(400, "Card copy IDs must be positive.")
+        values.append(copy_id)
+    return values
+
+
 @router.get("/current")
 def current(db: Session = Depends(get_db)): return _call(tcg_traders.current_visit, db)
+
+@router.get("/roster")
+def roster():
+    """Manifest-only profiles for previewing traders without opening a visit."""
+    try: return tcg_traders.public_trader_roster()
+    except (ValueError, KeyError, TypeError) as exc: raise HTTPException(500, str(exc))
 
 @router.get("/{visit_id}/dialogue")
 def get_dialogue(visit_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.dialogue, db, visit_id)
@@ -42,8 +97,8 @@ def post_dialogue(visit_id: int, req: DialogueRequest, db: Session = Depends(get
 def inventory(visit_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.trader_inventory, db, visit_id)
 
 @router.get("/{visit_id}/trade-candidates")
-def trade_candidates(visit_id: int, limit: int = 120, db: Session = Depends(get_db)):
-    return _call(tcg_traders.trade_candidates, db, visit_id, limit)
+def trade_candidates(visit_id: int, db: Session = Depends(get_db)):
+    return _call(tcg_traders.trade_candidates, db, visit_id)
 
 @router.post("/sell/quote")
 def sell_quote(req: SellQuoteRequest, db: Session = Depends(get_db)): return _call(tcg_traders.create_sell_offer, db, req.visit_id, req.copy_ids, req.currency)
@@ -51,14 +106,45 @@ def sell_quote(req: SellQuoteRequest, db: Session = Depends(get_db)): return _ca
 @router.post("/buy/offer")
 def buy_offer(req: BuyRequest, db: Session = Depends(get_db)): return _call(tcg_traders.create_buy_offer, db, req.visit_id, req.inventory_id, req.currency)
 
+@router.post("/barter/quote")
+def barter_quote(req: BarterRequest, db: Session = Depends(get_db)):
+    return _call(tcg_traders.quote_barter_offer, db, req.visit_id, _barter_inventory_ids(req), req.copy_ids, req.credits, req.shards)
+
 @router.post("/barter/offer")
-def barter_offer(req: BarterRequest, db: Session = Depends(get_db)): return _call(tcg_traders.create_barter_offer, db, req.visit_id, req.inventory_id, req.copy_ids, req.credits, req.shards)
+def barter_offer(req: BarterRequest, db: Session = Depends(get_db)):
+    return _call(tcg_traders.create_barter_offer, db, req.visit_id, _barter_inventory_ids(req), req.copy_ids, req.credits, req.shards)
 
 @router.get("/{visit_id}/requests")
 def requests(visit_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.list_requests, db, visit_id)
 
 @router.post("/requests")
-def request_card(req: CardRequest, db: Session = Depends(get_db)): return _call(tcg_traders.request_card, db, req.visit_id, req.card_id)
+def request_card(payload: Any = Body(default=None), db: Session = Depends(get_db)):
+    body = _payload_object(payload)
+    visit_id = _positive_id(body, "visit_id", "trader visit")
+    card_reference = body.get("card_id")
+    if card_reference is None or (isinstance(card_reference, str) and not card_reference.strip()):
+        card_reference = body.get("catalog_code")
+    if isinstance(card_reference, bool) or not isinstance(card_reference, (int, str)):
+        raise HTTPException(400, "Enter a card ID or catalog code.")
+    if isinstance(card_reference, str) and not card_reference.strip():
+        raise HTTPException(400, "Enter a card ID or catalog code.")
+    return _call(tcg_traders.request_card, db, visit_id, card_reference)
+
+
+@router.post("/grade/quote")
+def grade_quote(payload: Any = Body(default=None), db: Session = Depends(get_db)):
+    body = _payload_object(payload)
+    visit_id = _positive_id(body, "visit_id", "trader visit")
+    copy_ids = _physical_copy_ids(body)
+    return _call(tcg_traders.quote_grading, db, visit_id, copy_ids)
+
+
+@router.post("/grade")
+def grade_copies(payload: Any = Body(default=None), db: Session = Depends(get_db)):
+    body = _payload_object(payload)
+    visit_id = _positive_id(body, "visit_id", "trader visit")
+    copy_ids = _physical_copy_ids(body)
+    return _call(tcg_traders.purchase_grading, db, visit_id, copy_ids)
 
 @router.get("/{visit_id}/offers")
 def offers(visit_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.list_offers, db, visit_id)

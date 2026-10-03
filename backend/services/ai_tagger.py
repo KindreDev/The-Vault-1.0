@@ -1745,6 +1745,21 @@ def bulk_tag_images(
 
 
 # ── Model download worker (runs in background thread) ─────────────────────────
+def tag_job_state(job):
+    return dict(running=job.status == 'running', status=job.status,
+                paused=job.status == 'paused', cancelled=job.status == 'cancelled',
+                job_id=job.id, progress=job.progress, total=job.total,
+                tagged=job.tagged, skipped=job.skipped, errors=job.errors,
+                message=job.message)
+
+
+def _publish_queued_job(job):
+    with _lock:
+        if not _state.get('running'):
+            _state.update(tag_job_state(job), current_path=None, active_model=None,
+                          eta_seconds=None, items_per_second=None)
+
+
 def create_tag_job(db, scope: str, folder_path: Optional[str], threshold: float,
                    retag: bool, model_override: Optional[str], creator_id: Optional[int],
                    image_id: Optional[int] = None):
@@ -1757,10 +1772,7 @@ def create_tag_job(db, scope: str, folder_path: Optional[str], threshold: float,
     db.add(job)
     db.commit()
     db.refresh(job)
-    _set(running=False, status="queued", paused=False, cancelled=False,
-         job_id=job.id, progress=0, total=0, tagged=0, skipped=0, errors=0,
-         message=job.message, current_path=None, eta_seconds=None,
-         items_per_second=None)
+    _publish_queued_job(job)
     return job
 
 
@@ -1781,10 +1793,7 @@ def queue_resumed_job(db, job_id: Optional[int] = None):
     job.status = "queued"
     job.message = "Waiting to resume…"
     db.commit()
-    _set(running=False, status="queued", paused=False, cancelled=False,
-         job_id=job.id, progress=job.progress, total=job.total,
-         tagged=job.tagged, skipped=job.skipped, errors=job.errors,
-         message=job.message, current_path=None)
+    _publish_queued_job(job)
     return job
 
 
@@ -1836,7 +1845,6 @@ def run_tag_job(db, job_id: int):
         _control = "run"
     started_at = time.perf_counter()
     started_progress = job.progress or 0
-    tag_cache = {tag.name: tag for tag in db.query(Tag).all()}
     handler = _ScanLogHandler(logging.INFO)
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)
@@ -1844,6 +1852,12 @@ def run_tag_job(db, job_id: int):
     try:
         job.status = "running"
         job.message = "Preparing media…"
+        _set(running=True, status="running", paused=False, cancelled=False,
+             job_id=job.id, progress=job.progress, total=job.total,
+             tagged=job.tagged, skipped=job.skipped, errors=job.errors,
+             message=job.message, active_model=model_label, current_path=None,
+             eta_seconds=None, items_per_second=None)
+        tag_cache = {tag.name: tag for tag in db.query(Tag).all()}
         if not job.total:
             job.total = _job_query(db, job).order_by(None).count()
         db.commit()

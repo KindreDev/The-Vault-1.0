@@ -450,12 +450,17 @@ function AiTaggingSettingsModal({ onClose }) {
                             </button>
                             <motion.button whileTap={{ scale: 0.9 }}
                               onClick={() => toggleMut.mutate({ id: entry.id, enabled: !entry.enabled })}
-                              className="flex-shrink-0 w-10 h-5.5 rounded-full relative"
-                              animate={{ background: entry.enabled ? ACCENT : 'rgba(255,255,255,0.12)' }}
-                              style={{ background: entry.enabled ? ACCENT : 'rgba(255,255,255,0.12)' }}
+                              type="button" role="switch" aria-checked={entry.enabled}
+                              aria-label={t('Enable {tag}', { tag: entry.raw_tag })}
+                              disabled={toggleMut.isPending && toggleMut.variables?.id === entry.id}
+                              className="flex-shrink-0 rounded-full relative transition-colors disabled:opacity-60"
+                              style={{ width: 44, height: 24, minWidth: 44,
+                                backgroundColor: entry.enabled ? ACCENT : 'var(--c-surface)',
+                                border: `1px solid ${entry.enabled ? ACCENT_TEXT : 'var(--c-muted)'}` }}
                               transition={{ duration: 0.15 }}>
-                              <motion.span className="absolute top-0.5 w-4 h-4 rounded-full bg-white"
-                                animate={{ left: entry.enabled ? 22 : 2 }}
+                              <motion.span className="absolute rounded-full bg-white"
+                                style={{ top: 3, width: 16, height: 16 }}
+                                animate={{ left: entry.enabled ? 23 : 3 }}
                                 transition={{ type: 'spring', stiffness: 600, damping: 32 }} />
                             </motion.button>
                           </>

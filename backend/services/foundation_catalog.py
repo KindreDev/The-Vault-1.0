@@ -17,11 +17,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import (
-    Card, CardInventory, CardRarity, CardType, Creator, Gallery,
+    Card, CardInventory, CardRarity, CardType, Creator, Gallery, TCGPackProduct,
     Image, TCGChecklistEntry, TCGRelease, TCGSettings, TCGSetupState,
+    TCGSet, TCGFoundationRefreshJob, TCGFoundationRefreshStage,
 )
 from services.personal_value import apply_rarity_floor, build_personal_value_context, evaluate_personal_value
 from services.tcg_rarity import earned_card_pack_rarity
+from services.scene_eligibility import scene_source_eligible, renderable_scene_card
 
 
 FOUNDATION_CODE = "FND-001"
@@ -332,14 +334,16 @@ def _state(db: Session) -> TCGSetupState:
 
 def foundation_status(db: Session) -> dict:
     state = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
-    total = db.query(func.count(Card.id)).filter(Card.catalog_code == FOUNDATION_CODE).scalar() or 0
+    release = _active_foundation_release(db)
+    active_code = release.generation_seed.removeprefix("catalog:") if release and release.generation_seed.startswith("catalog:") else FOUNDATION_CODE
+    total = db.query(func.count(Card.id)).filter(Card.catalog_code == active_code).scalar() or 0
     base = db.query(func.count(Card.id)).filter(
-        Card.catalog_code == FOUNDATION_CODE,
+        Card.catalog_code == active_code,
         Card.parallel_of_id.is_(None),
     ).scalar() or 0
     parallels = total - base
     return {
-        "code": FOUNDATION_CODE,
+        "code": active_code,
         "status": (state.foundation_status if state else "pending") or "pending",
         "base_printings": int(base),
         "spr_parallels": int(parallels),
@@ -349,8 +353,27 @@ def foundation_status(db: Session) -> dict:
     }
 
 
+def _active_foundation_release(db: Session) -> TCGRelease | None:
+    state = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
+    if state and state.active_foundation_release_id:
+        release = db.query(TCGRelease).filter(
+            TCGRelease.id == state.active_foundation_release_id,
+            TCGRelease.release_kind == "foundation", TCGRelease.status == "published",
+        ).first()
+        if release:
+            return release
+    return db.query(TCGRelease).filter(
+        TCGRelease.code == "FND-CORE", TCGRelease.status == "published",
+    ).first()
+
+
+def _active_foundation_code(db: Session) -> str:
+    release = _active_foundation_release(db)
+    return release.generation_seed.removeprefix("catalog:") if release and release.generation_seed.startswith("catalog:") else FOUNDATION_CODE
+
+
 def _foundation_release(db: Session) -> TCGRelease | None:
-    return db.query(TCGRelease).filter(TCGRelease.code == "FND-CORE").first()
+    return _active_foundation_release(db)
 
 
 def _foundation_context_for_cards(db: Session, cards: list[Card]):
@@ -367,7 +390,8 @@ def _append_foundation_spr(db: Session, base: Card, value: dict, *, reason: str)
     release = _foundation_release(db)
     if not release:
         return None
-    existing = db.query(Card).filter(Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id == base.id).first()
+    active_code = _active_foundation_code(db)
+    existing = db.query(Card).filter(Card.catalog_code == active_code, Card.parallel_of_id == base.id).first()
     if existing:
         return existing
     base_entry = db.query(TCGChecklistEntry).filter(
@@ -390,7 +414,7 @@ def _append_foundation_spr(db: Session, base: Card, value: dict, *, reason: str)
         source_gallery_id=base.source_gallery_id, source_creator_id=base.source_creator_id,
         linked_character_id=base.linked_character_id, collab_data=base.collab_data,
         cxp=0, crs=float(value.get("score") or base.crs or 0), rarity_class="SPR",
-        catalog_code=FOUNDATION_CODE, collector_number=base.collector_number,
+        catalog_code=active_code, collector_number=base.collector_number,
         print_rarity="SPR", parallel_of_id=base.id, is_legacy=False,
         generated_at=now, mint_audit_json=json.dumps(mint_audit),
     )
@@ -418,7 +442,7 @@ def _source_qualifies_for_post_publication_spr(value: dict) -> bool:
 def rebalance_foundation_base_rarities(db: Session) -> dict:
     """Apply the approved scalable base distribution without replacing card IDs."""
     bases = db.query(Card).filter(
-        Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None),
+        Card.catalog_code == _active_foundation_code(db), Card.parallel_of_id.is_(None),
     ).order_by(Card.id.asc()).all()
     if not bases:
         return {"updated": 0, "base_count": 0, "targets": foundation_base_rarity_targets(0)}
@@ -470,7 +494,7 @@ def rebalance_foundation_base_rarities(db: Session) -> dict:
             card.rarity = _legacy_tier(rarity)
             updated += 1
         entry = db.query(TCGChecklistEntry).join(TCGRelease).filter(
-            TCGRelease.code == "FND-CORE", TCGChecklistEntry.card_id == card.id,
+            TCGRelease.id == (_active_foundation_release(db).id if _active_foundation_release(db) else -1), TCGChecklistEntry.card_id == card.id,
         ).first()
         if entry:
             entry.published_rarity = rarity
@@ -486,7 +510,8 @@ def ensure_foundation_spr_for_source(
     release = _foundation_release(db)
     if not release or release.status != "published":
         return {"added": 0, "existing": 0, "checked": 0}
-    query = db.query(Card).filter(Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None))
+    active_code = _active_foundation_code(db)
+    query = db.query(Card).filter(Card.catalog_code == active_code, Card.parallel_of_id.is_(None))
     if image_id is not None:
         query = query.filter(Card.source_image_id == int(image_id))
     elif gallery_id is not None:
@@ -500,7 +525,7 @@ def ensure_foundation_spr_for_source(
     added = 0
     existing = 0
     for base in bases:
-        linked = db.query(Card.id).filter(Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id == base.id).first()
+        linked = db.query(Card.id).filter(Card.catalog_code == active_code, Card.parallel_of_id == base.id).first()
         if linked:
             existing += 1
             continue
@@ -515,7 +540,7 @@ def ensure_foundation_spr_for_source(
     if added:
         release.manifest_json = json.dumps({
             **(json.loads(release.manifest_json or "{}") if release.manifest_json else {}),
-            "spr_count": db.query(Card.id).filter(Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR").count(),
+            "spr_count": db.query(Card.id).filter(Card.catalog_code == active_code, Card.print_rarity == "SPR").count(),
             "append_only_spr": True,
             "last_append_at": datetime.utcnow().isoformat(),
         })
@@ -528,7 +553,8 @@ def reconcile_foundation_sprs(db: Session) -> dict:
     release = _foundation_release(db)
     if not release or release.status != "published":
         return {"added": 0, "target": 0, "spr_count": 0}
-    bases = db.query(Card).filter(Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None)).order_by(Card.id.asc()).all()
+    active_code = _active_foundation_code(db)
+    bases = db.query(Card).filter(Card.catalog_code == active_code, Card.parallel_of_id.is_(None)).order_by(Card.id.asc()).all()
     if not bases:
         return {"added": 0, "target": 0, "spr_count": 0}
     context = _foundation_context_for_cards(db, bases)
@@ -540,7 +566,7 @@ def reconcile_foundation_sprs(db: Session) -> dict:
     target = foundation_spr_target(len(bases))
     existing_bases = {
         row[0] for row in db.query(Card.parallel_of_id).filter(
-            Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR",
+            Card.catalog_code == active_code, Card.print_rarity == "SPR",
         ).all() if row[0]
     }
     available = [(base, value) for base, value in candidates if base.id not in existing_bases]
@@ -577,7 +603,7 @@ def reconcile_foundation_sprs(db: Session) -> dict:
             append_returned_none += 1
     db.flush()
     spr_count = db.query(Card.id).filter(
-        Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR",
+        Card.catalog_code == active_code, Card.print_rarity == "SPR",
         Card.parallel_of_id.isnot(None),
     ).count()
     spr_checklist_count = db.query(TCGChecklistEntry.id).join(
@@ -586,7 +612,7 @@ def reconcile_foundation_sprs(db: Session) -> dict:
         TCGChecklistEntry.release_id == release.id,
         TCGChecklistEntry.is_base_printing.is_(False),
         TCGChecklistEntry.published_rarity == "SPR",
-        Card.catalog_code == FOUNDATION_CODE, Card.print_rarity == "SPR",
+        Card.catalog_code == active_code, Card.print_rarity == "SPR",
         Card.parallel_of_id.isnot(None),
     ).count()
     diagnostics = {
@@ -662,31 +688,31 @@ def repair_foundation_catalog(db: Session) -> dict:
         raise ValueError("Published Foundation release not found")
     before_base_ids = {
         row[0] for row in db.query(Card.id).filter(
-            Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None),
+            Card.catalog_code == _active_foundation_code(db), Card.parallel_of_id.is_(None),
         ).all()
     }
     before_inventory = {
         row[0]: int(row[1] or 0) for row in db.query(CardInventory.card_id, CardInventory.quantity).join(Card).filter(
-            Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None), CardInventory.quantity > 0,
+            Card.catalog_code == _active_foundation_code(db), Card.parallel_of_id.is_(None), CardInventory.quantity > 0,
         ).all()
     }
     rarity = rebalance_foundation_base_rarities(db)
     sprs = reconcile_foundation_sprs(db)
     after_base_ids = {
         row[0] for row in db.query(Card.id).filter(
-            Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None),
+            Card.catalog_code == _active_foundation_code(db), Card.parallel_of_id.is_(None),
         ).all()
     }
     after_inventory = {
         row[0]: int(row[1] or 0) for row in db.query(CardInventory.card_id, CardInventory.quantity).join(Card).filter(
-            Card.catalog_code == FOUNDATION_CODE, Card.parallel_of_id.is_(None), CardInventory.quantity > 0,
+            Card.catalog_code == _active_foundation_code(db), Card.parallel_of_id.is_(None), CardInventory.quantity > 0,
         ).all()
     }
     if before_base_ids != after_base_ids or before_inventory != after_inventory:
         raise RuntimeError("Foundation repair changed base IDs or owned inventory")
     state = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
     if state:
-        state.foundation_total = db.query(Card.id).filter(Card.catalog_code == FOUNDATION_CODE).count()
+        state.foundation_total = db.query(Card.id).filter(Card.catalog_code == _active_foundation_code(db)).count()
         state.foundation_target = len(before_base_ids)
     db.commit()
     return {
@@ -696,8 +722,9 @@ def repair_foundation_catalog(db: Session) -> dict:
     }
 
 
-def build_foundation_catalog(db: Session) -> dict:
+def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJob | None = None, progress_fn=None) -> dict:
     """Publish the deterministic initial catalogue. Safe to resume or repeat."""
+    refreshing = refresh_job is not None
     state = _state(db)
 
     # A V2 setup created by an older build could still call the legacy random
@@ -705,7 +732,7 @@ def build_foundation_catalog(db: Session) -> dict:
     # identity and must not masquerade as current printings. Earned Bond and
     # Hall of Fame cards are intentionally outside booster catalogues and stay
     # current.
-    leaked_owned_ids = [row[0] for row in (
+    leaked_owned_ids = [] if refreshing else [row[0] for row in (
         db.query(Card.id)
         .join(CardInventory, CardInventory.card_id == Card.id)
         .filter(
@@ -726,11 +753,24 @@ def build_foundation_catalog(db: Session) -> dict:
         db.commit()
 
     existing = foundation_status(db)
-    if existing["ready"]:
+    if existing["ready"] and not refreshing:
         return existing
 
-    state.foundation_status = "building"
-    db.commit()
+    if refreshing and not existing["ready"]:
+        raise ValueError("A published Foundation snapshot is required before it can be refreshed")
+
+    if refreshing and refresh_job.phase in ("staging", "publishing", "validating", "activating"):
+        staged_count = db.query(func.count(TCGFoundationRefreshStage.id)).filter(
+            TCGFoundationRefreshStage.job_id == refresh_job.id,
+        ).scalar() or 0
+        if staged_count > 0 and refresh_job.total in (staged_count, staged_count * 2):
+            return _publish_staged_foundation_snapshot(
+                db, refresh_job, None, staged_count, progress_fn=progress_fn,
+            )
+
+    if not refreshing:
+        state.foundation_status = "building"
+        db.commit()
 
     # Catalogue each supported card face from real sources. Scene count is the
     # residual after the named family targets and all supported Collab sources.
@@ -847,13 +887,16 @@ def build_foundation_catalog(db: Session) -> dict:
     )
     if non_scene_count > FOUNDATION_LARGE_LIBRARY_TARGET:
         raise ValueError("Foundation non-Scene source families exceed the 60,000-card base target")
+    eligible_scene_ids = {row[0] for row in db.query(Image.id).filter(scene_source_eligible()).all()}
+    eligible_scene_images = [image for image in eligible_scene_images if image.id in eligible_scene_ids]
     scene_target = min(len(eligible_scene_images), FOUNDATION_LARGE_LIBRARY_TARGET - non_scene_count)
     scene_pool = list(eligible_scene_images)
     random.Random(_hash_int("foundation-scenes")).shuffle(scene_pool)
     selected_scenes = scene_pool[:scene_target]
     target = non_scene_count + len(selected_scenes)
-    state.foundation_target = target
-    db.commit()
+    if not refreshing:
+        state.foundation_target = target
+        db.commit()
     if target <= 0:
         state.foundation_status = "failed"
         db.commit()
@@ -880,7 +923,7 @@ def build_foundation_catalog(db: Session) -> dict:
         ai_confidence_threshold=float(settings.ai_confidence_threshold if settings else 0.72),
     )
 
-    now = datetime.utcnow()
+    now = (refresh_job.created_at if refreshing and refresh_job.created_at else datetime.utcnow())
     rows: list[dict] = []
     collector_number = 1
 
@@ -913,7 +956,7 @@ def build_foundation_catalog(db: Session) -> dict:
             "card_type": card_type, "rarity": _legacy_tier(rarity),
             "foil": False, "is_relic": False, "is_unique": False,
             "cxp": 0, "crs": personal_value["score"], "rarity_class": rarity,
-            "catalog_code": FOUNDATION_CODE, "collector_number": collector_number,
+            "catalog_code": refresh_job.catalog_code if refreshing else FOUNDATION_CODE, "collector_number": collector_number,
             "print_rarity": rarity, "parallel_of_id": None, "is_legacy": False,
             "generated_at": now, "mint_audit_json": json.dumps(mint_audit),
             **source_fields,
@@ -966,8 +1009,62 @@ def build_foundation_catalog(db: Session) -> dict:
                        "creator_names": names, "character_names": character_names,
                    }),)
 
-    # A failed prior attempt can leave a partial catalogue. Rebuild only the
-    # unpublished rows and never duplicate an already completed catalogue.
+    if refreshing:
+        # Keep every generated definition out of catalogue and pack queries
+        # until the complete snapshot is staged and validated. Existing
+        # checkpoints are retained when this deterministic candidate plan
+        # matches exactly; changed library inputs invalidate the whole plan.
+        existing_stages = {item.source_key: item for item in db.query(TCGFoundationRefreshStage).filter(
+            TCGFoundationRefreshStage.job_id == refresh_job.id,
+        ).all()}
+        candidates = {}
+        for row in rows:
+            audit = json.loads(row["mint_audit_json"] or "{}")
+            source_key = audit.get("source_key")
+            if not source_key:
+                raise RuntimeError("Generated Foundation entry has no stable source identity")
+            payload = dict(row)
+            card_type = payload.get("card_type")
+            payload["card_type"] = card_type.value if hasattr(card_type, "value") else str(card_type)
+            payload["rarity"] = payload["rarity"].value if hasattr(payload.get("rarity"), "value") else str(payload["rarity"])
+            payload["generated_at"] = payload["generated_at"].isoformat()
+            candidates[source_key] = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        def normalized_checkpoint(payload_json: str) -> dict:
+            value = json.loads(payload_json)
+            value.pop("generated_at", None)
+            return value
+
+        checkpoint_matches = set(existing_stages).issubset(candidates) and all(
+            normalized_checkpoint(existing_stages[key].payload_json)
+            == normalized_checkpoint(candidates[key]) for key in existing_stages
+        )
+        if existing_stages and not checkpoint_matches:
+            raise RuntimeError("The curated source pool changed since the saved staging checkpoint. The active catalogue is safe; queue a fresh restore to build a new snapshot.")
+        if progress_fn:
+            progress_fn(phase="staging", progress=len(existing_stages), total=len(rows), message="Resuming the durable Foundation staging checkpoint")
+        missing_candidates = [(key, value) for key, value in candidates.items() if key not in existing_stages]
+        for start in range(0, len(missing_candidates), 500):
+            batch = missing_candidates[start:start + 500]
+            staged = [TCGFoundationRefreshStage(job_id=refresh_job.id, source_key=key, payload_json=value)
+                      for key, value in batch]
+            db.add_all(staged)
+            refresh_job.progress = len(existing_stages) + min(start + len(batch), len(missing_candidates))
+            refresh_job.total = len(rows)
+            refresh_job.phase = "staging"
+            refresh_job.message = f"Staged {refresh_job.progress:,} of {refresh_job.total:,} card definitions"
+            db.commit()
+            if progress_fn:
+                progress_fn(phase="staging", progress=refresh_job.progress, total=refresh_job.total, message=refresh_job.message)
+
+        staged_count = db.query(func.count(TCGFoundationRefreshStage.id)).filter(
+            TCGFoundationRefreshStage.job_id == refresh_job.id,
+        ).scalar() or 0
+        if staged_count != len(rows):
+            raise RuntimeError(f"Foundation staging validation failed ({staged_count} of {len(rows)} entries)")
+        return _publish_staged_foundation_snapshot(db, refresh_job, rows, target, progress_fn=progress_fn)
+
+    # Initial setup is the only path permitted to replace an unpublished,
+    # incomplete Foundation catalogue. Refresh always uses the staged path above.
     db.query(Card).filter(Card.catalog_code == FOUNDATION_CODE).delete(synchronize_session=False)
     db.flush()
     for start in range(0, len(rows), 2_000):
@@ -1030,6 +1127,147 @@ def build_foundation_catalog(db: Session) -> dict:
     return foundation_status(db)
 
 
+def _publish_staged_foundation_snapshot(db: Session, job: TCGFoundationRefreshJob, rows: list[dict], target: int, *, progress_fn=None) -> dict:
+    """Resume hidden materialization, then atomically switch the active release."""
+    old_release = _active_foundation_release(db)
+    state = _state(db)
+    staged_count = db.query(func.count(TCGFoundationRefreshStage.id)).filter(
+        TCGFoundationRefreshStage.job_id == job.id,
+    ).scalar() or 0
+    if rows is not None and staged_count != len(rows):
+        raise RuntimeError("Staged Foundation snapshot is incomplete; it was not published")
+    job.phase = "publishing"
+    job.total = staged_count * 2
+    existing_card_count = db.query(func.count(Card.id)).filter(Card.catalog_code == job.catalog_code).scalar() or 0
+    existing_checklist_count = db.query(func.count(TCGChecklistEntry.id)).join(
+        TCGRelease, TCGChecklistEntry.release_id == TCGRelease.id,
+    ).filter(TCGRelease.code == job.release_code).scalar() or 0
+    job.progress = min(existing_card_count, staged_count) + min(existing_checklist_count, staged_count)
+    job.message = f"Resuming staged publication ({existing_card_count:,} cards, {existing_checklist_count:,} checklist entries prepared)"
+    db.commit()
+    if progress_fn:
+        progress_fn(phase="publishing", progress=job.progress, total=job.total, message=job.message)
+
+    release = db.query(TCGRelease).filter(TCGRelease.code == job.release_code).first()
+    if not release:
+        release = TCGRelease(
+            code=job.release_code, name="Founder’s Catalogue", description="Versioned permanent catalogue snapshot.",
+            status="draft", release_kind="foundation", generation_mode="automatic",
+            generation_seed=f"catalog:{job.catalog_code}", algorithm_version=FOUNDATION_ALGORITHM_VERSION,
+            published_at=datetime.utcnow(), available_from=datetime.utcnow(), frozen_at=datetime.utcnow(),
+            manifest_json=json.dumps({"source": "foundation_catalog_refresh", "catalog_code": job.catalog_code,
+                                      "base_total": staged_count, "staged": True}),
+            generation_report=json.dumps({"algorithm": FOUNDATION_ALGORITHM_VERSION,
+                                          "base_target": FOUNDATION_LARGE_LIBRARY_TARGET,
+                                          "base_count": target, "snapshot_job_id": job.id}),
+        )
+        db.add(release)
+        db.flush()
+    if release.status != "draft":
+        raise RuntimeError("The staged Foundation release is no longer an unpublished draft")
+    tcg_set = db.query(TCGSet).filter(TCGSet.release_id == release.id).first()
+    if not tcg_set:
+        tcg_set = TCGSet(
+            release_id=release.id, code=f"{job.release_code}-01", name="Foundation Core",
+            description="The complete curated Foundation snapshot.", position=1,
+            frozen_at=release.frozen_at,
+        )
+        db.add(tcg_set)
+        db.flush()
+    db.commit()
+
+    for start in range(0, staged_count, 250):
+        batch = db.query(TCGFoundationRefreshStage).filter(
+            TCGFoundationRefreshStage.job_id == job.id,
+        ).order_by(TCGFoundationRefreshStage.id.asc()).offset(start).limit(250).all()
+        known_card_ids = {row[0] for row in db.query(Card.id).filter(
+            Card.id.in_([item.card_id for item in batch if item.card_id] or [-1]),
+        ).all()}
+        pending_cards = []
+        for staged in batch:
+            if not staged.card_id or staged.card_id not in known_card_ids:
+                payload = json.loads(staged.payload_json)
+                payload["generated_at"] = datetime.fromisoformat(payload["generated_at"])
+                payload["catalog_code"] = job.catalog_code
+                card = Card(**payload)
+                pending_cards.append((staged, card))
+        db.add_all([card for _, card in pending_cards])
+        if pending_cards:
+            db.flush()
+        for staged, card in pending_cards:
+            staged.card_id = card.id
+        known_card_ids.update(card.id for _, card in pending_cards)
+
+        checklist_card_ids = {row[0] for row in db.query(TCGChecklistEntry.card_id).filter(
+            TCGChecklistEntry.release_id == release.id,
+            TCGChecklistEntry.card_id.in_(known_card_ids or {-1}),
+        ).all()}
+        cards_by_id = {card.id: card for card in db.query(Card).filter(Card.id.in_(known_card_ids or {-1})).all()}
+        pending_entries = []
+        for staged in batch:
+            if staged.card_id not in checklist_card_ids:
+                card = cards_by_id.get(staged.card_id)
+                if not card:
+                    raise RuntimeError("A staged catalogue card could not be loaded for checklist publication")
+                pending_entries.append(TCGChecklistEntry(
+                    release_id=release.id, set_id=tcg_set.id, card_id=card.id,
+                    collector_position=card.collector_number, collector_suffix="",
+                    is_base_printing=True, required_for_complete=True,
+                    published_rarity=card.print_rarity or card.rarity_class or "C",
+                    selection_reason="Curated Foundation snapshot publication",
+                ))
+        db.add_all(pending_entries)
+        db.flush()
+        prepared_cards = db.query(func.count(Card.id)).filter(Card.catalog_code == job.catalog_code).scalar() or 0
+        prepared_entries = db.query(func.count(TCGChecklistEntry.id)).filter(
+            TCGChecklistEntry.release_id == release.id,
+        ).scalar() or 0
+        job.progress = min(prepared_cards, staged_count) + min(prepared_entries, staged_count)
+        job.message = f"Materialized {prepared_cards:,} of {staged_count:,} cards and {prepared_entries:,} of {staged_count:,} checklist entries"
+        db.commit()
+        if progress_fn:
+            # The DB commit releases SQLite's writer lock before the progress
+            # callback opens its own session to persist the Task Q status.
+            progress_fn(phase="publishing", progress=job.progress, total=job.total, message=job.message)
+
+    card_count = db.query(func.count(Card.id)).filter(Card.catalog_code == job.catalog_code).scalar() or 0
+    checklist_count = db.query(func.count(TCGChecklistEntry.id)).filter(
+        TCGChecklistEntry.release_id == release.id,
+    ).scalar() or 0
+    if card_count != staged_count or checklist_count != staged_count:
+        raise RuntimeError(f"Foundation snapshot validation failed ({card_count} cards, {checklist_count} checklist entries; expected {staged_count})")
+    if progress_fn:
+        progress_fn(phase="activating", progress=job.total, total=job.total,
+                    message="All snapshot entries validated; switching the active catalogue")
+
+    # Only this short, final transaction changes the published release and
+    # active pointer. Partial draft rows above are never eligible for packs.
+    release.status = "published"
+    state.active_foundation_release_id = release.id
+    rarity_result = rebalance_foundation_base_rarities(db)
+    spr_result = reconcile_foundation_sprs(db)
+    if old_release and old_release.id != release.id:
+        old_release.status = "archived"
+        db.query(TCGPackProduct).filter(TCGPackProduct.release_id == old_release.id).update(
+            {TCGPackProduct.active: False, TCGPackProduct.purchasable: False}, synchronize_session=False,
+        )
+    state.foundation_status = "ready"
+    state.foundation_target = target
+    state.foundation_total = db.query(Card.id).filter(Card.catalog_code == job.catalog_code).count()
+    from services.tcg_v2 import seed_pack_products
+    seed_pack_products(db)
+    job.status = "done"
+    job.phase = "complete"
+    job.progress = job.total
+    job.message = "Foundation snapshot published and activated"
+    job.finished_at = datetime.utcnow()
+    job.activated_at = job.finished_at
+    db.query(TCGFoundationRefreshStage).filter(TCGFoundationRefreshStage.job_id == job.id).delete(synchronize_session=False)
+    db.commit()
+    return {**foundation_status(db), "release_code": release.code, "catalog_code": job.catalog_code,
+            "added": staged_count, "rarity": rarity_result, "sprs": spr_result}
+
+
 def prepare_acquired_visual(db: Session, card: Card) -> bool:
     """Freeze the approved V2 face for a pulled definition before revealing it."""
     card.rarity_class = card.print_rarity or card.rarity_class or "C"
@@ -1080,6 +1318,7 @@ def acquire_vault_booster(
         status = build_foundation_catalog(db)
 
     from services.cards import _get_or_create_profile, _card_to_dict, prepare_card_face_for_reveal
+    active_catalog_code = _active_foundation_code(db)
     profile = _get_or_create_profile(db)
     total_cost = 0 if free else cost_per_pack * quantity
     if not free:
@@ -1095,9 +1334,10 @@ def acquire_vault_booster(
     # Foundation printings are finite; personally earned Bond and HOF cards
     # join this live pool as soon as they exist and remain eligible forever.
     live_cards = db.query(Card).filter(
+        renderable_scene_card(),
         Card.is_legacy.is_(False),
         or_(
-            Card.catalog_code == FOUNDATION_CODE,
+            Card.catalog_code == active_catalog_code,
             Card.card_type.in_((CardType.bond, CardType.hof)),
         ),
     ).order_by(Card.id.asc()).all()
@@ -1120,7 +1360,7 @@ def acquire_vault_booster(
                 product_id=product.id, price_paid=0 if free else cost_per_pack,
                 opening_seed=f"vault:{datetime.utcnow().isoformat()}:{pack_index}",
                 integrity_json=json.dumps({
-                    "pool": FOUNDATION_CODE, "card_count": 10,
+                    "pool": active_catalog_code, "card_count": 10,
                     "guaranteed_slots": ["SR_OR_HIGHER"],
                     "same_printing_twice": False, "owned_cards_eligible": True,
                     "missing_weight": False, "pity": False,

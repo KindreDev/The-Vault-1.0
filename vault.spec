@@ -4,11 +4,28 @@
 # (Or just double-click build.bat)
 
 import os
+import runpy
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
+)
 
 block_cipher = None
 
 # SPECPATH is the directory containing this spec file (the project root)
 ROOT          = os.path.abspath(SPECPATH)
+APP_VERSION = runpy.run_path(os.path.join(ROOT, 'backend', 'app_version.py'))['APP_VERSION']
+VERSION_PARTS = tuple(int(part) for part in APP_VERSION.split('.')) + (0,)
+WINDOWS_VERSION = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=VERSION_PARTS, prodvers=VERSION_PARTS,
+                      mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0, 0)),
+    kids=[StringFileInfo([StringTable('040904B0', [
+        StringStruct('FileDescription', 'The Vault'),
+        StringStruct('FileVersion', APP_VERSION),
+        StringStruct('ProductName', 'The Vault'),
+        StringStruct('ProductVersion', APP_VERSION),
+        StringStruct('OriginalFilename', 'vault.exe'),
+    ])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])],
+)
 BACKEND_DIR   = os.path.join(ROOT, 'backend')
 FRONTEND_DIST = os.path.join(ROOT, 'frontend', 'dist')
 MOBILE_PWA_DIST = os.path.join(ROOT, 'frontend-mobile', 'dist-pwa')
@@ -186,6 +203,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=WINDOWS_VERSION,
     icon=os.path.join(ROOT, 'frontend', 'public', 'favicon.ico') if os.path.isfile(os.path.join(ROOT, 'frontend', 'public', 'favicon.ico')) else None,
 )
 

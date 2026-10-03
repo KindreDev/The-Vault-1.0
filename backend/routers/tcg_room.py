@@ -118,6 +118,7 @@ class OrderLine(BaseModel):
     product_id: int
     quantity: int = Field(default=1, ge=1, le=10)
     selected_release_id: int | None = None
+    target_card_type: str | None = None
 
 
 class OrderRequest(BaseModel):

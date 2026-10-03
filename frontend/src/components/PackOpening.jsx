@@ -2,8 +2,8 @@ import { LocalizedText, useT } from '../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
-import VaultCard from './VaultCard'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
+import { boosterArtCandidates, sampleBoosterArt } from './tcg-workspace/boosterArt'
 import { useScrollLock } from '../hooks/useScrollLock'
 import './PackOpening.css'
 
@@ -43,9 +43,13 @@ function cardImage(card) {
 }
 
 function cardFace(card, className = '') {
+  const artwork = cardImage(card)
   return <div className={className}>
     <TCGV2CardFace card={card} width="100%" showEffects={true} videoPresentation="full"
-      fallback={<VaultCard card={card} width={320} forceEffects={true} />} />
+      fallback={<div className="pack-opening__unavailable-face">
+        {artwork && <img className="pack-opening__unavailable-art" src={artwork} alt="" />}
+        <span><LocalizedText text={artwork ? "TCG V2 face unavailable" : "Artwork unavailable"} /></span>
+      </div>} />
   </div>
 }
 
@@ -267,14 +271,14 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
   const entry = normalizePackEntry(safePacks[packIdx])
   const currentPack = useMemo(() => orderPack(entry.cards), [entry.cards])
   const product = entry.product
-  const collage = useMemo(() => {
-    const candidates = [
-      ...(Array.isArray(product.collage_images) ? product.collage_images : []),
-      ...(Array.isArray(product.collageImages) ? product.collageImages : []),
-      ...currentPack.map(cardImage),
-    ].filter(Boolean)
-    return [...new Set(candidates)].slice(0, 5)
-  }, [currentPack, product.collage_images, product.collageImages])
+  const artCandidates = useMemo(() => boosterArtCandidates(product), [product.collage_images, product.collageImages, product.preview_art_urls, product.preview_art_urls_by_release])
+  const [collage, setCollage] = useState(() => sampleBoosterArt(artCandidates))
+  useEffect(() => {
+    const rotate = () => setCollage(sampleBoosterArt(artCandidates))
+    rotate()
+    const timer = window.setInterval(rotate, 5200)
+    return () => window.clearInterval(timer)
+  }, [packIdx, artCandidates])
   const packsLeft = Math.max(0, safePacks.length - packIdx - 1)
 
   useEffect(() => {

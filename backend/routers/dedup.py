@@ -15,10 +15,7 @@ def _db_factory():
 def compute_hashes():
     task_queue.submit(
         'dedup_hash', 'Build perceptual hash index',
-        start_fn=lambda: threading.Thread(
-            target=dedup_svc._compute_hashes_thread,
-            args=(_db_factory,), daemon=True
-        ).start(),
+        start_fn=lambda: task_queue.launch_background(dedup_svc._compute_hashes_thread, _db_factory),
         poll_fn=dedup_svc.get_state,
         cancel_fn=dedup_svc.cancel,
     )

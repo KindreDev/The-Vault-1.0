@@ -164,10 +164,20 @@ function InventoryLoading({ label = 'Loading inventory…' }) {
   </div>
 }
 
-async function hydratePacks(results, contents = []) {
-  const products = new Map(contents.map(line => [line.product_id, line.product || {}]))
+async function hydratePacks(results, contents = [], catalogProducts = []) {
+  const products = new Map(contents.map(line => [line.product_id, { product: line.product || {}, selected_release_id: line.selected_release_id }]))
+  const previews = new Map(catalogProducts.map(product => [product.id, product]))
   return Promise.all((results || []).map(async result => ({
-    product: products.get(result.product_id) || result.product || {},
+    product: (() => {
+      const line = products.get(result.product_id)
+      const product = line?.product || result.product || {}
+      const catalog = previews.get(result.product_id) || {}
+      const selectedReleaseId = product.selected_release_id || line?.selected_release_id || result.selected_release_id
+      const previewArt = product.product_kind === 'weekly_protection'
+        ? (selectedReleaseId ? catalog.preview_art_urls_by_release?.[String(selectedReleaseId)] : [])
+        : catalog.preview_art_urls
+      return { ...product, ...catalog, ...(previewArt ? { preview_art_urls: previewArt, collage_images: previewArt } : {}) }
+    })(),
     cards: await Promise.all((result.cards || []).map(async id => {
       if (id && typeof id === 'object') return id
       const response = await tcgV2Api.cardDetail(id)
@@ -179,6 +189,7 @@ async function hydratePacks(results, contents = []) {
 export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 'cards', onTabChange }) {
   const t = useT()
   const qc = useQueryClient()
+  const { data: boosterProducts = [] } = useQuery({ queryKey: ['tcg-v2-packs'], queryFn: () => tcgV2Api.packs().then(r => r.data) })
   const [tab, setTab] = useState(initialTab === 'packs' ? 'packs' : initialTab)
   const [selectedWeeklyReleases, setSelectedWeeklyReleases] = useState({})
   const selectTab = next => { setTab(next); onTabChange?.(next) }
@@ -232,13 +243,22 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
   const cardTotal = cardCatalog.data?.pages?.[0]?.total || catalogItems.length
   const collectionImages = useMemo(() => catalogItems.map(item => item.card?.thumb_url || item.card?.image_url || item.thumb_url || item.image_url).filter(Boolean).slice(0, 30), [catalogItems])
   const posterImageUrl = posterPhotosQuery.data?.[0] || collectionImages[0] || ''
-  const packVisual = (product = {}, id = 0) => <BoosterEnvelope pack={{
+  const packVisual = (product = {}, id = 0) => {
+    const catalogProduct = boosterProducts.find(item => item.id === product.id || item.id === product.product_id) || {}
+    const selectedReleaseId = product.selected_release_id || selectedWeeklyReleases[product.id]
+    const previewArt = product.product_kind === 'weekly_protection'
+      ? (selectedReleaseId ? catalogProduct.preview_art_urls_by_release?.[String(selectedReleaseId)] : [])
+      : catalogProduct.preview_art_urls
+    return <BoosterEnvelope pack={{
+    ...catalogProduct,
     ...product,
+    ...(previewArt ? { preview_art_urls: previewArt, collage_images: previewArt } : {}),
     id: String(id),
     name: product.name || 'Vault Booster',
     card_count: product.card_count || '?',
     product_kind: product.product_kind || 'permanent',
-  }} images={collectionImages} />
+  }} />
+  }
   const refresh = () => Promise.all([
     qc.invalidateQueries({ queryKey: ['tcg-room-inventory'] }),
     qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }),
@@ -251,7 +271,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     mutationFn: async parcel => {
       setOpeningLabel('Opening booster packs…')
       const response = await tcgRoomApi.openInventoryParcel(parcel.parcel_id)
-      return hydratePacks(response.data?.results, response.data?.contents)
+      return hydratePacks(response.data?.results, response.data?.contents, boosterProducts)
     },
     onSuccess: packs => {
       setOpeningLabel('')
@@ -275,6 +295,12 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
       const data = response.data || {}
       const cards = data.cards || []
       const product = { ...(token.product || {}), ...(data.product || {}) }
+      const catalog = boosterProducts.find(item => item.id === token.product_id)
+      const selectedReleaseId = token.selected_release_id || selectedWeeklyReleases[token.product_id]
+      const previewArt = product.product_kind === 'weekly_protection'
+        ? (selectedReleaseId ? catalog?.preview_art_urls_by_release?.[String(selectedReleaseId)] : [])
+        : catalog?.preview_art_urls
+      if (catalog) Object.assign(product, catalog, previewArt ? { preview_art_urls: previewArt, collage_images: previewArt } : {})
       if (cards.length && typeof cards[0] !== 'object') {
         return hydratePacks([{ product_id: token.product_id, product, cards }])
       }
@@ -398,7 +424,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
             .filter(line => !line.product?.product_kind || line.product.card_count || line.product_id)
             .map((line, index) => (
             <article key={`booster-${parcel.parcel_id}-${index}`} className="vault-inv__pack">
-              {packVisual(line.product, `${parcel.parcel_id}-${index}`)}
+              {packVisual({ ...line.product, selected_release_id: line.selected_release_id }, `${parcel.parcel_id}-${index}`)}
               <div className="vault-inv__pack-meta">
                 <h3>{line.product?.name || 'Vault Booster Packs'}</h3>
                 <p>{sealedPackLabel(line.quantity || 0)}</p>

@@ -182,6 +182,7 @@ function ImageCard({ img, onClick }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function PlaylistView() {
+  const t = useT()
   const { id } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()

@@ -110,7 +110,7 @@ export const COLLISION_BOXES = [
 
 export const INTERACTION_COPY = {
   computer: ['Use computer', 'Browse your collection and shop from the monitor'],
-  door: ['Visit trader', "Step outside to meet this week's visitor"],
+  door: ['Visit trader', "Step outside to meet today's trader"],
   mail: ['Open deliveries', 'Collect booster packs that arrived on the table'],
   parcel: ['Open booster packs', 'Unpack the delivered booster packs'],
   'parcel-place': ['Place booster packs', 'Set them down on a clear surface'],

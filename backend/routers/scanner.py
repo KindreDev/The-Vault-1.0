@@ -19,8 +19,7 @@ router = APIRouter()
 
 def _launch_in_thread(fn, *args):
     """Launch fn(*args) in a daemon thread and return immediately."""
-    t = threading.Thread(target=fn, args=args, daemon=True)
-    t.start()
+    return task_queue.launch_background(fn, *args)
 
 
 @router.get("/roots", response_model=List[LibraryRootOut])
@@ -112,9 +111,7 @@ def start_duration_backfill(db: Session = Depends(get_db)):
         return {"queued": False, "message": "Every video already has a duration", "missing": 0}
     task_queue.submit(
         'video_duration', f'Read length of {missing} videos',
-        start_fn=lambda: threading.Thread(
-            target=video_meta._backfill_thread, args=(SessionLocal,), daemon=True
-        ).start(),
+        start_fn=lambda: task_queue.launch_background(video_meta._backfill_thread, SessionLocal),
         poll_fn=video_meta.get_state,
         cancel_fn=video_meta.cancel,
     )
@@ -363,6 +360,7 @@ def start_ai_tag(req: TaggerStartRequest):
             req.retag, req.model_override, req.creator_id, req.image_id,
         )
         job_id = job.id
+        queued_state = ai_tagger.tag_job_state(job)
     finally:
         db.close()
 
@@ -372,12 +370,17 @@ def start_ai_tag(req: TaggerStartRequest):
         poll_fn=ai_tagger.get_tagger_state,
         cancel_fn=ai_tagger.cancel_tagger,
     )
-    return ai_tagger.get_tagger_state()
+    return queued_state
 
 
 @router.get("/ai-tag-status", response_model=TaggerStatus)
-def ai_tag_status():
+def ai_tag_status(job_id: Optional[int] = None, db: Session = Depends(get_db)):
     state = ai_tagger.get_tagger_state()
+    if job_id is not None and state.get('job_id') != job_id:
+        job = ai_tagger.get_tag_job(db, job_id)
+        if not job:
+            raise HTTPException(404, "Tagging job not found")
+        state = ai_tagger.tag_job_state(job)
     try:
         import onnxruntime as ort
         providers = ort.get_available_providers()
@@ -420,6 +423,7 @@ def ai_tag_resume(body: dict = None):
         if not job:
             raise HTTPException(404, "No paused tagging job found")
         job_id = job.id
+        queued_state = ai_tagger.tag_job_state(job)
         scope_label = job.scope
     finally:
         db.close()
@@ -429,7 +433,7 @@ def ai_tag_resume(body: dict = None):
         poll_fn=ai_tagger.get_tagger_state,
         cancel_fn=ai_tagger.cancel_tagger,
     )
-    return ai_tagger.get_tagger_state()
+    return queued_state
 
 
 # ── GPU DLL on-demand download ────────────────────────────────────────────────

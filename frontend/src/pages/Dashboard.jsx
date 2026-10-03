@@ -734,7 +734,7 @@ function ScanModal({ onClose }) {
       sawRunning.current = false
       setWatching(false)
       qc.invalidateQueries({ queryKey: ['galleries'] })
-      qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['vault-stats'] })
     }
   }, [watching, status, qc])
 

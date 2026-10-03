@@ -3,7 +3,7 @@ import { cardsApi } from '../../lib/api'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
 import { cardLabel } from './traderVNState'
 
-export default function TraderCardPreview({ cardId, compact = false }) {
+export default function TraderCardPreview({ cardId, compact = false, showMeta = true }) {
   const { data, isLoading } = useQuery({
     queryKey: ['trader-card', cardId],
     queryFn: () => cardsApi.get(cardId).then(response => response.data),
@@ -14,7 +14,7 @@ export default function TraderCardPreview({ cardId, compact = false }) {
     <div className="trader-vn-card__face">
       {data ? <TCGV2CardFace card={data} width={compact ? 94 : 132} showEffects={false} /> : <span>{isLoading ? 'Loading card…' : `Card #${cardId}`}</span>}
     </div>
-    <strong>{cardLabel(cardId, data)}</strong>
-    {data && <span>{data.card_type} · {data.print_rarity || data.rarity_class || 'C'}</span>}
+    {showMeta && <strong>{cardLabel(cardId, data)}</strong>}
+    {showMeta && data && <span>{data.card_type} · {data.print_rarity || data.rarity_class || 'C'}</span>}
   </div>
 }

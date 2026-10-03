@@ -2,6 +2,7 @@ import axios from 'axios'
 import queryClient from './queryClient.js'
 import { getServerBase, abs } from './server.js'
 import { useVaultStore } from '../store/vault.js'
+import { refreshAfterMutation } from '../../../shared/queryRefresh.mjs'
 
 // Absolute base URL — points at the user's PC. Rebuilt when the server changes.
 const api = axios.create({ baseURL: getServerBase() + '/api', timeout: 30000 })
@@ -36,6 +37,11 @@ api.interceptors.response.use(res => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
     }
   } catch (_) {}
+  return res
+})
+
+api.interceptors.response.use(res => {
+  void refreshAfterMutation(queryClient, res.config, res.data).catch(() => {})
   return res
 })
 
@@ -136,6 +142,8 @@ export const scannerApi = {
   status: ()   => api.get('/scanner/status'),
   cancel: ()   => api.post('/scanner/cancel'),
 }
+
+export const tasksApi = { queue: () => api.get('/tasks') }
 
 // ── System (restart / version / health) ─────────────────────────────────────
 export const systemApi = {

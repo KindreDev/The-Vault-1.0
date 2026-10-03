@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from models import (
-    CardInventory, CraftingMaterials, TCGDisplayAssignment, TCGDisplayItemDefinition,
+    Card, CardType, CardInventory, CraftingMaterials, TCGDisplayAssignment, TCGDisplayItemDefinition,
     TCGDisplayItemInstance, TCGOnlineOrder, TCGOnlineOrderLine, TCGOwnedDisplayItem,
     TCGChecklistEntry,
-    TCGPackProduct, TCGPackToken, TCGParcel, TCGParcelPack, TCGPhysicalCardCopy, TCGRoomLayout,
+    TCGPackOpening, TCGPackOpeningCard, TCGPackProduct, TCGPackToken, TCGParcel, TCGParcelPack,
+    TCGPhysicalCardCopy, TCGRoomLayout,
     TCGRoomPlacement, TCGWorkshopUnlock, UserProfile,
     TCGRoomFurnitureMigration,
 )
@@ -30,6 +31,7 @@ from services.room_geometry import (
 MAX_PLACEMENTS = 250
 MAX_HISTORY = 50
 DEFAULT_DELAY_SECONDS = 5
+ORDER_PREVIEW_ART_LIMIT = 256
 VISIBLE_PILE_LIMIT = 8
 VISIBLE_PLACED_LIMIT = 64
 VISIBLE_CARRIED_LIMIT = 4
@@ -950,18 +952,91 @@ def assign_display_copy(db: Session, instance_id: int, copy_id: int | None, slot
     return {"instance_id": instance_id, "copy_id": copy_id, "slot_key": slot_key}
 
 
-def _product_snapshot(db: Session, product: TCGPackProduct) -> dict:
-    from services.tcg_v2 import pack_dict
-    from models import TCGRelease
-    return pack_dict(product, db.get(TCGRelease, product.release_id) if product.release_id else None)
-
-
 def _pack_contents_seed(order_seed: str, line_index: int, pack_index: int) -> str:
     return hashlib.sha256(f"{order_seed}:{line_index}:{pack_index}".encode("utf-8")).hexdigest()
 
 
+def _frozen_order_snapshot(db: Session, product, selected_release_id: int | None, target_card_type: str | None = None) -> dict:
+    """Freeze a pack's exact eligibility pool without hydrating every Card ORM row.
+
+    The full ordered checklist IDs remain on the order line so pack opening is
+    insulated from later catalog edits. Artwork is represented by a stable,
+    evenly-spaced sample from that same pool; the room only needs a handful of
+    real faces to render its sealed packs.
+    """
+    from services.tcg_v2 import _eligible_pack_query, _validated_pack_target, pack_dict
+    from models import TCGRelease
+
+    snapshot = pack_dict(product, db.get(TCGRelease, product.release_id) if product.release_id else None)
+    target_card_type = _validated_pack_target(product, target_card_type)
+    if target_card_type:
+        available = _eligible_pack_query(db, product, selected_release_id).filter(
+            Card.card_type == CardType(target_card_type),
+        ).first()
+        earned_available = db.query(Card.id).filter(
+            Card.is_legacy.is_(False), Card.card_type == CardType(target_card_type),
+        ).first()
+        if not available and not earned_available:
+            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Standard Booster pool")
+        snapshot["target_card_type"] = target_card_type
+    rows = _eligible_pack_query(db, product, selected_release_id).with_entities(
+        TCGChecklistEntry.id,
+        Card.source_image_id,
+    ).order_by(
+        TCGChecklistEntry.collector_position,
+        TCGChecklistEntry.collector_suffix,
+        TCGChecklistEntry.id,
+    ).all()
+    if not rows:
+        raise ValueError("The pack's persisted eligible pool is empty")
+
+    eligible_entry_ids = [int(entry_id) for entry_id, _image_id in rows]
+    stride = max(1, math.ceil(len(rows) / ORDER_PREVIEW_ART_LIMIT))
+    preview_ids: list[int] = []
+    seen_preview_ids: set[int] = set()
+    first_image_id = None
+    for index, (_entry_id, image_id) in enumerate(rows):
+        if not image_id:
+            continue
+        image_id = int(image_id)
+        if first_image_id is None:
+            first_image_id = image_id
+        if index % stride == 0 and image_id not in seen_preview_ids:
+            seen_preview_ids.add(image_id)
+            preview_ids.append(image_id)
+            if len(preview_ids) >= ORDER_PREVIEW_ART_LIMIT:
+                break
+    if not preview_ids and first_image_id:
+        preview_ids = [first_image_id]
+    if preview_ids:
+        snapshot["snapshot_art_url"] = f"/api/images/{preview_ids[0]}/file"
+        snapshot["snapshot_art_image_id"] = preview_ids[0]
+        snapshot["snapshot_art_urls"] = [f"/api/images/{image_id}/file" for image_id in preview_ids]
+        snapshot["snapshot_art_image_ids"] = preview_ids
+    snapshot["eligible_entry_ids"] = eligible_entry_ids
+    snapshot["owned_card_ids"] = [
+        int(card_id) for (card_id,) in db.query(CardInventory.card_id).filter(
+            CardInventory.quantity > 0,
+        ).order_by(CardInventory.card_id).all()
+    ]
+    return snapshot
+
+
+def _parcel_product_snapshot(snapshot: dict) -> dict:
+    """Return only the fields the room needs to draw sealed packs.
+
+    The order line is the authoritative immutable pull snapshot. Repeating its
+    large eligible/owned ID arrays in the parent order row inflated checkout,
+    startup inventory payloads, and the initial order response.
+    """
+    return {
+        key: value for key, value in snapshot.items()
+        if key not in {"eligible_entry_ids", "owned_card_ids"}
+    }
+
+
 def place_order(db: Session, lines: list[dict], *, delivery_delay_seconds: int = DEFAULT_DELAY_SECONDS) -> dict:
-    from services.tcg_v2 import _eligible_pack_entries, seed_pack_products
+    from services.tcg_v2 import seed_pack_products
     seed_pack_products(db)
     delay = int(delivery_delay_seconds)
     if delay < 3 or delay > 8:
@@ -977,30 +1052,7 @@ def place_order(db: Session, lines: list[dict], *, delivery_delay_seconds: int =
         simulation = _load(product.simulation_report, {})
         if not simulation.get("approved"):
             raise ValueError("This pack has not passed odds simulation")
-        snapshot = _product_snapshot(db, product)
-        eligible = _eligible_pack_entries(db, product, values.get("selected_release_id"))
-        if not eligible:
-            raise ValueError("The pack's persisted eligible pool is empty")
-        # Freeze a representative face image with the purchase.  The release
-        # artwork can be a dynamic collage, but the sealed physical pack needs
-        # one durable, real Vault image to carry into the room.
-        # Freeze a stable, product-specific set of real source images.  A
-        # single representative image made every physical pack in an order
-        # look identical; retaining the eligible pool's distinct source art
-        # lets each sealed pack carry its own deterministic face.
-        preview_ids = []
-        for entry in eligible:
-            image_id = getattr(entry.card, "source_image_id", None)
-            if image_id and image_id not in preview_ids:
-                preview_ids.append(int(image_id))
-        preview_image_id = preview_ids[0] if preview_ids else None
-        if preview_image_id:
-            snapshot["snapshot_art_url"] = f"/api/images/{int(preview_image_id)}/file"
-            snapshot["snapshot_art_image_id"] = int(preview_image_id)
-            snapshot["snapshot_art_urls"] = [f"/api/images/{image_id}/file" for image_id in preview_ids]
-            snapshot["snapshot_art_image_ids"] = preview_ids
-        snapshot["eligible_entry_ids"] = [entry.id for entry in eligible]
-        snapshot["owned_card_ids"] = [row[0] for row in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).order_by(CardInventory.card_id).all()]
+        snapshot = _frozen_order_snapshot(db, product, values.get("selected_release_id"), values.get("target_card_type"))
         unit_price = int(snapshot.get("price") or 0)
         total += unit_price * quantity
         snapshots.append((product, quantity, values.get("selected_release_id"), unit_price, snapshot))
@@ -1012,7 +1064,7 @@ def place_order(db: Session, lines: list[dict], *, delivery_delay_seconds: int =
     profile.vault_credits -= total
     order = TCGOnlineOrder(status="mailed", total_price=total, delivery_delay_seconds=delay, order_seed=order_seed, contents_json=_dump([
         {"product_id": p.id, "quantity": q, "selected_release_id": release_id,
-         "unit_price": price, "product": snapshot}
+         "unit_price": price, "product": _parcel_product_snapshot(snapshot)}
         for p, q, release_id, price, snapshot in snapshots
     ]), ordered_at=now, ready_at=ready)
     db.add(order); db.flush()
@@ -1184,7 +1236,43 @@ def place_parcel(db: Session, parcel_id: int, placement: dict) -> dict:
 def open_parcel(db: Session, parcel_id: int) -> dict:
     from services.tcg_v2 import open_pack_product
     parcel = db.get(TCGParcel, parcel_id)
-    if not parcel or parcel.status not in {"collected", "placed"}:
+    if not parcel:
+        raise ValueError("Booster packs must be collected before they can be opened")
+    if parcel.status == "opened":
+        # The browser may time out while the synchronous opening request keeps
+        # running. Rebuild the reveal from its committed opening rows so retrying
+        # returns the same pulls without opening packs or awarding XP again.
+        persisted_results = _load(parcel.result_json, [])
+        expected_pack_count = db.query(TCGParcelPack.id).filter_by(parcel_id=parcel.id).count()
+        if not isinstance(persisted_results, list) or len(persisted_results) != expected_pack_count:
+            raise ValueError("The saved booster pack reveal is incomplete")
+        results = []
+        for saved in persisted_results:
+            opening_id = int(saved["opening_id"])
+            opening = db.get(TCGPackOpening, opening_id)
+            if not opening or opening.product_id != int(saved["product_id"]):
+                raise ValueError("The saved booster pack reveal is unavailable")
+            opening_cards = db.query(TCGPackOpeningCard).filter_by(
+                opening_id=opening_id,
+            ).order_by(TCGPackOpeningCard.slot_index).all()
+            saved_card_ids = [int(card_id) for card_id in saved.get("cards", [])]
+            if [row.card_id for row in opening_cards] != saved_card_ids:
+                raise ValueError("The saved booster pack reveal is incomplete")
+            cards = []
+            for row in opening_cards:
+                card = db.get(Card, row.card_id)
+                if not card:
+                    raise ValueError("A card in the saved booster pack reveal is unavailable")
+                payload = _card_to_dict(db, card)
+                payload.update(was_owned=bool(row.was_owned), slot_rule=row.slot_rule)
+                cards.append(payload)
+            results.append({
+                "opening_id": opening_id, "product_id": opening.product_id, "cards": cards,
+            })
+        payload = parcel_status(db, parcel.id)
+        payload["results"] = results
+        return payload
+    if parcel.status not in {"collected", "placed"}:
         raise ValueError("Booster packs must be collected before they can be opened")
     results = []
     persisted_results = []

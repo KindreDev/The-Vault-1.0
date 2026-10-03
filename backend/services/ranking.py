@@ -13,7 +13,7 @@ every page load.
 """
 import statistics
 
-from sqlalchemy import func, select, union
+from sqlalchemy import case, func, select, union
 from sqlalchemy.orm import Session
 
 from models import (
@@ -31,34 +31,69 @@ DWELL_CLAMP         = (0.75, 1.5)
 MIN_DWELL_VIEWS     = 20
 
 
-def _creator_image_pairs():
+def _creator_image_pairs(creator_ids=None):
     """Distinct (creator_id, image_id) pairs via either path, deduplicated."""
+    gallery_assignments = _creator_gallery_pairs(creator_ids)
     gallery_pairs = (
-        select(gallery_creators.c.creator_id.label("creator_id"),
+        select(gallery_assignments.c.creator_id.label("creator_id"),
                Image.id.label("image_id"))
-        .select_from(gallery_creators)
-        .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+        .select_from(gallery_assignments)
+        .join(Image, Image.gallery_id == gallery_assignments.c.gallery_id)
     )
-    file_pairs = (
-        select(image_creators.c.creator_id.label("creator_id"),
-               image_creators.c.image_id.label("image_id"))
-    )
+    file_pairs = select(image_creators.c.creator_id.label("creator_id"),
+                        image_creators.c.image_id.label("image_id"))
+    if creator_ids is not None:
+        file_pairs = file_pairs.where(image_creators.c.creator_id.in_(creator_ids))
     return union(gallery_pairs, file_pairs).subquery()
 
 
+def _creator_gallery_pairs(creator_ids=None):
+    """Distinct creator/gallery assignments from the direct FK and M2M links."""
+    direct_pairs = (
+        select(Gallery.creator_id.label("creator_id"),
+               Gallery.id.label("gallery_id"))
+        .where(Gallery.creator_id.isnot(None))
+    )
+    linked_pairs = select(
+        gallery_creators.c.creator_id.label("creator_id"),
+        gallery_creators.c.gallery_id.label("gallery_id"),
+    )
+    if creator_ids is not None:
+        direct_pairs = direct_pairs.where(Gallery.creator_id.in_(creator_ids))
+        linked_pairs = linked_pairs.where(gallery_creators.c.creator_id.in_(creator_ids))
+    return union(direct_pairs, linked_pairs).subquery()
+
+
+def creator_image_counts(db: Session, creator_ids: list[int]) -> dict[int, int]:
+    """Return deduplicated collection image counts for a page of creators."""
+    if not creator_ids:
+        return {}
+    pairs = _creator_image_pairs(creator_ids)
+    return {
+        int(cid): int(count or 0)
+        for cid, count in (
+            db.query(pairs.c.creator_id, func.count(pairs.c.image_id))
+              .filter(pairs.c.creator_id.in_(creator_ids))
+              .group_by(pairs.c.creator_id)
+              .all()
+        )
+    }
+
+
 def score_all_creators(db: Session) -> dict:
-    """Score every creator with at least one assigned gallery.
+    """Score every creator with assigned content or logged sessions.
 
     Returns {creator_id: {...components..., "score": int}}, plus a "_median_dwell"
     key so callers can explain the engagement factor.
     """
+    gallery_pairs = _creator_gallery_pairs()
     gal_rows = (
-        db.query(gallery_creators.c.creator_id,
+        db.query(gallery_pairs.c.creator_id,
                  func.sum(Gallery.view_count),
                  func.sum(Gallery.cum_count),
                  func.sum(Gallery.edge_count))
-          .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-          .group_by(gallery_creators.c.creator_id)
+          .join(Gallery, Gallery.id == gallery_pairs.c.gallery_id)
+          .group_by(gallery_pairs.c.creator_id)
           .all()
     )
 
@@ -66,29 +101,24 @@ def score_all_creators(db: Session) -> dict:
     img_rows = (
         db.query(pairs.c.creator_id,
                  func.sum(Image.view_seconds),
-                 func.sum(Image.view_count))
+                 func.sum(Image.view_count),
+                 func.count(pairs.c.image_id),
+                 func.sum(case((Image.is_video == False, Image.view_seconds), else_=0)),  # noqa: E712
+                 func.sum(case((Image.is_video == False, Image.view_count), else_=0)))  # noqa: E712
           .join(Image, Image.id == pairs.c.image_id)
           .group_by(pairs.c.creator_id)
           .all()
     )
-    img_map = {cid: (int(s or 0), int(v or 0)) for cid, s, v in img_rows}
-
+    img_map = {
+        cid: (int(secs or 0), int(views or 0), int(image_count or 0))
+        for cid, secs, views, image_count, _, _ in img_rows
+    }
     # Photos only for dwell — a 20-minute video and a photo studied for 20
     # seconds are not the same kind of attention.
-    dwell_pairs = _creator_image_pairs()
-    dwell_rows = (
-        db.query(dwell_pairs.c.creator_id,
-                 func.sum(Image.view_seconds),
-                 func.sum(Image.view_count))
-          .join(Image, Image.id == dwell_pairs.c.image_id)
-          .filter(Image.is_video == False)  # noqa: E712
-          .group_by(dwell_pairs.c.creator_id)
-          .all()
-    )
     dwell_map = {
-        cid: (secs or 0) / views
-        for cid, secs, views in dwell_rows
-        if (views or 0) >= MIN_DWELL_VIEWS
+        cid: photo_secs / photo_views
+        for cid, _, _, _, photo_secs, photo_views in img_rows
+        if (photo_views or 0) >= MIN_DWELL_VIEWS
     }
     median_dwell = statistics.median(dwell_map.values()) if dwell_map else 0
 
@@ -99,9 +129,15 @@ def score_all_creators(db: Session) -> dict:
                         .group_by(SessionLog.creator_id).all()
     }
 
+    gallery_map = {
+        cid: (int(gviews or 0), int(gcum or 0), int(gedge or 0))
+        for cid, gviews, gcum, gedge in gal_rows
+    }
+    creator_ids = sorted(set(gallery_map) | set(img_map) | set(session_map))
     out = {}
-    for cid, gviews, gcum, gedge in gal_rows:
-        view_secs, image_views = img_map.get(cid, (0, 0))
+    for cid in creator_ids:
+        gviews, gcum, gedge = gallery_map.get(cid, (0, 0, 0))
+        view_secs, image_views, image_count = img_map.get(cid, (0, 0, 0))
         dwell = dwell_map.get(cid)
         engagement = 1.0
         if dwell and median_dwell:
@@ -118,6 +154,7 @@ def score_all_creators(db: Session) -> dict:
         out[cid] = {
             "gallery_views":      int(gviews or 0),
             "image_views":        image_views,
+            "image_count":        image_count,
             "total_views":        int(gviews or 0) + image_views,
             "total_cum":          int(gcum or 0),
             "total_edges":        int(gedge or 0),
@@ -165,13 +202,14 @@ def _creator_event_sums(db: Session, since, until=None):
     def bound(q):
         return q if until is None else q.filter(ActivityEvent.logged_at < until)
 
+    gallery_pairs = _creator_gallery_pairs()
     gal_rows = bound(
-        db.query(gallery_creators.c.creator_id, ActivityEvent.kind,
+        db.query(gallery_pairs.c.creator_id, ActivityEvent.kind,
                  func.sum(ActivityEvent.amount))
-          .join(ActivityEvent, ActivityEvent.gallery_id == gallery_creators.c.gallery_id)
+          .join(ActivityEvent, ActivityEvent.gallery_id == gallery_pairs.c.gallery_id)
           .filter(ActivityEvent.logged_at >= since,
                   ActivityEvent.kind.in_(tuple(_GALLERY_KIND_FIELD)))
-    ).group_by(gallery_creators.c.creator_id, ActivityEvent.kind).all()
+    ).group_by(gallery_pairs.c.creator_id, ActivityEvent.kind).all()
     for cid, kind, total in gal_rows:
         if cid is not None:
             bucket(cid)[_GALLERY_KIND_FIELD[kind]] += int(total or 0)

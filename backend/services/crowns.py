@@ -23,7 +23,7 @@ from models import (
     ActivityEvent, Card, Creator, Gallery, HofCategoryAward, HofCategoryProgress, HofCrown, Image, SessionLog,
     gallery_creators, image_creators,
 )
-from services import ranking
+from services import activity, ranking
 from services.cards import generate_card
 from services.hof_cards import (
     HOF_CROWN_BASELINE_RARITY, HOF_CROWN_PRINT_RARITY, prepare_hof_visual,
@@ -93,23 +93,23 @@ def _winning_image(db: Session, creator_id: int, since, until):
     """The file she actually won on — the period's most-used, so the card art is
     a capsule of that week rather than a portrait that drifts as tastes move.
     Falls back to her best all-time when the period predates event logging."""
+    pairs = ranking._creator_image_pairs()
     row = (
         db.query(ActivityEvent.image_id, func.sum(ActivityEvent.amount))
-          .join(Image, Image.id == ActivityEvent.image_id)
-          .join(Gallery, Gallery.id == Image.gallery_id)
+          .join(pairs, pairs.c.image_id == ActivityEvent.image_id)
           .filter(ActivityEvent.logged_at >= since, ActivityEvent.logged_at < until,
                   ActivityEvent.kind.in_(("cum", "view", "seconds")),
-                  Gallery.creator_id == creator_id)
+                  pairs.c.creator_id == creator_id)
           .group_by(ActivityEvent.image_id)
           .order_by(func.sum(ActivityEvent.amount).desc()).first()
     )
     if row and row[0]:
         return row[0]
 
-    img = (db.query(Image).join(Gallery, Image.gallery_id == Gallery.id)
-             .filter(Gallery.creator_id == creator_id)
+    img = (db.query(Image.id).join(pairs, pairs.c.image_id == Image.id)
+             .filter(pairs.c.creator_id == creator_id)
              .order_by(Image.cum_count.desc(), Image.view_count.desc()).first())
-    return img.id if img else None
+    return img[0] if img else None
 
 
 def _alltime_winning_image(db: Session, creator_id: int):
@@ -140,7 +140,9 @@ def award_period(db: Session, period_type: str, key: str, since, until) -> HofCr
     if existing:
         return None
 
-    scores = ranking.score_all_creators_in_period(db, since, until)
+    db_since = activity.local_to_utc_naive(since)
+    db_until = activity.local_to_utc_naive(until)
+    scores = ranking.score_all_creators_in_period(db, db_since, db_until)
     order  = ranking.ranked_ids(scores)
     if not order:
         return None   # nothing happened; no board, no champion
@@ -158,7 +160,7 @@ def award_period(db: Session, period_type: str, key: str, since, until) -> HofCr
         sessions=int(s.get("session_count") or 0),
         cum=int(s.get("total_cum") or 0),
         view_seconds=int(s.get("total_view_seconds") or 0),
-        image_id=_winning_image(db, winner_id, since, until),
+        image_id=_winning_image(db, winner_id, db_since, db_until),
     )
     db.add(crown)
     db.flush()
@@ -309,7 +311,9 @@ def _create_category_award(db: Session, category: str, period_type: str, period_
 
 
 def award_category_period(db: Session, category: str, period_type: str, key: str, since, until):
-    scores = _category_scores(db, category, since, until)
+    db_since = activity.local_to_utc_naive(since)
+    db_until = activity.local_to_utc_naive(until)
+    scores = _category_scores(db, category, db_since, db_until)
     order = ranking.ranked_ids(scores)
     if not order:
         return None
@@ -359,7 +363,7 @@ def award_due_crowns(db: Session, now: datetime | None = None) -> int:
         if minted:
             db.commit()
         return minted
-    history_start = max(min(starts), EPOCH)
+    history_start = max(activity.utc_naive_to_local(min(starts)), EPOCH)
 
     for period_type in ("day", "week", "month"):
         # Resume from the last crown of this type rather than replaying history

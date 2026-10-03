@@ -17,6 +17,7 @@ from models import (
     Card,
     CardRarity,
     CardType,
+    Creator, Gallery, Image,
     TCGDisplayItemInstance,
     TCGDisplayItemDefinition,
     TCGChecklistEntry,
@@ -32,7 +33,7 @@ from models import (
     TCGRoomPlacement,
     UserProfile,
 )
-from services import tcg_room
+from services import tcg_room, tcg_v2
 
 
 @pytest.fixture
@@ -55,6 +56,17 @@ def db(tmp_path):
     finally:
         session.close()
         engine.dispose()
+
+
+def _scene_source(db):
+    """Room ownership probes still need a Scene that passes delivery metadata."""
+    person = Creator(name="Room fixture", creator_type="character")
+    db.add(person); db.flush()
+    gallery = Gallery(name="Room fixture", folder_path="room-fixture", creator_id=person.id, period_year=2026)
+    db.add(gallery); db.flush()
+    image = Image(gallery_id=gallery.id, filename="fixture.png", file_path="room-fixture/fixture.png", width=640, height=640, is_video=False)
+    db.add(image); db.flush()
+    return image.id
 
 
 def _parcel_fixture(db, *, status="placed", with_opening=False):
@@ -241,6 +253,7 @@ def test_prepaid_inventory_opening_does_not_debit_currency(db, monkeypatch):
         generation_seed="test-foundation-seed",
     )
     card = Card(
+        source_image_id=_scene_source(db),
         card_type=CardType.image,
         rarity=CardRarity.common,
         print_rarity="C",
@@ -267,4 +280,143 @@ def test_prepaid_inventory_opening_does_not_debit_currency(db, monkeypatch):
     db.refresh(profile)
     opening = db.query(TCGPackOpening).one()
     assert opening.price_paid == 500
-    assert profile.vault_credits == before
+    # Opening can award credits; prepaid delivery must never debit the wallet.
+    assert profile.vault_credits >= before
+
+
+def test_frozen_pack_tie_order_matches_sqlite_candidate_order(db):
+    releases = [
+        TCGRelease(
+            code=f"TIE-{index}", name=f"Tie {index}", status="published",
+            generation_seed=f"tie-seed-{index}",
+        )
+        for index in (1, 2, 3)
+    ]
+    source_image_id = _scene_source(db)
+    cards = [
+        Card(
+            source_image_id=source_image_id,
+            id=card_id,
+            card_type=CardType.image,
+            rarity=CardRarity.common,
+            print_rarity="C",
+            rarity_class="R",
+            is_legacy=False,
+        )
+        for card_id in (30, 10, 20)
+    ]
+    db.add_all([*releases, *cards])
+    db.flush()
+    entries = [
+        TCGChecklistEntry(
+            id=card.id,
+            release_id=releases[index % len(releases)].id,
+            card_id=card.id,
+            collector_position=1,
+            collector_suffix="",
+            published_rarity="C",
+        )
+        for index, card in enumerate(cards)
+    ]
+    db.add_all(entries)
+    db.flush()
+
+    frozen_ids = [30, 10, 20]
+    old_chunk_order = db.query(TCGChecklistEntry).join(
+        Card, TCGChecklistEntry.card_id == Card.id,
+    ).filter(
+        TCGChecklistEntry.id.in_(frozen_ids),
+        Card.is_legacy.is_(False),
+    ).all()
+    expected = [
+        row.id for row in sorted(
+            old_chunk_order,
+            key=lambda row: (row.collector_position, row.collector_suffix or ""),
+        )
+    ]
+
+    actual = [row.id for row in tcg_v2._load_frozen_pack_entries(db, frozen_ids)]
+    assert actual == expected
+    assert actual == [10, 20, 30]
+
+
+def test_large_frozen_inventory_open_loads_only_selected_card_records(db, monkeypatch):
+    _, line, parcel, pack, _, _ = _parcel_fixture(db, status="collected")
+    release = TCGRelease(
+        code="FND-CORE",
+        name="Foundation",
+        status="published",
+        generation_seed="test-foundation-seed",
+    )
+    db.add(release)
+    db.flush()
+
+    # Use Core inserts to cover the full Foundation-sized pool without spending
+    # fixture time constructing tens of thousands of ORM entities.
+    source_image_id = _scene_source(db)
+    candidate_ids = list(range(1, 60_001))
+    db.connection().execute(Card.__table__.insert(), [
+        {
+            "id": card_id,
+            "card_type": CardType.image,
+            "source_image_id": source_image_id,
+            "rarity": CardRarity.common,
+            "print_rarity": "C",
+            "rarity_class": "R",
+            "is_legacy": False,
+        }
+        for card_id in candidate_ids
+    ])
+    db.connection().execute(TCGChecklistEntry.__table__.insert(), [
+        {
+            "id": card_id,
+            "release_id": release.id,
+            "card_id": card_id,
+            "collector_position": card_id,
+            "collector_suffix": "",
+            "lane": None,
+            "is_base_printing": True,
+            "required_for_complete": True,
+            "published_rarity": "C",
+            "selection_reason": "",
+        }
+        for card_id in candidate_ids
+    ])
+    line.product_snapshot_json = json.dumps({
+        "card_count": 1,
+        "eligible_entry_ids": candidate_ids,
+        "owned_card_ids": [],
+        "guaranteed_slots": ["C"],
+        "odds": {},
+        "duplicate_protection": {},
+    })
+    db.commit()
+
+    loaded_card_ids = []
+    def capture_card_load(card, _context):
+        loaded_card_ids.append(card.id)
+
+    event.listen(Card, "load", capture_card_load)
+    monkeypatch.setattr(
+        "services.tcg_v2.prepare_card_face_for_reveal",
+        lambda session, selected_card: (selected_card, {}),
+    )
+    try:
+        first = tcg_room.open_parcel(db, parcel.id)
+        db.refresh(parcel)
+        db.refresh(pack)
+        pulled_ids = [card["id"] for card in first["results"][0]["cards"]]
+
+        assert first["status"] == "opened"
+        assert parcel.status == "opened"
+        assert pack.opening_id is not None
+        assert len(pulled_ids) == 1
+        assert pulled_ids[0] in candidate_ids
+        assert set(loaded_card_ids) == {pulled_ids[0]}
+
+        second = tcg_room.open_parcel(db, parcel.id)
+        assert second["status"] == "opened"
+        assert [card["id"] for card in second["results"][0]["cards"]] == pulled_ids
+        assert len(db.query(TCGPackOpening).all()) == 1
+    finally:
+        event.remove(Card, "load", capture_card_load)

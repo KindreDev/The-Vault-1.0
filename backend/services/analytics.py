@@ -7,7 +7,7 @@ explicit and never fills missing history with inferred events.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import func
@@ -51,7 +51,9 @@ def _iso(value: datetime | None) -> str | None:
 def _window(db: Session, range_name: str, now: datetime | None = None):
     if range_name not in RANGES:
         raise ValueError("range must be one of: 7d, 30d, 90d, all")
-    now = now or datetime.now()
+    # SQLite defaults and engagement/session writers persist naive UTC. Using
+    # local wall time here excludes the newest hours west of UTC.
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     days = RANGES[range_name]
     if days is not None:
         start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
@@ -632,7 +634,7 @@ def dashboard(
     selected_rolling = _rolling(selected_values)
     return {
         "meta": {"range": range_name, "aggregation": aggregation, "metric": selected_metric,
-                 "start": _iso(start), "end": _iso(end), "timezone": "persisted_naive",
+                 "start": _iso(start), "end": _iso(end), "timezone": "UTC",
                  **_coverage(db, start, event_rows)},
         "summary": {"sessions": len(sessions), "session_seconds": total_duration,
                     "session_hours": round(total_duration / 3600, 2),

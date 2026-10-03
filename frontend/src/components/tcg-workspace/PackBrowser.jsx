@@ -1,7 +1,9 @@
 import { LocalizedText, useT } from '../../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { LockKeyhole, PackageOpen, ShieldCheck } from 'lucide-react'
+import { boosterArtCandidates, sampleBoosterArt } from './boosterArt'
 import './PackBrowser.css'
+import TargetCardTypePicker from './TargetCardTypePicker'
 
 const RARITY_LABELS = { C: 'Common', R: 'Rare', SR: 'Super Rare', UR: 'Ultra Rare', SPR: 'Special Rare' }
 const RARITY_ORDER = { C: 0, R: 1, SR: 2, UR: 3, SPR: 4 }
@@ -106,41 +108,29 @@ function availabilityMessage(pack, now, t) {
   return null
 }
 
-function stablePackSeed(value) {
-  return [...String(value ?? '')].reduce((hash, character) => ((hash * 31) + character.codePointAt(0)) >>> 0, 7)
-}
-
-function frozenPackArt(pack = {}) {
-  const urls = Array.isArray(pack.snapshot_art_urls) ? pack.snapshot_art_urls.filter(Boolean) : []
-  if (urls.length) return urls
-  if (pack.snapshot_art_url) return [pack.snapshot_art_url]
-  if (pack.snapshot_art_image_id) return [`/api/images/${Number(pack.snapshot_art_image_id)}/file`]
-  return []
-}
-
-export function BoosterEnvelope({ pack, images }) {
-  const frozenArt = useMemo(() => frozenPackArt(pack), [pack])
-  const art = frozenArt.length ? frozenArt : images
-  const slots = useMemo(() => {
-    const source = art || []
-    const size = Math.max(1, source.length)
-    const seed = stablePackSeed(pack.id ?? pack.code ?? pack.name)
-    return Array.from({ length: 3 }, (_, index) => source[(seed + index) % size])
-  }, [pack.id, pack.code, pack.name, art])
+export function BoosterEnvelope({ pack }) {
+  const candidates = useMemo(() => boosterArtCandidates(pack), [pack.collage_images, pack.collageImages, pack.preview_art_urls, pack.preview_art_urls_by_release])
+  const [slots, setSlots] = useState(() => sampleBoosterArt(candidates, 3))
+  useEffect(() => {
+    const rotate = () => setSlots(sampleBoosterArt(candidates, 3))
+    rotate()
+    const timer = window.setInterval(rotate, 5200)
+    return () => window.clearInterval(timer)
+  }, [candidates])
   return <div className={`tcgws-booster tcgws-booster--${pack.product_kind}`}>
     <div className="tcgws-booster-crimp top" />
     <div className="tcgws-booster-collage">{slots.map((image, index) => image && <img key={`${image}-${index}`} src={image} style={{ '--slot': index }} />)}</div>
     <div className="tcgws-booster-foil" />
-    <div className="tcgws-booster-copy"><span><LocalizedText text={"THE VAULT"} /></span><strong>{pack.name}</strong><small>{pack.card_count}<LocalizedText text={"CARD BOOSTER"} before={" "} /></small></div>
+    <div className="tcgws-booster-copy"><span><LocalizedText text={"THE VAULT"} /></span><strong>{pack.name}</strong></div>
     <div className="tcgws-booster-crimp bottom" />
   </div>
 }
 
-export default function PackBrowser({ packs, inventory, releases, onOpenPack, pending = false, pendingPackId = null, orderMode = false }) {
+export default function PackBrowser({ packs, releases, onOpenPack, pending = false, pendingPackId = null, orderMode = false }) {
   const t = useT()
   const [selectedReleases, setSelectedReleases] = useState({})
+  const [targetTypes, setTargetTypes] = useState({})
   const [now, setNow] = useState(() => Date.now())
-  const images = (inventory || []).map(card => card.thumb_url || card.image_url).filter(Boolean).slice(0, 30)
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
@@ -150,21 +140,26 @@ export default function PackBrowser({ packs, inventory, releases, onOpenPack, pe
     <div className="tcgws-pack-grid">{packs.map(pack => {
       const schedule = availabilityMessage(pack, now, t)
       const wrapperSrc = WRAPPER_ASSETS[pack.product_kind] || WRAPPER_ASSETS.permanent
+      const selectedPreview = pack.preview_art_urls_by_release?.[String(selectedReleases[pack.id])]
+      const previewPack = selectedPreview?.length ? { ...pack, preview_art_urls: selectedPreview } : pack
       const openingProduct = {
         ...pack,
         wrapper_src: pack.wrapper_src || wrapperSrc,
         wrapper_identity: { code: pack.code, name: pack.name, product_kind: pack.product_kind },
-        collage_images: images,
+        preview_art_urls: previewPack.preview_art_urls || [],
+        collage_images: previewPack.preview_art_urls || [],
       }
       const isWeekly = pack.product_kind === 'weekly_protection'
+      const isTargetable = Boolean(pack.targetable_card_type)
       const canOpen = pack.active && (pack.purchasable || pack.tokens > 0)
       return <article key={pack.id}>
-      <BoosterEnvelope pack={pack} images={images} />
+      <BoosterEnvelope pack={previewPack} />
       <section><span>{pack.product_kind.replaceAll('_', ' ')}</span><h2>{pack.name}</h2>
         <div className="tcgws-pack-facts"><p><PackageOpen size={16} />{pack.card_count}<LocalizedText text={"Cards"} before={" "} /></p><p><ShieldCheck size={16} />{guaranteedLine(pack)}</p><span>{poolSummary(pack)}</span></div>
         <OddsDisclosure pack={pack} />
         {isWeekly && pack.tokens > 0 && <label className="tcgws-pack-release"><span><LocalizedText text={"Choose release"} /></span><select value={selectedReleases[pack.id] || ''} onChange={event => setSelectedReleases(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value=""><LocalizedText text={"Select a frozen release"} /></option>{releases.filter(release => release.status === 'published').map(release => <option key={release.id} value={release.id}>{release.name}</option>)}</select></label>}
-        {canOpen ? <button className="tcgws-primary" disabled={pending || (isWeekly && !selectedReleases[pack.id])} onClick={() => onOpenPack(openingProduct, selectedReleases[pack.id] || null)}>{pending && pendingPackId === pack.id ? <><PackageOpen size={16} className="tcgws-pack-button-spin" /> {orderMode ? 'Ordering...' : 'Preparing...'}</> : orderMode && !isWeekly ? `Order online - ${pack.price.toLocaleString()} Credits` : isWeekly ? 'Weekly quest reward' : pack.tokens > 0 ? `Open token (${pack.tokens})` : `${pack.price.toLocaleString()} Credits`}</button> : <button disabled><LockKeyhole size={16} />{isWeekly ? 'Weekly quest reward' : schedule || (pack.purchasable ? 'Not currently scheduled' : 'Coming soon')}</button>}
+        {isTargetable && <TargetCardTypePicker value={targetTypes[pack.id] || ''} onChange={value => setTargetTypes(current => ({ ...current, [pack.id]: value }))} id={`browser-target-${pack.id}`} />}
+        {canOpen ? <button className="tcgws-primary" disabled={pending || (isWeekly && !selectedReleases[pack.id])} onClick={() => onOpenPack(openingProduct, selectedReleases[pack.id] || null, isTargetable ? targetTypes[pack.id] || null : null)}>{pending && pendingPackId === pack.id ? <><PackageOpen size={16} className="tcgws-pack-button-spin" /> {orderMode ? 'Ordering...' : 'Preparing...'}</> : orderMode && !isWeekly ? `Order online - ${pack.price.toLocaleString()} Credits` : isWeekly ? 'Weekly quest reward' : pack.tokens > 0 ? `Open token (${pack.tokens})` : `${pack.price.toLocaleString()} Credits`}</button> : <button disabled><LockKeyhole size={16} />{isWeekly ? 'Weekly quest reward' : schedule || (pack.purchasable ? 'Not currently scheduled' : 'Coming soon')}</button>}
       </section>
     </article>
     })}</div>

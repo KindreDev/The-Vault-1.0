@@ -182,7 +182,7 @@ class GalleryUpdate(BaseModel):
     description: Optional[str] = None
     creator_id: Optional[int] = None
     is_favorite: Optional[bool] = None
-    rating: Optional[float] = None
+    rating: Optional[float] = Field(default=None, ge=0, le=10)
     linked_character_id: Optional[int] = None
     period_month: Optional[int] = None
     period_year: Optional[int] = None

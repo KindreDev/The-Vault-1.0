@@ -1,7 +1,9 @@
 import axios from 'axios'
+import { openRecoverablePack } from './packPurchase.js'
 import queryClient from './queryClient.js'
 import { xpEvents } from './xpEvents.js'
 import { useVaultStore } from '../store/vault.js'
+import { refreshAfterMutation } from '../../../shared/queryRefresh.mjs'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
@@ -65,6 +67,9 @@ export function apiErrorMessage(error, fallback = 'Request failed') {
 api.interceptors.response.use(res => {
   try {
     const d = res.data
+    if (res.config?.method === 'post' && /^\/scanner\/ai-tag(?:-resume)?$/.test(res.config.url) && d?.job_id) {
+      queryClient.setQueryData(['ai-tag-status'], old => old?.running && old.job_id !== d.job_id ? old : d)
+    }
     if (!d || typeof d !== 'object') return res
 
     const xpEvt = (d.total_xp !== undefined && d.level_up !== undefined) ? d
@@ -108,6 +113,14 @@ api.interceptors.response.use(res => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
     }
   } catch (_) {}
+  return res
+})
+
+// Successful writes refresh their dependent screens even when the caller only
+// updates its own list. Cache refresh errors must not turn a committed purchase
+// or disk operation into a failed mutation.
+api.interceptors.response.use(res => {
+  void refreshAfterMutation(queryClient, res.config, res.data).catch(() => {})
   return res
 })
 
@@ -470,7 +483,7 @@ export const taggerApi = {
   modelStatus:    ()      => api.get('/scanner/ai-tag-models'),
   downloadModels: (body)  => api.post('/scanner/ai-tag-download', body),
   start:          (body)  => api.post('/scanner/ai-tag', body),
-  status:         ()      => api.get('/scanner/ai-tag-status'),
+  status:         (jobId) => api.get('/scanner/ai-tag-status', { params: jobId ? { job_id: jobId } : undefined }),
   cancel:         ()      => api.post('/scanner/ai-tag-cancel'),
   pause:          ()      => api.post('/scanner/ai-tag-pause'),
   resume:         (jobId) => api.post('/scanner/ai-tag-resume', jobId ? { job_id: jobId } : {}),
@@ -481,7 +494,9 @@ export const cardsApi = {
   inventory:           (params)   => api.get('/cards/inventory', { params }),
   setupStatus:         ()         => api.get('/cards/setup'),
   startV2:             ()         => api.post('/cards/setup'),
-  publishFoundation:   ()         => api.post('/cards/setup/foundation'),
+  publishFoundation:   ()         => api.post('/cards/setup/foundation', null, { timeout: 600000 }),
+  refreshFoundation:   ()         => api.post('/cards/foundation/refresh'),
+  wipeOwnedCards:     (confirmation) => api.post('/cards/owned/wipe', { confirmation }),
   // Only creators you actually own cards of — populates the collection filter.
   collectionCreators:  (params)   => api.get('/cards/creators', { params }),
   get:                 (id)       => api.get(`/cards/${id}`),
@@ -527,7 +542,9 @@ export const tcgV2Api = {
   checklist:            (params)        => api.get('/tcg-v2/checklist', { params }),
   packs:                ()              => api.get('/tcg-v2/packs'),
   simulatePack:         (data)          => api.post('/tcg-v2/packs/simulate', data),
-  openPack:             (id, data = {}) => api.post(`/tcg-v2/packs/${id}/open`, data),
+  openPack:             (id, data = {}) => openRecoverablePack(
+    (productId, request) => api.post(`/tcg-v2/packs/${productId}/open`, request, { timeout: 300000 }), id, data,
+  ),
   binders:              ()              => api.get('/tcg-v2/binders'),
   createBinder:         (data)          => api.post('/tcg-v2/binders', data),
   binder:               (id)            => api.get(`/tcg-v2/binders/${id}`),
@@ -571,21 +588,27 @@ export const tcgRoomApi = {
   parcel:          (id)                => api.get(`/tcg-room/parcels/${id}`),
   collectParcel:   (id)                => api.post(`/tcg-room/parcels/${id}/collect`),
   placeParcel:     (id, data)          => api.post(`/tcg-room/parcels/${id}/place`, data),
-  openParcel:      (id)                => api.post(`/tcg-room/parcels/${id}/open`),
-  openInventoryParcel: (id)            => api.post(`/tcg-room/inventory/parcels/${id}/open`),
+  // Parcel openings prepare and serialize every card in every sealed pack;
+  // a frozen 60k-entry pool can take longer than the default 30s API timeout.
+  openParcel:      (id)                => api.post(`/tcg-room/parcels/${id}/open`, null, { timeout: 300000 }),
+  openInventoryParcel: (id)            => api.post(`/tcg-room/inventory/parcels/${id}/open`, null, { timeout: 300000 }),
 }
 
 export const tcgTradersApi = {
   current:         ()                         => api.get('/tcg-traders/current'),
+  roster:          ()                         => api.get('/tcg-traders/roster'),
   dialogue:        (visitId)                  => api.get(`/tcg-traders/${visitId}/dialogue`),
   respond:         (visitId, action)          => api.post(`/tcg-traders/${visitId}/dialogue`, { action }),
   inventory:       (visitId)                  => api.get(`/tcg-traders/${visitId}/inventory`),
-  tradeCandidates: (visitId, limit = 120)     => api.get(`/tcg-traders/${visitId}/trade-candidates`, { params: { limit } }),
+  tradeCandidates: (visitId)                  => api.get(`/tcg-traders/${visitId}/trade-candidates`),
   sellQuote:       (visitId, copyIds, currency) => api.post('/tcg-traders/sell/quote', { visit_id: visitId, copy_ids: copyIds, currency }),
   buyOffer:        (visitId, inventoryId, currency) => api.post('/tcg-traders/buy/offer', { visit_id: visitId, inventory_id: inventoryId, currency }),
-  barterOffer:     (visitId, inventoryId, copyIds, credits = 0, shards = 0) => api.post('/tcg-traders/barter/offer', { visit_id: visitId, inventory_id: inventoryId, copy_ids: copyIds, credits, shards }),
+  barterQuote:     (visitId, inventoryIds, copyIds, credits = 0, shards = 0) => api.post('/tcg-traders/barter/quote', { visit_id: visitId, inventory_ids: inventoryIds, copy_ids: copyIds, credits, shards }),
+  barterOffer:     (visitId, inventoryIds, copyIds, credits = 0, shards = 0) => api.post('/tcg-traders/barter/offer', { visit_id: visitId, inventory_ids: inventoryIds, copy_ids: copyIds, credits, shards }),
   requests:        (visitId)                  => api.get(`/tcg-traders/${visitId}/requests`),
-  requestCard:     (visitId, cardId)          => api.post('/tcg-traders/requests', { visit_id: visitId, card_id: cardId }),
+  requestCard:     (visitId, cardIdentifier)  => api.post('/tcg-traders/requests', { visit_id: visitId, card_id: cardIdentifier }),
+  gradeQuote:      (visitId, copyIds)         => api.post('/tcg-traders/grade/quote', { visit_id: visitId, copy_ids: copyIds }),
+  grade:           (visitId, copyIds)         => api.post('/tcg-traders/grade', { visit_id: visitId, copy_ids: copyIds }),
   offers:          (visitId)                  => api.get(`/tcg-traders/${visitId}/offers`),
   accept:          (offerId)                  => api.post(`/tcg-traders/offers/${offerId}/accept`),
   refuse:          (offerId)                  => api.post(`/tcg-traders/offers/${offerId}/refuse`),

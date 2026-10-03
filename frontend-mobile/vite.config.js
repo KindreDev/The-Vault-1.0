@@ -46,6 +46,7 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   server: {
+    fs: { allow: [path.resolve(__dirname), path.resolve(__dirname, '../shared')] },
     host: true,   // bind 0.0.0.0 so a phone on the same WiFi can open the dev server
     port: 5174,
   },

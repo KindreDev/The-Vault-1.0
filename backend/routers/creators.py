@@ -420,14 +420,6 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
     activity_events log rather than the lifetime counters, so it reflects only
     what happened inside the window.
     """
-    # Crown anything that closed since the last sweep. Cheap once the backfill
-    # has run (it resumes from the newest crown), and it means a champion is
-    # decided at midnight without waiting for the next restart.
-    try:
-        crowns.award_due_crowns(db)
-    except Exception:
-        pass
-
     since = activity.period_start(period)
     if since is None:
         scores = ranking.score_all_creators(db)
@@ -447,17 +439,29 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
     deltas = ranking.apply_rank_movement(db, entity_key, order)
 
     page_ids = order[offset:offset + limit]
+    creators_by_id = {
+        creator.id: creator
+        for creator in db.query(Creator).filter(Creator.id.in_(page_ids)).all()
+    } if page_ids else {}
+    image_counts = (
+        {cid: int(scores[cid].get("image_count") or 0) for cid in page_ids}
+        if since is None else ranking.creator_image_counts(db, page_ids)
+    )
     crown_counts = crowns.crown_counts_bulk(db, page_ids)
 
     # offset lets the "know more" list page through the whole ranking while
     # keeping each entry's true global rank.
     out = []
     for rank, cid in enumerate(order[offset:offset + limit], start=offset + 1):
-        creator = db.query(Creator).filter(Creator.id == cid).first()
+        creator = creators_by_id.get(cid)
         if not creator:
             continue
-        d = _enrich(creator, db)
+        d = {col.name: getattr(creator, col.name) for col in creator.__table__.columns}
         d.update(scores[cid])
+        d["image_count"] = image_counts.get(cid, 0)
+        d["card_rarity"] = _compute_rarity(
+            d["image_count"], float(creator.rating or 0), scores[cid].get("session_count", 0),
+        )
         d["hof_score"]    = scores[cid]["score"]
         d["rank"]         = rank
         d["rank_change"]  = deltas.get(cid, 0)

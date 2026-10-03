@@ -8,6 +8,7 @@ from functools import lru_cache
 import hashlib
 import json
 import math
+import os
 import random
 import re
 from threading import RLock
@@ -17,15 +18,19 @@ from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, object_session
 
+from database import DATA_DIR
+from services.scene_eligibility import renderable_scene_card
+
 from models import (
     BondMilestone, Card, CardAcquisition, CardContentClassification, CardPack, CardType,
     CardInventory, CardPresentationOverride, CraftingMaterials, Creator, CreatorShowcase,
     Gallery, HofCrown, Image, Tag, TCGChecklistEntry, TCGBinder, TCGBinderSection,
-    TCGBinderSlot, TCGPackOpening, TCGPackOpeningCard, TCGPackProduct,
+    TCGBinderSlot, TCGPackOpening, TCGPackOpeningCard, TCGPackProduct, TCGPackPurchase,
     TCGPackToken, TCGRelease, TCGSet, TCGSettings, TCGWorkshopUnlock,
     TCGPhysicalCardCopy, TCGDisplayAssignment, TCGOnlineOrder, TCGOnlineOrderLine,
     TCGParcel, TCGParcelPack,
-    TCGSetupState, UserProfile, gallery_creators, gallery_tags, image_creators, image_tags,
+    TCGSetupState, TCGTraderInventory, TCGTraderOffer, TCGTraderReservation,
+    UserProfile, gallery_creators, gallery_tags, image_creators, image_tags,
 )
 from services.cards import _card_to_dict, prepare_card_face_for_reveal
 from services.personal_value import apply_rarity_floor, evaluate_personal_value
@@ -41,7 +46,9 @@ POLICY_VERSION = "classification-v2"
 V2_SHARD_YIELD = {"C": 2, "R": 5, "SR": 15, "UR": 40, "SPR": 80}
 PACK_RARITIES = ("C", "R", "SR", "UR", "SPR")
 GENERIC_RELEASE_TEMPLATE_CODES = {"RELEASE-STANDARD", "RELEASE-PREMIUM"}
-FROZEN_ENTRY_QUERY_BATCH_SIZE = 500
+FOUNDER_SELECTION_PRODUCT_CODE = "FND-CORE-STD"
+FOUNDER_STANDARD_PRODUCT_CODE = "FND-CORE-STD-PLAIN"
+PERMANENT_PRODUCT_CODE = "VAULT-PERMANENT"
 MONTHLY_RELEASE_TYPE_WEIGHTS = {
     "scene": 248,
     "gallery": 93,
@@ -582,6 +589,11 @@ def seed_foundation_release(db: Session) -> TCGRelease | None:
     foundation_query = db.query(Card).filter(Card.is_legacy.is_(False), Card.catalog_code == "FND-001")
     card_count = foundation_query.count()
     if release:
+        setup = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
+        if release.status == "archived" or (setup and setup.active_foundation_release_id and setup.active_foundation_release_id != release.id):
+            return release
+        if setup and not setup.active_foundation_release_id and release.status == "published":
+            setup.active_foundation_release_id = release.id
         release.name = "Founder's Catalogue"
         release.description = "The permanent opening catalogue of the Vault TCG."
         entry_count = db.query(func.count(TCGChecklistEntry.id)).filter(TCGChecklistEntry.release_id == release.id).scalar() or 0
@@ -636,6 +648,9 @@ def seed_foundation_release(db: Session) -> TCGRelease | None:
         "spr_unlock_cum_threshold": 6, "source": "foundation_catalog",
     })
     tcg_set.manifest_json = release.manifest_json
+    setup = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
+    if setup and release.status == "published" and not setup.active_foundation_release_id:
+        setup.active_foundation_release_id = release.id
     return release
 
 
@@ -688,9 +703,11 @@ def _backfill_release_products(db: Session) -> None:
             code = f"{release.code}-{definition['suffix']}"
             product = db.query(TCGPackProduct).filter(TCGPackProduct.code == code).first()
             price_metadata = _release_price_metadata(release, product_kind)
+            is_founder_standard = release.release_kind == "foundation" and product_kind == "release_standard"
+            product_name = "Selection Founders Standard Booster" if is_founder_standard else f"{release.name} {definition['name']}"
             if not product:
                 product = TCGPackProduct(
-                    code=code, name=f"{release.name} {definition['name']}",
+                    code=code, name=product_name,
                     product_kind=product_kind, release_id=release.id,
                     card_count=definition["card_count"], rarity_floor=definition["rarity_floor"],
                     guaranteed_slots=json.dumps(definition["guaranteed_slots"]),
@@ -712,7 +729,7 @@ def _backfill_release_products(db: Session) -> None:
                 db.add(product)
                 db.flush()
             else:
-                product.name = f"{release.name} {definition['name']}"
+                product.name = product_name
                 product.product_kind = product_kind
                 product.release_id = release.id
                 if not isinstance(_json(product.odds_json, None), dict) or not _json(product.odds_json, {}):
@@ -741,6 +758,32 @@ def _backfill_release_products(db: Session) -> None:
             product.simulation_report = json.dumps(report)
             product.active = bool(report.get("approved"))
             product.purchasable = bool(report.get("approved"))
+
+            if is_founder_standard:
+                plain_code = FOUNDER_STANDARD_PRODUCT_CODE if release.code == "FND-CORE" else f"{release.code}-STD-PLAIN"
+                plain = db.query(TCGPackProduct).filter(TCGPackProduct.code == plain_code).first()
+                if not plain:
+                    plain = TCGPackProduct(code=plain_code)
+                    db.add(plain)
+                plain.name = "Founder Standard Booster"
+                plain.product_kind = product.product_kind
+                plain.release_id = product.release_id
+                plain.card_count = product.card_count
+                plain.rarity_floor = product.rarity_floor
+                plain.guaranteed_slots = product.guaranteed_slots
+                plain.odds_json = product.odds_json
+                plain.replacement_rules = product.replacement_rules
+                plain.duplicate_protection = product.duplicate_protection
+                plain.eligible_pool_json = product.eligible_pool_json
+                plain.regular_price = product.regular_price
+                plain.launch_price = product.launch_price
+                plain.launch_days = product.launch_days
+                plain.available_from = product.available_from
+                plain.available_until = product.available_until
+                plain.purchase_limit = product.purchase_limit
+                plain.active = product.active
+                plain.purchasable = product.purchasable
+                plain.simulation_report = product.simulation_report
 
 
 def seed_pack_products(db: Session) -> None:
@@ -870,10 +913,21 @@ def _checklist_cover_cards(db: Session, release_id: int, set_id: int | None = No
     return cards
 
 
+def _is_staged_foundation_snapshot():
+    """Identify unpublished refresh snapshots, excluding ordinary draft releases."""
+    return and_(
+        TCGRelease.release_kind == "foundation",
+        TCGRelease.status == "draft",
+        func.coalesce(TCGRelease.generation_seed, "").like("catalog:FND-%"),
+    )
+
+
 def list_releases(db: Session) -> list[dict]:
     seed_foundation_release(db)
     db.commit()
-    releases = db.query(TCGRelease).order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc()).all()
+    releases = db.query(TCGRelease).filter(~_is_staged_foundation_snapshot()).order_by(
+        TCGRelease.published_at.desc(), TCGRelease.id.desc(),
+    ).all()
     return [{
         "id": release.id, "code": release.code, "name": release.name,
         "description": release.description, "status": release.status,
@@ -894,6 +948,7 @@ def list_sets(db: Session) -> list[dict]:
     sets = (
         db.query(TCGSet)
         .join(TCGRelease, TCGRelease.id == TCGSet.release_id)
+        .filter(TCGRelease.status != "draft")
         .order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc(), TCGSet.position)
         .all()
     )
@@ -1927,6 +1982,83 @@ def _enforce_release_creator_cap(allocated: list[dict], candidates: list[dict], 
     return result
 
 
+def wipe_owned_cards(db: Session, confirmation: str) -> dict:
+    """Clear current owned card copies while preserving catalogue and audit history."""
+    if confirmation != "WIPE OWNED CARDS":
+        raise ValueError('Type "WIPE OWNED CARDS" to confirm this action')
+
+    inventory_count = db.query(CardInventory.id).count()
+    inventory_id_query = db.query(CardInventory.id).subquery()
+    owned_card_id_query = db.query(CardInventory.card_id).subquery()
+    owned_copy_query = db.query(TCGPhysicalCardCopy.id).filter(
+        TCGPhysicalCardCopy.location_kind != "traded_away",
+    )
+    owned_copy_id_query = owned_copy_query.subquery()
+    physical_copy_count = owned_copy_query.count()
+    offer_ids = sorted({row[0] for row in db.query(TCGTraderReservation.offer_id).filter(
+        TCGTraderReservation.status == "active",
+        TCGTraderReservation.physical_copy_id.in_(owned_copy_id_query) if physical_copy_count else False,
+    ).all()})
+    active_reservations = db.query(TCGTraderReservation).filter(
+        TCGTraderReservation.offer_id.in_(offer_ids) if offer_ids else False,
+        TCGTraderReservation.status == "active",
+    ).all()
+
+    # Retire affected offers without touching their transaction/audit records.
+    # Restore trader stock reservations for the other side of a barter too.
+    now = datetime.utcnow()
+    for reservation in active_reservations:
+        if reservation.inventory_id:
+            stock = db.get(TCGTraderInventory, reservation.inventory_id)
+            if stock:
+                stock.reserved_quantity = max(0, (stock.reserved_quantity or 0) - 1)
+        reservation.status = "released"
+    if offer_ids:
+        db.query(TCGTraderOffer).filter(
+            TCGTraderOffer.id.in_(offer_ids), TCGTraderOffer.status == "open",
+        ).update({
+            TCGTraderOffer.status: "expired",
+            TCGTraderOffer.resolved_at: now,
+        }, synchronize_session=False)
+
+    # Keep binders, furniture, room placements, and display items; detach only
+    # the references to current owned copies. Historical traded-away copies stay.
+    if inventory_count:
+        db.query(CreatorShowcase).filter(
+            CreatorShowcase.inventory_id.in_(inventory_id_query),
+        ).delete(synchronize_session=False)
+    if physical_copy_count or inventory_count:
+        db.query(TCGBinderSlot).filter(or_(
+            TCGBinderSlot.physical_copy_id.in_(owned_copy_id_query) if physical_copy_count else False,
+            TCGBinderSlot.card_id.in_(owned_card_id_query) if inventory_count else False,
+        )).update({
+            TCGBinderSlot.card_id: None,
+            TCGBinderSlot.physical_copy_id: None,
+        }, synchronize_session=False)
+    if physical_copy_count:
+        db.query(TCGDisplayAssignment).filter(
+            TCGDisplayAssignment.physical_copy_id.in_(owned_copy_id_query),
+        ).delete(synchronize_session=False)
+        db.query(TCGPhysicalCardCopy).filter(
+            TCGPhysicalCardCopy.id.in_(owned_copy_id_query),
+        ).delete(synchronize_session=False)
+    if inventory_count:
+        db.query(CardInventory).delete(synchronize_session=False)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "status": "wiped",
+        "owned_inventory_rows": inventory_count,
+        "physical_copies": physical_copy_count,
+        "offers_expired": len(offer_ids),
+    }
+
+
 def reset_published_release(db: Session, code: str, *, dry_run: bool = False) -> dict:
     """Remove one published monthly release and its owned records.
 
@@ -2118,9 +2250,13 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
         return release_detail(db, release.id)
     seed = f"{code}:{'regen' if regenerate else 'draft'}:{release.id if release else 0}"
     rng = random.Random(seed)
-    source_cards = db.query(Card).filter(
+    source_cards = db.query(Card).join(
+        TCGChecklistEntry, TCGChecklistEntry.card_id == Card.id,
+    ).join(TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id).filter(
+        renderable_scene_card(),
         Card.is_legacy.is_(False), Card.catalog_code.isnot(None),
         Card.card_type.notin_([CardType.hof, CardType.bond]),
+        TCGRelease.status == "published",
     ).all()
     prior_printings = Counter()
     for (reason,) in db.query(TCGChecklistEntry.selection_reason).join(
@@ -2318,6 +2454,9 @@ def publish_release(db: Session, release_id: int) -> dict:
     release = db.query(TCGRelease).filter(TCGRelease.id == release_id).first()
     if not release:
         raise ValueError("Release not found")
+    if (release.release_kind == "foundation" and release.status == "draft"
+            and (release.generation_seed or "").startswith("catalog:FND-")):
+        raise ValueError("A staged Foundation snapshot can only be published by its validated restore task")
     if release.status == "published":
         return release_detail(db, release.id)
     manifest = _json(release.manifest_json, {})
@@ -2432,6 +2571,9 @@ def release_detail(db: Session, release_id: int) -> dict:
     release = db.query(TCGRelease).filter(TCGRelease.id == release_id).first()
     if not release:
         raise ValueError("Release not found")
+    if (release.release_kind == "foundation" and release.status == "draft"
+            and (release.generation_seed or "").startswith("catalog:FND-")):
+        raise ValueError("This Foundation snapshot is still being prepared")
     sets = db.query(TCGSet).filter(TCGSet.release_id == release.id).order_by(TCGSet.position).all()
     products = db.query(TCGPackProduct).filter(or_(TCGPackProduct.release_id == release.id, TCGPackProduct.product_kind == "permanent")).all()
     return {
@@ -2452,7 +2594,9 @@ def release_detail(db: Session, release_id: int) -> dict:
 
 def checklist(db: Session, *, release_id: int | None = None, set_id: int | None = None,
               skip: int = 0, limit: int = 100) -> dict:
-    q = db.query(TCGChecklistEntry)
+    q = db.query(TCGChecklistEntry).join(
+        TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+    ).filter(~_is_staged_foundation_snapshot())
     if release_id is not None:
         q = q.filter(TCGChecklistEntry.release_id == release_id)
     if set_id is not None:
@@ -2548,7 +2692,10 @@ def _card_character_match(character_id: int):
 def catalog_filter_options(db: Session) -> dict:
     """Return filter entities that occur in the current V2 catalog."""
     backfill_v2_records(db)
-    current = Card.is_legacy.is_(False)
+    staged_card_ids = db.query(TCGChecklistEntry.card_id).join(
+        TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+    ).filter(_is_staged_foundation_snapshot()).subquery()
+    current = and_(Card.is_legacy.is_(False), ~Card.id.in_(staged_card_ids))
     creator_ids = {
         value for (value,) in db.query(Card.source_creator_id).filter(current).all() if value
     }
@@ -2641,6 +2788,7 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
         )
         .select_from(Card)
         .outerjoin(TCGChecklistEntry, TCGChecklistEntry.card_id == Card.id)
+        .outerjoin(TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id)
         .outerjoin(CardInventory, CardInventory.card_id == Card.id)
         .outerjoin(CardContentClassification, CardContentClassification.card_id == Card.id)
         .outerjoin(latest_acquisition, latest_acquisition.c.card_id == Card.id)
@@ -2651,6 +2799,15 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
         q = q.filter(Card.is_legacy.is_(True), CardInventory.quantity > 0)
     else:
         q = q.filter(Card.is_legacy.is_(False))
+        # Draft refresh batches are committed incrementally, but are not part
+        # of the visible catalogue until activation. Retain an owned card if
+        # one is ever associated with such a draft; archive/history rows are
+        # unaffected because only staged draft Foundation releases match.
+        q = q.filter(or_(
+            TCGRelease.id.is_(None),
+            ~_is_staged_foundation_snapshot(),
+            CardInventory.quantity > 0,
+        ))
     if ownership == "owned":
         q = q.filter(CardInventory.quantity > 0)
     elif ownership == "missing":
@@ -2894,7 +3051,7 @@ def card_detail(db: Session, card_id: int) -> dict:
             links.append({"label": creator.wiki_source or "Wiki", "url": creator.wiki_url})
     db.commit()
     return {
-        "card": _card_to_dict(db, card),
+        "card": _card_to_dict(db, card, include_scene_mask_editor=True),
         "acquisition_policy": _acquisition_policy(card.card_type),
         "classification": classification_dict(classification),
         "medium": "video" if source and source.is_video else (source.mime_type or "image" if source else "unknown"),
@@ -2981,21 +3138,32 @@ def workspace_summary(db: Session) -> dict:
         .filter(CardInventory.quantity > 0, legacy_cards)
         .scalar() or 0
     )
-    checklist_total = db.query(func.count(TCGChecklistEntry.id)).scalar() or 0
+    visible_checklists = db.query(TCGChecklistEntry).join(
+        TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+    ).filter(~_is_staged_foundation_snapshot())
+    checklist_total = visible_checklists.with_entities(func.count(TCGChecklistEntry.id)).scalar() or 0
     duplicates = (
         db.query(func.sum(CardInventory.quantity - 1))
         .join(Card, Card.id == CardInventory.card_id)
         .filter(CardInventory.quantity > 1, current_cards)
         .scalar() or 0
     )
-    by_rarity = {rarity: count for rarity, count in db.query(TCGChecklistEntry.published_rarity, func.count(TCGChecklistEntry.id)).group_by(TCGChecklistEntry.published_rarity).all()}
+    by_rarity = {
+        rarity: count for rarity, count in visible_checklists.with_entities(
+            TCGChecklistEntry.published_rarity, func.count(TCGChecklistEntry.id),
+        ).group_by(TCGChecklistEntry.published_rarity).all()
+    }
     return {
         "owned_printings": owned_printings, "owned_copies": owned_copies,
         "legacy_printings": legacy_printings, "legacy_copies": legacy_copies,
         "has_legacy_cards": legacy_printings > 0,
         "catalog_total": checklist_total, "missing": max(0, checklist_total - owned_printings),
-        "duplicates": duplicates, "release_count": db.query(func.count(TCGRelease.id)).scalar() or 0,
-        "set_count": db.query(func.count(TCGSet.id)).scalar() or 0, "by_rarity": by_rarity,
+        "duplicates": duplicates,
+        "release_count": db.query(func.count(TCGRelease.id)).filter(~_is_staged_foundation_snapshot()).scalar() or 0,
+        "set_count": db.query(func.count(TCGSet.id)).join(
+            TCGRelease, TCGRelease.id == TCGSet.release_id,
+        ).filter(~_is_staged_foundation_snapshot()).scalar() or 0,
+        "by_rarity": by_rarity,
         "settings": settings_dict(get_settings(db)),
         "classification_values": {"exposure": EXPOSURE_VALUES, "intensity": INTENSITY_VALUES},
     }
@@ -3098,6 +3266,11 @@ def pack_dict(product: TCGPackProduct, release: TCGRelease | None = None) -> dic
     eligible_pool = _json(product.eligible_pool_json, {})
     return {
         "id": product.id, "code": product.code, "name": product.name,
+        "targetable_card_type": bool(
+            release and product.product_kind == "release_standard"
+            and release.release_kind == "foundation"
+            and product.code.endswith("-STD")
+        ),
         "product_kind": product.product_kind, "release_id": product.release_id,
         "release_name": release_name, "set_count": set_count, "pool_summary": pool_summary,
         "card_count": product.card_count, "rarity_floor": product.rarity_floor,
@@ -3119,17 +3292,32 @@ def list_packs(db: Session) -> list[dict]:
     seed_pack_products(db)
     db.commit()
     releases = {row.id: row for row in db.query(TCGRelease).all()}
+    published_release_ids = [row.id for row in db.query(TCGRelease.id).filter(
+        TCGRelease.status == "published",
+    ).order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc()).all()]
+    preview_art_urls = _published_v2_preview_art_urls(db)
     token_counts = dict(
         db.query(TCGPackToken.product_id, func.sum(TCGPackToken.quantity))
         .filter(TCGPackToken.consumed_at.is_(None))
         .group_by(TCGPackToken.product_id)
         .all()
     )
-    return [
-        {**pack_dict(product, releases.get(product.release_id)), "tokens": int(token_counts.get(product.id, 0) or 0)}
-        for product in db.query(TCGPackProduct).order_by(TCGPackProduct.id).all()
-        if product.code not in GENERIC_RELEASE_TEMPLATE_CODES
-    ]
+    packs = []
+    for product in db.query(TCGPackProduct).order_by(TCGPackProduct.id).all():
+        if product.code in GENERIC_RELEASE_TEMPLATE_CODES:
+            continue
+        pack = {**pack_dict(product, releases.get(product.release_id)), "tokens": int(token_counts.get(product.id, 0) or 0)}
+        if product.product_kind == "weekly_protection":
+            previews_by_release = {
+                str(release_id): preview_art_urls
+                for release_id in published_release_ids
+            }
+            pack["preview_art_urls_by_release"] = previews_by_release
+            pack["preview_art_urls"] = preview_art_urls
+        else:
+            pack["preview_art_urls"] = preview_art_urls
+        packs.append(pack)
+    return packs
 
 
 def award_pack_token(
@@ -3158,15 +3346,15 @@ def award_pack_token(
     return {"token_id": row.id, "product_code": product.code, "quantity": row.quantity}
 
 
-def _eligible_pack_entries(db: Session, product: TCGPackProduct, selected_release_id: int | None) -> list[TCGChecklistEntry]:
+def _eligible_pack_query(db: Session, product: TCGPackProduct, selected_release_id: int | None):
     query = db.query(TCGChecklistEntry).join(
         TCGRelease, TCGChecklistEntry.release_id == TCGRelease.id,
-    ).join(Card, TCGChecklistEntry.card_id == Card.id).options(joinedload(TCGChecklistEntry.card))
+    ).join(Card, TCGChecklistEntry.card_id == Card.id)
     query = query.filter(TCGRelease.status == "published")
     # Legacy/pre-V2 cards are never valid pack contents. Keep this invariant
     # at the shared eligibility authority so room orders and direct openings
     # cannot diverge.
-    query = query.filter(Card.is_legacy.is_(False))
+    query = query.filter(Card.is_legacy.is_(False), renderable_scene_card())
     query = query.filter(Card.card_type.notin_([CardType.hof, CardType.bond]))
     if product.product_kind in {"release_standard", "release_premium"}:
         query = query.filter(TCGChecklistEntry.release_id == product.release_id)
@@ -3175,10 +3363,85 @@ def _eligible_pack_entries(db: Session, product: TCGPackProduct, selected_releas
             raise ValueError("Select a published release before opening the weekly protection pack")
         query = query.filter(TCGChecklistEntry.release_id == selected_release_id)
     elif product.product_kind == "permanent":
-        foundation = db.query(TCGRelease.id).filter(TCGRelease.code == "FND-CORE").scalar()
+        setup = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
+        foundation = setup.active_foundation_release_id if setup and setup.active_foundation_release_id else None
+        if not foundation:
+            foundation = db.query(TCGRelease.id).filter(
+                TCGRelease.code == "FND-CORE", TCGRelease.status == "published",
+            ).scalar()
         if foundation:
             query = query.filter(TCGChecklistEntry.release_id == foundation)
-    return query.order_by(TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix).all()
+    return query
+
+
+def _existing_pack_preview_thumb(path: str | None) -> str | None:
+    if not path:
+        return None
+    thumb_name = os.path.basename(path)
+    if not thumb_name:
+        return None
+    thumb_path = path if os.path.isfile(path) else os.path.join(DATA_DIR, "thumbs", thumb_name)
+    if not os.path.isfile(thumb_path):
+        return None
+    return f"/thumbs/{thumb_name}"
+
+
+def _published_v2_preview_art_urls(db: Session, *, limit: int = 24) -> list[str]:
+    """Sample existing thumbnails from the complete published V2 card pool."""
+    query = db.query(TCGChecklistEntry).join(
+        TCGRelease, TCGChecklistEntry.release_id == TCGRelease.id,
+    ).join(Card, TCGChecklistEntry.card_id == Card.id).filter(
+        TCGRelease.status == "published",
+        Card.is_legacy.is_(False),
+    )
+    candidates = query.with_entities(
+        TCGChecklistEntry.collector_position,
+        TCGChecklistEntry.collector_suffix,
+        Card.id,
+        Card.source_image_id,
+        Card.source_gallery_id,
+        Card.source_creator_id,
+    ).order_by(func.random()).limit(max(600, limit * 30)).all()
+    if not candidates:
+        return []
+
+    image_ids = {row.source_image_id for row in candidates if row.source_image_id}
+    gallery_ids = {row.source_gallery_id for row in candidates if row.source_gallery_id}
+    images = {
+        image.id: image for image in db.query(Image).filter(Image.id.in_(image_ids)).all()
+    } if image_ids else {}
+    galleries = {
+        gallery.id: gallery for gallery in db.query(Gallery).filter(Gallery.id.in_(gallery_ids)).all()
+    } if gallery_ids else {}
+
+    previews: list[str] = []
+    seen_galleries: set[tuple[str, int]] = set()
+    seen_urls: set[str] = set()
+    random.shuffle(candidates)
+    for row in candidates:
+        image = images.get(row.source_image_id)
+        gallery = galleries.get(row.source_gallery_id)
+        url = _existing_pack_preview_thumb(image.thumb_path if image else None)
+        if not url and gallery:
+            url = _existing_pack_preview_thumb(gallery.cover_thumb)
+        if not url:
+            continue
+        gallery_id = image.gallery_id if image and image.gallery_id else (gallery.id if gallery else None)
+        gallery_key = ("gallery", gallery_id) if gallery_id else ("card", row.id)
+        if gallery_key in seen_galleries or url in seen_urls:
+            continue
+        seen_galleries.add(gallery_key)
+        seen_urls.add(url)
+        previews.append(url)
+        if len(previews) >= limit:
+            break
+    return previews
+
+
+def _eligible_pack_entries(db: Session, product: TCGPackProduct, selected_release_id: int | None) -> list[TCGChecklistEntry]:
+    return _eligible_pack_query(db, product, selected_release_id).options(
+        joinedload(TCGChecklistEntry.card),
+    ).order_by(TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix).all()
 
 
 def _earned_card_pack_rarity(card: Card) -> str | None:
@@ -3225,9 +3488,9 @@ def _weighted_rarity(rng: random.Random, odds: dict) -> str:
 
 
 def _pick_pack_entry(
-    rng: random.Random, entries: list[TCGChecklistEntry], rarity: str,
+    rng: random.Random, entries: list[TCGChecklistEntry | _FrozenPackEntry], rarity: str,
     used: set[int], owned: set[int], prioritize_missing: bool,
-) -> TCGChecklistEntry:
+) -> TCGChecklistEntry | _FrozenPackEntry:
     exact = [entry for entry in entries if entry.published_rarity == rarity and entry.card_id not in used]
     pool = exact or [entry for entry in entries if entry.card_id not in used] or entries
     if not pool:
@@ -3239,25 +3502,119 @@ def _pick_pack_entry(
     return rng.choice(pool)
 
 
-def _load_frozen_pack_entries(db: Session, frozen_entry_ids: list[int]) -> list[TCGChecklistEntry]:
-    """Load a sealed pack's frozen checklist without exceeding SQLite limits."""
+class _FrozenPackEntry:
+    """Lightweight frozen-pool row; its full Card is loaded only if pulled."""
+
+    __slots__ = (
+        "id", "release_id", "card_id", "collector_position", "collector_suffix",
+        "published_rarity",
+    )
+
+    def __init__(self, entry_id, release_id, card_id, collector_position, collector_suffix, published_rarity):
+        self.id = entry_id
+        self.release_id = release_id
+        self.card_id = card_id
+        self.collector_position = collector_position
+        self.collector_suffix = collector_suffix
+        self.published_rarity = published_rarity
+
+
+def _load_frozen_pack_entries(
+    db: Session, frozen_entry_ids: list[int],
+) -> list[TCGChecklistEntry | _FrozenPackEntry]:
+    """Load the frozen candidate checklist without exceeding SQLite limits.
+
+    Pack selection needs every checklist row, but only the few selected entries
+    need their full Card records.
+    """
     unique_ids = list(dict.fromkeys(frozen_entry_ids))
-    entries: list[TCGChecklistEntry] = []
-    for start in range(0, len(unique_ids), FROZEN_ENTRY_QUERY_BATCH_SIZE):
-        chunk = unique_ids[start:start + FROZEN_ENTRY_QUERY_BATCH_SIZE]
-        entries.extend(
-            db.query(TCGChecklistEntry)
-            .join(Card, TCGChecklistEntry.card_id == Card.id)
-            .options(joinedload(TCGChecklistEntry.card))
-            .filter(TCGChecklistEntry.id.in_(chunk))
-            .filter(Card.is_legacy.is_(False))
-            .all()
-        )
-    return sorted(entries, key=lambda entry: (entry.collector_position, entry.collector_suffix or ""))
+    if not unique_ids:
+        return []
+
+    # Bounded scalar queries are safe across rollback and connection-pool reuse.
+    entries = []
+    for offset in range(0, len(unique_ids), 500):
+        rows = db.query(*_pack_entry_columns()).filter(
+            TCGChecklistEntry.id.in_(unique_ids[offset:offset + 500]),
+            # A correlated primary-key check prevents SQLite from choosing
+            # the low-selectivity is_legacy index as the outer join for every
+            # batch, which repeatedly scans the entire Foundation catalogue.
+            TCGChecklistEntry.card.has(and_(Card.is_legacy.is_(False), renderable_scene_card())),
+        ).all()
+        entries.extend(_FrozenPackEntry(*row) for row in rows)
+    # Match SQLite's ascending NULL ordering, including ties across batches.
+    entries.sort(key=lambda entry: (
+        entry.collector_position, entry.collector_suffix is not None,
+        entry.collector_suffix or "", entry.id,
+    ))
+    return entries
+
+
+def _pack_entry_columns():
+    return (
+        TCGChecklistEntry.id, TCGChecklistEntry.release_id, TCGChecklistEntry.card_id,
+        TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix,
+        TCGChecklistEntry.published_rarity,
+    )
+
+
+_PURCHASE_LOCK = RLock()
+
+TARGETABLE_CARD_TYPES = tuple(card_type.value for card_type in CardType if card_type != CardType.hof)
+
+
+def _validated_pack_target(db: Session, product, target_card_type: str | None) -> str | None:
+    if target_card_type is None:
+        return None
+    value = str(target_card_type).strip().lower()
+    release = db.get(TCGRelease, product.release_id) if product.release_id else None
+    if (product.product_kind != "release_standard" or not release
+            or release.release_kind != "foundation" or not product.code.endswith("-STD")):
+        raise ValueError("Card type targeting is only available for the Selection Founders Standard Booster")
+    if value not in TARGETABLE_CARD_TYPES:
+        raise ValueError("Choose a valid target card type; Hall of Fame cannot be targeted")
+    return value
+
+
+def purchase_pack_product(db: Session, product_id: int, *, request_id: str,
+                          selected_release_id: int | None = None, use_token: bool = False,
+                          target_card_type: str | None = None) -> dict:
+    """Commit cards, payment, gameplay tracking and a replay receipt together."""
+    request_json = json.dumps([product_id, selected_release_id, use_token, target_card_type])
+    # Serialise direct purchases in this single-process desktop application.
+    # The persisted primary key also protects receipt identity after restart.
+    with _PURCHASE_LOCK:
+        try:
+            receipt = db.get(TCGPackPurchase, request_id)
+            if receipt:
+                if receipt.request_json != request_json:
+                    raise ValueError("This purchase identifier belongs to another booster request")
+                return json.loads(receipt.response_json)
+            result = open_pack_product(
+                db, product_id, selected_release_id=selected_release_id,
+                use_token=use_token, target_card_type=target_card_type, commit=False,
+            )
+            db.add(TCGPackPurchase(
+                request_id=request_id, opening_id=result["opening_id"],
+                request_json=request_json, response_json=json.dumps(result),
+            ))
+            db.flush()
+            # Legacy gameplay helpers commit internally. Savepoints keep all
+            # their commits inside this purchase's already-written transaction.
+            from services.gamification import notify_action
+            with Session(bind=db.connection(), join_transaction_mode="create_savepoint") as gameplay:
+                notify_action(gameplay, "pack_opened", count=1, override_amount=75)
+                gameplay.commit()
+            db.commit()
+            return result
+        except Exception:
+            db.rollback()
+            raise
 
 
 def open_pack_product(
     db: Session, product_id: int, *, selected_release_id: int | None = None,
+    target_card_type: str | None = None,
     use_token: bool = False, prepaid: bool = False, prepaid_price: int = 0,
     commit: bool = True, product_snapshot: dict | None = None,
     seed_override: str | None = None,
@@ -3266,6 +3623,14 @@ def open_pack_product(
     product = db.query(TCGPackProduct).filter(TCGPackProduct.id == product_id).first()
     if not product or (not product.active and not prepaid):
         raise ValueError("That pack is not currently available")
+    snapshot_target = (product_snapshot or {}).get("target_card_type")
+    # Earlier builds mistakenly let Permanent Booster orders freeze a target.
+    # Honor those already-sealed parcels as ordinary untargeted Permanent packs.
+    if product.code == PERMANENT_PRODUCT_CODE and target_card_type is None:
+        snapshot_target = None
+    target_card_type = _validated_pack_target(
+        db, product, target_card_type if target_card_type is not None else snapshot_target,
+    )
     simulation = _json(product.simulation_report, {})
     if product.purchasable and not prepaid and not simulation.get("approved"):
         raise ValueError("This pack has not passed odds simulation and cannot be opened")
@@ -3289,11 +3654,27 @@ def open_pack_product(
     if prepaid and frozen_entry_ids:
         entries = _load_frozen_pack_entries(db, frozen_entry_ids)
     else:
-        entries = _eligible_pack_entries(db, product, selected_release_id)
+        entries = [_FrozenPackEntry(*row) for row in _eligible_pack_query(
+            db, product, selected_release_id,
+        ).with_entities(*_pack_entry_columns()).order_by(
+            TCGChecklistEntry.collector_position, TCGChecklistEntry.collector_suffix,
+            TCGChecklistEntry.id,
+        ).all()]
     earned_entries = _dynamic_earned_pack_entries(db, {entry.card_id for entry in entries})
     entries.extend(earned_entries)
     if not entries:
         raise ValueError("The pack's persisted eligible pool is empty")
+    target_entries = []
+    if target_card_type:
+        entry_ids = list(dict.fromkeys(entry.card_id for entry in entries))
+        target_ids = set()
+        for offset in range(0, len(entry_ids), 500):
+            target_ids.update(card_id for (card_id,) in db.query(Card.id).filter(
+                Card.id.in_(entry_ids[offset:offset + 500]), Card.card_type == CardType(target_card_type),
+            ).all())
+        target_entries = [entry for entry in entries if entry.card_id in target_ids]
+        if not target_entries:
+            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Standard Booster pool")
     current_owned = {card_id for (card_id,) in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()}
     owned = set(product_snapshot.get("owned_card_ids", current_owned)) if product_snapshot else current_owned
     frozen = product_snapshot or {}
@@ -3320,15 +3701,18 @@ def open_pack_product(
             rarity = _weighted_rarity(rng, odds)
         slot_rarities.append(rarity)
     used: set[int] = set()
-    selected: list[tuple[TCGChecklistEntry, str]] = []
-    for rarity in slot_rarities:
+    selected: list[tuple[TCGChecklistEntry | _FrozenPackEntry, str]] = []
+    target_count = (math.ceil(card_count / 2) if target_card_type in {"image", "gallery"} else 1) if target_card_type else 0
+    target_slots = set(rng.sample(range(card_count), target_count)) if target_count else set()
+    for slot_index, rarity in enumerate(slot_rarities):
+        pool = target_entries if slot_index in target_slots else entries
         entry = _pick_pack_entry(
-            rng, entries, rarity, used, owned,
+            rng, pool, rarity, used, owned,
             prioritize_missing=bool(rules.get("prioritize_missing")),
         )
         if len(entries) >= card_count:
             used.add(entry.card_id)
-        selected.append((entry, rarity))
+        selected.append((entry, f"TARGET_{target_card_type.upper()}:{rarity}" if slot_index in target_slots else rarity))
     opening = TCGPackOpening(
         product_id=product.id, price_paid=price, opening_seed=seed,
         selected_release_id=selected_release_id,
@@ -3337,6 +3721,10 @@ def open_pack_product(
             "eligible_pool_hash": hashlib.sha256(",".join(str(entry.card_id) for entry in entries).encode("utf-8")).hexdigest(),
             "eligible_release_ids": sorted({entry.release_id for entry in entries if entry.release_id > 0}),
             "dynamic_earned_card_ids": sorted(entry.card_id for entry in earned_entries),
+            "target_card_type": target_card_type,
+            "target_guaranteed_slots": sorted(target_slots),
+            "target_guarantee_count": target_count,
+            "slot_rarities": slot_rarities,
             "guaranteed_slots": guarantees, "odds": odds, "duplicate_protection": rules,
             "replacement_rules": _json(product.replacement_rules, {}),
         }),
@@ -3357,7 +3745,10 @@ def open_pack_product(
         db.add(acquisition)
         db.flush()
         grant_card_copy(db, entry.card_id, acquisition_id=acquisition.id, acquired_at=acquisition.acquired_at)
-        reveal_meta.append((entry.card, was_owned, slot_rule))
+        card = entry.card if isinstance(entry, TCGChecklistEntry) else db.get(Card, entry.card_id)
+        if card is None:
+            raise ValueError(f"Card {entry.card_id} disappeared before pack reveal")
+        reveal_meta.append((card, was_owned, slot_rule))
     if token:
         token.quantity -= 1
         if token.quantity <= 0:
@@ -3648,7 +4039,8 @@ def override_dict(row: CardPresentationOverride | None) -> dict:
 def update_presentation_override(db: Session, card_id: int, values: dict) -> dict:
     if not get_settings(db).advanced_mode:
         raise ValueError("Advanced mode is required")
-    if not db.query(Card.id).filter(Card.id == card_id).first():
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
         raise ValueError("Card not found")
     row = db.query(CardPresentationOverride).filter(CardPresentationOverride.card_id == card_id).first()
     if not row:
@@ -3658,7 +4050,28 @@ def update_presentation_override(db: Session, card_id: int, values: dict) -> dic
         if key in values:
             setattr(row, key, None if values[key] is None else float(values[key]))
     if "mask" in values:
-        row.mask_override_json = json.dumps(values["mask"] or {})
+        mask_values = values["mask"] or {}
+        if not isinstance(mask_values, dict):
+            raise ValueError("Mask presentation settings must be an object")
+        if "subject_coverage_tolerance" in mask_values:
+            from services.scene_cards import MAX_COVERAGE, MAX_SCENE_COVERAGE_OVERRIDE
+
+            if _enum(card.card_type) != CardType.image.value:
+                raise ValueError("Subject coverage tolerance is only available for Scene cards")
+            try:
+                tolerance = float(mask_values["subject_coverage_tolerance"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Subject coverage tolerance must be a number") from exc
+            if not math.isfinite(tolerance) or not MAX_COVERAGE <= tolerance <= MAX_SCENE_COVERAGE_OVERRIDE:
+                raise ValueError(
+                    f"Subject coverage tolerance must be between {MAX_COVERAGE:.2f} and "
+                    f"{MAX_SCENE_COVERAGE_OVERRIDE:.2f}"
+                )
+            mask_values["subject_coverage_tolerance"] = tolerance
+        current_mask_values = _json(row.mask_override_json, {})
+        if not isinstance(current_mask_values, dict):
+            current_mask_values = {}
+        row.mask_override_json = json.dumps({**current_mask_values, **mask_values})
     row.revision = (row.revision or 0) + 1
     db.commit()
     return override_dict(row)

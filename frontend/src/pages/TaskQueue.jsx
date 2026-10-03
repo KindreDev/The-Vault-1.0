@@ -3,7 +3,7 @@ import { LocalizedText, useT } from '../i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasksApi, taggerApi } from '../lib/api'
 import {
-  ScanLine, Brain, GitCompare, Image, Download,
+  ScanLine, Brain, GitCompare, Image, Download, RefreshCw,
   X, Trash2, CheckCircle, XCircle, AlertCircle, Clock, Play,
 } from 'lucide-react'
 
@@ -13,6 +13,7 @@ const TYPE_META = {
   ai_tag:        { label: 'AI Tagging',         icon: Brain,      color: 'var(--c-accent)' },
   model_download:{ label: 'Model Download',     icon: Download,   color: 'var(--c-amber)' },
   dedup_hash:    { label: 'Dedup Index',        icon: GitCompare, color: 'var(--c-pink)' },
+  foundation_refresh: { label: 'Restore Card Catalogue', icon: RefreshCw, color: 'var(--c-accent)' },
 }
 
 function taskMeta(type) {
@@ -182,22 +183,22 @@ export default function TaskQueue() {
 
   const cancelMutation = useMutation({
     mutationFn: () => tasksApi.cancelCurrent(),
-    onSuccess: () => qc.invalidateQueries(['task-queue']),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-queue'] }),
   })
 
   const removeMutation = useMutation({
     mutationFn: (id) => tasksApi.removeQueued(id),
-    onSuccess: () => qc.invalidateQueries(['task-queue']),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-queue'] }),
   })
 
   const pauseMutation = useMutation({
     mutationFn: () => taggerApi.pause(),
-    onSuccess: () => qc.invalidateQueries(['task-queue']),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-queue'] }),
   })
 
   const resumeMutation = useMutation({
     mutationFn: (jobId) => taggerApi.resume(jobId),
-    onSuccess: () => qc.invalidateQueries(['task-queue']),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-queue'] }),
   })
 
   const current = data?.current ?? null

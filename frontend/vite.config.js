@@ -8,6 +8,7 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') }
   },
   server: {
+    fs: { allow: [path.resolve(__dirname), path.resolve(__dirname, '../shared')] },
     port: 5173,
     proxy: {
       '/api': { target: process.env.VITE_API_TARGET || 'http://localhost:8000', changeOrigin: true },

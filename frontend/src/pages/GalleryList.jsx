@@ -1,3 +1,4 @@
+import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
@@ -1367,8 +1368,8 @@ export default function GalleryList() {
   // Refs for bulk context menu — read inside stable callbacks without adding deps
   const bulkModeRef       = useRef(bulkMode)
   const selectedRef       = useRef(selected)
-  useEffect(() => { bulkModeRef.current = bulkMode }, [bulkMode])
-  useEffect(() => { selectedRef.current = selected }, [selected])
+  bulkModeRef.current = bulkMode
+  selectedRef.current = selected
 
   // ── Helper: update a single URL param (merges with existing) ────────────────
   const setParam = useCallback((key, value) => {
@@ -1470,6 +1471,7 @@ export default function GalleryList() {
     placeholderData: keepPreviousData,
   })
   const galleries   = galleryPage?.items
+  const selectedGalleries = useSelectedItems(galleries, selected)
   const totalCount   = galleryPage?.total ?? 0
   const totalPages   = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -1489,7 +1491,9 @@ export default function GalleryList() {
 
   // Keep galleriesRef fresh so toggleSelect can read the current list without
   // being recreated on every fetch (which would bust GalleryCard memo)
-  useEffect(() => { galleriesRef.current = galleries }, [galleries])
+  galleriesRef.current = galleries
+  const selectedGalleriesRef = useRef(selectedGalleries)
+  selectedGalleriesRef.current = selectedGalleries
 
   // Period options reflect the CURRENT filter context (creator, type, franchise,
   // tags, etc.) — but never the selected period itself, so the dropdown always
@@ -1541,7 +1545,7 @@ export default function GalleryList() {
   const handleContextMenu = useCallback((gallery, e) => {
     const inSelection = bulkModeRef.current && selectedRef.current.has(gallery.id)
     const bulkGalleries = inSelection
-      ? (galleriesRef.current ?? []).filter(g => selectedRef.current.has(g.id))
+      ? selectedGalleriesRef.current
       : null
     setContextMenu({ gallery, x: e.clientX, y: e.clientY, bulkGalleries })
   }, [])
@@ -1624,7 +1628,12 @@ export default function GalleryList() {
   }, [])
 
   const selectAll = () => {
-    setSelected(selected.size === galleries?.length ? new Set() : new Set(galleries?.map(g => g.id) ?? []))
+    setSelected(previous => {
+      const next = new Set(previous)
+      const allSelected = (galleries || []).every(item => previous.has(item.id))
+      for (const item of galleries || []) allSelected ? next.delete(item.id) : next.add(item.id)
+      return next
+    })
   }
   const handleCtxExportZip = useCallback(galleries => {
     setCtxExportGalleries(Array.isArray(galleries) ? galleries : [galleries])
@@ -1762,10 +1771,10 @@ export default function GalleryList() {
           <button type="button" onMouseDown={selectAll}
                   className="text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            {selected.size === galleries?.length ? t('Deselect all') : t('Select all')}
+            {(galleries?.length > 0 && galleries.every(item => selected.has(item.id))) ? t('Deselect all') : t('Select all')}
           </button>
           {selected.size > 0 && (
-            <BulkActionPanel selectedGalleries={galleries.filter(g => selected.has(g.id))} onDone={exitBulk} onCancel={exitBulk} />
+            <BulkActionPanel selectedGalleries={selectedGalleries} onDone={exitBulk} onCancel={exitBulk} />
           )}
         </div>
       )}
@@ -1885,11 +1894,11 @@ export default function GalleryList() {
           bulkCount={contextMenu.bulkGalleries?.length ?? null}
           position={{ x: contextMenu.x, y: contextMenu.y }}
           onClose={() => setContextMenu(null)}
-          onSelectMode={() => {
+          onSelectMode={!bulkMode ? () => {
             setBulkMode(true)
             setSelected(new Set([contextMenu.gallery.id]))
             lastSelectedIdRef.current = contextMenu.gallery.id
-          }}
+          } : undefined}
           onOpen={() => navigate(`/galleries/${contextMenu.gallery.id}`)}
           onRenameFolder={() => { setRenamingFolder(contextMenu.gallery) }}
           onToggleFav={() => {

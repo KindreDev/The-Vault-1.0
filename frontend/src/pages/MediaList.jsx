@@ -1,3 +1,4 @@
+import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
@@ -35,6 +36,7 @@ import FranchiseFilter from '../components/FranchiseFilter'
 import PeriodFilter from '../components/PeriodFilter'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
+import { useViewerDataSync } from '../hooks/useViewerDataSync'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 import { readFilmstripVisibility, saveFilmstripVisibility } from '../lib/viewerPreferences'
@@ -378,6 +380,9 @@ function ImageViewer({ images, startIdx, onClose }) {
     }
   }, [idx, image?.id])
 
+  useViewerDataSync(image, { setRating, setIsFavorite, setCumCount, setLocalTags,
+    setLocalCreators, setHasImageCreators, setFileCreatorIds, setNotes })
+
   const resetZoom = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
   useEffect(() => { resetZoom() }, [idx])
   // Reset LQIP state whenever the image changes
@@ -540,7 +545,7 @@ function ImageViewer({ images, startIdx, onClose }) {
 
   const cumMutation = useMutation({
     mutationFn: () => imagesApi.cum(image.id, { gallery_id: image.gallery_id }),
-    onSuccess: () => { setCumCount(c => c + 1); addXpToast('+5 XP'); qc.invalidateQueries({ queryKey: ['images-list'] }) }
+    onSuccess: response => { setCumCount(c => response.data?.cum_count ?? c + 1); addXpToast('+5 XP'); qc.invalidateQueries({ queryKey: ['images-list'] }) }
   })
   const rateMutation = useMutation({
     mutationFn: (r) => imagesApi.update(image.id, { rating: r }),
@@ -1646,6 +1651,7 @@ export default function MediaList({ onlyVideos = false }) {
     staleTime: sortBy === 'random' ? Infinity : 1000 * 60 * 5,
   })
   const images     = imagesPage?.items
+  const selectedImages = useSelectedItems(images, selected)
   const totalCount = imagesPage?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / pageLimit))
 
@@ -1739,7 +1745,12 @@ export default function MediaList({ onlyVideos = false }) {
     lastSelectedIdRef.current = id
   }
   const selectAll = () => {
-    setSelected(selected.size === images?.length ? new Set() : new Set(images?.map(g => g.id) ?? []))
+    setSelected(previous => {
+      const next = new Set(previous)
+      const allSelected = (images || []).every(item => previous.has(item.id))
+      for (const item of images || []) allSelected ? next.delete(item.id) : next.add(item.id)
+      return next
+    })
   }
   const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
 
@@ -1870,11 +1881,11 @@ export default function MediaList({ onlyVideos = false }) {
           <button type="button" onMouseDown={selectAll}
             className="text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            {selected.size === images?.length ? t('Deselect all') : t('Select all')}
+            {(images?.length > 0 && images.every(item => selected.has(item.id))) ? t('Deselect all') : t('Select all')}
           </button>
           {selected.size > 0 && (
             <BulkActionPanel
-              selectedImages={(images || []).filter(g => selected.has(g.id))}
+              selectedImages={selectedImages}
               onDone={exitBulk}
               onCancel={exitBulk}
               onRelocate={(imgs) => setRelocatingImages(imgs)}
@@ -1905,7 +1916,7 @@ export default function MediaList({ onlyVideos = false }) {
                 <ImageThumb image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
                             onContextMenu={(im, e) => {
                               const inSel = bulkMode && selected.has(im.id)
-                              const bulkImages = inSel ? (images || []).filter(i => selected.has(i.id)) : null
+                              const bulkImages = inSel ? selectedImages : null
                               setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
                             }} masonry />
               </div>
@@ -1917,7 +1928,7 @@ export default function MediaList({ onlyVideos = false }) {
               <ImageThumb key={img.id} image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
                           onContextMenu={(im, e) => {
                             const inSel = bulkMode && selected.has(im.id)
-                            const bulkImages = inSel ? (images || []).filter(i => selected.has(i.id)) : null
+                            const bulkImages = inSel ? selectedImages : null
                             setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
                           }} />
             ))}
@@ -1952,11 +1963,11 @@ export default function MediaList({ onlyVideos = false }) {
           bulkCount={imageCtxMenu.bulkImages?.length ?? null}
           position={{ x: imageCtxMenu.x, y: imageCtxMenu.y }}
           onClose={() => setImageCtxMenu(null)}
-          onSelectMode={() => {
+          onSelectMode={!bulkMode ? () => {
             setBulkMode(true)
             setSelected(new Set([imageCtxMenu.image.id]))
             lastSelectedIdRef.current = imageCtxMenu.image.id
-          }}
+          } : undefined}
           onView={() => {
             const idx = images?.findIndex(i => i.id === imageCtxMenu.image.id) ?? -1
             if (idx >= 0) setViewerIdx(idx)

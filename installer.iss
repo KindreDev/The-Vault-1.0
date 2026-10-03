@@ -3,15 +3,23 @@
 ; Output:   dist\VaultSetup.exe
 
 #define AppName      "The Vault"
-#define AppVersion   "1.8.0"
+#define AppVersion   "2.0.0"
 #define AppPublisher "The Vault"
-#define AppURL       "https://github.com/"
+#define AppURL       "https://vault-app.site"
 #define AppExeName   "vault.exe"
+
+#if !FileExists(AddBackslash(SourcePath) + "dist\vault\vault.exe")
+  #error "Build the 2.0 app with build.bat before compiling this installer."
+#elif GetVersionNumbersString(AddBackslash(SourcePath) + "dist\vault\vault.exe") != AppVersion + ".0"
+  #error "The packaged vault.exe is stale. Rebuild with build.bat before compiling this installer."
+#endif
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#AppName}
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}

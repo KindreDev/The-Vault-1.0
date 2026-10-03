@@ -10,7 +10,7 @@ import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
 import { useScrollLock } from '../../hooks/useScrollLock'
 import { formatHofAwardDescription } from './hofProvenance'
 
-const TABS = ['Overview', 'Classification', 'Ownership', 'Engagement', 'Relationships', 'Tags', 'Presentation', 'Audit']
+const TABS = ['Overview', 'Classification', 'Ownership', 'Engagement', 'Relationships', 'Tags', 'Editor', 'Audit']
 const CARD_TYPE_LABELS = { image: 'Scene', scene: 'Scene', gallery: 'Gallery', creator: 'Creator', character: 'Character', cosplay: 'Cosplay', collab: 'Collab', bond: 'Bond', hof: 'Hall of Fame' }
 
 function cardTypeLabel(value) {
@@ -139,21 +139,66 @@ function PresentationEditor({ detail }) {
   const qc = useQueryClient()
   const surface = useRef(null)
   const initial = detail.presentation_override || {}
+  const isScene = detail.card.card_type === 'image' || detail.card.card_type === 'scene'
+  const sceneMaskEditor = detail.card.scene_mask_editor
   const hasSignature = (detail.card.print_rarity || detail.card.rarity_class) === 'SPR'
   const [values, setValues] = useState({
     signature_x: initial.signature_x ?? 700, signature_y: initial.signature_y ?? 1180,
     signature_scale: initial.signature_scale ?? 1, signature_rotation: initial.signature_rotation ?? -7,
-    mask: { background_strength: initial.mask?.background_strength ?? 1, subject_strength: initial.mask?.subject_strength ?? 1 },
+    mask: {
+      background_strength: initial.mask?.background_strength ?? 1,
+      subject_strength: initial.mask?.subject_strength ?? 1,
+      ...(isScene && sceneMaskEditor?.available ? { subject_coverage_tolerance: initial.mask?.subject_coverage_tolerance ?? sceneMaskEditor.default_tolerance ?? 0.72 } : {}),
+    },
   })
   const [dragging, setDragging] = useState(false)
   const mutation = useMutation({
     mutationFn: () => tcgV2Api.updatePresentation(detail.card.id, values),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] }); toast.success(t("Signature placement saved")) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] }); qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] }); toast.success(t("Editor settings saved")) },
     onError: error => toast.error(error.response?.data?.detail || t("Could not save placement")),
   })
   const regenerateMask = useMutation({
     mutationFn: () => cardMasksApi.regenerate(detail.card.source_image_id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] }); toast.success(t("Subject mask regenerated")) },
+    onSuccess: response => {
+      qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] })
+      qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] })
+      const result = response.data || {}
+      const metrics = result.scene_metrics || result
+      const reasons = (metrics.reasons || [result.failure_reason]).filter(Boolean)
+      const selectedTolerance = values.mask.subject_coverage_tolerance
+        ?? sceneMaskEditor?.subject_coverage_tolerance
+        ?? sceneMaskEditor?.default_tolerance
+        ?? 0.72
+      const passesSelectedTolerance = Boolean(
+        isScene && sceneMaskEditor?.override_allowed
+        && reasons.length === 1
+        && reasons[0] === 'subject-dominates-frame'
+        && Number.isFinite(metrics.coverage)
+        && metrics.coverage <= selectedTolerance
+      )
+      if (result.usable) {
+        toast.success(t("Mask regenerated and passed the default checks"))
+        return
+      }
+      if (passesSelectedTolerance) {
+        toast(t("Accepted at this Editor tolerance; the default check still fails. Save Editor changes to apply."), { icon: 'ℹ️' })
+        return
+      }
+      const coverage = metrics.coverage
+      const reason = reasons[0] || 'unknown rejection'
+      const reasonLabels = {
+        'subject-dominates-frame': t("Subject covers too much of the card"),
+        'subject-too-small': t("Subject mask is too small"),
+        'source-file-missing': t("Source file is missing"),
+        'video-source': t("Video sources cannot use a still subject mask"),
+        'animated-image-source': t("Animated images cannot use a still subject mask"),
+        'generation-error': t("Mask generation failed"),
+      }
+      toast.error(t("Mask candidate rejected: {reason}{coverage}", {
+        reason: reasonLabels[reason] || reason,
+        coverage: coverage == null ? '' : ` (${Math.round(coverage * 100)}% coverage)`,
+      }))
+    },
     onError: error => toast.error(error.response?.data?.detail || t("Could not regenerate mask")),
   })
   const move = event => {
@@ -164,10 +209,47 @@ function PresentationEditor({ detail }) {
       signature_y: Math.round(Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) * 1536),
     }))
   }
-  const card = { ...detail.card, presentation_override: values }
+  const savedTolerance = sceneMaskEditor?.subject_coverage_tolerance ?? sceneMaskEditor?.default_tolerance ?? 0.72
+  const liveTolerance = values.mask.subject_coverage_tolerance ?? savedTolerance
+  const tolerancePreviewAccepted = Boolean(
+    isScene && sceneMaskEditor?.override_allowed
+    && sceneMaskEditor.metrics?.reasons?.length === 1
+    && sceneMaskEditor.metrics.reasons[0] === 'subject-dominates-frame'
+    && sceneMaskEditor.metrics.coverage <= liveTolerance
+  )
+  const editorPreviewCard = sceneMaskEditor?.candidate_mask_url && detail.card.scene_visual?.recipe
+    ? {
+      ...detail.card,
+      mask_url: sceneMaskEditor.candidate_mask_url,
+      mask_visual_mode: tolerancePreviewAccepted ? 'layered' : 'flat',
+      presentation_override: values,
+      scene_visual: {
+        ...detail.card.scene_visual,
+        mask_url: sceneMaskEditor.candidate_mask_url,
+        visual_mode: tolerancePreviewAccepted ? 'layered' : 'flat',
+        recipe: {
+          ...detail.card.scene_visual.recipe,
+          visualMode: tolerancePreviewAccepted ? 'layered' : 'flat',
+          maskMetrics: {
+            ...detail.card.scene_visual.recipe.maskMetrics,
+            ...sceneMaskEditor.metrics,
+            accepted: tolerancePreviewAccepted,
+            reasons: tolerancePreviewAccepted ? [] : ['subject-dominates-frame'],
+          },
+          extraction: {
+            ...detail.card.scene_visual.recipe.extraction,
+            status: tolerancePreviewAccepted ? 'usable' : 'fallback',
+            failureReason: tolerancePreviewAccepted ? null : 'subject-dominates-frame',
+          },
+        },
+      },
+    }
+    : { ...detail.card, presentation_override: values }
+  const coveragePercent = sceneMaskEditor?.metrics?.coverage == null
+    ? null : Math.round(sceneMaskEditor.metrics.coverage * 100)
   return <div className="tcgws-presentation-editor">
     <div ref={surface} className="tcgws-presentation-surface" onPointerMove={move} onPointerUp={() => setDragging(false)} onPointerLeave={() => setDragging(false)}>
-      <TCGV2CardFace card={card} width="100%" showEffects videoPresentation="full" />
+      <TCGV2CardFace card={editorPreviewCard} width="100%" showEffects videoPresentation="full" />
       {hasSignature && <button style={{ left: `${values.signature_x / 10.24}%`, top: `${values.signature_y / 15.36}%` }} onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(true) }}><LocalizedText text={"Drag signature"} /></button>}
     </div>
     <section>{hasSignature && <><h3><LocalizedText text={"Signature placement"} /></h3><p><LocalizedText text={"Drag directly over the card or use precise controls. The override is versioned and does not alter the frozen card recipe."} /></p>
@@ -178,8 +260,26 @@ function PresentationEditor({ detail }) {
       <h3><LocalizedText text={"Foil mask response"} /></h3>
       <label><span><LocalizedText text={"Background"} /></span><input type="range" min="0" max="1" step="0.02" value={values.mask.background_strength} onChange={e => setValues({ ...values, mask: { ...values.mask, background_strength: Number(e.target.value) } })} /></label>
       <label><span><LocalizedText text={"Subject"} /></span><input type="range" min="0" max="1" step="0.02" value={values.mask.subject_strength} onChange={e => setValues({ ...values, mask: { ...values.mask, subject_strength: Number(e.target.value) } })} /></label>
+      {sceneMaskEditor?.available && <div className="tcgws-mask-candidate">
+        <h3><LocalizedText text={"Subject mask candidate"} /></h3>
+        <figure style={{ '--mask-focus-x': `${(detail.card.image_focal_x ?? 0.5) * 100}%`, '--mask-focus-y': `${(detail.card.image_focal_y ?? 0.5) * 100}%` }}>
+          <img src={detail.card.image_url} alt={t("Source artwork")} />
+          <img className="tcgws-mask-candidate__overlay" src={sceneMaskEditor.subject_channel_url} alt={t("Detected subject area")} />
+        </figure>
+        <p><LocalizedText text={"Detected subject coverage"} />: <strong>{coveragePercent}%</strong></p>
+        <p><LocalizedText text={"Highlighted regions may include background details or decorative elements. Tolerance changes acceptance only; it does not clean the mask."} /></p>
+        <p className={tolerancePreviewAccepted ? 'tcgws-mask-candidate__status is-accepted' : 'tcgws-mask-candidate__status'}>
+          <LocalizedText text={tolerancePreviewAccepted ? "This candidate passes the selected tolerance in the live preview." : "Raise tolerance to preview this candidate as a layered card."} />
+        </p>
+        <label><span><LocalizedText text={"Coverage tolerance"} /> <b>{Math.round(liveTolerance * 100)}%</b></span>
+          <input type="range" min={sceneMaskEditor.minimum_tolerance} max={sceneMaskEditor.maximum_tolerance} step="0.01" value={liveTolerance}
+            onChange={e => setValues({ ...values, mask: { ...values.mask, subject_coverage_tolerance: Number(e.target.value) } })} />
+        </label>
+        <p><LocalizedText text={"Tolerance only overrides subject-dominates-frame for this card. Other mask failures stay blocked."} /></p>
+        <p><LocalizedText text={"Live preview only. Save Editor changes to apply this setting to the Collection card."} /></p>
+      </div>}
       {detail.card.source_image_id && <button className="tcgws-secondary" onClick={() => regenerateMask.mutate()} disabled={regenerateMask.isPending}><LocalizedText text={"Regenerate subject mask"} /></button>}
-      <button className="tcgws-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}><LocalizedText text={"Save placement"} /></button>
+      <button className="tcgws-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}><LocalizedText text={"Save Editor changes"} /></button>
     </section>
   </div>
 }
@@ -210,7 +310,7 @@ export default function CardInspector({ card, onClose, advanced, classificationV
               {tab === 'Engagement' && <Engagement detail={detail} />}
               {tab === 'Relationships' && <Relationships detail={detail} />}
               {tab === 'Tags' && <Tags detail={detail} />}
-              {tab === 'Presentation' && (advanced ? <PresentationEditor detail={detail} /> : <p className="tcgws-note"><LocalizedText text={"Signature and mask adjustment is available in Advanced Mode."} /></p>)}
+              {tab === 'Editor' && (advanced ? <PresentationEditor detail={detail} /> : <p className="tcgws-note"><LocalizedText text={"Editor settings are available in Advanced Mode."} /></p>)}
               {tab === 'Audit' && <><button className="tcgws-back tcgws-audit-back" onClick={() => setTab('Overview')}><ArrowLeft size={18} /><LocalizedText text={"Back to card details"} before={" "} /></button><Audit detail={detail} advanced={advanced} /></>}
             </motion.div>}
           </AnimatePresence>

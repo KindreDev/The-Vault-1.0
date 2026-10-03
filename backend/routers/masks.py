@@ -73,11 +73,8 @@ def backfill(only_cards: bool = True, force: bool = False):
         raise HTTPException(409, "A mask backfill is already running")
     task_queue.submit(
         'mask_backfill', 'Generate card foil masks',
-        start_fn=lambda: threading.Thread(
-            target=masking.backfill_thread,
-            args=(_db_factory,), kwargs={"only_cards": only_cards, "force": force},
-            daemon=True
-        ).start(),
+        start_fn=lambda: task_queue.launch_background(masking.backfill_thread, _db_factory,
+                                                   only_cards=only_cards, force=force),
         poll_fn=masking.get_state,
         cancel_fn=masking.cancel,
     )

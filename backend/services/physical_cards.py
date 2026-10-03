@@ -189,7 +189,7 @@ def grant_card_copy(
 
 def remove_card_copy(
     db: Session, card_id: int, *, copy_id: int | None = None,
-    count: int = 1, preserve_last: bool = False,
+    count: int = 1, preserve_last: bool = False, allow_trade_locked: bool = False,
 ) -> list[int]:
     ensure_reconciled(db)
     inv = _consolidate_inventory(db, card_id)
@@ -198,8 +198,9 @@ def remove_card_copy(
     query = db.query(TCGPhysicalCardCopy).filter(
         TCGPhysicalCardCopy.card_id == card_id,
         TCGPhysicalCardCopy.location_kind.in_(("unorganized_pile", "carried")),
-        TCGPhysicalCardCopy.trade_locked.is_(False),
     )
+    if not allow_trade_locked:
+        query = query.filter(TCGPhysicalCardCopy.trade_locked.is_(False))
     if copy_id is not None:
         query = query.filter(TCGPhysicalCardCopy.id == copy_id)
     rows = query.order_by(TCGPhysicalCardCopy.copy_ordinal.desc()).limit(count).all()
@@ -218,6 +219,7 @@ def remove_card_copy(
 def move_copy(
     db: Session, copy_id: int, location_kind: str, *,
     location_ref: str | int | None = None, location_slot: int | None = None,
+    allow_trade_locked: bool = False,
 ) -> TCGPhysicalCardCopy:
     ensure_reconciled(db)
     copy = db.get(TCGPhysicalCardCopy, copy_id)
@@ -225,7 +227,7 @@ def move_copy(
         raise ValueError("Physical copy not found or no longer owned")
     if location_kind not in PHYSICAL_CARD_LOCATIONS:
         raise ValueError("Unknown physical-card location")
-    if copy.trade_locked and location_kind in {"trader_reserved", "traded_away"}:
+    if copy.trade_locked and location_kind in {"trader_reserved", "traded_away"} and not allow_trade_locked:
         raise ValueError("This earned copy is permanently protected from trading")
     if location_kind in REFERENCE_LOCATIONS and location_ref is None:
         raise ValueError("This location requires a reference")

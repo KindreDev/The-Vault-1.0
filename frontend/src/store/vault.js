@@ -500,7 +500,7 @@ export const useVaultStore = create((set, get) => ({
   }),
   appendMultiViewerQueue: (items) => set(s => {
     const have = new Set(s.multiViewerQueue.map(q => q.id))
-    const fresh = items.filter(i => !have.has(i.id))
+    const fresh = items.filter(i => !have.has(i.id) && have.add(i.id))
     return { multiViewerQueue: [...s.multiViewerQueue, ...fresh].slice(0, s.MULTIVIEWER_MAX) }
   }),
   reorderMultiViewer: (from, to) => set(s => {

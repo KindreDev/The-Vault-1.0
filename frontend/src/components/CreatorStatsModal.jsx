@@ -189,6 +189,7 @@ function crownDate(c) {
 }
 
 function CrownsPanel({ crowns }) {
+  const t = useT()
   const { total, counts, crowns: list } = crowns
   return (
     <div className="rounded-[14px] p-6 mb-6"
