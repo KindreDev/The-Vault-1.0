@@ -202,6 +202,10 @@ export default function FileCurationRun({ onClose }) {
                   style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
               {file.is_video ? t('Video') : t('Image')}
             </span>
+            {file.lane && <span className="px-2.5 py-0.5 rounded-full"
+              style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: 'var(--c-pink)' }}>
+              {t(file.lane === 'beloved' ? 'Beloved creator' : file.lane === 'focus' ? 'Focus' : 'Curation debt')}
+            </span>}
             <span className="truncate" style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)' }}>
               {file.gallery_name || t('Unassigned gallery')}
             </span>

@@ -32,6 +32,9 @@ MOBILE_PWA_DIST = os.path.join(ROOT, 'frontend-mobile', 'dist-pwa')
 FFMPEG_EXE    = os.path.join(ROOT, 'tools', 'ffmpeg.exe')
 FFPROBE_EXE   = os.path.join(ROOT, 'tools', 'ffprobe.exe')
 VLC_DIR       = os.path.join(ROOT, 'tools', 'vlc')
+FFMPEG_LICENSE = os.path.join(ROOT, 'licenses', 'ffmpeg-GPL-3.0.txt')
+if not all(os.path.isfile(path) for path in (FFMPEG_EXE, FFPROBE_EXE, FFMPEG_LICENSE)):
+    raise RuntimeError('FFmpeg, FFprobe, and their license must be present before packaging. Run get_ffmpeg.ps1 to prepare missing tools.')
 if not all(os.path.exists(os.path.join(VLC_DIR, item)) for item in ('libvlc.dll', 'libvlccore.dll', 'plugins', 'COPYING.txt')):
     raise RuntimeError('Bundled VLC runtime missing. Run get_vlc.ps1 before packaging.')
 
@@ -40,6 +43,7 @@ _datas = [(FRONTEND_DIST, 'frontend/dist')]
 _datas.append((VLC_DIR, 'vlc'))
 _datas.append((os.path.join(ROOT, 'THIRD_PARTY_NOTICES.md'), '.'))
 _datas.append((os.path.join(ROOT, 'licenses', 'libvlc-python-vlc-LGPL-2.1.txt'), 'licenses'))
+_datas.append((FFMPEG_LICENSE, 'licenses'))
 
 # CHANGELOG.md + version.json — read at runtime to build the in-app changelog
 # history (Settings → Changelog). Both live at the project root.
@@ -166,6 +170,7 @@ a = Analysis(
         'vlc',
         'desktop_api',
         'services.native_video',
+        'services.release_survey',
         'webview.platforms',
         'webview.platforms.winforms',
         'clr',

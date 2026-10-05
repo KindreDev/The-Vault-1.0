@@ -255,6 +255,7 @@ export const creatorsApi = {
 
 // ── Images ────────────────────────────────────────────────────────────────────
 export const imagesApi = {
+  videoMetadata: (id) => api.get(`/images/${id}/video-metadata`),
   list:          (params)  => api.get('/images/', { params }),
   periods:       (params)  => api.get('/images/periods', { params }),
   get:           (id)      => api.get(`/images/${id}`),
@@ -467,7 +468,7 @@ export const tagsApi = {
   images:          (id, params)        => api.get(`/tags/${id}/images`, { params }),
   categorySamples: ()                  => api.get('/tags/category-samples'),
   trending:        (limit = 8, days = 30) => api.get('/tags/trending', { params: { limit, days } }),
-  coOccurring:     (limit = 10)           => api.get('/tags/co-occurring', { params: { limit } }),
+  coOccurring:     (limit = 10)           => api.get('/tags/co-occurring', { params: { limit }, timeout: 150000 }),
 }
 
 // ── AI Tag Vocabulary (allowlist) ────────────────────────────────────────────
@@ -629,6 +630,7 @@ export const economyApi = {
 
 // ── System / maintenance ──────────────────────────────────────────────────────
 export const systemApi = {
+  getReleaseSurvey: () => api.get('/system/release-survey'),
   health:    () => api.get('/system/health'),
   backup:    () => window.open('/api/system/backup', '_blank'),   // triggers browser download
   restart:   () => api.post('/system/restart'),

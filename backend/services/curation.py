@@ -496,7 +496,60 @@ def _image_python_score(img: Image, sql_score: float) -> float:
     return float(sql_score or 0) + _image_age_bonus(img)
 
 
-def _image_shortlist(db: Session, exclude_ids=None):
+def _image_creator_filter(creator_id: int):
+    """Include direct file assignments and both inherited gallery links."""
+    return or_(
+        _creator_gallery_filter(creator_id),
+        Image.id.in_(select(image_creators.c.image_id)
+                     .where(image_creators.c.creator_id == creator_id)),
+    )
+
+
+def _image_beloved_rotation(db: Session, beloved_ids, exclude_ids):
+    """Rotate file curation independently of gallery completion and skips."""
+    links = select(
+        image_creators.c.creator_id.label('creator_id'), Image.curated_at.label('last'),
+    ).join(Image, Image.id == image_creators.c.image_id).where(
+        image_creators.c.creator_id.in_(beloved_ids), Image.curated_at.isnot(None),
+    ).union_all(
+        select(gallery_creators.c.creator_id, Image.curated_at)
+        .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+        .where(gallery_creators.c.creator_id.in_(beloved_ids), Image.curated_at.isnot(None)),
+        select(Gallery.creator_id, Image.curated_at)
+        .join(Image, Image.gallery_id == Gallery.id)
+        .where(Gallery.creator_id.in_(beloved_ids), Image.curated_at.isnot(None)),
+    ).subquery()
+    last_curated = dict(db.query(links.c.creator_id, func.max(links.c.last))
+                        .group_by(links.c.creator_id).all())
+    # "Later" does not mark a file curated, but it must still advance rotation.
+    recent = {}
+    if exclude_ids:
+        shown = db.query(Image.id, Image.gallery_id).filter(Image.id.in_(exclude_ids)).all()
+        gallery_ids = {gid for _, gid in shown}
+        file_links = {}
+        gallery_links = {}
+        for iid, cid in db.query(image_creators.c.image_id, image_creators.c.creator_id).filter(
+            image_creators.c.image_id.in_(exclude_ids),
+        ).all():
+            file_links.setdefault(iid, set()).add(cid)
+        for gid, cid in db.query(gallery_creators.c.gallery_id, gallery_creators.c.creator_id).filter(
+            gallery_creators.c.gallery_id.in_(gallery_ids),
+        ).all():
+            gallery_links.setdefault(gid, set()).add(cid)
+        for gid, cid in db.query(Gallery.id, Gallery.creator_id).filter(Gallery.id.in_(gallery_ids)).all():
+            if cid:
+                gallery_links.setdefault(gid, set()).add(cid)
+        by_id = dict(shown)
+        for index, image_id in enumerate(exclude_ids):
+            gid = by_id.get(image_id)
+            for cid in file_links.get(image_id, set()) | gallery_links.get(gid, set()):
+                recent[cid] = index
+    return sorted(beloved_ids, key=lambda cid: (
+        cid in recent, recent.get(cid, -1), last_curated.get(cid) or datetime.min,
+    ))
+
+
+def _image_shortlist(db: Session, exclude_ids=None, extra_filter=None, exclude_gallery_ids=None):
     score = _image_sql_debt_score().label("debt")
     q = (db.query(Image, score)
            .join(Gallery, Gallery.id == Image.gallery_id)
@@ -504,20 +557,49 @@ def _image_shortlist(db: Session, exclude_ids=None):
            .filter(Image.file_path.isnot(None)))
     if exclude_ids:
         q = q.filter(~Image.id.in_(list(exclude_ids)))
-    # Do not use ORDER BY random() here: dump-style libraries can contain
-    # hundreds of thousands of files, and SQLite would sort the whole eligible
-    # set before returning the shortlist. Python still randomises the top band.
-    rows = q.order_by(score.desc(), Image.id.desc()).limit(SHORTLIST).all()
+    if extra_filter is not None:
+        q = q.filter(extra_filter)
+    if exclude_gallery_ids:
+        q = q.filter(~Image.gallery_id.in_(exclude_gallery_ids))
+    # Randomise BEFORE limiting, as gallery curation does. ID ordering limits
+    # every pull to one recently imported gallery even if Python picks randomly.
+    rows = q.order_by(score.desc(), func.random()).limit(SHORTLIST).all()
     scored = [(img, _image_python_score(img, raw_score)) for img, raw_score in rows]
     scored.sort(key=lambda row: row[1], reverse=True)
     return scored
 
 
 def next_image(db: Session, exclude_ids=None):
-    scored = _image_shortlist(db, exclude_ids)
-    if not scored:
-        return None
-    return random.choice(scored[:PICK_BAND])
+    """Use gallery curation's beloved/general split with file-level variety."""
+    exclude_ids = list(exclude_ids or [])
+    recent_gallery_ids = {gid for (gid,) in db.query(Image.gallery_id)
+                          .filter(Image.id.in_(exclude_ids[-8:])).all()} if exclude_ids else set()
+    profile = gami.get_or_create_profile(db)
+    beloved_ids = beloved_creator_ids(db)
+    focus_id = profile.curate_focus_creator_id
+
+    def pick(extra_filter=None, avoid_recent=True):
+        scored = _image_shortlist(db, exclude_ids, extra_filter,
+                                  recent_gallery_ids if avoid_recent else None)
+        return random.choice(scored[:PICK_BAND]) if scored else None
+
+    if focus_id:
+        selected = pick(_image_creator_filter(focus_id)) or pick(_image_creator_filter(focus_id), False)
+        if selected:
+            return (*selected, 'focus')
+
+    if beloved_ids and random.random() < BELOVED_SHARE:
+        rotation = _image_beloved_rotation(db, beloved_ids, exclude_ids)
+        for cid in rotation:
+            selected = pick(_image_creator_filter(cid))
+            if selected:
+                return (*selected, 'beloved')
+        # Prefer a fresh general folder over replaying a beloved folder just
+        # shown in this sitting. Explicit focus mode is the deliberate exception.
+
+    # Repeated folders are allowed only once the other eligible folders run out.
+    selected = pick() or pick(avoid_recent=False)
+    return (*selected, 'general') if selected else None
 
 
 def _effective_image_creators(db: Session, img: Image):
@@ -542,7 +624,7 @@ def _effective_image_creators(db: Session, img: Image):
     return merged, file_creator_ids, True
 
 
-def image_payload(db: Session, img: Image, score: float = None):
+def image_payload(db: Session, img: Image, score: float = None, lane: str = None):
     creators, file_creator_ids, has_image_creators = _effective_image_creators(db, img)
     reasons = []
     if not creators:
@@ -559,6 +641,7 @@ def image_payload(db: Session, img: Image, score: float = None):
     return {
         "id": img.id,
         "filename": img.filename,
+        "lane": lane,
         "file_path": img.file_path,
         "directory_path": os.path.dirname(img.file_path) if img.file_path else None,
         "gallery_id": img.gallery_id,

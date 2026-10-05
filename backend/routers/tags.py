@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import distinct, func, text
 from typing import List
@@ -95,23 +95,13 @@ def trending_tags(limit: int = 8, days: int = 30, db: Session = Depends(get_db))
 
 
 @router.get("/co-occurring")
-def co_occurring_tags(limit: int = 10, db: Session = Depends(get_db)):
+def co_occurring_tags(limit: int = Query(10, ge=1, le=50), db: Session = Depends(get_db)):
     """Top tag pairs that frequently appear together on the same image."""
-    rows = db.execute(text("""
-        SELECT t1.id AS tag1_id, t1.name AS tag1_name, t1.category AS tag1_cat,
-               t2.id AS tag2_id, t2.name AS tag2_name, t2.category AS tag2_cat,
-               COUNT(*) AS co_count
-        FROM image_tags it1
-        JOIN image_tags it2 ON it1.image_id = it2.image_id AND it1.tag_id < it2.tag_id
-        JOIN tags t1 ON t1.id = it1.tag_id
-        JOIN tags t2 ON t2.id = it2.tag_id
-        GROUP BY it1.tag_id, it2.tag_id
-        ORDER BY co_count DESC
-        LIMIT :limit
-    """), {"limit": limit}).fetchall()
-    return [{"tag1": {"id": r[0], "name": r[1], "category": r[2]},
-             "tag2": {"id": r[3], "name": r[4], "category": r[5]},
-             "co_count": r[6]} for r in rows]
+    from services.tag_statistics import co_occurring_tags as calculate, TagStatisticsBusy
+    try:
+        return calculate(db, limit)
+    except TagStatisticsBusy as exc:
+        raise HTTPException(503, str(exc), headers={'Retry-After': '60'}) from exc
 
 
 @router.get("/{tag_id}", response_model=TagOut)

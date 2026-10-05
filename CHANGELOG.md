@@ -15,84 +15,38 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
-- Advanced collection settings now include a confirmed owned-card wipe that preserves the catalogue, releases, binders, room layout, receipts, trade history, Vault Credits, and XP.
-- The card collection can queue a staged, versioned Foundation catalogue restore with Task Q progress and restart recovery, preserving prior snapshots and owned history.
-- Founder's Catalogue Standard Boosters now include a plain Founder Standard Booster and a selectable Selection Founders Standard Booster with matching pack odds, contents, and price.
-- A complete TCG V2 collection built around a finite 60,000-card Foundation catalogue, five rarity bands, release sets and packs, card provenance, physical binders, and preservation of existing cards. Scene publication and booster pools exclude sources missing the identity or metadata needed to display their card faces.
-- Personalized printings now use collection engagement, with deterministic rarity rules and linked SPR parallels.
-- The optional first-person Collection Room adds saved layouts, furniture inventory and shop, parcel delivery, binders, displays, and visitor and trader experiences.
-- Hall of Fame now tracks champion reigns and awards a distinct, provenance-backed card for each category and period win.
-- Local theme packs can be installed and edited with custom artwork, colors, textures, and optional fonts.
-- Dedicated Videos and Funscripts workflows add independent script playlists, media filters, statistics, and queues.
-- Expanded Loading Bay intake and file-level curation support folder imports, unsorted files, duplicate review, creator assignment, and relocation.
-- Scene card Editor now previews rejected subject masks and supports a card-specific coverage tolerance for subject-dominance cases.
-- Session Analytics adds selectable time ranges, labeled trends, and clearer session summaries.
-- ComfyUI workflow metadata now adds the `AI generated` provenance tag automatically during import.
+- Optional 2.0 survey invitation after 15 minutes of active use, deferred during playback and sessions, with remembered dismissal and a link editable in the published update manifest.
+- Video viewer Info now shows original resolution, duration, frame rate, container and codec, and overall bit rate.
+- **TCG V2:** a Foundation catalogue sized dynamically to your collection, monthly release sets, personalized printings, fixed C/R/SR/UR/SPR rarities, linked SPR parallels, and permanent source and acquisition provenance. Existing cards remain preserved.
+- **Physical card collecting:** binders, acquisition records, workshop customization, and a unified Shop for boosters and four binder finishes, including Founder Standard and selectable Selection Founder boosters.
+- **Daily traders:** Yoru, Rika, and Lisa offer rotating stock and personal preferences, card requests, selling, multi-card barter, overpayment refunds, and paid grading saved per physical copy.
+- **Optional Collection Room:** a first-person space with saved layouts, furniture inventory, shopping, parcel delivery, physical binders, card displays, and visitors.
+- **Local theme packs:** install and edit custom artwork, colors, textures, and optional fonts across the interface.
+- **Expanded media workflows:** dedicated Videos and Funscripts tools, independent script playlists, media filters, statistics, and queues.
+- **File-level curation and expanded Loading Bay:** curate individual files alongside galleries, import folders or unsorted files, review duplicates, assign creators, and relocate content.
+- **Expanded analytics and honours:** selectable session-analysis ranges, labeled trends, clearer summaries, champion reign tracking, and distinct provenance-backed Hall of Fame award cards.
+- **Card mask editing:** preview rejected subject masks and adjust coverage tolerance per card.
+- **Automatic ComfyUI provenance:** embedded workflow metadata identifies AI-generated imports without requiring an AI tagger prediction.
+- **Advanced collection controls:** recoverable catalogue restoration with background progress and an owned-card wipe that preserves catalogue and historical records.
 
 ### Changed
-- Playlist media selection now searches the full collection with paged results, including gallery contents, and no longer truncates queues at 25,000 entries.
-- The Windows app now plays original local videos through bundled VLC, including playlist and curation, with in-place controls, overlays, zoom, and the existing funscript clock, without creating playback copies.
-- Moved catalogue restore out of the main collection screen into Advanced settings, made the Advanced button reopen the panel reliably, and added a separate persisted Advanced Mode toggle.
-- Fresh card collections now offer TCG setup and catalogue creation; tag switches show clear on/off tracks, background jobs remain visible during preparation, and bulk menus preserve selected items.
-- Creator assignments, media edits, sessions, tags, and purchases now refresh related screens automatically; open viewers keep counters current without discarding note drafts, and completed background jobs refresh library data.
-- Updated developer documentation and consolidated project instructions, replacing obsolete planning and handoff documents.
-- Booster purchases can recover an interrupted response without charging again, and pack selection loads only the card details needed for the reveal.
-- Trader browsing pages card previews, reuses copy valuations, and keeps stock available when an individual face cannot be prepared; grading bonuses require a paid grade.
-- Desktop, installer, and mobile release versions are aligned to 2.0.0, with a build-generated Cloudflare update manifest.
-- The trader screen now shows your current Credits balance in the top bar.
-- Trader card grades now follow one rarity-based rubric across traders and physical copies, while preserving per-copy rarity fees.
-- Trader stock and eligible card details now load automatically when you open the trading screen.
-- The Trade screen now combines selling and bartering, searches both card lists, and accepts catalog-code card requests.
-- Hall of Fame now prioritizes the creator ranking and keeps a full-screen loading state visible until it is ready.
-- Trader visits now rotate daily, card requests can join a trader's next stock by chance, and offers use trader-specific card values without a five-copy cap.
-- Daily trader wants and avoids now shape card values and stock; all owned copies can be offered with simple Value labels and no copy cap.
-- Trader barter supports multiple cards on both sides, uses the same live preference-based quote through acceptance, and prepares acquired cards through the booster reveal path.
-- Barter now returns a trader-specific share of overpayment, and trader replies state sale payouts and barter refunds.
-- Trader requests accept catalog codes, while rarity-priced grades persist per copy and boost value only when they match a trader's daily interests.
-- Each daily trader visit pairs a two-sided conversation with matching card previews, clear trade status, and refresh feedback.
-- Trader stock and transactions are available without simulation approval, and published SPR cards can enter the daily stock.
-- Daily visits rotate among Yoru, Rika, and Lisa, each with a finished transparent portrait.
-- Trader conversations now show both sides of the chat, and matching card previews make trade choices visible.
-- Trade cards now show their value to the trader, and the offered total updates as cards are selected.
-- Mask regeneration now distinguishes candidates accepted by the Editor's tolerance from failures of the default check.
-- Pack opening now keeps cards visible without falling back to legacy faces when V2 card details are unavailable.
-- Pack openings use a flat-card fallback when a generated mask fails its quality check.
-- Card Collection now has one image-led Shop for booster packs and all four binder finishes, with category filters, repeat purchases, direct Buy-and-open boosters, and a binder quantity cart instead of placeholder accessories.
-- Booster previews now rotate through random existing thumbnails from the published V2 card pool, independently of pack contents and collection ownership.
-- Booster wrapper artwork now rotates through random thumbnails from the entire published V2 catalogue, independently of pack pulls.
-- Booster wrappers no longer overlay card-count text; pack details remain beside the artwork.
-- Card Collection now centers on release-aware sets, complete card records, acquisition history, binders, boosters, and workshop customization.
-- TCG V2 uses fixed C/R/SR/UR/SPR print rarities; Foundation and monthly releases use deterministic scaled pools, with personal-value scoring shaping eligible printings.
-- TCG cards use frozen source artwork, type-specific layouts, masks, and rarity effects; missing source data remains clearly unavailable.
-- Collection Room now uses saved physical copies and placements, with clearer inventory and shop flows, validated floor and wall placement, and adjustable graphics quality.
-- Collection Room parcel openings now support reliable completion and retry recovery during slow reveal preparation.
-- Large Collection Room booster sets now open faster by preparing only the cards you pull.
-- Booster orders now save a compact delivery summary while keeping the exact frozen pull pool on the order line, reducing checkout work for large packs.
-- Large library, collection, and Loading Bay views now search and page through full datasets while incrementally loading cards and thumbnails.
-- Funscript output now coalesces acknowledged device commands and smooths fast movements; video loop and volume preferences persist across sessions.
-- Theme packs apply custom artwork and appearance colors across more screens; readability and Simplified Chinese coverage have expanded.
-- Compatible video streams are remuxed for browser playback before falling back to re-encoding; phone MOV playback skips unsupported auxiliary audio tracks, and loading explains the one-time playback copy.
+- Card Collection now centers on release sets, complete card records, physical copies, binders, boosters, and customization. Cards use type-specific layouts, frozen source artwork, separate mask/frame/effect layers, and explicit unavailable or flat-card fallbacks.
+- Windows playback uses bundled VLC inside Vault's existing interface, including hover previews, playlists and both curation modes, without playback copies. Browser and mobile retain compatible-stream playback with remuxing or conversion when required; video loop and volume preferences persist.
+- Large library, card collection, playlist picker, and Loading Bay views search and page through full datasets. Playlist queues no longer stop at 25,000 entries; card previews and pack reveals load only the details needed.
+- File curation mixes beloved creators with general collection picks, rotates creators, and avoids recently shown galleries when alternatives exist, while retaining focus, cooldowns, and snoozing.
+- Metadata edits, creator assignments, sessions, tags, purchases, and completed background jobs refresh related screens automatically, including open viewers without losing note drafts.
+- Funscript device output coalesces acknowledged commands and smooths fast movements. Theme coverage, readable interface text, and Simplified Chinese support have expanded.
 
 ### Fixed
-- Viewer previous/next arrows stay in place when hovered or pressed.
-- Rating galleries from Gallery View now advances the daily Gallery judge quest and awards the correct rating XP.
-- Random Mix, Help achievements, and playlist deletion now use their translation helpers without undefined-variable errors.
-- Clicking a creator in any Hall of Fame period now opens their statistics without a translation error.
-- Session analytics include freshly recorded UTC activity without a timezone-dependent delay.
-- Hall of Fame awards closed periods in the background at startup and after midnight, keeping tracking active without delaying ranking requests.
+- Scanning, moving, merging, deleting, and relinking keep files and records consistent, including locked files, offline roots, sidecars, and failed Loading Bay deletions.
+- Hall of Fame rankings include all creator assignments and consistent local-calendar periods; awards run in the background. Session analytics and history handle UTC activity and local boundaries correctly, and gallery ratings award the appropriate quest progress and XP.
+- Purchases, pack opening, barter, parcel delivery, and binder filing preserve physical ownership and recover interrupted operations without duplicate charges or deliveries.
+- Dashboard tag-pair statistics use cached, bounded calculations instead of overlapping memory-heavy queries. Viewer navigation stays in place on hover, and dialogs and translations behave consistently.
 - In-app updates verify installer integrity, prevent duplicate downloads, preserve the installation folder, and detect completion after restart.
-- Hall of Fame creator rankings include every creator assignment and use consistent local-calendar period boundaries.
-- Scanning, moving, merging, deleting, and relinking now keep files and Vault records in sync, including locked files and offline library roots.
-- Loading Bay now retains files when deletion fails, shows actionable errors, and handles large queues and duplicate and video comparisons reliably.
-- Collection Room placement, pack opening, parcel delivery, and binder filing now preserve the correct physical inventory state.
-- TCG release generation and pack opening now enforce frozen eligibility and rarity rules, preserve earned cards, and report foil preparation failures.
-- Gallery, media, and creator dialogs and viewers now stay within the viewport and restore background scrolling correctly.
-- Session and quest history now use local-time boundaries and preserve creator attribution.
 
 ### Removed
-- Removed the unused trader profiles and placeholder portrait entries from the active roster.
 - Retired card evolution, Prestige, and crafting paths for published TCG V2 cards; duplicates now support Shards and physical customization.
-- Removed obsolete dismantling and tag-challenge rewards, plus the separate gallery display-name rename action.
+- Removed obsolete dismantling and tag-challenge rewards, the separate gallery display-name rename action, and unused trader profiles and placeholder portraits.
 
 ## [1.8.0] - 2026-08-13
 

@@ -69,7 +69,7 @@ def _set_sqlite_pragmas(dbapi_conn, _rec):
     cur.execute("PRAGMA journal_mode=WAL")       # concurrent reads + writes
     cur.execute("PRAGMA synchronous=NORMAL")      # safe but faster than FULL
     cur.execute("PRAGMA cache_size=-32000")       # 32 MB page cache
-    cur.execute("PRAGMA temp_store=MEMORY")       # temp tables in RAM
+    cur.execute("PRAGMA temp_store=FILE")         # large GROUP BY/sorts spill to disk
     cur.execute("PRAGMA mmap_size=268435456")     # 256 MB memory-mapped I/O
     cur.close()
 

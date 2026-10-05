@@ -595,6 +595,8 @@ function CoOccurringWidget({ onTagClick, onPairClick }) {
     queryKey: ['co-occurring-tags'],
     queryFn: () => tagsApi.coOccurring(8).then(r => r.data),
     staleTime: 300000,
+    retry: false,
+    refetchOnWindowFocus: false,
   })
   if (!pairs || pairs.length === 0) return null
   return (

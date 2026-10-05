@@ -49,13 +49,13 @@ def get_gallery(gallery_id: int, all_images: bool = False, db: Session = Depends
 
 @router.get("/next-file")
 def next_file(exclude: str = "", db: Session = Depends(get_db)):
-    """Serve the next incomplete file for dump-style file curation."""
+    """Serve a varied file queue with the gallery curator's beloved/general mix."""
     exclude_ids = [int(x) for x in exclude.split(",") if x.strip().isdigit()]
     picked = curation.next_image(db, exclude_ids)
     if not picked:
         return {"file": None, "exhausted": True}
-    img, score = picked
-    return {"file": curation.image_payload(db, img, score), "exhausted": False}
+    img, score, lane = picked
+    return {"file": curation.image_payload(db, img, score, lane), "lane": lane, "exhausted": False}
 
 
 @router.get("/file/{image_id}")

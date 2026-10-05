@@ -140,13 +140,17 @@ backend\venv\Scripts\python.exe scripts\prepare_release.py
 Outputs:
 
 - `dist\VaultSetup.exe`: Windows installer.
-- `dist\cloudflare\VaultSetup-<version>.exe`: versioned public download.
+- `dist\cloudflare\VaultSetup.exe`: public download using the established installer filename.
 - `dist\cloudflare\version.json`: update manifest containing the compiled installer's SHA-256 and size.
 
 The root `version.json` is the source template; publish the generated staged manifest. Rebuild the packaged executable before compiling the installer. Preserve the installer AppId and data paths across upgrades.
 
-Verify fresh installation, upgrade with copied data, and the update/relaunch flow. Upload the versioned installer to the download host first and verify its public size and hash. Update any website download alias, then publish the manifest last with `Cache-Control: no-cache, max-age=0, must-revalidate` and clear its cache. Keep published versioned binaries immutable; use a new patch version for subsequent rebuilds.
+Verify fresh installation, upgrade with copied data, and the update/relaunch flow. Upload `VaultSetup.exe` to the existing download URL first and verify its public size and hash. Publish the manifest last with `Cache-Control: no-cache, max-age=0, must-revalidate` and clear the installer and manifest caches. Keep the installer filename and download URL unchanged across releases; advance the application version for subsequent releases.
 
 ## Project conventions
 
 Read [AGENTS.md](AGENTS.md) for architecture, visual rules, TCG contracts, asset tooling, and collaboration conventions. [CLAUDE.md](CLAUDE.md) points to the same shared instructions. Record user-facing changes in [CHANGELOG.md](CHANGELOG.md), and preserve [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and asset licenses.
+
+### Release survey link
+
+Edit `survey.url` in the published `version.json` to change the optional 2.0 survey destination without rebuilding the app. Keep the rest of the published manifest, including its installer checksum and size, unchanged. Set `survey.enabled` to `false` to disable the invitation. The app checks this configuration after 15 minutes of active use and uses its bundled link if the server is unavailable; configuration is cached for up to one hour. This request retrieves the link only and does not submit usage or survey responses. Opening the form or choosing Don’t ask again suppresses further invitations locally; Later defers it for 24 hours. A new installer must include this feature before users can receive the invitation.

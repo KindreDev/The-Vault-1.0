@@ -8,6 +8,7 @@ import { xpEvents } from './lib/xpEvents'
 import queryClient from './lib/queryClient'
 import SessionRecoveryModal from './components/SessionRecoveryModal'
 import SessionEndPrompt from './components/SessionEndPrompt'
+import ReleaseSurveyPrompt from './components/ReleaseSurveyPrompt'
 import { startSessionHeartbeat, stopSessionHeartbeat } from './lib/session'
 
 // ── Route-level code splitting ────────────────────────────────────────────────
@@ -164,6 +165,7 @@ export default function App() {
       <SessionRecoveryModal />
       {/* Only under Settings → Session → "Ask me each time". */}
       <SessionEndPrompt />
+      <ReleaseSurveyPrompt />
     </BrowserRouter>
   )
 }

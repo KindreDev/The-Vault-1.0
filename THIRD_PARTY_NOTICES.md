@@ -1,5 +1,20 @@
 # Third-Party Notices
 
+## FFmpeg and FFprobe
+
+The Windows package includes Gyan's FFmpeg 8.1.1 essentials build and FFprobe
+7.1.1 full build as separate media tools. These static Windows builds use GPLv3;
+the license text is included in `licenses/ffmpeg-GPL-3.0.txt`.
+
+Build provider, configuration, and dependency information:
+https://www.gyan.dev/ffmpeg/builds/
+FFmpeg source for these releases:
+https://github.com/FFmpeg/FFmpeg/tree/n8.1.1
+https://github.com/FFmpeg/FFmpeg/tree/n7.1.1
+
+Retain these notices and satisfy corresponding-source requirements for the
+distributed builds and their included dependencies.
+
 ## VLC playback engine and python-vlc
 
 The desktop viewer embeds VideoLAN's libVLC 3.0.21 through python-vlc 3.0.21203.

@@ -1,4 +1,5 @@
 import os
+import subprocess
 import re
 import mimetypes
 import asyncio
@@ -24,6 +25,7 @@ from services.gallery_deletion import detach_image_references
 from services.tag_filters import apply_image_tag_filters
 from services.video_playback import VideoPlaybackError, ensure_browser_playback
 from services.video_stream import read_video_chunk
+from services.video_metadata import video_metadata
 
 router = APIRouter()
 _VIDEO_PREVIEW_LOCK = threading.Lock()
@@ -341,6 +343,21 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Image not found")
     # View counting is done explicitly via POST /{id}/view — GET stays idempotent.
     return _enrich_image(img, db)
+
+
+@router.get("/{image_id}/video-metadata")
+def get_video_metadata(image_id: int, db: Session = Depends(get_db)):
+    image = db.get(Image, image_id)
+    if not image:
+        raise HTTPException(404, 'File not found')
+    if not image.is_video:
+        raise HTTPException(400, 'This file is not a video')
+    try:
+        return video_metadata(image.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, 'Original video is unavailable')
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(503, str(exc) if isinstance(exc, RuntimeError) else 'Could not read video information')
 
 
 @router.post("/{image_id}/view")

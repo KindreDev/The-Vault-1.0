@@ -1,3 +1,4 @@
+import ViewerInfo from '../components/ViewerInfo'
 import VaultVideo from '../components/VaultVideo'
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LocalizedText } from '../i18n'
@@ -1316,25 +1317,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
         <TagPanel imageId={image.id} tags={localTags} onTagsChanged={setLocalTags} />
 
         {/* Info */}
-        <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-[16px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest mb-2">{t('Info')}</div>
-          {image.width && (
-            <div className="flex justify-between py-0.5">
-              <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
-              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{image.width}×{image.height}</span>
-            </div>
-          )}
-          {image.file_size && (
-            <div className="flex justify-between py-0.5">
-              <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('File')}</span>
-              <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{(image.file_size / 1024 / 1024).toFixed(1)}<LocalizedText text={"MB"} before=" " /></span>
-            </div>
-          )}
-          <div className="flex justify-between py-0.5">
-            <span className="text-[16px] text-[rgba(255,255,255,0.3)]">{t('Views')}</span>
-            <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{liveViewCount ?? image.view_count}</span>
-          </div>
-        </div>
+        <ViewerInfo image={image} viewCount={liveViewCount} />
 
         {/* Actions */}
         <div className="p-3 flex flex-col gap-2">

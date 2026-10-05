@@ -1,0 +1,26 @@
+.release-survey-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--c-text, rgba(255,255,255,.9));
+  background: var(--c-card, #1e1e1e);
+  border: 1px solid var(--c-border, rgba(255,255,255,.16));
+  transition: background .15s;
+}
+.release-survey-button:hover {
+  background: color-mix(in srgb, var(--c-card, #1e1e1e) 80%, var(--c-accent) 20%);
+}
+.release-survey-primary {
+  background: color-mix(in srgb, var(--c-accent) 22%, var(--c-card, #1e1e1e));
+  border-color: var(--c-accent);
+}
+.release-survey-button:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}

@@ -337,6 +337,12 @@ def _root_dir() -> str:
 
 CHANGELOG_MD_PATH  = os.path.join(_root_dir(), "CHANGELOG.md")
 VERSION_JSON_PATH  = os.path.join(_root_dir(), "version.json")
+
+
+@router.get("/release-survey")
+def release_survey():
+    from services.release_survey import get_survey
+    return get_survey(VERSION_JSON_PATH)
 CHANGELOG_HISTORY_PATH = os.path.join(DATA_DIR, "changelog_history.json")
 
 _VERSION_HEADER_RE = re.compile(r"^##\s*\[([^\]]+)\](?:\s*-\s*(.+))?\s*$", re.MULTILINE)
