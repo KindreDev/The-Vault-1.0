@@ -171,6 +171,7 @@ a = Analysis(
         'desktop_api',
         'services.native_video',
         'services.release_survey',
+        'services.gallery_cover_repair',
         'webview.platforms',
         'webview.platforms.winforms',
         'clr',

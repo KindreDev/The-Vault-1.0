@@ -815,9 +815,12 @@ def save(db: Session, gallery_id: int, payload: dict, mark_curated: bool = True)
     if payload.get("cover_image_id"):
         img = db.query(Image).filter(Image.id == int(payload["cover_image_id"]),
                                      Image.gallery_id == g.id).first()
-        if img and img.file_path != g.cover_path:
+        if img and not img.thumb_path:
+            raise ValueError("The selected cover has no thumbnail")
+        cover_url = f"/thumbs/{os.path.basename(img.thumb_path)}" if img else None
+        if img and (img.file_path != g.cover_path or cover_url != g.cover_thumb):
             g.cover_path = img.file_path
-            g.cover_thumb = img.thumb_path
+            g.cover_thumb = cover_url
             fixes.append("cover")
 
     if payload.get("description") is not None and payload["description"] != (g.description or ""):

@@ -14,6 +14,13 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-05
+
+### Fixed
+- Gallery curation preserves cover images when saving or marking a gallery curated, and restores previously broken cover references automatically on startup without changing original media.
+
+## [2.0.0]
+
 ### Added
 - Optional 2.0 survey invitation after 15 minutes of active use, deferred during playback and sessions, with remembered dismissal and a link editable in the published update manifest.
 - Video viewer Info now shows original resolution, duration, frame rate, container and codec, and overall bit rate.

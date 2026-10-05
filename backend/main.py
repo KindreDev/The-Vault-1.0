@@ -493,6 +493,11 @@ def _migrate_add_columns():
                     print(f"[migration] unexpected error running `{sql}`: {e}")
 
 _migrate_add_columns()
+from services.gallery_cover_repair import repair_gallery_cover_urls
+with SessionLocal() as _cover_db:
+    _repaired_covers = repair_gallery_cover_urls(_cover_db, DATA_DIR)
+    if _repaired_covers:
+        print(f"[migration] restored {len(_repaired_covers)} gallery cover URLs")
 from services.tcg_schema_migrations import migrate_bond_milestone_card_link_nullable
 migrate_bond_milestone_card_link_nullable(engine)
 
