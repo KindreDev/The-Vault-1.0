@@ -1406,7 +1406,7 @@ if __name__ == "__main__":
             )
             _api._win = _win   # back-reference so the API can reach the window
             def _release_native_players():
-                threading.Thread(target=_api.native_video_close_all, daemon=True).start()
+                threading.Thread(target=_api.desktop_reset_outputs, daemon=True).start()
             _win.events.before_load += _release_native_players
             _win.events.closing += _api._on_closing
 

@@ -19,6 +19,7 @@ import { stopVideoPreview } from '../lib/videoPreview'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
+import GalleryMetadataPanel from '../components/GalleryMetadataPanel'
 import { useT } from '../i18n'
 import { useSession } from '../hooks/useSession'
 import { useViewerDataSync } from '../hooks/useViewerDataSync'
@@ -74,7 +75,7 @@ const TYPE_COLORS = {
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
 }
 
-function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], totalItems = 0 }) {
+function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], totalItems = 0, gallery }) {
   const t = useT()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -192,6 +193,8 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
         </div>
       </div>
 
+      <div className="gallery-details-body">
+      <div className="gallery-details-creators">
       {creatorEntries.length === 0 ? (
         <div className="text-[16px] text-[rgba(255,255,255,0.35)] py-2">{t('No creator assigned')}</div>
       ) : (
@@ -289,6 +292,9 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
           </div>
         </div>
       )}
+      </div>
+      <GalleryMetadataPanel key={galleryId} gallery={gallery} />
+      </div>
     </div>
   )
 }
@@ -2341,6 +2347,7 @@ export default function GalleryView() {
         <div className="mb-4 relative z-10">
             <CreatorAssignPanel
               galleryId={parseInt(id)}
+              gallery={gallery}
               assignedCreators={gallery.creators ?? []}
               galleryImages={images ?? []}
               totalItems={gallery.image_count ?? 0}

@@ -15,6 +15,7 @@ import {
 } from 'buttplug'
 import { useDeviceStore, PRESETS } from '../store/deviceStore.js'
 import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore.js'
+import { NativeSerial, hasNativeSerialBridge, chooseNativeSerialPort } from './nativeSerial.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const store = () => useDeviceStore.getState()
@@ -52,6 +53,8 @@ function rememberLastSerialPort(info) {
     window.localStorage.setItem(LAST_SERIAL_PORT_KEY, JSON.stringify({
       usbVendorId: info.usbVendorId ?? null,
       usbProductId: info.usbProductId ?? null,
+      device: info.device ?? null,
+      serialNumber: info.serialNumber ?? null,
     }))
   } catch (_) {}
 }
@@ -248,6 +251,11 @@ export class DeviceService {
     // Direct serial (Web Serial API)
     this._serialPort   = null
     this._serialWriter = null
+    this._nativeSerial = null
+    this._nativeSerialPlaying = false
+    this._serialSettingsUnsubscribe = null
+    this._serialPending = new Map()
+    this._serialWriteBusy = false
     this._quickTogglePromise = null
     this._quickConnectionDeadline = null
   }
@@ -695,6 +703,10 @@ export class DeviceService {
 
   async testStroke() {
     if (store().status !== 'connected') return
+    this.pauseIndependentFunscript()
+    this._stopFunscriptPlayer()
+    this._funscriptOwner = null
+    if (store().mode === 'funscript') useDeviceStore.setState({ mode: 'off' })
     const { provider } = store()
 
     if (provider === 'handy' || provider === 'serial') {
@@ -732,7 +744,9 @@ export class DeviceService {
       // stopAllDevices() alone was not enough — see _stopScalarActuators.
       this._stopIntifaceOutputs()
     } else if (provider === 'serial') {
-      this._sendLinearSerial(0, 1500)
+      // Stop holds the last sampled position. Disconnect is a separate action.
+      if (this._nativeSerial) await this._nativeSerial.stop().catch(() => {})
+      this._serialPending.clear()
     }
     useDeviceStore.setState({ mode: 'off' })
   }
@@ -741,6 +755,9 @@ export class DeviceService {
 
   startFreestyle() {
     if (store().status !== 'connected') return
+    this.pauseIndependentFunscript()
+    this._stopFunscriptPlayer()
+    this._funscriptOwner = null
     useDeviceStore.setState({ mode: 'freestyle' })
     this._stopPatternEngine()
     this._startPatternEngine()
@@ -752,6 +769,7 @@ export class DeviceService {
 
   stopFreestyle() {
     this._stopPatternEngine()
+    if (this._nativeSerial) void this._nativeSerial.stop().catch(() => {})
     this._stopRamp()
     this._stopScheduler()
     // Killing the engine stops new commands but leaves a vibrator running at
@@ -920,7 +938,7 @@ export class DeviceService {
     clearInterval(this._edgeRampTimer)
     this._edgeTimer     = null
     this._edgeRampTimer = null
-    this._edgeGate      = 1
+    this._setEdgeGate(1)
     useDeviceStore.setState({ edgeActive: false, edgeNextAt: null })
   }
 
@@ -942,9 +960,9 @@ export class DeviceService {
     const s = store()
     if (!s.edgeModeEnabled) { this._stopEdgeMode(); return }
 
-    this._edgeGate = s.edgeActionMode === 'slow'
+    this._setEdgeGate(s.edgeActionMode === 'slow'
       ? clamp(s.edgeSlowPercent / 100, 0, 1)
-      : 0
+      : 0)
 
     // The Handy streams funscripts server-side and never passes through
     // _sendLinear, so its already-queued points have to be re-cut by hand.
@@ -967,7 +985,7 @@ export class DeviceService {
 
     const rampSec = s.edgeRampBackSec
     if (rampSec <= 0) {
-      this._edgeGate = 1
+      this._setEdgeGate(1)
       if (isHandyScript) this._handyEdgeHold()
       useDeviceStore.setState({ edgeActive: false })
       this._scheduleEdge()
@@ -980,11 +998,11 @@ export class DeviceService {
     clearInterval(this._edgeRampTimer)
     this._edgeRampTimer = setInterval(() => {
       const t = clamp((Date.now() - t0) / (rampSec * 1000), 0, 1)
-      this._edgeGate = start + (1 - start) * t
+      this._setEdgeGate(start + (1 - start) * t)
       if (t >= 1) {
         clearInterval(this._edgeRampTimer)
         this._edgeRampTimer = null
-        this._edgeGate = 1
+        this._setEdgeGate(1)
       }
     }, 100)
 
@@ -1004,6 +1022,11 @@ export class DeviceService {
   }
 
   setEdgeReporter(fn) { this._onEdge = fn }
+
+  _setEdgeGate(value) {
+    this._edgeGate = value
+    if (this._nativeSerialPlaying) this._nativeSerial?.update({ gate: value })
+  }
 
   // ── Funscript mode ──────────────────────────────────────────────────────────
 
@@ -1067,15 +1090,37 @@ export class DeviceService {
     // The Handy streams authored points itself; other providers use the regular
     // interpolated sampler below.
     if (store().provider === 'handy') { this._startHandyFsFeed(); return }
+    if (this._nativeSerial && store().provider === 'serial') {
+      const video = this._videoEl
+      if (video.paused || video.ended) return
+      this._nativeSerialPlaying = true
+      this._nativeSerial.start({
+        axes: this._getFunscriptAxes(), owner: 'video', mediaSession: video.session || null,
+        startTime: video.currentTime, speed: video.playbackRate || 1, playing: true,
+        ...this._nativeSerialParams(),
+      })
+      // Native VLC is read directly by the output thread. Only HTML video
+      // needs occasional clock observations; no per-position bridge traffic.
+      if (!video.session) this._funscriptSamplerTimer = setInterval(() => {
+        if (!this._videoEl || video.paused || video.ended) { this._stopFunscriptPlayer(); return }
+        this._nativeSerial.update({ startTime: video.currentTime, speed: video.playbackRate || 1, playing: true })
+      }, 100)
+      return
+    }
     this._startFunscriptSampler()
   }
 
   _stopFunscriptPlayer() {
+    if (this._nativeSerial && this._funscriptOwner !== 'independent') {
+      this._nativeSerialPlaying = false
+      void this._nativeSerial.stop().catch(() => {})
+    }
     clearTimeout(this._funscriptTimer)
     this._funscriptTimer = null
     for (const t of Object.values(this._funscriptTimers || {})) clearTimeout(t)
     this._funscriptTimers = {}
     clearTimeout(this._funscriptSamplerTimer)
+    clearInterval(this._funscriptSamplerTimer)
     this._funscriptSamplerTimer = null
     this._funscriptSamplerNextAt = null
     this._funscriptSamplerLastWallAt = null
@@ -1292,6 +1337,14 @@ export class DeviceService {
       useFunscriptPlayerStore.setState({ compatibilityWarning: null })
     }
     this._independentFs = state
+    if (this._nativeSerial && store().provider === 'serial') {
+      this._nativeSerialPlaying = true
+      this._nativeSerial.start({ ...state, curves: undefined, owner: 'independent',
+        onTime: undefined, onPause: undefined, onEnd: undefined, onError: undefined,
+        ...this._nativeSerialParams(), axes, range: state.range, intensity: state.intensity,
+        axisEnabled: state.axisEnabled, offsetMs: 0 })
+      return true
+    }
     this._independentFsTimer = setInterval(
       () => this._tickIndependentFunscript(),
       this._funscriptOutputInterval(),
@@ -1304,6 +1357,7 @@ export class DeviceService {
     if (!this._independentFs) return
     const now = this._independentFs.startTime + ((Date.now() - this._independentFs.startedAt) / 1000) * this._independentFs.speed
     Object.assign(this._independentFs, patch)
+    if (this._nativeSerial && this._funscriptOwner === 'independent') this._nativeSerial.update(patch)
     if ('speed' in patch) {
       this._independentFs.startTime = now
       this._independentFs.startedAt = Date.now()
@@ -1371,11 +1425,15 @@ export class DeviceService {
   // comparison boundary above.
   seekIndependentFunscript(timeSeconds) {
     if (!this._independentFs) return
-    const wasPlaying = !!this._independentFsTimer
+    const wasPlaying = !!this._independentFsTimer || this._nativeSerialPlaying
     this._independentFs.startTime = Math.max(0, Math.min(this._independentFs.duration, Number(timeSeconds) || 0))
     this._independentFs.startedAt = Date.now()
     this._independentFs.lastWallAt = null
     this._independentFs.lastPositions = {}
+    if (this._nativeSerial) {
+      if (wasPlaying) this._nativeSerial.update({ startTime: this._independentFs.startTime })
+      return
+    }
     if (wasPlaying && !this._independentFsTimer && this._funscriptOwner === 'independent') {
       this._independentFsTimer = setInterval(
         () => this._tickIndependentFunscript(),
@@ -1386,6 +1444,10 @@ export class DeviceService {
   }
 
   _stopIndependentFunscriptClock() {
+    if (this._nativeSerial && this._funscriptOwner === 'independent') {
+      this._nativeSerialPlaying = false
+      void this._nativeSerial.stop().catch(() => {})
+    }
     clearInterval(this._independentFsTimer)
     this._independentFsTimer = null
     if (this._independentFs) this._independentFs.lastWallAt = null
@@ -1429,6 +1491,7 @@ export class DeviceService {
     // 'freestyle' also neutralises the funscript re-arm paths (they all guard
     // on mode === 'funscript'), so a still-playing video won't tug back control.
     this._stopFunscriptPlayer()
+    this.pauseIndependentFunscript()
     this._stopRamp()
     this._stopScheduler()
     clearTimeout(this._cumTimer)
@@ -1885,6 +1948,7 @@ export class DeviceService {
   // ── Direct serial — FUNSR1 2.0 (T-code, Web Serial API) ────────────────────
 
   async connectSerial({ reusePermission = false } = {}) {
+    if (hasNativeSerialBridge()) return this._connectNativeSerial(reusePermission)
     if (!navigator.serial) {
       useDeviceStore.setState({
         status: 'error',
@@ -1936,6 +2000,13 @@ export class DeviceService {
 
   async disconnectSerial() {
     this._stopAll()
+    this._serialSettingsUnsubscribe?.()
+    this._serialSettingsUnsubscribe = null
+    if (this._nativeSerial) {
+      await this._nativeSerial.disconnect().catch(error => console.warn('Serial disconnect failed', error))
+      this._nativeSerial = null
+    }
+    this._serialPending.clear()
     if (this._serialWriter) {
       try { await this._serialWriter.releaseLock() } catch (_) {}
       this._serialWriter = null
@@ -1969,20 +2040,113 @@ export class DeviceService {
   }
 
   _sendAxisSerial(axisId, posPercent, durationMs) {
-    if (!this._serialWriter) return
-    let p = posPercent
+    if (!this._serialWriter && !this._nativeSerial) return
+    if (!['L0', 'L1', 'L2', 'R0', 'R1', 'R2'].includes(axisId)) return
+    let p = clamp(posPercent, 0, 100)
     // The stroke limiter is a stroke-window constraint — it must apply ONLY to
     // L0. Clamping rotation/secondary axes to the stroke floor/ceiling would
     // distort the authored choreography, so those pass through unmodified.
     if (axisId === 'L0') {
       const { strokeFloor, strokeCeiling } = store()
-      p = strokeFloor + (strokeCeiling - strokeFloor) * (posPercent / 100)
+      p = strokeFloor + (strokeCeiling - strokeFloor) * (p / 100)
     }
     const pos = Math.round(clamp(p / 100, 0, 1) * 9999)
     const dur = Math.max(1, Math.round(durationMs))
+    if (this._nativeSerial) { this._nativeSerial.move(axisId, clamp(p, 0, 100), dur); return }
     const cmd = `${axisId}${String(pos).padStart(4, '0')}I${dur}\n`
-    const encoded = new TextEncoder().encode(cmd)
-    this._serialWriter.write(encoded).catch(() => {})
+    // Browser fallback: one bounded writer, latest sample per axis, grouped
+    // per microtask. Desktop script playback uses the native thread instead.
+    this._serialPending.set(axisId, cmd.trim())
+    if (!this._serialWriteBusy) {
+      this._serialWriteBusy = true
+      queueMicrotask(() => this._drainSerialWrites())
+    }
+  }
+
+  async _drainSerialWrites() {
+    const writer = this._serialWriter
+    try {
+      while (writer && writer === this._serialWriter && this._serialPending.size) {
+        const commands = [...this._serialPending.values()].join(' ') + '\n'
+        this._serialPending.clear()
+        await writer.write(new TextEncoder().encode(commands))
+      }
+    } catch (error) {
+      this._serialOutputFailed(error)
+    } finally {
+      this._serialWriteBusy = false
+    }
+  }
+
+  _nativeSerialParams() {
+    const s = store()
+    return { strokeFloor: s.strokeFloor, strokeCeiling: s.strokeCeiling,
+      axisEnabled: s.funscriptAxes || {}, offsetMs: s.funscriptOffsetMs || 0, gate: this._edgeGate }
+  }
+
+  _serialOutputFailed(error) {
+    const message = error?.message || String(error)
+    if (store().status === 'error' && store().errorMsg === message) return
+    this._stopAll()
+    this._serialPending.clear()
+    useDeviceStore.setState({ status: 'error', mode: 'off', errorMsg: message })
+    useFunscriptPlayerStore.setState({ playing: false, status: 'error', error: message })
+  }
+
+  async _connectNativeSerial(reusePermission) {
+    const { provider } = store()
+    if (provider === 'intiface') await this.disconnect()
+    if (provider === 'handy') await this.disconnectHandy()
+    if (provider === 'serial') await this.disconnectSerial()
+    useDeviceStore.setState({ status: 'connecting', errorMsg: null, provider: 'serial' })
+    let native = null
+    try {
+      const ports = await window.pywebview.api.serial_ports()
+      if (!ports.length) throw new Error('No serial ports found. Connect your device via USB.')
+      const last = readLastSerialPort()
+      let port
+      if (reusePermission) {
+        port = ports.find(p => p.device === last?.device &&
+          (last.serialNumber ? p.serialNumber === last.serialNumber :
+            p.usbVendorId === last.usbVendorId && p.usbProductId === last.usbProductId))
+        // Never choose an arbitrary COM port during quick reconnect.
+        if (!port) throw new Error('The previously connected serial port was not found')
+      } else port = await chooseNativeSerialPort(ports)
+      native = new NativeSerial(status => {
+        if (this._nativeSerial !== native || this._funscriptOwner !== 'independent' || !this._nativeSerialPlaying) return
+        const state = this._independentFs
+        if (!state) return
+        state.startTime = status.time
+        state.startedAt = Date.now()
+        state.onTime?.(status.time, state.duration)
+        if (status.ended) {
+          this._nativeSerialPlaying = false
+          state.paused = true
+          state.onEnd?.()
+        }
+      }, error => { if (this._nativeSerial === native) this._serialOutputFailed(error) })
+      this._nativeSerial = native
+      await native.connect(port)
+      rememberLastSerialPort(port)
+      rememberLastDeviceProvider('serial')
+      useDeviceStore.setState({ status: 'connected', serialPortInfo: `${port.device} · ${port.description}`,
+        devices: [{ name: port.description || 'T-Code Serial', index: 0, canLinear: true,
+          canVibrate: false, canMultiAxis: true, outputTypes: ['T-Code L0/L1/L2/R0/R1/R2'] }] })
+      this._serialSettingsUnsubscribe = useDeviceStore.subscribe((state, previous) => {
+        if (this._nativeSerialPlaying && (state.strokeFloor !== previous.strokeFloor ||
+          state.strokeCeiling !== previous.strokeCeiling || state.funscriptAxes !== previous.funscriptAxes ||
+          state.funscriptOffsetMs !== previous.funscriptOffsetMs)) {
+          const params = this._nativeSerialParams()
+          if (this._funscriptOwner === 'independent') { delete params.axisEnabled; delete params.offsetMs }
+          native.update(params)
+        }
+      })
+      this.startEdgeMode()
+    } catch (error) {
+      await native?.disconnect().catch(() => {})
+      if (this._nativeSerial === native) this._nativeSerial = null
+      useDeviceStore.setState({ status: 'error', errorMsg: error.message || String(error), provider: null })
+    }
   }
 }
 

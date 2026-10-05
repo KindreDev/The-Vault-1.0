@@ -381,6 +381,22 @@ class NativeVideoBridge:
             session = self.sessions.get(session_id)
         return {"error": session.error if session else None}
 
+    def media_clock(self, session_id):
+        """Read directly for device sync, even when the WebView is backgrounded."""
+        with self.guard:
+            session = self.sessions.get(session_id)
+            if not session:
+                return None
+            with session.lock:
+                if session.closed.is_set():
+                    return None
+                state = session.player.get_state()
+                return {"time": max(0, session.player.get_time()) / 1000,
+                        "duration": max(0, session.player.get_length()) / 1000,
+                        "rate": session.rate,
+                        "playing": session.want_play and state == session.vlc.State.Playing
+                                   and session.pending_seek is None and not session.error}
+
     def close(self, session_id):
         with self.guard:
             session = self.sessions.pop(session_id, None)

@@ -14,6 +14,13 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Fixed
+- File deletion works again in file curation and individual/bulk media actions, with useful errors if a file cannot be removed.
+- Desktop USB/T-Code funscript playback uses a dedicated motion thread with grouped serial writes and direct video timing, preventing interface stalls and queued positions from disrupting playback.
+
+### Added
+- Gallery tags and notes can be edited directly beside the creator cards in the normal gallery view.
+
 ## [2.0.1] - 2026-10-05
 
 ### Fixed

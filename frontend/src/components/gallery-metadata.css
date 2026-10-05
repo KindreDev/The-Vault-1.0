@@ -1,0 +1,23 @@
+.gallery-details-body { display: flex; align-items: flex-start; gap: 24px; }
+.gallery-details-creators { flex: 1; min-width: 0; }
+.gallery-metadata { flex: 0 0 360px; min-width: 0; max-width: 100%; color: var(--c-text, rgba(255,255,255,.9)); font-size: 16px; }
+.gallery-metadata fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.gallery-metadata-heading { display: flex; align-items: center; gap: 7px; font-weight: 600; margin-bottom: 8px; }
+.gallery-metadata label { margin-top: 14px; }
+.gallery-metadata-tags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; margin-bottom: 8px; }
+.gallery-metadata-tag { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; padding: 4px 7px 4px 10px; border-radius: 20px; background: color-mix(in srgb, var(--c-accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c-accent) 25%, transparent); color: var(--c-accent-text); }
+.gallery-metadata-tag > span { overflow-wrap: anywhere; }
+.gallery-metadata-tag button { display: flex; flex-shrink: 0; padding: 3px; border-radius: 50%; color: inherit; cursor: pointer; }
+.gallery-metadata-tag button:hover { background: color-mix(in srgb, var(--c-accent) 20%, transparent); }
+.gallery-metadata textarea { display: block; width: 100%; min-height: 80px; max-height: 240px; resize: vertical; padding: 9px 11px; border-radius: 9px; font: inherit; color: inherit; background: color-mix(in srgb, var(--c-card) 80%, transparent); border: 1px solid color-mix(in srgb, var(--c-accent) 25%, transparent); }
+.gallery-metadata textarea::placeholder { color: var(--c-muted, rgba(255,255,255,.45)); }
+.gallery-metadata textarea:focus { outline: 1px solid var(--c-accent); }
+.gallery-metadata-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.gallery-metadata-footer > span { color: var(--c-muted, rgba(255,255,255,.55)); overflow-wrap: anywhere; }
+.gallery-metadata-footer > .gallery-metadata-error { color: var(--c-pink-text, var(--c-pink)); }
+.gallery-metadata-footer > button { flex-shrink: 0; border-radius: 20px; padding: 6px 16px; background: color-mix(in srgb, var(--c-accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c-accent) 30%, transparent); color: var(--c-accent-text); cursor: pointer; font: inherit; }
+.gallery-metadata button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 1000px) {
+  .gallery-details-body { flex-direction: column; gap: 20px; }
+  .gallery-details-creators, .gallery-metadata { width: 100%; flex-basis: auto; }
+}

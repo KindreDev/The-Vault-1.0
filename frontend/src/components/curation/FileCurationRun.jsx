@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, AlertTriangle, ArrowRight, Check, Clock, Flame, FolderInput, Loader2, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { curationApi, imagesApi, taggerApi } from '../../lib/api'
+import { curationApi, imagesApi, taggerApi, apiErrorMessage } from '../../lib/api'
 import { useVaultStore } from '../../store/vault'
 import { useScrollLock } from '../../hooks/useScrollLock'
 import { useT } from '../../i18n'
@@ -146,7 +146,7 @@ export default function FileCurationRun({ onClose }) {
       qc.invalidateQueries({ queryKey: ['vault-stats'] })
       await load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail || t('Could not delete this file'))
+      toast.error(apiErrorMessage(e, t('Could not delete this file')))
       setConfirmDelete(false)
     } finally {
       setSaving(false)

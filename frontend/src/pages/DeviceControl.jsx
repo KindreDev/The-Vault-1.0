@@ -8,6 +8,7 @@ import { useDeviceStore, PRESETS } from '../store/deviceStore'
 import { useVaultStore } from '../store/vault'
 import { bindingToDisplay } from '../lib/hotkeys'
 import { deviceService } from '../services/device'
+import { hasNativeSerialBridge } from '../services/nativeSerial'
 import toast from 'react-hot-toast'
 import { LocalizedText, useT } from '../i18n'
 
@@ -521,7 +522,7 @@ function SerialSection() {
   const isActive      = provider === 'serial'
   const isConnected   = isActive && status === 'connected'
   const isConnecting  = isActive && status === 'connecting'
-  const hasWebSerial  = typeof navigator !== 'undefined' && 'serial' in navigator
+  const hasWebSerial  = hasNativeSerialBridge() || (typeof navigator !== 'undefined' && 'serial' in navigator)
 
   return (
     <div className="space-y-4">

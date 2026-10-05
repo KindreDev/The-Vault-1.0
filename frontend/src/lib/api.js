@@ -261,11 +261,11 @@ export const imagesApi = {
   get:           (id)      => api.get(`/images/${id}`),
   update:        (id, d)   => api.patch(`/images/${id}`, d),
   delete:        (id, keepFile = false) => {
-    if (!keepFile) releaseMediaBeforeDiskDelete()
+    if (!keepFile) releaseMediaBeforeDiskMutation()
     return api.delete(`/images/${id}`, { params: { keep_file: keepFile } })
   },
   bulkDelete:    (ids, keepFile = false) => {
-    if (!keepFile) releaseMediaBeforeDiskDelete()
+    if (!keepFile) releaseMediaBeforeDiskMutation()
     return api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } })
   },
   view:          (id)      => api.post(`/images/${id}/view`),

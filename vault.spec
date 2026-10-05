@@ -27,7 +27,7 @@ WINDOWS_VERSION = VSVersionInfo(
     ])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])],
 )
 BACKEND_DIR   = os.path.join(ROOT, 'backend')
-FRONTEND_DIST = os.path.join(ROOT, 'frontend', 'dist')
+FRONTEND_DIST = os.path.abspath(os.environ.get('VAULT_FRONTEND_DIST') or os.path.join(ROOT, 'frontend', 'dist'))
 MOBILE_PWA_DIST = os.path.join(ROOT, 'frontend-mobile', 'dist-pwa')
 FFMPEG_EXE    = os.path.join(ROOT, 'tools', 'ffmpeg.exe')
 FFPROBE_EXE   = os.path.join(ROOT, 'tools', 'ffprobe.exe')
@@ -44,6 +44,8 @@ _datas.append((VLC_DIR, 'vlc'))
 _datas.append((os.path.join(ROOT, 'THIRD_PARTY_NOTICES.md'), '.'))
 _datas.append((os.path.join(ROOT, 'licenses', 'libvlc-python-vlc-LGPL-2.1.txt'), 'licenses'))
 _datas.append((FFMPEG_LICENSE, 'licenses'))
+_datas.append((os.path.join(ROOT, 'licenses', 'MultiFunPlayer-MIT.txt'), 'licenses'))
+_datas.append((os.path.join(ROOT, 'licenses', 'pyserial-BSD.txt'), 'licenses'))
 
 # CHANGELOG.md + version.json — read at runtime to build the in-app changelog
 # history (Settings → Changelog). Both live at the project root.
@@ -170,6 +172,11 @@ a = Analysis(
         'vlc',
         'desktop_api',
         'services.native_video',
+        'services.serial_playback',
+        'serial',
+        'serial.serialwin32',
+        'serial.tools.list_ports',
+        'serial.tools.list_ports_windows',
         'services.release_survey',
         'services.gallery_cover_repair',
         'webview.platforms',

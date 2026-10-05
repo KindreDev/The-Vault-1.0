@@ -1,5 +1,6 @@
 """Desktop-only bridge. Browser/LAN clients cannot call these native methods."""
 from services.native_video import NativeVideoBridge
+from services.serial_playback import SerialPlayback
 import threading
 
 
@@ -7,6 +8,7 @@ class VaultDesktopApi:
     def __init__(self):
         self._win = None
         self._video = NativeVideoBridge(lambda: self._win)
+        self._serial = SerialPlayback(self._video.media_clock)
         self._close_guard = threading.Lock()
         self._closing = False
         self._released = False
@@ -35,6 +37,36 @@ class VaultDesktopApi:
     def native_video_close_all(self):
         self._video.close_all()
 
+    def serial_ports(self):
+        return self._serial.ports()
+
+    def serial_connect(self, device):
+        if self._closing:
+            raise RuntimeError('The Vault window is closing')
+        return self._serial.connect(device)
+
+    def serial_start(self, payload):
+        return self._serial.start(payload)
+
+    def serial_update(self, patch):
+        self._serial.update(patch)
+
+    def serial_move(self, axis, position, duration, generation):
+        self._serial.move(axis, position, duration, generation)
+
+    def serial_stop(self, generation):
+        self._serial.stop(generation)
+
+    def serial_status(self):
+        return self._serial.status()
+
+    def serial_disconnect(self):
+        self._serial.disconnect()
+
+    def desktop_reset_outputs(self):
+        self._serial.disconnect()
+        self._video.close_all()
+
     def _on_closing(self):
         # Cancel the first close, keeping the UI thread and WebView mappings
         # alive while VLC finishes its callbacks. Destroy only after cleanup.
@@ -47,6 +79,7 @@ class VaultDesktopApi:
             self._closing = True
 
         def release_then_close():
+            self._serial.disconnect()
             self._video.shutdown()
             with self._close_guard:
                 self._released = True

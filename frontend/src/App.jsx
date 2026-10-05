@@ -9,6 +9,7 @@ import queryClient from './lib/queryClient'
 import SessionRecoveryModal from './components/SessionRecoveryModal'
 import SessionEndPrompt from './components/SessionEndPrompt'
 import ReleaseSurveyPrompt from './components/ReleaseSurveyPrompt'
+import SerialPortPicker from './components/SerialPortPicker'
 import { startSessionHeartbeat, stopSessionHeartbeat } from './lib/session'
 
 // ── Route-level code splitting ────────────────────────────────────────────────
@@ -123,6 +124,8 @@ export default function App() {
   }, [profile])
 
   return (
+    <>
+    <SerialPortPicker />
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
@@ -167,5 +170,6 @@ export default function App() {
       <SessionEndPrompt />
       <ReleaseSurveyPrompt />
     </BrowserRouter>
+    </>
   )
 }

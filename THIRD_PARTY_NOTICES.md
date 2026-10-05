@@ -1,5 +1,21 @@
 # Third-Party Notices
 
+## MultiFunPlayer serial playback design
+
+The native T-Code playback engine adapts the fixed-update serial output design,
+dirty-value comparison, duration formatting, and PCHIP interpolation behaviour
+from MultiFunPlayer, copyright (c) 2020 Yoooi, licensed under MIT.
+The license text is included in `licenses/MultiFunPlayer-MIT.txt`.
+
+Reference source: https://github.com/Yoooi0/MultiFunPlayer
+Relevant files: `OutputTarget/AbstractOutputTarget.cs`,
+`OutputTarget/ViewModels/SerialOutputTarget.cs`, `OutputTarget/IUpdateContext.cs`,
+`Common/DeviceAxis.cs`, and `Common/KeyframeCollection.cs`.
+
+Native USB communication uses pySerial 3.5, copyright (c) 2001-2020 Chris Liechti,
+licensed under BSD-3-Clause. Its license is included in `licenses/pyserial-BSD.txt`.
+Source: https://github.com/pyserial/pyserial/tree/v3.5
+
 ## FFmpeg and FFprobe
 
 The Windows package includes Gyan's FFmpeg 8.1.1 essentials build and FFprobe
