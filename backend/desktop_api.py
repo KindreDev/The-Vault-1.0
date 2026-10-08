@@ -20,6 +20,9 @@ class VaultDesktopApi:
     def native_video_capabilities(self):
         return self._video.capabilities()
 
+    def native_video_renderer_recommendation(self, src):
+        return self._video.renderer_recommendation(src)
+
     def native_video_open(self, session_id, src, options):
         if self._closing:
             raise RuntimeError('The Vault window is closing')

@@ -18,8 +18,11 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - File deletion works again in file curation and individual/bulk media actions, with useful errors if a file cannot be removed.
 - Desktop USB/T-Code funscript playback uses a dedicated motion thread with grouped serial writes and direct video timing, preventing interface stalls and queued positions from disrupting playback.
 
+### Changed
+- Desktop playback uses WebView2 only for probed standard H.264 MP4s; all other formats stay on libVLC, whose shared frames scale to the visible video size.
+
 ### Added
-- Gallery tags and notes can be edited directly beside the creator cards in the normal gallery view.
+- Gallery tags and notes can be edited in a compact right section of the normal gallery panel, with 70% of the space reserved for creators and their controls and 30% for tags and notes.
 
 ## [2.0.1] - 2026-10-05
 

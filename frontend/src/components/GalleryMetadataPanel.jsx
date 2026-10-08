@@ -32,6 +32,7 @@ export default function GalleryMetadataPanel({ gallery }) {
   return (
     <section className="gallery-metadata" aria-label={t('Gallery tags and notes')}>
       <fieldset disabled={save.isPending}>
+        <div className="gallery-metadata-tag-editor">
         <div className="gallery-metadata-heading"><Tag size={17} /> {t('Gallery tags')}</div>
         {tags.length > 0 && (
           <div className="gallery-metadata-tags">
@@ -53,12 +54,15 @@ export default function GalleryMetadataPanel({ gallery }) {
             // Functional updates also preserve comma-separated additions.
             setTagDraft(current => [...new Set([...(current ?? tags), name])])
           }} />
+        </div>
+        <div className="gallery-metadata-note-editor">
         <label className="gallery-metadata-heading" htmlFor={`gallery-notes-${gallery.id}`}>
           <AlignLeft size={17} /> {t('Notes')}
         </label>
         <textarea id={`gallery-notes-${gallery.id}`} rows={3} value={notes}
           placeholder={t('Add notes about this gallery…')}
           onChange={event => { edit(); setNoteDraft(event.target.value) }} />
+        </div>
       </fieldset>
       <div className="gallery-metadata-footer">
         <span role="status" aria-live="polite" className={save.isError ? 'gallery-metadata-error' : ''}>

@@ -38,9 +38,9 @@ def check_versions(root=ROOT):
     manifest = json.loads((root / "version.json").read_text(encoding="utf-8"))
     if manifest["version"] != version:
         raise ValueError("Manifest version mismatch")
-    expected_url = f"https://downloads.vault-app.site/VaultSetup-{version}.exe"
+    expected_url = "https://downloads.vault-app.site/VaultSetup.exe"
     if manifest["download_url"] != expected_url:
-        raise ValueError("Manifest must point to the versioned Cloudflare installer")
+        raise ValueError("Manifest must point to the existing Cloudflare VaultSetup.exe download")
     return version, manifest
 
 
@@ -79,7 +79,7 @@ def prepare_release(root=ROOT):
         raise ValueError("The installer predates the packaged app. Recompile installer.iss.")
     destination = root / "dist/cloudflare"
     destination.mkdir(parents=True, exist_ok=True)
-    target = destination / f"VaultSetup-{version}.exe"
+    target = destination / "VaultSetup.exe"
     shutil.copy2(installer, target)
     with target.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()

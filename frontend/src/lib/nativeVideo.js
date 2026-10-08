@@ -4,6 +4,10 @@ const players = new Map()
 let listening = false
 
 export const isNativeVideoSource = src => /^\/api\/(images|intake\/items)\/\d+\/file(?:\?|$)/.test(src || '')
+export const isForcedTranscodeSource = src => {
+  try { return new URL(src, window.location.href).searchParams.get('transcode') === '1' }
+  catch { return false }
+}
 export const hasNativeVideoBridge = () => !!(window.pywebview?.api?.native_video_open && window.chrome?.webview)
 
 function listenForFrames() {
@@ -45,6 +49,8 @@ export class NativeMedia extends EventTarget {
     this.lastTick = 0
     this.sequence = 0
     this.disposed = false
+    this.maxWidth = 0
+    this.maxHeight = 0
   }
 
   emit(type) {
@@ -80,6 +86,11 @@ export class NativeMedia extends EventTarget {
   set playbackRate(value) { this._rate = Math.max(.25, Math.min(4, Number(value))); this.command('rate', this._rate) }
   get loop() { return this._loop }
   set loop(value) { this._loop = !!value; this.command('loop', this._loop) }
+
+  setCanvas(canvas) {
+    this.canvas = canvas
+    this.style = canvas.style
+  }
 
   command(command, value = null) {
     const session = this.session
@@ -121,6 +132,7 @@ export class NativeMedia extends EventTarget {
     this.emit('loadstart')
     this.queue = window.pywebview.api.native_video_open(session, this._src, {
       autoPlay: !!this.wantsPlay, loop: this.loop, volume: this.volume, muted: this.muted, rate: this.playbackRate,
+      maxWidth: this.maxWidth, maxHeight: this.maxHeight,
     }).then(() => {
       if (this.session !== session) return window.pywebview.api.native_video_close(session)
     })

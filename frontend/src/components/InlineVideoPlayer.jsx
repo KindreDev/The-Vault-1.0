@@ -7,6 +7,7 @@ import { useDeviceStore } from '../store/deviceStore'
 import { imagesApi } from '../lib/api'
 import { getSavedVideoVolume, saveVideoVolume } from '../lib/videoVolume'
 import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
+import { hasNativeVideoBridge, isNativeVideoSource } from '../lib/nativeVideo'
 import VaultVideo from './VaultVideo'
 
 function fmtTime(s) {
@@ -478,6 +479,14 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       setTranscodeFallback(true)
       return
     }
+    // In the desktop shell VaultVideo is already waiting briefly before it
+    // falls back to VLC. Keep the compatible-stream loading state visible
+    // instead of flashing a terminal browser error during that handoff.
+    if (hasNativeVideoBridge() && isNativeVideoSource(playbackSrc)) {
+      setVideoError(null)
+      setPreparingVideo(true)
+      return
+    }
     const msgs = {
       1: 'Playback aborted.',
       2: 'Network error while loading video.',
@@ -485,7 +494,7 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       4: 'The Vault could not load this video or create a compatible playback copy.\nRetry to try again.',
     }
     setVideoError(msgs[code] ?? 'Unknown video error.')
-  }, [imageId, transcodeFallback])
+  }, [imageId, playbackSrc, transcodeFallback])
 
   useEffect(() => {
     clearTimeout(preparingTimerRef.current)

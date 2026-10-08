@@ -83,11 +83,15 @@ Stored activity timestamps use UTC. Hall of Fame periods follow local calendar b
 
 Development uses the backend configuration location. Inspect `backend/database.py` and the effective configuration before choosing an isolated development database. `VAULT_DB` overrides the database path only; original media and other configured resources have separate paths.
 
-The Windows desktop viewer uses bundled libVLC to decode original local videos,
-with frames shared in memory with the existing viewer. Browser and mobile clients
-retain browser-compatible playback. `get_vlc.ps1` prepares the verified official
-Windows runtime for packaging; the desktop build requires it. For native desktop
-development, start the normal backend and Vite servers, then run
+The Windows desktop viewer uses WebView2's built-in renderer only for files that
+FFprobe confirms are standard H.264 8-bit MP4s with no audio or one AAC track. All
+other media stays on bundled libVLC, which retains support for the wider range of
+containers and codecs. If WebView2 cannot decode a selected file, the viewer tries
+a compatible playback copy and then falls back to libVLC. VLC scales its shared
+frame output to the visible video size to reduce 4K frame-copy work.
+`get_vlc.ps1` prepares the verified official Windows runtime for packaging; the
+desktop build requires it. For native desktop development, start the normal
+backend and Vite servers, then run
 `backend\venv\Scripts\python.exe scripts\run_desktop.py`. Development can use an
 installed VLC runtime if `tools/vlc` has not been prepared.
 

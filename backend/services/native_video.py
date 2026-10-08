@@ -162,6 +162,14 @@ class WebViewFrames:
 
 
 class VlcSession:
+    @staticmethod
+    def _render_limit(value):
+        try:
+            value = int(value)
+            return max(0, min(8192, value))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+
     def __init__(self, instance, vlc, path, frames, options):
         self.vlc = vlc
         self.frames = frames
@@ -174,6 +182,8 @@ class VlcSession:
         self.rate = max(.25, min(4., float(options.get("rate", 1))))
         self.volume = max(0, min(100, round(float(options.get("volume", 1)) * 100)))
         self.muted = bool(options.get("muted", False))
+        self.max_width = self._render_limit(options.get("maxWidth"))
+        self.max_height = self._render_limit(options.get("maxHeight"))
         self.error = None
         self.slot = 0
         self.render_slot = 0
@@ -196,9 +206,16 @@ class VlcSession:
                 dimensions = display_dimensions(vlc, self.media)
                 if dimensions:
                     w, h = dimensions
-                    width[0], height[0] = w, h
                 if w <= 0 or h <= 0 or w * h > 4096 * 4096:
                     raise RuntimeError("Video dimensions exceed the playback renderer limit")
+                scale = min(
+                    1.0,
+                    self.max_width / w if self.max_width else 1.0,
+                    self.max_height / h if self.max_height else 1.0,
+                )
+                if scale < 1:
+                    w, h = max(1, int(w * scale)), max(1, int(h * scale))
+                width[0], height[0] = w, h
                 self.frames.allocate(w, h)
                 ctypes.memmove(chroma, b"RGBA", 4)
                 pitches[0] = w * 4
@@ -349,6 +366,19 @@ class NativeVideoBridge:
             return {"available": True, "engine": "libVLC", "version": self.vlc.libvlc_get_version().decode()}
         except Exception as exc:
             return {"available": False, "reason": str(exc)}
+
+    def renderer_recommendation(self, src):
+        """Use WebView2 only for a narrow, probed set of standard MP4 files."""
+        try:
+            path = resolve_video_source(src)
+            from services.video_metadata import video_metadata
+            metadata = video_metadata(path)
+            safe = bool(metadata.get("browser_safe"))
+            return {"renderer": "webview" if safe else "libVLC",
+                    "width": metadata.get("width"), "height": metadata.get("height")}
+        except Exception:
+            # An unavailable probe must preserve VLC's broader decoder support.
+            return {"renderer": "libVLC"}
 
     def open(self, session_id, src, options):
         if not re.fullmatch(r"[a-zA-Z0-9-]{1,80}", session_id):

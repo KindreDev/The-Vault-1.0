@@ -7,8 +7,8 @@ const clock = value => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-// Compact controls occupy the same bottom edge as the former browser controls.
-// Transport and the clock belong to VLC; no second browser media stream exists.
+// Shared compact controls for browser and libVLC playback. Transport and the
+// clock stay with whichever media element is currently rendering the video.
 export default function NativeVideoControls({ player, container }) {
   const t = useT()
   const [, refresh] = useState(0)

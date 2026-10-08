@@ -170,14 +170,16 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
   return (
     <div ref={wrapperRef} className="rounded-[10px] p-3.5"
          style={{ background: 'color-mix(in srgb, var(--c-card, #1e1e1e) 80%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 16%, rgba(255,255,255,0.08))' }}>
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="gallery-details-body">
+      <div className="gallery-details-creators">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
           <div className="text-[16px] font-semibold text-[rgba(255,255,255,0.9)] uppercase tracking-wide">{t('Creators')}</div>
           <div className="text-[16px] text-[rgba(255,255,255,0.45)] mt-0.5">
             {creatorEntries.length} {creatorEntries.length === 1 ? t('creator') : t('creators')} {t('in this gallery')}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           {creatorEntries.length > 0 && (
             <button type="button" onMouseDown={() => navigate('/creators')}
                     className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer"
@@ -193,8 +195,6 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
         </div>
       </div>
 
-      <div className="gallery-details-body">
-      <div className="gallery-details-creators">
       {creatorEntries.length === 0 ? (
         <div className="text-[16px] text-[rgba(255,255,255,0.35)] py-2">{t('No creator assigned')}</div>
       ) : (
