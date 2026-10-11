@@ -15,7 +15,7 @@ import {
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
-import { stopVideoPreview } from '../lib/videoPreview'
+import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
@@ -45,6 +45,7 @@ import { TagPanel, CreatorPanel } from '../components/ViewerPanel'
 import { useAllCreators } from '../hooks/useAllCreators'
 import DeviceControls from '../components/DeviceControls'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
+import useVideoPreparation from '../hooks/useVideoPreparation'
 import { SortDropdown } from '../components/SortDropdown'
 import { useScrollLock } from '../hooks/useScrollLock'
 
@@ -346,7 +347,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (!hoverVideo) {
+    if (!hoverVideo || !canPlayVideoPreview()) {
       stopVideoPreview(vid)
       return
     }
@@ -355,6 +356,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
     // React has detached it and cleared videoRef during unmount.
     vid.src = `/api/images/${image.id}/file`
     const seekAndPlay = () => {
+      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
       if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
       vid.play().catch(() => {})
     }
@@ -410,7 +412,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
             </div>
         }
         {image.is_video && (
-          <VaultVideo ref={videoRef}
+          <VaultVideo preview ref={videoRef}
                  muted playsInline preload="none"
                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
                  style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }} />
@@ -675,22 +677,13 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   // actually in, so it can never wander outside the current selection.
   const [shuffle, setShuffle] = useState(false)
 
+  const preparation = useVideoPreparation(images, idx, shuffle, false)
   const advanceSlide = useCallback(() => {
-    setIdx(i => {
-      if (shuffle && images.length > 1) {
-        let n = i
-        while (n === i) n = Math.floor(Math.random() * images.length)
-        return n
-      }
-      // In order: running off the end is what raises the "keep going?" screen.
-      if (i >= images.length - 1) {
-        setSlideshowActive(false)
-        setShowEndScreen(true)
-        return i
-      }
-      return i + 1
-    })
-  }, [images.length, shuffle])
+    if (preparation.nextIndex === null) {
+      setSlideshowActive(false)
+      setShowEndScreen(true)
+    } else setIdx(preparation.nextIndex)
+  }, [preparation.nextIndex])
 
   useEffect(() => {
     if (!slideshowActive || showEndScreen || !images?.length) return
@@ -985,6 +978,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
             <InlineVideoPlayer
               ref={videoPlayerRef}
               key={image.id}
+              preloadKey={preparation.preloadKey}
+              nextSrc={preparation.nextSrc}
               src={`/api/images/${image.id}/file`}
               imageId={image.id}
               funscriptPath={image.funscript_path}
@@ -1098,8 +1093,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               onDismiss={() => setShowEndScreen(false)}
             />
           )}
-          {slideshowActive && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
+          {slideshowActive && !image.is_video && (
+            <div data-slideshow-interval className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5 z-20"
                  style={{
                    fontSize: 18,
                    background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)',

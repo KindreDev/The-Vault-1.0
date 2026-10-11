@@ -4,6 +4,7 @@ import queryClient from './queryClient.js'
 import { xpEvents } from './xpEvents.js'
 import { useVaultStore } from '../store/vault.js'
 import { refreshAfterMutation } from '../../../shared/queryRefresh.mjs'
+import { releaseNativeMediaBeforeDiskMutation } from './nativeVideo.js'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
@@ -21,13 +22,44 @@ export const themePacksApi = {
 // A preview or viewer can still have an open media handle when a disk
 // mutation is clicked. Release every browser media pipeline before the
 // request; the backend also retries briefly for the handle-close race.
-function releaseMediaBeforeDiskMutation() {
+async function releaseMediaBeforeDiskMutation() {
   if (typeof document === 'undefined') return
-  document.querySelectorAll('video').forEach(video => {
+  const videos = [...document.querySelectorAll('video')].map(video => ({
+    video, src: video.getAttribute('src'), time: video.currentTime,
+  }))
+  const restoreBrowser = (shouldRestore = () => true) => videos.forEach(({ video, src, time }) => {
+    if (!src || !shouldRestore(src) || !video.isConnected || video.getAttribute('src')) return
+    video.addEventListener('loadedmetadata', () => {
+      if (video.getAttribute('src') === src) video.currentTime = time
+    }, { once: true })
+    video.setAttribute('src', src)
+    video.load()
+  })
+  videos.forEach(({ video }) => {
     video.pause()
     video.removeAttribute('src')
     video.load()
   })
+  try {
+    const restoreNative = await releaseNativeMediaBeforeDiskMutation()
+    return shouldRestore => { restoreBrowser(shouldRestore); restoreNative?.(shouldRestore) }
+  } catch (error) {
+    restoreBrowser()
+    throw error
+  }
+}
+
+async function withReleasedMedia(request) {
+  const restore = await releaseMediaBeforeDiskMutation()
+  try {
+    const response = await request()
+    if (response.data?.failed?.length) {
+      const failed = new Set(response.data.failed.map(item => String(item.id)))
+      restore?.(src => failed.has(src?.match(/\/api\/images\/(\d+)\/file(?:\?|$)/)?.[1]))
+    }
+    return response
+  }
+  catch (error) { restore?.(); throw error }
 }
 
 // Keep destructive-action toasts useful without making every caller know the
@@ -130,9 +162,9 @@ export const galleriesApi = {
   get:           (id)              => api.get(`/galleries/${id}`),
   create:        (d)               => api.post('/galleries/', d),
   update:        (id, d)           => api.patch(`/galleries/${id}`, d),
-  delete:        (id, delete_files)=> {
-    if (delete_files) releaseMediaBeforeDiskMutation()
-    return api.delete(`/galleries/${id}`, { params: { delete_files } })
+  delete:        async (id, delete_files) => {
+    const request = () => api.delete(`/galleries/${id}`, { params: { delete_files } })
+    return delete_files ? withReleasedMedia(request) : request()
   },
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
   random:        ()                => api.get('/galleries/random'),
@@ -161,9 +193,8 @@ export const galleriesApi = {
   // Direct children only — the panel expands one level at a time.
   subgalleries:  (id)             => api.get(`/galleries/${id}/subgalleries`),
   merge:         (targetId, body) => api.post(`/galleries/${targetId}/merge`, body),
-  renameFolder:  (id, folderName) => {
-    releaseMediaBeforeDiskMutation()
-    return api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName })
+  renameFolder:  async (id, folderName) => {
+    return withReleasedMedia(() => api.post(`/galleries/${id}/rename-folder`, { folder_name: folderName }))
   },
   bulkAddTags:    (galleryIds, tags) => api.post('/galleries/bulk-tags', { gallery_ids: galleryIds, tags }),
   extract:       (id, imageIds, folderName) => api.post(`/galleries/${id}/extract`, { image_ids: imageIds, new_folder_name: folderName }),
@@ -260,13 +291,13 @@ export const imagesApi = {
   periods:       (params)  => api.get('/images/periods', { params }),
   get:           (id)      => api.get(`/images/${id}`),
   update:        (id, d)   => api.patch(`/images/${id}`, d),
-  delete:        (id, keepFile = false) => {
-    if (!keepFile) releaseMediaBeforeDiskMutation()
-    return api.delete(`/images/${id}`, { params: { keep_file: keepFile } })
+  delete:        async (id, keepFile = false) => {
+    const request = () => api.delete(`/images/${id}`, { params: { keep_file: keepFile } })
+    return keepFile ? request() : withReleasedMedia(request)
   },
-  bulkDelete:    (ids, keepFile = false) => {
-    if (!keepFile) releaseMediaBeforeDiskMutation()
-    return api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } })
+  bulkDelete:    async (ids, keepFile = false) => {
+    const request = () => api.post('/images/bulk-delete', { ids }, { params: { keep_file: keepFile } })
+    return keepFile ? request() : withReleasedMedia(request)
   },
   view:          (id)      => api.post(`/images/${id}/view`),
   logDuration:   (id, s)  => api.post(`/images/${id}/duration`, { seconds: s }),

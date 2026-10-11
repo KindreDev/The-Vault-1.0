@@ -1,4 +1,6 @@
 import VaultVideo from '../components/VaultVideo'
+import CardCreatorNames from '../components/CardCreatorNames'
+import './gallery-list-cards.css'
 import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
@@ -27,7 +29,7 @@ import FolderPicker from '../components/FolderPicker'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 import { tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
-import { stopVideoPreview } from '../lib/videoPreview'
+import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 
 const TYPE_COLORS = {
   cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
@@ -258,7 +260,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
 
   useEffect(() => {
     const video = videoRef.current
-    if (!isHovered || !firstVideo || !video) return
+    if (!isHovered || !firstVideo || !video || !canPlayVideoPreview()) return
     video.src = `/api/images/${firstVideo.id}/file`
     video.load()
     video.play().catch(() => {})
@@ -281,7 +283,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
     <>
     <div ref={cardRef}
          className="vault-card overflow-hidden cursor-pointer group relative animate-fade-in"
-         style={{ contentVisibility: 'auto', containIntrinsicSize: `0 ${thumbSize + 64}px` }}
+         style={{ contentVisibility: 'auto', containIntrinsicSize: `0 ${thumbSize + 146}px` }}
          onMouseEnter={handleMouseEnter}
          onMouseLeave={handleMouseLeave}
          onMouseMove={isHovered ? handleMouseMove : undefined}
@@ -313,7 +315,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         }
         
         {firstVideo && (
-          <VaultVideo
+          <VaultVideo preview
             ref={videoRef}
             muted
             playsInline
@@ -337,9 +339,9 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         )}
         </div>{/* end absolute inset-0 */}
       </div>
-      <div className="p-2.5">
+      <div className="p-2.5 gallery-list-card-details">
         <div className="flex items-center gap-1 group/name">
-          <div className="text-[14px] font-medium text-[rgba(255,255,255,0.85)] truncate flex-1">{gallery.name}</div>
+          <div className="text-[16px] font-medium truncate flex-1" style={{ color: 'var(--c-text)' }} title={gallery.name}>{gallery.name}</div>
           <button type="button"
                   onMouseDown={e => { e.stopPropagation(); onRenameFolder?.(gallery) }}
                   className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[rgba(255,255,255,0.35)] hover:text-[rgba(255,255,255,0.8)] p-0.5 z-20 relative"
@@ -347,38 +349,18 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
             <Pencil size={10} />
           </button>
         </div>
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[12px] text-[rgba(255,255,255,0.35)]">{gallery.image_count} {t('items')}</span>
-            {gallery.is_mix && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
-                {t('Mix')}
-              </span>
-            )}
-            {gallery.period_month && gallery.period_year && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)' }}>
-                {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })}
-              </span>
-            )}
-          </div>
-          {gallery.creators?.length > 0 && (
-            <div className="flex gap-1 flex-wrap justify-end">
-              {gallery.creators.slice(0, 2).map(c => (
-                <span key={c.id} className="text-[11px] px-1.5 py-0.5 rounded-full truncate max-w-[80px]"
-                      style={{ background: 'rgba(255,255,255,0.06)', color: TYPE_COLORS[c.creator_type] || '#D3D1C7' }}>
-                  {c.name}
-                </span>
-              ))}
-              {gallery.creators.length > 2 && (
-                <span className="text-[11px] px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
-                  +{gallery.creators.length - 2}
-                </span>
-              )}
-            </div>
+        <div className="gallery-list-card-stats">
+          <span className="gallery-list-card-count" title={`${gallery.image_count} ${t('items')}`}>
+            {gallery.image_count} {t('items')}
+          </span>
+          {gallery.period_month && gallery.period_year && (
+            <span className="gallery-list-card-period" title={`${gallery.period_month}/${gallery.period_year}`}>
+              {new Date(gallery.period_year, gallery.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })}
+            </span>
           )}
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <CardCreatorNames creators={gallery.creators ?? []} colors={TYPE_COLORS} isMix={gallery.is_mix} />
         </div>
         {/* Rating row — always visible so the user knows they can rate */}
         <div className={`mt-1.5 transition-opacity duration-150 ${localRating > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>

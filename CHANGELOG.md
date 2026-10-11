@@ -14,20 +14,25 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
-### Fixed
-- File deletion works again in file curation and individual/bulk media actions, with useful errors if a file cannot be removed.
-- Desktop USB/T-Code funscript playback uses a dedicated motion thread with grouped serial writes and direct video timing, preventing interface stalls and queued positions from disrupting playback.
-
 ### Changed
-- Desktop playback uses WebView2 only for probed standard H.264 MP4s; all other formats stay on libVLC, whose shared frames scale to the visible video size.
+- Development startup automatically installs missing frontend packages and refreshes dependencies after lock-file changes, preventing missing-Vite errors on Linux and Windows.
+- Slideshow interval badges appear only on images; videos play for their full duration without an image timer badge.
+- Desktop videos use native VLC output for smoother playback across supported formats, while keeping existing controls, scrollwheel zoom, drag-to-pan, and direct device timing. Opening the player stops hover previews and shows a black screen with a spinner until video frames arrive. Playback waits for the visible player and starts from the beginning, without losing opening video or audio. Viewers prepare the next video silently in advance for faster transitions, including shuffle.
 
-### Added
-- Gallery tags and notes can be edited in a compact right section of the normal gallery panel, with 70% of the space reserved for creators and their controls and 30% for tags and notes.
-
-## [2.0.1] - 2026-10-05
+## [2.0.1] - 2026-10-08
 
 ### Fixed
 - Gallery curation preserves cover images when saving or marking a gallery curated, and restores previously broken cover references automatically on startup without changing original media.
+- Reopening after an unfinished session shows recovery correctly; failed recovery saves retain the session for retry.
+- File and gallery deletion preserve Hall of Fame awards and earned cards, validate database cleanup before removing originals, and wait for native playback handles to close.
+- Desktop USB/T-Code funscript playback uses a dedicated motion thread with grouped serial writes and direct video timing, preventing interface stalls and queued positions from disrupting playback.
+
+### Changed
+- Gallery, photo, and video cards align creator names in consistent rows with full names on hover; photo and video names remain over the thumbnails without an added background or footer.
+- Desktop playback uses WebView2 only for probed standard H.264 MP4s; all other formats stay on libVLC, whose shared frames scale to the visible video size.
+
+### Added
+- Gallery tags and notes can be edited in a compact right section of the normal gallery panel, with 70% of the space reserved for creators and their controls and 30% for tags and notes; edits save as you type without a Save button, with pending edits retained locally for recovery.
 
 ## [2.0.0]
 

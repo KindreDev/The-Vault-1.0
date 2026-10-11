@@ -13,6 +13,7 @@ from models import (
     FeedStory,
     Gallery,
     HofCrown,
+    HofCategoryAward,
     Image,
     IntakeItem,
     PanelPlaylistEntry,
@@ -45,6 +46,7 @@ def detach_image_references(db: Session, image_ids: list[int]) -> None:
     db.execute(update(Card).where(Card.source_image_id.in_(ids)).values(source_image_id=None))
     db.execute(update(TCGBinder).where(TCGBinder.cover_image_id.in_(ids)).values(cover_image_id=None))
     db.execute(update(HofCrown).where(HofCrown.image_id.in_(ids)).values(image_id=None))
+    db.execute(update(HofCategoryAward).where(HofCategoryAward.image_id.in_(ids)).values(image_id=None))
 
     # A Bond milestone cannot exist without its source image in the current
     # schema.  Remove only those evidence rows; the earned Card itself remains.
@@ -106,11 +108,21 @@ def delete_gallery_record(db: Session, gallery: Gallery) -> None:
         .where(Card.source_gallery_id == gallery.id)
         .values(source_gallery_id=None)
     )
+    db.execute(
+        update(HofCategoryAward)
+        .where(HofCategoryAward.gallery_id == gallery.id)
+        .values(gallery_id=None)
+    )
 
     detach_image_references(db, image_ids)
 
     db.execute(delete(gallery_tags).where(gallery_tags.c.gallery_id == gallery.id))
     db.execute(delete(gallery_creators).where(gallery_creators.c.gallery_id == gallery.id))
     db.execute(delete(mix_images).where(mix_images.c.gallery_id == gallery.id))
+    db.execute(delete(PanelPlaylistEntry).where(
+        PanelPlaylistEntry.entry_type == "gallery",
+        PanelPlaylistEntry.ref_id == gallery.id,
+    ))
+    db.execute(update(FeedPost).where(FeedPost.gallery_id == gallery.id).values(gallery_id=None))
     db.execute(delete(Image).where(Image.gallery_id == gallery.id))
     db.execute(delete(Gallery).where(Gallery.id == gallery.id))

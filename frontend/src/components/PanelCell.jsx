@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, f
 import { LocalizedText, useT } from '../i18n'
 import { Play, Pause, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Timer, Zap } from 'lucide-react'
 import InlineVideoPlayer from './InlineVideoPlayer'
+import useVideoPreparation from '../hooks/useVideoPreparation'
 import { imagesApi } from '../lib/api'
 import { isGif, armSlideTimer } from '../lib/gif'
 import { useVaultStore } from '../store/vault'
@@ -37,6 +38,7 @@ const PanelCell = forwardRef(function PanelCell({
   const isFullscreenRef  = useRef(false)
   const videoRef         = useRef(null)
 
+  const preparation = useVideoPreparation(items, idx)
   const item = items[idx] ?? null
   const viewStartRef = useRef(null)
   const hasScript = !!(item?.is_video && item?.funscript_path)
@@ -212,6 +214,8 @@ const PanelCell = forwardRef(function PanelCell({
         {item?.is_video ? (
           <InlineVideoPlayer
             key={item.id}
+            preloadKey={preparation.preloadKey}
+            nextSrc={preparation.nextSrc}
             ref={videoRef}
             src={`/api/images/${item.id}/file`}
             imageId={item.id}
@@ -226,6 +230,8 @@ const PanelCell = forwardRef(function PanelCell({
         ) : item ? (
           <img
             key={item.id}
+            preloadKey={preparation.preloadKey}
+            nextSrc={preparation.nextSrc}
             src={`/api/images/${item.id}/file`}
             alt={item.filename}
             draggable={false}

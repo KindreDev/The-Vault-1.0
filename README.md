@@ -15,6 +15,10 @@ Use `start.bat` for the Windows development launcher, or start the backend and f
 
 `start.bat` opens the desktop window with VLC playback. The development browser
 UI remains available at `http://localhost:5173` with browser-compatible playback.
+Desktop video uses VLC's native Windows output beneath the existing controls,
+including scrollwheel zoom and drag-to-pan, without copying decoded frames into
+the browser. Restart the development desktop window after changing its Python
+playback bridge. An existing installed EXE needs a new build to receive changes.
 
 Backend:
 
@@ -33,6 +37,27 @@ cd frontend
 npm ci
 npm run dev
 ```
+
+`npm run dev` checks the frontend packages before starting. Missing packages,
+an unavailable Vite executable, or changes to the dependency lock file trigger
+an automatic `npm ci --include=dev --include=optional` installation. Normal
+launches reuse the installed packages. Vite belongs in `frontend`, not `backend`.
+If installation fails, startup stops and displays the npm error.
+
+On Linux, start the backend with the following commands, then run the frontend
+commands above in a second terminal and open `http://localhost:5173`:
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+FFmpeg must be installed and available on PATH. The Windows launcher and native
+VLC video output are Windows-specific; Linux browser playback uses the existing
+compatible-stream player. Linux desktop native playback is not implemented yet.
 
 | Service | Address |
 | --- | --- |

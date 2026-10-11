@@ -1,5 +1,8 @@
 import ViewerInfo from '../components/ViewerInfo'
+import CardCreatorNames from '../components/CardCreatorNames'
+import './media-list-cards.css'
 import VaultVideo from '../components/VaultVideo'
+import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
@@ -30,6 +33,7 @@ import { TagPanel, CreatorPanel } from '../components/ViewerPanel'
 import { useAllCreators } from '../hooks/useAllCreators'
 import TagFilterInput from '../components/TagFilterInput'
 import InlineVideoPlayer from '../components/InlineVideoPlayer'
+import useVideoPreparation from '../hooks/useVideoPreparation'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import DeviceControls from '../components/DeviceControls'
 import { SortDropdown } from '../components/SortDropdown'
@@ -123,20 +127,23 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (hoverVideo) {
-      vid.src = `/api/images/${image.id}/file`
-      const seekAndPlay = () => {
-        if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
-        vid.play().catch(() => {})
-      }
-      if (vid.readyState >= 1) seekAndPlay()
-      else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-    } else {
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
+    if (!hoverVideo || !canPlayVideoPreview()) {
+      stopVideoPreview(vid)
+      return
     }
-    return () => clearTimeout(hoverTimerRef.current)
+    vid.src = `/api/images/${image.id}/file`
+    const seekAndPlay = () => {
+      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
+      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
+      vid.play().catch(() => {})
+    }
+    if (vid.readyState >= 1) seekAndPlay()
+    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
+    return () => {
+      clearTimeout(hoverTimerRef.current)
+      vid.removeEventListener('loadedmetadata', seekAndPlay)
+      stopVideoPreview(vid)
+    }
   }, [hoverVideo, image.id])
 
   return (
@@ -144,14 +151,16 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
-      className="relative rounded-[8px] overflow-hidden cursor-pointer group animate-fade-in"
+      className="media-list-card relative rounded-[8px] overflow-hidden cursor-pointer group animate-fade-in"
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: `0.5px solid ${inQueue ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-        // In masonry mode use the image's real aspect ratio; otherwise force 1:1
+
+      }}>
+      <div className="relative overflow-hidden media-list-card-image" style={{
+        // Preserve the original square or masonry thumbnail proportions.
         aspectRatio: masonry && image.width && image.height
-          ? `${image.width} / ${image.height}`
-          : '1'
+          ? `${image.width} / ${image.height}` : '1',
       }}>
 
       {bulkMode && (
@@ -182,7 +191,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
 
       {/* Video hover preview */}
       {image.is_video && (
-        <VaultVideo
+        <VaultVideo preview
           ref={videoRef}
           muted
           playsInline
@@ -242,26 +251,6 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
           )}
         </div>
       )}
-      {image.creators?.length > 0 && (
-        <div
-          className="absolute bottom-1 left-1 right-8 flex flex-wrap gap-0.5 pointer-events-none"
-          style={{ zIndex: 3 }}
-        >
-          {image.creators.map(c => (
-            <span
-              key={c.id}
-              className="text-[16px] px-1.5 py-0.5 rounded-full truncate max-w-full"
-              style={{
-                background: 'rgba(0,0,0,0.75)',
-                color: TYPE_COLORS[c.creator_type] || '#D3D1C7',
-              }}
-            >
-              {c.name}
-            </span>
-          ))}
-        </div>
-      )}
-
       {/* Send to Playlists */}
       <button
         onMouseDown={handleSendToViewer}
@@ -275,6 +264,11 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
         onMouseLeave={e => { if (!inQueue) e.currentTarget.style.opacity = '0' }}>
         <LayoutGrid size={9} color="#fff" />
       </button>
+      {image.creators?.length > 0 && <div className="media-list-card-creators"
+        style={{ bottom: image.rating > 0 || image.cum_count > 0 ? 32 : 6 }}>
+        <CardCreatorNames creators={image.creators} colors={TYPE_COLORS} />
+      </div>}
+      </div>
     </div>
   )
 }
@@ -282,7 +276,7 @@ function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMen
 
 
 // ── Full-screen image viewer ───────────────────────────────────────────────────
-function ImageViewer({ images, startIdx, onClose }) {
+export function ImageViewer({ images, startIdx, onClose }) {
   useScrollLock()
   const navigate = useNavigate()
   const [idx, setIdx] = useState(startIdx)
@@ -305,17 +299,10 @@ function ImageViewer({ images, startIdx, onClose }) {
   // Shuffle draws only from `images`, which is already the current filtered
   // page — so a tag or funscript filter constrains what shuffle can reach.
   const [shuffle, setShuffle] = useState(false)
+  const preparation = useVideoPreparation(images, idx, shuffle)
   const pickNext = useCallback(() => {
-    if (!images?.length) return
-    if (images.length === 1) return
-    setIdx(i => {
-      if (!shuffle) return (i + 1) % images.length
-      let n = i
-      // Never hand back the same one twice in a row.
-      while (n === i) n = Math.floor(Math.random() * images.length)
-      return n
-    })
-  }, [images, shuffle])
+    if (preparation.nextIndex !== null) setIdx(preparation.nextIndex)
+  }, [preparation.nextIndex])
   const [slideshowSpeed, setSlideshowSpeed] = useState(5)
   const [localTags, setLocalTags] = useState([])
   const [localCreators, setLocalCreators] = useState([])
@@ -671,6 +658,8 @@ function ImageViewer({ images, startIdx, onClose }) {
             <InlineVideoPlayer
               ref={videoPlayerRef}
               key={image.id}
+              preloadKey={preparation.preloadKey}
+              nextSrc={preparation.nextSrc}
               src={`/api/images/${image.id}/file`}
               imageId={image.id}
               funscriptPath={image.funscript_path}
@@ -771,8 +760,8 @@ function ImageViewer({ images, startIdx, onClose }) {
               {t('Double-click or Esc to reset · Drag to pan')}
             </div>
           )}
-          {slideshowActive && (
-            <div className="absolute bottom-3 right-3 px-2 py-1 rounded-full pointer-events-none flex items-center gap-1"
+          {slideshowActive && !image.is_video && (
+            <div data-slideshow-interval className="absolute bottom-3 right-3 px-2 py-1 rounded-full pointer-events-none flex items-center gap-1"
               style={{
                 fontSize: 16,
                 background: 'rgba(0,0,0,0.6)',

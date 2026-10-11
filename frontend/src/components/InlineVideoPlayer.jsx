@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react'
 import { LocalizedText, useT } from '../i18n'
 import { Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Zap, Link2, Loader2, Minus, Plus, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -9,6 +9,7 @@ import { getSavedVideoVolume, saveVideoVolume } from '../lib/videoVolume'
 import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
 import { hasNativeVideoBridge, isNativeVideoSource } from '../lib/nativeVideo'
 import VaultVideo from './VaultVideo'
+import { suspendVideoPreviews } from '../lib/videoPreview'
 
 function fmtTime(s) {
   if (!s || !isFinite(s)) return '0:00'
@@ -160,6 +161,8 @@ function FunscriptOffsetControl({ offsetMs, onChange }) {
 
 const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   src,
+  preloadKey,
+  nextSrc,
   imageId           = null,
   funscriptPath     = null,
   overrideFunscript = null,
@@ -200,7 +203,8 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
   const [funscript,    setFunscript]    = useState(null)
   const [scriptSynced, setScriptSynced] = useState(false)
   const [videoError,   setVideoError]   = useState(null)
-  const [preparingVideo, setPreparingVideo] = useState(false)
+  const [preparingVideo, setPreparingVideo] = useState(true)
+  useLayoutEffect(() => suspendVideoPreviews(), [])
   const [transcodeFallback, setTranscodeFallback] = useState(false)
   const [scriptDrag,   setScriptDrag]   = useState(false)  // .funscript being dragged over
   const [droppedScript, setDroppedScript] = useState(null) // { name, content, parsed } awaiting confirm
@@ -496,9 +500,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     setVideoError(msgs[code] ?? 'Unknown video error.')
   }, [imageId, playbackSrc, transcodeFallback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     clearTimeout(preparingTimerRef.current)
-    setPreparingVideo(false)
+    setPreparingVideo(true)
     setTranscodeFallback(false)
     setVideoError(null)
     return () => clearTimeout(preparingTimerRef.current)
@@ -624,17 +628,18 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
       )}
 
       {preparingVideo && !videoError && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 pointer-events-none"
-             style={{ background: 'rgba(0,0,0,0.68)', color: 'var(--c-text)' }}>
-          <Loader2 size={28} className="animate-spin" style={{ color: 'var(--c-accent-text)' }} />
-          <span style={{ fontSize: 16, fontWeight: 600 }}><LocalizedText text={"Loading video…"} /></span>
-          {videoRef.current?.engine !== 'libVLC' && <span style={{ fontSize: 16, maxWidth: 460, textAlign: 'center', padding: '0 20px' }}><LocalizedText text={"If this format needs conversion, The Vault saves a compatible playback copy once. Your original stays unchanged."} /></span>}
+        <div data-video-loading role="status" aria-label={t('Loading video…')}
+             className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+             style={{ background: '#000' }}>
+          <Loader2 size={28} aria-hidden="true" className="animate-spin" style={{ color: 'var(--c-accent-text)' }} />
         </div>
       )}
 
       <VaultVideo
         ref={videoRef}
         src={playbackSrc}
+        preloadKey={preloadKey}
+        nextSrc={nextSrc}
         autoPlay loop={loopVideo}
         onEnded={onEnded}
         style={{
@@ -648,8 +653,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
         onError={handleVideoError}
         onLoadStart={() => {
           clearTimeout(preparingTimerRef.current)
-          preparingTimerRef.current = setTimeout(() => setPreparingVideo(true), 750)
+          setPreparingVideo(true)
         }}
+        onLoadedData={() => setPreparingVideo(false)}
         onTimeUpdate={() => {
           const v = videoRef.current
           if (!v) return
@@ -665,7 +671,6 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
           const v = videoRef.current
           if (!v) return
           clearTimeout(preparingTimerRef.current)
-          setPreparingVideo(false)
           setDuration(v.duration)
           lastTimeRef.current = 0
           setVideoError(null)   // clear any previous error if a new src loaded OK

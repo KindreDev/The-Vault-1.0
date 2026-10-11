@@ -1,0 +1,8 @@
+.gallery-list-card-stats { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; margin-top: 4px; min-height: 24px; font-size: 16px; line-height: 24px; }
+.gallery-list-card-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-muted); }
+.gallery-list-card-period { white-space: nowrap; color: var(--c-green-text); }
+@container gallery-list-card (max-width: 130px) {
+  .gallery-list-card-stats { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .gallery-list-card-period { overflow: hidden; text-overflow: ellipsis; }
+}
+.gallery-list-card-details { container: gallery-list-card / inline-size; }

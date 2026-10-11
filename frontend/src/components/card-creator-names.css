@@ -1,0 +1,7 @@
+.card-creator-names { position: relative; display: grid; grid-template-rows: repeat(2, 22px); gap: 2px; min-width: 0; font-size: 16px; line-height: 22px; }
+.card-creator-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.card-creator-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; opacity: .7; }
+.card-creator-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card-creator-more { flex-shrink: 0; color: var(--c-muted); }
+.card-creator-mix { position: absolute; right: 0; bottom: 0; padding: 0 6px; border-radius: 5px; background: color-mix(in srgb, var(--c-accent) 15%, transparent); color: var(--c-accent-text); }
+.card-creator-names:has(.card-creator-mix) .card-creator-name-row { padding-right: 42px; }

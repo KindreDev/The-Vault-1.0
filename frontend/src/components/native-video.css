@@ -1,0 +1,17 @@
+/* The original backgrounds are painted by a clipped layer. Children, controls,
+   dialogs and their stacking remain above the native video surface. */
+:is(#root, html, body)[data-native-video-background],
+:is(#root, html, body) [data-native-video-background] {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  isolation: isolate;
+}
+.vault-native-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+[data-native-video-background]:fullscreen::backdrop {
+  background: transparent;
+}

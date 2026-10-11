@@ -1039,35 +1039,32 @@ def delete_gallery(gallery_id: int, delete_files: bool = False, db: Session = De
                 "children": [{"id": c.id, "name": c.name, "path": c.folder_path} for c in children],
             })
 
-        # Delete thumbnails for every image in this gallery
-        images = db.query(Image).filter(Image.gallery_id == gallery_id).all()
-        for img in images:
-            if img.thumb_path:
-                try:
-                    remove_file(img.thumb_path)
-                except Exception:
-                    pass
-
-        # Delete the folder from disk
-        try:
-            remove_tree(g.folder_path)
-        except OSError as e:
-            raise HTTPException(500, detail={
-                "code": "disk_delete_failed",
-                "path": g.folder_path,
-                "message": str(e),
-            }) from e
-
+    folder_path = g.folder_path
+    thumb_paths = [row[0] for row in db.query(Image.thumb_path).filter(Image.gallery_id == gallery_id).all()]
     try:
         delete_gallery_record(db, g)
-        db.commit()
+        db.flush()
     except Exception as e:
         db.rollback()
         raise HTTPException(500, detail={
-            "code": "database_delete_failed",
-            "gallery_id": gallery_id,
+            "code": "database_delete_failed", "gallery_id": gallery_id,
             "message": str(e),
         }) from e
+
+    if delete_files and folder_path:
+        try:
+            remove_tree(folder_path)
+        except OSError as e:
+            db.rollback()
+            raise HTTPException(500, detail={
+                "code": "disk_delete_failed", "path": folder_path, "message": str(e),
+            }) from e
+        for thumb_path in thumb_paths:
+            try:
+                remove_file(thumb_path)
+            except OSError:
+                pass
+    db.commit()
     return {"deleted": gallery_id}
 
 

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react'
-import { stopVideoPreview } from '../lib/videoPreview'
+import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 import VaultVideo from './VaultVideo'
 
 /**
@@ -19,7 +19,7 @@ export default function HoverVideoPreview({ imageId, hovered }) {
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (!hovered) {
+    if (!hovered || !canPlayVideoPreview()) {
       stopVideoPreview(vid)
       setActive(false)
       return
@@ -28,6 +28,7 @@ export default function HoverVideoPreview({ imageId, hovered }) {
     setActive(true)
     vid.src = `/api/images/${imageId}/file`
     const seekAndPlay = () => {
+      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
       if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
       vid.play().catch(() => {})
     }
@@ -46,7 +47,7 @@ export default function HoverVideoPreview({ imageId, hovered }) {
   }, [hovered, imageId])
 
   return (
-    <VaultVideo
+    <VaultVideo preview
       ref={videoRef}
       muted
       playsInline

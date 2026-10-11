@@ -1,6 +1,8 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { hasNativeVideoBridge, isForcedTranscodeSource, isNativeVideoSource, NativeMedia } from '../lib/nativeVideo'
+import { hasNativeVideoBridge, isNativeVideoSource, NativeMedia } from '../lib/nativeVideo'
 import NativeVideoControls from './NativeVideoControls'
+import { registerVideoPreview } from '../lib/videoPreview'
+import './native-video.css'
 
 const events = {
   loadstart: 'onLoadStart', loadedmetadata: 'onLoadedMetadata', loadeddata: 'onLoadedData',
@@ -9,13 +11,14 @@ const events = {
   volumechange: 'onVolumeChange',
 }
 
-// Keep all layout and interaction owned by the existing caller. WebView2 gets
-// only conservatively probed H.264 MP4s; libVLC remains the normal renderer for
-// everything else and the fallback if WebView2 cannot decode a safe match.
+// The Windows shell uses normal VLC output for every indexed video. Browser
+// clients keep their HTML video element and compatible-stream behavior.
 const VaultVideo = forwardRef(function VaultVideo(props, ref) {
-  const { src, autoPlay, loop, muted, controls, style, className, ...rest } = props
+  const { src, autoPlay, loop, muted, controls, preview = false, preloadKey, nextSrc, style, className, ...rest } = props
+  const previewCleanup = useRef(null)
   const canvas = useRef(null)
   const htmlVideo = useRef(null)
+  const browserSnapshot = useRef(null)
   const media = useRef(null)
   const container = useRef(null)
   const nativeFallbackTimer = useRef(null)
@@ -26,22 +29,23 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
   const [controlledPlayer, setControlledPlayer] = useState(null)
   const handlers = useRef(props)
   handlers.current = props
-  const [nativeFallbackSrc, setNativeFallbackSrc] = useState(null)
-  const [rendererDecision, setRendererDecision] = useState({ src: null, engine: null })
   const [bridgeReady, setBridgeReady] = useState(() => hasNativeVideoBridge())
-  const desktopSource = bridgeReady && !!src && isNativeVideoSource(src)
-  const forcedTranscode = isForcedTranscodeSource(src)
-  const engine = nativeFallbackSrc === src ? 'libVLC'
-    : desktopSource && !forcedTranscode
-      ? (rendererDecision.src === src ? rendererDecision.engine : 'checking')
-      : 'webview'
-  const native = desktopSource && engine !== 'webview'
+  const native = bridgeReady && (!src || isNativeVideoSource(src))
+  const engine = native ? 'libVLC' : 'webview'
   useImperativeHandle(ref, () => native ? media.current : htmlVideo.current, [native])
 
   const attachHtmlVideo = useCallback(element => {
+    previewCleanup.current?.()
+    previewCleanup.current = null
+    if (!element && htmlVideo.current) {
+      const previous = htmlVideo.current
+      const url = new URL(previous.currentSrc || previous.src || '/', window.location.href)
+      browserSnapshot.current = { src: url.pathname + url.search, playing: !previous.paused }
+    }
     htmlVideo.current = element
+    if (element && preview) previewCleanup.current = registerVideoPreview(element)
     if (element && controls) setControlledPlayer(current => current === element ? current : element)
-  }, [controls])
+  }, [controls, preview])
 
   useEffect(() => {
     const ready = () => setBridgeReady(hasNativeVideoBridge())
@@ -52,26 +56,10 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
 
   useEffect(() => {
     clearTimeout(nativeFallbackTimer.current)
-    setNativeFallbackSrc(current => current === src ? current : null)
     return () => clearTimeout(nativeFallbackTimer.current)
   }, [src])
 
   useEffect(() => () => clearTimeout(nativeFallbackTimer.current), [native])
-
-  useEffect(() => {
-    if (!desktopSource || forcedTranscode || rendererDecision.src === src) return
-    let cancelled = false
-    window.pywebview.api.native_video_renderer_recommendation(src).then(result => {
-      if (cancelled) return
-      if (controls && result?.width > 0 && result?.height > 0) {
-        setDimensions({ width: result.width, height: result.height })
-      }
-      setRendererDecision({ src, engine: result?.renderer === 'webview' ? 'webview' : 'libVLC' })
-    }).catch(() => {
-      if (!cancelled) setRendererDecision({ src, engine: 'libVLC' })
-    })
-    return () => { cancelled = true }
-  }, [desktopSource, forcedTranscode, src, rendererDecision.src])
 
   const handleBrowserError = event => {
     const failedSource = src
@@ -80,7 +68,7 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
       // Give the owning player a chance to request its compatible cached copy
       // before opening the original in VLC.
       nativeFallbackTimer.current = setTimeout(() => {
-        if (activeSource.current === failedSource) setNativeFallbackSrc(failedSource)
+        if (activeSource.current === failedSource) setBridgeReady(hasNativeVideoBridge())
       }, 650)
     }
     handlers.current.onError?.(event)
@@ -106,9 +94,20 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
         if (type === 'loadedmetadata') setDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })
         handlers.current[events[type]]?.(event)
       })
+      media.current.preview = preview
+      media.current.preloadKey = preloadKey
+      media.current.nextSrc = nextSrc
+      if (preview) {
+        previewCleanup.current?.()
+        previewCleanup.current = registerVideoPreview(media.current)
+      }
       media.current.wantsPlay = !!autoPlay
       media.current._loop = !!loop
       media.current._muted = !!muted
+      if (src === undefined && isNativeVideoSource(browserSnapshot.current?.src)) {
+        media.current._src = browserSnapshot.current.src
+        media.current.wantsPlay = browserSnapshot.current.playing
+      }
       if (controls) setControlledPlayer(media.current)
     } else if (element && media.current?.canvas !== element) {
       media.current.setCanvas(element)
@@ -124,16 +123,9 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
       if (cancelled) return
       if (!capabilities.available) { player.fail(capabilities.reason); return }
       if (src !== undefined) {
-        const rect = canvas.current?.getBoundingClientRect()
-        const parentRect = canvas.current?.parentElement?.getBoundingClientRect()
-        const pixelRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
-        const visibleWidth = rect?.width > 0 ? rect.width : parentRect?.width > 0 ? parentRect.width : window.innerWidth
-        const visibleHeight = rect?.height > 0 ? rect.height : parentRect?.height > 0 ? parentRect.height : window.innerHeight
-        player.maxWidth = visibleWidth > 0 ? Math.ceil(visibleWidth * pixelRatio) : 0
-        player.maxHeight = visibleHeight > 0 ? Math.ceil(visibleHeight * pixelRatio) : 0
         player._src = src || ''
         player.load()
-      }
+      } else if (player.src && !player.session) player.load()
     }).catch(error => player.fail(error))
     return () => { cancelled = true; player.release() }
   }, [native, engine, src])
@@ -144,7 +136,21 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
   }, [native, engine, autoPlay])
   useEffect(() => { if (native && media.current) media.current.loop = !!loop }, [native, loop])
   useEffect(() => { if (native && media.current) media.current.muted = !!muted }, [native, muted])
-  useEffect(() => () => { media.current?.dispose() }, [])
+  useEffect(() => {
+    if (native && media.current) {
+      media.current.preloadKey = preloadKey
+      media.current.nextSrc = nextSrc
+    }
+  }, [native, preloadKey, nextSrc])
+  useEffect(() => () => { previewCleanup.current?.(); previewCleanup.current = null }, [])
+
+  useEffect(() => {
+    const player = native ? media.current : null
+    return () => {
+      player?.dispose().catch(() => {})
+      if (media.current === player) media.current = null
+    }
+  }, [native])
 
   useEffect(() => {
     const box = container.current
@@ -174,7 +180,7 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
   }, [native, controls, dimensions])
 
   if (!native) {
-    const video = <video ref={attachHtmlVideo} {...props} controls={controls ? false : controls}
+    const video = <video ref={attachHtmlVideo} {...rest} src={src} autoPlay={autoPlay} loop={loop} muted={muted} controls={controls ? false : controls}
                          onError={handleBrowserError} onLoadedMetadata={handleBrowserMetadata}
                          onLoadedData={handleBrowserReady} onCanPlay={handleBrowserReady}
                          onPlaying={handleBrowserReady}
@@ -189,11 +195,11 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
     </div>
   }
   const canvasProps = Object.fromEntries(Object.entries(rest).filter(([key]) => !Object.values(events).includes(key) && !['playsInline', 'preload', 'poster'].includes(key)))
-  if (!controls) return <canvas ref={attachCanvas} {...canvasProps} className={className} style={style} data-vault-video="libVLC" />
+  if (!controls) return <div ref={attachCanvas} {...canvasProps} className={className} style={style} data-vault-video="native-window" />
   return <div ref={container} className={className} onClick={props.onClick}
               style={{ display: 'grid', gridTemplate: '"video" minmax(0, 1fr) / minmax(0, 1fr)', minWidth: 0, minHeight: 0,
                 ...style, ...fit, aspectRatio: dimensions ? `${dimensions.width} / ${dimensions.height}` : undefined }}>
-    <canvas ref={attachCanvas} {...canvasProps} style={{ ...style, gridArea: 'video', width: '100%', height: '100%', objectFit: 'contain', minWidth: 0, minHeight: 0 }} data-vault-video="libVLC" />
+    <div ref={attachCanvas} {...canvasProps} style={{ ...style, gridArea: 'video', width: '100%', height: '100%', objectFit: 'contain', minWidth: 0, minHeight: 0 }} data-vault-video="native-window" />
     <NativeVideoControls player={controlledPlayer} container={container} />
   </div>
 })

@@ -642,6 +642,16 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
     images = db.query(Image).filter(Image.id.in_(ids)).all()
     gallery_ids = {img.gallery_id for img in images if img.gallery_id}
 
+    # Check the entire batch before removing any originals. Roll the trial
+    # back, then retain only files whose disk removal succeeds below.
+    trial = db.begin_nested()
+    try:
+        detach_image_references(db, [img.id for img in images])
+        db.query(Image).filter(Image.id.in_(ids)).delete(synchronize_session=False)
+        db.flush()
+    finally:
+        trial.rollback()
+
     deleted_ids = []
     failures = []
     for img in images:
@@ -649,15 +659,8 @@ def bulk_delete_images(data: dict = Body(...), keep_file: bool = False, db: Sess
             try:
                 remove_file(img.file_path)
             except OSError as e:
-                failures.append({
-                    "id": img.id,
-                    "path": img.file_path,
-                    "message": str(e),
-                })
+                failures.append({"id": img.id, "path": img.file_path, "message": str(e)})
                 continue
-            # Thumbnails, previews, and masks are derived cache assets.  A
-            # locked cache file must never resurrect an otherwise successful
-            # media deletion or leave its database row behind.
             for derived_path in (img.thumb_path, img.preview_path, img.mask_path):
                 try:
                     remove_file(derived_path)
@@ -689,26 +692,37 @@ def delete_image(image_id: int, keep_file: bool = False, db: Session = Depends(g
         raise HTTPException(404, "Image not found")
 
     gallery_id = img.gallery_id
+    file_path = img.file_path
+    derived_paths = (img.thumb_path, img.preview_path, img.mask_path)
+
+    try:
+        detach_image_references(db, [img.id])
+        db.delete(img)
+        db.flush()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, detail={
+            "code": "database_delete_failed", "image_id": image_id,
+            "message": str(e),
+        }) from e
 
     if not keep_file:
         try:
-            remove_file(img.file_path)
+            remove_file(file_path)
         except OSError as e:
+            db.rollback()
             raise HTTPException(500, detail={
                 "code": "disk_delete_failed",
-                "path": img.file_path,
+                "path": file_path,
                 "message": str(e),
             }) from e
 
-        for derived_path in (img.thumb_path, img.preview_path, img.mask_path):
+        for derived_path in derived_paths:
             try:
                 remove_file(derived_path)
             except OSError:
                 pass
 
-    detach_image_references(db, [img.id])
-    db.delete(img)
-    db.flush()
     if gallery_id:
         gallery = db.query(Gallery).filter(Gallery.id == gallery_id).first()
         if gallery:

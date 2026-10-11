@@ -1,5 +1,4 @@
 /**
-import { LocalizedText, useT } from '../i18n'
  * Recovery prompt for a session the app was closed on top of.
  *
  * The store detects this on boot (see readSessionBoot) and does NOT resume the
@@ -11,6 +10,7 @@ import { LocalizedText, useT } from '../i18n'
  * may well have stopped twenty minutes before the app did.
  */
 import React, { useState } from 'react'
+import { LocalizedText } from '../i18n'
 import ReactDOM from 'react-dom'
 import { Clock, X } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
@@ -44,8 +44,12 @@ export default function SessionRecoveryModal() {
   const keep = async () => {
     if (busy) return
     setBusy(true)
-    await logRecoveredSession(parsedMinutes * 60, stale.startAt)
-    clearStaleSession(parsedMinutes * 60000)
+    try {
+      const saved = await logRecoveredSession(parsedMinutes * 60, stale.startAt)
+      if (saved) clearStaleSession(parsedMinutes * 60000)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const discard = () => {

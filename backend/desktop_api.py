@@ -31,8 +31,19 @@ class VaultDesktopApi:
     def native_video_command(self, session_id, command, value=None):
         return self._video.command(session_id, command, value)
 
+    def native_video_prepare(self, owner, src):
+        if self._closing:
+            return
+        return self._video.prepare(owner, src)
+
+    def native_video_clear_prepared(self, owner):
+        return self._video.clear_prepared(owner)
+
     def native_video_status(self, session_id):
         return self._video.status(session_id)
+
+    def native_video_layout(self, session_id, layout):
+        return self._video.layout(session_id, layout)
 
     def native_video_close(self, session_id):
         self._video.close(session_id)

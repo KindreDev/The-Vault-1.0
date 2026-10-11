@@ -172,6 +172,7 @@ a = Analysis(
         'vlc',
         'desktop_api',
         'services.native_video',
+        'services.native_video_surface',
         'services.serial_playback',
         'serial',
         'serial.serialwin32',
