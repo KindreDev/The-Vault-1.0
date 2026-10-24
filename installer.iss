@@ -3,7 +3,7 @@
 ; Output:   dist\VaultSetup.exe
 
 #define AppName      "The Vault"
-#define AppVersion   "2.0.1"
+#define AppVersion   "2.0.3"
 #define AppPublisher "The Vault"
 #define AppURL       "https://vault-app.site"
 #define AppExeName   "vault.exe"

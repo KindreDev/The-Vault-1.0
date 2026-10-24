@@ -353,7 +353,7 @@ def get_video_metadata(image_id: int, db: Session = Depends(get_db)):
     if not image.is_video:
         raise HTTPException(400, 'This file is not a video')
     try:
-        return video_metadata(image.file_path)
+        return video_metadata(image.file_path, inspect_motion=True)
     except FileNotFoundError:
         raise HTTPException(404, 'Original video is unavailable')
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:

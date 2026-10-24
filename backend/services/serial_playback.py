@@ -224,6 +224,10 @@ class SerialPlayback:
                     s["mediaRaw"] = None
                     return None
                 raw, rate = clock["time"], clock["rate"]
+                revision = clock.get('revision')
+                if revision != s.get('mediaRevision'):
+                    s['mediaRaw'] = None
+                    s['mediaRevision'] = revision
                 # VLC's get_time advances in coarse steps. Interpolate between
                 # observations instead of commanding the same position 25 times.
                 predicted = raw if s["mediaRaw"] is None else s["mediaTime"] + (now - s["mediaAnchor"]) * rate

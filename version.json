@@ -1,7 +1,7 @@
 {
-  "version": "2.0.1",
+  "version": "2.0.3",
   "download_url": "https://downloads.vault-app.site/VaultSetup.exe",
-  "changelog": "The Vault 2.0.1 — hotfix update\n\nFixed\n- Reopen safely after an unfinished session; failed recovery saves can be retried.\n- Fix file and gallery deletion errors while preserving earned awards and cards.\n- Preserve gallery covers and repair broken cover references automatically.\n- Improve desktop video playback and USB/T-Code timing.\n\nChanged\n- Tidier creator names on gallery, photo, and video cards.\n- Compact gallery tags and notes with automatic saving and pending-edit recovery.",
+  "changelog": "The Vault 2.0.3 — audio playback hotfix\n\nFixed\n- Muted hover previews and next-video preparation no longer mute the video currently playing in Windows Mixer.",
   "survey": {
     "enabled": true,
     "url": "https://forms.gle/EhN28Ye2tcfjgUCF6"

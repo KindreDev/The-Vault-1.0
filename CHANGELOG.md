@@ -14,7 +14,20 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Fixed
+- Handy scripts linked to a video start playing with the video again, instead of only working from the Funscripts tab.
+- Creator character search finds video-game characters again instead of showing "Character search is unavailable".
+
+## [2.0.3] - 2026-10-13
+
+### Fixed
+- Muted hover previews and next-video preparation no longer mute the Windows audio session of the video currently playing.
+
+## [2.0.2] - 2026-10-13
+
 ### Changed
+- Video Info recognizes regularly repeated frames and shows their motion rate, so doubled 30 fps footage displays 30 fps instead of 60 fps.
+- Video-linked USB/T-Code scripts read a published video clock without waiting for video preparation or window positioning, keeping motion output independent of video/UI stalls.
 - Development startup automatically installs missing frontend packages and refreshes dependencies after lock-file changes, preventing missing-Vite errors on Linux and Windows.
 - Slideshow interval badges appear only on images; videos play for their full duration without an image timer badge.
 - Desktop videos use native VLC output for smoother playback across supported formats, while keeping existing controls, scrollwheel zoom, drag-to-pan, and direct device timing. Opening the player stops hover previews and shows a black screen with a spinner until video frames arrive. Playback waits for the visible player and starts from the beginning, without losing opening video or audio. Viewers prepare the next video silently in advance for faster transitions, including shuffle.

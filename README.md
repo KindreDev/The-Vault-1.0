@@ -174,6 +174,13 @@ Outputs:
 
 The root `version.json` is the source template; publish the generated staged manifest. Rebuild the packaged executable before compiling the installer. Preserve the installer AppId and data paths across upgrades.
 
+`scripts/upload_release.py` validates the staged installer and manifest. With
+`--upload --rclone <path-to-rclone.exe>`, it uploads the installer, verifies its
+public download against the checksum and size, then uploads the manifest last
+with no-cache metadata and checks the public response. Without `--upload`, it
+only validates local files. A failed installer verification prevents manifest
+publication; a stale public response reports the cache that needs clearing.
+
 Verify fresh installation, upgrade with copied data, and the update/relaunch flow. Upload `VaultSetup.exe` to the existing download URL first and verify its public size and hash. Publish the manifest last with `Cache-Control: no-cache, max-age=0, must-revalidate` and clear the installer and manifest caches. Keep the installer filename and download URL unchanged across releases; advance the application version for subsequent releases.
 
 ## Project conventions

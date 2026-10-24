@@ -17,8 +17,11 @@ class NativeSurfaceHost:
         self.prepared = {}
         self.guard = threading.RLock()
         self.vlc = load_vlc()
+        # MMDevice uses Windows' shared app audio session for mute/volume.
+        # A muted preview or prepared player can therefore silence the viewer.
+        # DirectSound controls each player's own buffer instead.
         self.instance = self.vlc.Instance('--no-video-title-show', '--no-osd', '--quiet',
-                                          '--avcodec-hw=any', '--vout=direct3d11')
+                                          '--avcodec-hw=any', '--vout=direct3d11', '--aout=directsound')
         self.closing = False
         self.stopped = threading.Event()
         self.monitor = threading.Thread(target=self._monitor, name='vault-native-video', daemon=True)
@@ -175,6 +178,7 @@ class NativeSurfaceHost:
                 session['presented'] = True
                 player.audio_set_mute(session['muted'])
                 player.set_pause(0 if session['wants_play'] else 1)
+                self._publish_clock(session)
                 return True
             elif command == 'play':
                 session['wants_play'] = True
@@ -190,6 +194,7 @@ class NativeSurfaceHost:
                 if session['presented']:
                     player.set_pause(1)
             elif command == 'seek':
+                session['clock_revision'] = session.get('clock_revision', 0) + 1
                 session['pending_seek'] = max(0, float(value))
                 if player.get_state() == self.vlc.State.Ended:
                     player.stop()
@@ -204,12 +209,26 @@ class NativeSurfaceHost:
                 session['muted'] = bool(value)
                 player.audio_set_mute(session['muted'] or not session['presented'])
             elif command == 'rate':
+                session['clock_revision'] = session.get('clock_revision', 0) + 1
                 session['rate'] = max(.25, min(4, float(value)))
                 player.set_rate(session['rate'])
             elif command == 'loop':
                 session['loop'] = bool(value)
             else:
                 raise ValueError('Unknown video command')
+            self._publish_clock(session)
+
+    def _publish_clock(self, session):
+        # Only the video/control side calls VLC. Publish a complete new record;
+        # the motion thread must never acquire the video/UI lock or call VLC.
+        player = session['player']
+        session['clock'] = {
+            'time': max(0, player.get_time()) / 1000 if session['presented'] else 0,
+            'duration': max(0, player.get_length()) / 1000,
+            'rate': session['rate'], 'observedAt': time.perf_counter(),
+            'revision': session.get('clock_revision', 0),
+            'playing': player.get_state() == self.vlc.State.Playing,
+        }
 
     def status(self, session_id):
         with self.guard:
@@ -243,6 +262,7 @@ class NativeSurfaceHost:
                 width, height = session['dimensions']
             ended = state == self.vlc.State.Ended
             if ended and session['loop'] and session['wants_play']:
+                session['clock_revision'] = session.get('clock_revision', 0) + 1
                 player.stop()
                 player.play()
                 player.set_rate(session['rate'])
@@ -259,6 +279,7 @@ class NativeSurfaceHost:
             error = session.get('error') or ('VLC could not open or decode this video.' if state == self.vlc.State.Error else None)
             if not session['ready'] and now - session['created'] > 20:
                 error = error or 'No video frame appeared within 20 seconds. Retry or choose another file.'
+            self._publish_clock(session)
             return dict(token=session['token'], ready=session['ready'], presented=session['presented'],
                 playing=state == self.vlc.State.Playing and session['wants_play'] and session['presented'],
                 ended=ended, time=max(0, player.get_time()) / 1000 if session['presented'] else 0,
@@ -284,17 +305,14 @@ class NativeSurfaceHost:
             self._ui(dispose)
 
     def media_clock(self, session_id):
-        with self.guard:
-            session = self.sessions.get(session_id)
-            if not session:
-                return None
-            player = session['player']
-            return {'time': max(0, player.get_time()) / 1000 if session['presented'] else 0,
-                    'duration': max(0, player.get_length()) / 1000,
-                    'rate': session['rate'],
-                    'playing': session['ready'] and session['presented'] and session['wants_play']
-                        and player.get_state() == self.vlc.State.Playing
-                        and session['pending_seek'] is None and not session.get('error')}
+        session = self.sessions.get(session_id)
+        clock = session.get('clock') if session else None
+        if not clock:
+            return None
+        return {**clock, 'playing': clock['playing'] and session['ready']
+                and session['presented'] and session['wants_play']
+                and session['pending_seek'] is None and not session.get('error')
+                and time.perf_counter() - clock['observedAt'] <= 2}
 
     def close_all(self):
         with self.guard:

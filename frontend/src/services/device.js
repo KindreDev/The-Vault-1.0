@@ -1569,13 +1569,25 @@ export class DeviceService {
   _HANDY_FS_PRIME_MS  = 1000  // script buffered onto the device before video starts
   _HANDY_BATCH_POINTS  = 2    // flush after this many buffered points (~200ms)
 
-  async _handyRequest(method, path, body) {
+  _HANDY_REQUEST_TIMEOUT_MS = 10000 // a hung request must not stall the hsp queue
+
+  // Stream commands (hsp/*) go out strictly one at a time, in call order.
+  // Sent in parallel, a flush could overtake the add that follows it and wipe
+  // freshly queued strokes, so a video-linked script never started playing.
+  _handyRequest(method, path, body) {
+    if (!path.startsWith('hsp/')) return this._handySend(method, path, body)
+    const run = (this._handyQueue || Promise.resolve()).then(() => this._handySend(method, path, body))
+    this._handyQueue = run.catch(() => {})
+    return run
+  }
+
+  async _handySend(method, path, body) {
     const { handyKey } = store()
     const remaining = this._quickConnectionDeadline == null
-      ? null
+      ? this._HANDY_REQUEST_TIMEOUT_MS
       : Math.max(1, this._quickConnectionDeadline - Date.now())
-    const controller = remaining == null ? null : new AbortController()
-    const abortTimer = controller ? setTimeout(() => controller.abort(), remaining) : null
+    const controller = new AbortController()
+    const abortTimer = setTimeout(() => controller.abort(), remaining)
     try {
       const resp = await fetch(`${this._HANDY_BASE}${path}`, {
         method,
@@ -1586,7 +1598,7 @@ export class DeviceService {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
-        ...(controller ? { signal: controller.signal } : {}),
+        signal: controller.signal,
       })
       const data = await resp.json().catch(() => ({}))
       const err  = data.error
@@ -1597,7 +1609,7 @@ export class DeviceService {
       }
       return data
     } finally {
-      if (abortTimer) clearTimeout(abortTimer)
+      clearTimeout(abortTimer)
     }
   }
 

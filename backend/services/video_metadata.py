@@ -1,4 +1,4 @@
-"""Bounded, cached inspection of original video headers; never decodes or copies media."""
+"""Cached video headers and bounded repeated-frame inspection for the Info panel."""
 import json
 import math
 import os
@@ -12,6 +12,51 @@ from pathlib import Path
 from services.scanner import _get_ffmpeg_exe
 
 _slots = threading.BoundedSemaphore(2)
+_motion_slots = threading.BoundedSemaphore(1)
+
+
+def _repeat_factor(frames):
+    """Recognize regular repeated-frame groups, not still or slow-moving scenes."""
+    import numpy as np
+    if len(frames) < 40:
+        return 1
+    differences = np.abs(frames[1:].astype(np.int16) - frames[:-1].astype(np.int16)).mean(axis=(1, 2))
+    for factor in (2, 3, 4):
+        for phase in range(factor):
+            changes = differences[phase::factor]
+            repeats = differences[np.arange(len(differences)) % factor != phase]
+            if (len(changes) >= 15 and np.mean(changes >= .1) >= .98
+                    and np.mean(repeats < .1) >= .98
+                    and np.median(changes) > max(.5, np.median(repeats) * 20)):
+                return factor
+    return 1
+
+
+@lru_cache(maxsize=128)
+def _motion_fps(path, size, modified, fps, duration):
+    if not fps or fps < 40 or fps > 240 or not duration or duration < 3:
+        return fps
+    if not _motion_slots.acquire(blocking=False):
+        raise RuntimeError('Frame-rate inspection is busy. Please try again.')
+    try:
+        import numpy as np
+        ffmpeg = shutil.which(_get_ffmpeg_exe()) or _get_ffmpeg_exe()
+        factors = []
+        # Check two parts so an intro or a single still shot cannot set the rate.
+        for start in (0, max(0, duration / 2 - 1)):
+            result = subprocess.run(
+                [ffmpeg, '-v', 'error', '-threads', '2', '-ss', str(start), '-i', path,
+                 '-t', '2', '-an', '-sn', '-dn', '-vf', 'scale=160:90,format=gray',
+                 '-fps_mode', 'passthrough', '-frames:v', '480', '-f', 'rawvideo', '-'],
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=12,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            if result.returncode or len(result.stdout) % (160 * 90):
+                raise RuntimeError('Could not inspect this video’s frame rate.')
+            frames = np.frombuffer(result.stdout, dtype=np.uint8).reshape(-1, 90, 160)
+            factors.append(_repeat_factor(frames))
+        return fps / factors[0] if factors[0] == factors[1] else fps
+    finally:
+        _motion_slots.release()
 
 
 def _number(value):
@@ -81,6 +126,11 @@ def _probe(path, size, modified):
         _slots.release()
 
 
-def video_metadata(path):
+def video_metadata(path, inspect_motion=False):
     stat = os.stat(path)
-    return _probe(path, stat.st_size, stat.st_mtime_ns)
+    metadata = _probe(path, stat.st_size, stat.st_mtime_ns)
+    if not inspect_motion:
+        return metadata
+    encoded = metadata['fps']
+    return {**metadata, 'encoded_fps': encoded,
+            'fps': _motion_fps(path, stat.st_size, stat.st_mtime_ns, encoded, metadata['duration'])}

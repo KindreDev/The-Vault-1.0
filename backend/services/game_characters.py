@@ -7,10 +7,14 @@ from urllib.parse import quote
 
 import httpx
 
+from app_version import APP_VERSION
+
 
 SEARCH_URL = "https://en.wikipedia.org/w/rest.php/v1/search/page"
 SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary"
-HEADERS = {"User-Agent": "TheVault/1.8 (local character metadata import)"}
+# Wikimedia rejects (HTTP 403) User-Agents without contact details:
+# https://meta.wikimedia.org/wiki/User-Agent_policy
+HEADERS = {"User-Agent": f"TheVault/{APP_VERSION} (https://vault-app.site; local character metadata import)"}
 
 
 class GameCharacterError(RuntimeError):

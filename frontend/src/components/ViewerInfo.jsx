@@ -12,7 +12,7 @@ function durationLabel(seconds) {
 export default function ViewerInfo({ image, viewCount }) {
   const t = useT()
   const query = useQuery({
-    queryKey: ['video-metadata', image.id],
+    queryKey: ['video-metadata', image.id, 'motion-rate-v1'],
     queryFn: () => imagesApi.videoMetadata(image.id).then(r => r.data),
     enabled: !!image.is_video,
     staleTime: 300000,
