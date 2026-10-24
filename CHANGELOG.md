@@ -16,12 +16,14 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ### Added
 - Photos and Videos have an Unassigned filter that shows files with no creator, like the one on Galleries.
+- Missing folders in Settings offers to reconnect galleries that an earlier library move split in two, keeping each original gallery's creators, ratings, history, and cards.
 
 ### Changed
 - Galleries, Photos, and Videos list their sort and filter buttons in the same order, and the sort menus share names and order. New sorts: Most viewed, Most edged, and Price for galleries; Most edged, Period, Recently viewed, Watch time, and Resolution for photos and videos.
 
 ### Fixed
 - Sorting photos and videos by name now continues correctly from one page to the next.
+- Moving a library to another drive or directory keeps its galleries: scanning the new location reconnects each moved folder to its existing gallery instead of importing duplicates and awarding XP for them.
 - The funscript player bar no longer appears when no device is connected.
 - Deleting a creator works again and keeps their galleries, files, cards, and history; it previously failed or tried to remove the galleries along with the creator.
 - Handy scripts linked to a video start playing with the video again, instead of only working from the Funscripts tab.

@@ -48,6 +48,21 @@ def resolve_all_missing_galleries():
     return {"message": "Queued", "queued": True}
 
 
+@router.get("/missing-galleries/moved-matches")
+def moved_gallery_matches(db: Session = Depends(get_db)):
+    """Old galleries left behind by a library move, each paired with the
+    gallery now at the same relative path."""
+    from services.moved_gallery_repair import find_moved_gallery_matches
+    matches = find_moved_gallery_matches(db)
+    return {"count": len(matches), "matches": matches[:50]}
+
+
+@router.post("/missing-galleries/repair-moved")
+def repair_moved_gallery_matches(db: Session = Depends(get_db)):
+    from services.moved_gallery_repair import repair_moved_galleries
+    return repair_moved_galleries(db)
+
+
 @router.post("/missing-galleries/{gallery_id}/relink")
 def relink_gallery(gallery_id: int, body: dict, db: Session = Depends(get_db)):
     try:

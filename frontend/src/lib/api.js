@@ -407,6 +407,8 @@ export const scannerApi = {
   reconcileGalleries:  () => api.post('/scanner/reconcile-galleries'),
   resolveMissingGalleries: () => api.post('/scanner/resolve-missing-galleries'),
   relinkGallery:       (id, folderPath) => api.post(`/scanner/missing-galleries/${id}/relink`, { folder_path: folderPath }),
+  movedGalleryMatches: () => api.get('/scanner/missing-galleries/moved-matches', { timeout: 120000 }),
+  repairMovedGalleries: () => api.post('/scanner/missing-galleries/repair-moved', null, { timeout: 1800000 }),
   removeMissingGallery:(id) => api.delete(`/scanner/missing-galleries/${id}`),
 }
 

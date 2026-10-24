@@ -4203,5 +4203,14 @@
   "Recently viewed": "最近观看",
   "Watch time": "观看时长",
   "File size": "文件大小",
-  "Resolution": "分辨率"
+  "Resolution": "分辨率",
+  "Reconnected {count} moved galleries": "已重新连接 {count} 个已移动的图库",
+  "{count} could not be reconnected — relink them manually": "{count} 个无法重新连接，请手动重新链接",
+  "Could not reconnect moved galleries": "无法重新连接已移动的图库",
+  "{count} galleries were moved to a new location": "{count} 个图库已移动到新位置",
+  "Each one now has a duplicate at its new folder. Reconnecting moves the original there and keeps its creators, ratings, history and cards.": "每个图库在新文件夹中都有一个重复项。重新连接会把原图库移到那里，并保留其创作者、评分、历史记录和卡牌。",
+  "e.g.": "例如",
+  "Reconnecting…": "正在重新连接…",
+  "Reconnect moved galleries": "重新连接已移动的图库",
+  "Reconnect moved galleries first": "请先重新连接已移动的图库"
 }

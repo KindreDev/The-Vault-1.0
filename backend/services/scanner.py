@@ -645,40 +645,97 @@ def resolve_missing_galleries() -> None:
         db.close()
 
 
-def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[str]):
-    """Relink a manually renamed folder while preserving gallery metadata."""
-    if not root or not media_files:
+def _gone_gallery_index(db: Session, move_ctx: Optional[dict]) -> dict:
+    """Build (once per scan, lazily) the media of every gallery whose folder is
+    gone from disk, in any library root.
+
+    Includes galleries under an offline root on purpose: moving a library to a
+    new drive or directory makes the old root disappear, and those galleries
+    must still be able to follow their folders. A copy never qualifies, because
+    a gallery whose folder still exists is not in this index.
+    """
+    ctx = move_ctx if move_ctx is not None else {}
+    index = ctx.get("gallery_index")
+    if index is not None:
+        return index
+    # A root that is gone takes all its folders with it; skip per-folder checks
+    # there so a disconnected network drive cannot stall the scan.
+    root_online = {root_id: bool(path and os.path.isdir(path))
+                   for root_id, path in db.query(LibraryRoot.id, LibraryRoot.path).all()}
+    gone = [
+        gallery_id for gallery_id, folder, root_id in
+        db.query(Gallery.id, Gallery.folder_path, Gallery.library_root_id)
+        .filter(Gallery.is_mix == False, Gallery.folder_path.isnot(None))  # noqa: E712
+        .all()
+        if folder and not folder.startswith("__")
+        and (root_online.get(root_id) is False or not os.path.isdir(folder))
+    ]
+    keys: dict = {}
+    sizes: dict = {}
+    for start in range(0, len(gone), 900):
+        chunk = gone[start:start + 900]
+        for gallery_id, name, size in (db.query(Image.gallery_id, Image.filename, Image.file_size)
+                                       .filter(Image.gallery_id.in_(chunk)).all()):
+            if not name or size is None:
+                continue
+            key = (name.lower(), size)
+            if gallery_id not in keys.setdefault(key, set()):
+                keys[key].add(gallery_id)
+                sizes[gallery_id] = sizes.get(gallery_id, 0) + 1
+    index = {"keys": keys, "sizes": sizes, "claimed": set()}
+    ctx["gallery_index"] = index
+    return index
+
+
+def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[str],
+                           move_ctx: Optional[dict] = None):
+    """Relink a renamed or moved folder while preserving gallery metadata.
+
+    Works across library roots, so moving a whole library to another drive or
+    directory keeps every gallery instead of importing them all as new.
+    """
+    if not media_files:
         return None
-    new_sizes = {}
+    new_keys = set()
     for name in media_files:
-        path = os.path.join(dirpath, name)
         try:
-            new_sizes[(name.lower(), os.path.getsize(path))] = name
+            new_keys.add((name.lower(), os.path.getsize(os.path.join(dirpath, name))))
         except OSError:
             pass
-    if not new_sizes:
+    if not new_keys:
         return None
 
-    scored = []
-    candidates = (db.query(Gallery)
-                  .filter(Gallery.library_root_id == root.id, Gallery.is_missing == True)  # noqa: E712
-                  .all())
-    for gallery in candidates:
-        old = db.query(Image.filename, Image.file_size).filter(Image.gallery_id == gallery.id).all()
-        old_keys = {(name.lower(), size) for name, size in old if name and size is not None}
-        overlap = len(set(new_sizes) & old_keys)
-        denominator = min(len(new_sizes), len(old_keys))
-        if overlap and denominator and overlap / denominator >= 0.6 and (overlap >= 2 or denominator == 1):
-            scored.append((overlap / denominator, overlap, gallery))
-    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    if not scored or (len(scored) > 1 and scored[0][:2] == scored[1][:2]):
-        return None  # ambiguous matches require manual relinking
+    index = _gone_gallery_index(db, move_ctx)
+    overlaps: dict = {}
+    for key in new_keys:
+        for gallery_id in index["keys"].get(key, ()):
+            if gallery_id not in index["claimed"]:
+                overlaps[gallery_id] = overlaps.get(gallery_id, 0) + 1
 
-    gallery = scored[0][2]
+    scored = []
+    for gallery_id, overlap in overlaps.items():
+        denominator = min(len(new_keys), index["sizes"].get(gallery_id, 0))
+        if denominator and overlap / denominator >= 0.6 and (overlap >= 2 or denominator == 1):
+            scored.append((overlap / denominator, overlap, gallery_id))
+    scored.sort(reverse=True)
+    if not scored:
+        return None
+    best = [item for item in scored if item[:2] == scored[0][:2]]
+    if len(best) > 1:
+        # Identical file sets: prefer the one whose folder had the same name.
+        folder = os.path.basename(dirpath).lower()
+        same_name = [item for item in best
+                     if os.path.basename(db.get(Gallery, item[2]).folder_path or "").lower() == folder]
+        if len(same_name) != 1:
+            return None  # ambiguous matches require manual relinking
+        best = same_name
+
+    gallery = db.get(Gallery, best[0][2])
+    index["claimed"].add(gallery.id)
     old_path = gallery.folder_path
     gallery.folder_path = dirpath
     gallery.name = os.path.basename(dirpath) or gallery.name
-    gallery.library_root_id = root.id
+    gallery.library_root_id = root.id if root else gallery.library_root_id
     gallery.is_missing = False
     gallery.missing_since = None
     gallery.scanned_at = datetime.utcnow()
@@ -1090,7 +1147,7 @@ def _process_folder(
         return
 
     if not gallery:
-        gallery = _claim_renamed_gallery(db, root, dirpath, media_files)
+        gallery = _claim_renamed_gallery(db, root, dirpath, media_files, move_ctx)
     if gallery:
         gallery.is_missing = False
         gallery.missing_since = None

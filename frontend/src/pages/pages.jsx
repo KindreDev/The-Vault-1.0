@@ -2632,6 +2632,29 @@ export function Settings() {
     refetchInterval: 15000,
   })
 
+  // Old galleries left behind by a library move, each with a new twin at the
+  // same relative path. Only checked while something is missing.
+  const { data: movedMatches } = useQuery({
+    queryKey: ['moved-gallery-matches', missingGalleries.length],
+    queryFn: () => scannerApi.movedGalleryMatches().then(r => r.data),
+    enabled: settingsTab === 'library' && missingGalleries.length > 0,
+    staleTime: 60000,
+  })
+  const [repairingMoved, setRepairingMoved] = React.useState(false)
+  const repairMovedGalleries = async () => {
+    setRepairingMoved(true)
+    try {
+      const { data } = await scannerApi.repairMovedGalleries()
+      toast.success(t('Reconnected {count} moved galleries', { count: data.repaired }))
+      if (data.failed) toast.error(t('{count} could not be reconnected — relink them manually', { count: data.failed }))
+      for (const key of ['missing-galleries', 'moved-gallery-matches', 'galleries', 'images-list']) qc.invalidateQueries({ queryKey: [key] })
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || t('Could not reconnect moved galleries'))
+    } finally {
+      setRepairingMoved(false)
+    }
+  }
+
   const { data: scanStatus } = useQuery({
     queryKey: ['scan-status'],
     queryFn: () => fetch('/api/scanner/status').then(r => r.json()),
@@ -2939,7 +2962,10 @@ export function Settings() {
                                   toast.error(error?.response?.data?.detail || t('Could not start missing-folder resolution'))
                                 }
                               }}
-                              disabled={!missingGalleries.length || scanStatus?.running}
+                              // Resolving would remove the originals that moved galleries
+                              // still need; reconnect those first.
+                              disabled={!missingGalleries.length || scanStatus?.running || movedMatches?.count > 0}
+                              title={movedMatches?.count > 0 ? t('Reconnect moved galleries first') : undefined}
                               className="flex items-center gap-2 px-3 py-2 rounded-lg text-base cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                               style={{ color: 'var(--c-green-text)', background: 'color-mix(in srgb, var(--c-green) 16%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
                         <RefreshCw size={16} />
@@ -2947,6 +2973,28 @@ export function Settings() {
                       </button>
                     </div>
                   </div>
+                  {movedMatches?.count > 0 && (
+                    <div className="flex items-center justify-between gap-3 mb-4 rounded-lg p-3"
+                         style={{ background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+                      <div className="min-w-0">
+                        <div className="text-base text-white/85">{t('{count} galleries were moved to a new location', { count: movedMatches.count })}</div>
+                        <div className="text-base text-white/45">
+                          {t('Each one now has a duplicate at its new folder. Reconnecting moves the original there and keeps its creators, ratings, history and cards.')}
+                        </div>
+                        {movedMatches.matches?.[0] && (
+                          <div className="text-base text-white/35 truncate mt-1" title={`${movedMatches.matches[0].old_path} → ${movedMatches.matches[0].new_path}`}>
+                            {t('e.g.')} {movedMatches.matches[0].old_path} → {movedMatches.matches[0].new_path}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={repairMovedGalleries} disabled={repairingMoved || scanStatus?.running}
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-base cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ color: 'var(--c-accent-text)', background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
+                        <RefreshCw size={16} className={repairingMoved ? 'animate-spin' : ''} />
+                        {repairingMoved ? t('Reconnecting…') : t('Reconnect moved galleries')}
+                      </button>
+                    </div>
+                  )}
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                     {missingGalleries.map(gallery => (
                       <div key={gallery.id} className="rounded-lg p-3 border border-white/10 bg-black/20">
