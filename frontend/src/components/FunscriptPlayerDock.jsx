@@ -82,7 +82,9 @@ export default function FunscriptPlayerDock() {
     : compatibilityWarning && t(compatibilityWarning)
   const dragRef = useRef(null)
 
-  if (!current && !queue.length) return null
+  // The saved queue survives restarts; without a device there is nothing to
+  // drive, so keep the dock out of the way until one connects.
+  if (!device || (!current && !queue.length)) return null
 
   const handleTabPointerDown = event => {
     event.currentTarget.setPointerCapture?.(event.pointerId)

@@ -15,7 +15,7 @@ import {
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
   CheckSquare, Square, UserPlus, UserX, Check, Trash2, LayoutTemplate, GripHorizontal,
-  FolderOpen, Zap, FolderOutput, HardDrive, Copy,
+  FolderOpen, Zap, FolderOutput, HardDrive, Copy, AlertCircle,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
@@ -1483,7 +1483,7 @@ export default function MediaList({ onlyVideos = false }) {
   const _ilInitial = useRef(null)
   if (_ilInitial.current === null) {
     const DEFAULTS = { search: '', sortBy: 'date_added', sortDir: 'desc', randomSeed: 0,
-                       creatorId: null, creatorType: '', favOnly: false, scriptedOnly: false, franchise: '', period: '',
+                       creatorId: null, creatorType: '', favOnly: false, scriptedOnly: false, unassignedOnly: false, franchise: '', period: '',
                        activeTags: [], excludedTags: [], tagMode: 'all', excludeMode: 'any' }
     const hasUrlTags = ['tags', 'tag', 'tag_ids', 'exclude_tags', 'exclude_tag_ids', 'tag_mode', 'exclude_mode']
       .some(key => searchParams.has(key))
@@ -1520,6 +1520,8 @@ export default function MediaList({ onlyVideos = false }) {
   const [favOnly, setFavOnly] = useState(_init.favOnly)
   // Videos only: show just the ones that have a funscript.
   const [scriptedOnly, setScriptedOnly] = useState(_init.scriptedOnly ?? false)
+  // Files with no creator at all: none of their own and none on their gallery.
+  const [unassignedOnly, setUnassignedOnly] = useState(_init.unassignedOnly ?? false)
   const [franchise, setFranchise] = useState(_init.franchise)
   const [period, setPeriod] = useState(_init.period)
   const [videoOnly, setVideoOnly] = useState(onlyVideos)
@@ -1532,11 +1534,11 @@ export default function MediaList({ onlyVideos = false }) {
   useEffect(() => {
     try {
       sessionStorage.setItem(IL_STATE_KEY, JSON.stringify({
-        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period,
+        search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, unassignedOnly, franchise, period,
         activeTags, excludedTags, tagMode, excludeMode,
       }))
     } catch {}
-  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, franchise, period, activeTags, excludedTags, tagMode, excludeMode])
+  }, [IL_STATE_KEY, search, sortBy, sortDir, randomSeed, creatorId, creatorType, favOnly, scriptedOnly, unassignedOnly, franchise, period, activeTags, excludedTags, tagMode, excludeMode])
 
   // Tag filters are canonical URL state, making complex combinations
   // bookmarkable while the rest of the view continues using session restore.
@@ -1590,7 +1592,7 @@ export default function MediaList({ onlyVideos = false }) {
   // Reset to page 1 whenever any filter or page-size changes
   const includeTagParams = tagTokensToParams(activeTags)
   const excludeTagParams = tagTokensToParams(excludedTags)
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${scriptedOnly}|${franchise}|${period}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${pageLimit}|${randomSeed}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorId}|${creatorType}|${favOnly}|${scriptedOnly}|${unassignedOnly}|${franchise}|${period}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${pageLimit}|${randomSeed}`
   const prevFilterKeyRef = useRef(filterKey)
 
   const { data: imagesPage, isLoading, isError } = useQuery({
@@ -1605,6 +1607,7 @@ export default function MediaList({ onlyVideos = false }) {
       period: period || undefined,
       favorite: favOnly || undefined,
       has_funscript: scriptedOnly || undefined,
+      unassigned: unassignedOnly || undefined,
       is_video: onlyVideos ? true : false,   // Images tab = no videos; Videos tab = only videos
       tags: includeTagParams.names || undefined,
       tag_ids: includeTagParams.ids || undefined,
@@ -1648,7 +1651,7 @@ export default function MediaList({ onlyVideos = false }) {
 
   // Period options reflect the CURRENT filter context (creator, type, franchise,
   // tags, video-only, etc.) but never the selected period itself.
-  const periodKey = `${search}|${creatorId}|${creatorType}|${franchise}|${favOnly}|${scriptedOnly}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
+  const periodKey = `${search}|${creatorId}|${creatorType}|${franchise}|${favOnly}|${scriptedOnly}|${unassignedOnly}|${onlyVideos}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
   const { data: periods = [] } = useQuery({
     queryKey: ['image-periods', periodKey],
     queryFn: () => imagesApi.periods({
@@ -1658,6 +1661,7 @@ export default function MediaList({ onlyVideos = false }) {
       series: franchise || undefined,
       favorite: favOnly || undefined,
       has_funscript: scriptedOnly || undefined,
+      unassigned: unassignedOnly || undefined,
       is_video: onlyVideos ? true : false,
       tags: includeTagParams.names || undefined,
       tag_ids: includeTagParams.ids || undefined,
@@ -1766,7 +1770,7 @@ export default function MediaList({ onlyVideos = false }) {
 
         <SortDropdown value={sortBy} onChange={handleSortChange} options={onlyVideos ? VIDEO_SORTS : SORTS} sortDir={sortDir} onSortDirChange={setSortDir} />
 
-        <CreatorFilter value={creatorId} onChange={setCreatorId} />
+        <CreatorFilter value={creatorId} onChange={v => { setCreatorId(v); if (v) setUnassignedOnly(false) }} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
 
@@ -1792,6 +1796,10 @@ export default function MediaList({ onlyVideos = false }) {
         />
 
         {toggleBtn(favOnly, () => setFavOnly(f => !f), t('★ Favorites'))}
+
+        {/* Same as the Galleries filter: picking it clears the creator filter. */}
+        {toggleBtn(unassignedOnly, () => { setUnassignedOnly(v => !v); setCreatorId(null); setPage(1) },
+          <span className="flex items-center gap-1.5"><AlertCircle size={12} /> {t('Unassigned')}</span>)}
 
         {/* Scripted-only — videos view only, since photos never have a script */}
         {onlyVideos && toggleBtn(scriptedOnly, () => { setScriptedOnly(v => !v); setPage(1) },

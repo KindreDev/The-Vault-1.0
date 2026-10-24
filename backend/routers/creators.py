@@ -826,7 +826,8 @@ def delete_creator(creator_id: int, db: Session = Depends(get_db)):
     c = db.query(Creator).filter(Creator.id == creator_id).first()
     if not c:
         raise HTTPException(404, "Creator not found")
-    db.delete(c)
+    from services.creator_deletion import delete_creator_record
+    delete_creator_record(db, c)
     db.commit()
 
 

@@ -106,6 +106,7 @@ def _apply_image_filters(
     favorite: Optional[bool] = None,
     has_funscript: Optional[bool] = None,
     period: Optional[str] = None,
+    unassigned: Optional[bool] = None,
 ):
     """Apply the standard image-list filters to a query.
 
@@ -177,6 +178,13 @@ def _apply_image_filters(
     # the path being set is the same thing as "this video has a script".
     if has_funscript:
         q = q.filter(Image.funscript_path.isnot(None), Image.funscript_path != "")
+    # Unassigned: no creator on the file itself and none on its gallery, so the
+    # file shows no creator anywhere.
+    if unassigned:
+        q = q.filter(
+            ~Image.id.in_(select(image_creators.c.image_id)),
+            ~Image.gallery_id.in_(select(gallery_creators.c.gallery_id)),
+        )
     # Period lives on Gallery — match via the image's gallery (subquery keeps this
     # independent of any join the filters above may or may not have added).
     if period:
@@ -202,6 +210,7 @@ def list_images(
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
     has_funscript: Optional[bool] = None,   # only videos that have a funscript
+    unassigned: Optional[bool] = None,      # only files with no creator, own or gallery
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
     sort_by: Optional[str] = "date_added",  # date_added | date_modified | filename | rating | view_count | cum_count | edge_count | period | last_viewed | view_seconds | duration | file_size | resolution | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
@@ -227,7 +236,7 @@ def list_images(
         exclude_mode=exclude_mode, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
         is_video=is_video, favorite=favorite, has_funscript=has_funscript,
-        period=period,
+        period=period, unassigned=unassigned,
     )
 
     # Total count under the current filters, exposed so the frontend can
@@ -315,6 +324,7 @@ def list_image_periods(
     is_video: Optional[bool] = None,
     favorite: Optional[bool] = None,
     has_funscript: Optional[bool] = None,
+    unassigned: Optional[bool] = None,
 ):
     """Distinct collection periods (from each image's gallery) for the filter
     dropdown in the Image/Video view, newest first. Respects the same filters as
@@ -329,6 +339,7 @@ def list_image_periods(
         exclude_mode=exclude_mode, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
         is_video=is_video, favorite=favorite, has_funscript=has_funscript,
+        unassigned=unassigned,
     ).scalar_subquery()
     rows = (
         db.query(Gallery.period_year, Gallery.period_month, func.count(Image.id.distinct()))

@@ -137,10 +137,11 @@ class Creator(Base):
     created_at    = Column(DateTime, default=func.now())
     updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    # Never cascade deletes here: removing a creator must not remove the
+    # galleries (and their media rows) that merely list her as legacy owner.
     galleries        = relationship(
         "Gallery",
         back_populates="creator",
-        cascade="all, delete",
         foreign_keys="[Gallery.creator_id]",
     )
     linked_galleries = relationship(
