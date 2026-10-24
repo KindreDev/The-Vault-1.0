@@ -17,6 +17,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ### Fixed
 - Handy scripts linked to a video start playing with the video again, instead of only working from the Funscripts tab.
 - Creator character search finds video-game characters again instead of showing "Character search is unavailable".
+- Assign and Clear in the Photos and Videos selection bar now change only the selected files, instead of every file in their galleries.
 
 ## [2.0.3] - 2026-10-13
 

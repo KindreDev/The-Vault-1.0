@@ -4193,5 +4193,9 @@
   "A booster purchase needs recovery. Resume it to retrieve the same cards without paying twice.": "有一笔补充包购买需要恢复。继续即可取回相同卡牌，不会重复扣款。",
   "Resume purchase": "恢复购买",
   "Recovering booster purchase…": "正在恢复补充包购买…",
-  "Purchase recovered": "购买已恢复"
+  "Purchase recovered": "购买已恢复",
+  "Removed {count} file creator assignment": "已移除 {count} 个文件的创作者关联",
+  "Removed {count} file creator assignments": "已移除 {count} 个文件的创作者关联",
+  "Nothing to clear — none of those files has its own creator": "无需清除，这些文件都没有单独关联的创作者",
+  "Remove creators assigned directly to the selected files": "移除直接关联到所选文件的创作者"
 }

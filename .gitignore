@@ -201,6 +201,10 @@ backend/tests/test_tcg_v2_release_rarity.py
 backend/tests/test_tcg_room_placement.py
 
 # ── Agent-generated local test files (never commit) ──────────────────────────
+# Tests and agent scratch files live here, local only.
+/backend/tests/
+/frontend/tests/
+/scripts/tests/
 /.codex-test-artifacts/
 /TEST STUFF CAN DELETE/
 /tools/vlc/

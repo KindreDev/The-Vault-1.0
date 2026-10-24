@@ -1254,12 +1254,18 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
   const queue = useVaultStore(s => s.multiViewerQueue)
   const t = useT()
 
-  const selectedGalleryIds = Array.from(new Set(selectedImages.map(i => i.gallery_id).filter(id => id)))
+  const selectedIds = selectedImages.map(i => i.id)
 
+  // Assign and Clear touch only the selected files, never their galleries:
+  // each creator's share of a gallery is counted per file.
   const assignMutation = useMutation({
-    mutationFn: () => galleriesApi.bulkAssign(selectedGalleryIds, creatorId),
-    onSuccess: (r) => {
-      toast.success(t('Assigned creator to {count} galleries', { count: r.data.updated }))
+    mutationFn: () => imagesApi.bulkAddCreator(selectedIds, creatorId),
+    onSuccess: ({ data }) => {
+      const n = data?.assigned ?? 0
+      toast.success(n > 0
+        ? t(n === 1 ? '{name} assigned to {count} file' : '{name} assigned to {count} files', { name: data.creator_name, count: n })
+        : t('Already assigned'))
+      patchCachedCreators(qc, selectedIds, { id: data.creator_id, name: data.creator_name, creator_type: data.creator_type })
       qc.invalidateQueries({ queryKey: ['images-list'] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onDone()
@@ -1267,28 +1273,14 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
     onError: () => toast.error(t('Assignment failed'))
   })
 
-  // Mirrors Assign, which also works on the selected images' galleries — so
-  // this clears the gallery-level creators AND any image-level overrides.
-  // The toast spells out what was touched, because "8 images selected" quietly
-  // meaning "8 whole galleries" would otherwise be a nasty surprise.
   const [clearing, setClearing] = useState(false)
   const handleClearCreators = async () => {
     setClearing(true)
     try {
-      const [gRes, iRes] = await Promise.all([
-        selectedGalleryIds.length ? galleriesApi.bulkClearCreators(selectedGalleryIds) : Promise.resolve({ data: { updated: 0 } }),
-        imagesApi.bulkClearCreators(selectedImages.map(i => i.id)),
-      ])
-      const g = gRes.data.updated || 0
-      const i = iRes.data.removed_links || 0
-      if (g || i) {
-        const galleryText = g === 1
-          ? t('Cleared creators from {count} gallery', { count: g })
-          : t('Cleared creators from {count} galleries', { count: g })
-        toast.success(galleryText + (i ? t(' and {count} per-photo assignments', { count: i }) : ''))
-      } else {
-        toast(t('Nothing to clear — none of those had a creator'))
-      }
+      const { data } = await imagesApi.bulkClearCreators(selectedIds)
+      const n = data.removed_links || 0
+      if (n) toast.success(t(n === 1 ? 'Removed {count} file creator assignment' : 'Removed {count} file creator assignments', { count: n }))
+      else toast(t('Nothing to clear — none of those files has its own creator'))
       qc.invalidateQueries({ queryKey: ['images-list'] })
       qc.invalidateQueries({ queryKey: ['galleries'] })
       onDone()
@@ -1367,8 +1359,8 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
         <CreatorFilter value={creatorId} onChange={setCreatorId} placeholder="Pick creator..." />
       </div>
       <button type="button"
-        onMouseDown={() => { if (creatorId && !assignMutation.isPending && !working && selectedGalleryIds.length > 0) assignMutation.mutate() }}
-        disabled={!creatorId || assignMutation.isPending || working || selectedGalleryIds.length === 0}
+        onMouseDown={() => { if (creatorId && !assignMutation.isPending && !working && selectedIds.length > 0) assignMutation.mutate() }}
+        disabled={!creatorId || assignMutation.isPending || working || selectedIds.length === 0}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
         <UserPlus size={12} /> {assignMutation.isPending ? t('Assigning…') : t('Assign')}
@@ -1376,7 +1368,7 @@ function BulkActionPanel({ selectedImages, onDone, onCancel, onRelocate, onCopyT
       <button type="button"
         onMouseDown={() => { if (!clearing && !working) handleClearCreators() }}
         disabled={clearing || working}
-        title={t("Remove every creator from the selected photos' galleries")}
+        title={t('Remove creators assigned directly to the selected files')}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer disabled:opacity-40"
         style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
         <UserX size={12} /> {clearing ? t('Clearing…') : t('Clear all')}
