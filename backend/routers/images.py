@@ -203,7 +203,7 @@ def list_images(
     favorite: Optional[bool] = None,
     has_funscript: Optional[bool] = None,   # only videos that have a funscript
     period: Optional[str] = None,  # "YYYY" or "YYYY-MM" — filter by the gallery's collection period
-    sort_by: Optional[str] = "date_added",  # date_added | filename | rating | cum_count | file_size | duration | view_count | date_modified | random
+    sort_by: Optional[str] = "date_added",  # date_added | date_modified | filename | rating | view_count | cum_count | edge_count | period | last_viewed | view_seconds | duration | file_size | resolution | random
     sort_dir: Optional[str] = None,  # asc | desc — defaults depend on sort_by
     _seed: float = 0,  # stable shuffle seed for sort_by=random. float, because the
                        # client seeds with Math.random(); scaled to an int below.
@@ -250,8 +250,23 @@ def list_images(
     elif sort_by == "duration":
         asc = (use_asc if use_asc is not None else False)
         q = q.order_by(nullslast(Image.duration.asc() if asc else Image.duration.desc()))
-    elif sort_by == "view_count":
-        q = q.order_by(Image.view_count.asc() if (use_asc if use_asc is not None else False) else Image.view_count.desc())
+    elif sort_by in ("view_count", "edge_count", "view_seconds"):
+        col = getattr(Image, sort_by)
+        q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
+    elif sort_by == "last_viewed":
+        asc = (use_asc if use_asc is not None else False)
+        q = q.order_by(nullslast(Image.last_viewed_at.asc() if asc else Image.last_viewed_at.desc()))
+    elif sort_by == "resolution":
+        asc = (use_asc if use_asc is not None else False)
+        pixels = Image.width * Image.height
+        q = q.order_by(nullslast(pixels.asc() if asc else pixels.desc()))
+    elif sort_by == "period":
+        # Period lives on the gallery. Correlated subqueries avoid clashing with
+        # a Gallery join the filters may already have added; undated files sink.
+        year = select(Gallery.period_year).where(Gallery.id == Image.gallery_id).scalar_subquery()
+        month = select(Gallery.period_month).where(Gallery.id == Image.gallery_id).scalar_subquery()
+        asc = (use_asc if use_asc is not None else False)
+        q = q.order_by(year.is_(None), year.asc() if asc else year.desc(), month.asc() if asc else month.desc())
     elif sort_by == "date_modified":
         asc = (use_asc if use_asc is not None else False)
         q = q.order_by(nullslast(Image.file_modified_at.asc() if asc else Image.file_modified_at.desc()))
@@ -269,8 +284,11 @@ def list_images(
         else:
             q = q.order_by(func.random())
     elif sort_by == "filename":
-        images = q.offset(skip).limit(limit).all()
         asc = (use_asc if use_asc is not None else True)
+        # Order in SQL so every page continues where the previous one ended;
+        # the natural sort below then fixes digit runs (2 before 10) per page.
+        name = func.lower(Image.filename)
+        images = q.order_by(name.asc() if asc else name.desc(), Image.id).offset(skip).limit(limit).all()
         images.sort(key=lambda img: _natural_key(img.filename), reverse=not asc)
         return [_enrich_image(img, db) for img in images]
     else:  # date_added

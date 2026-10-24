@@ -341,8 +341,8 @@ def list_galleries(
     elif sort_by == "rating":
         col = Gallery.rating
         q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
-    elif sort_by == "cum_count":
-        col = Gallery.cum_count
+    elif sort_by in ("cum_count", "view_count", "edge_count", "purchase_value"):
+        col = getattr(Gallery, sort_by)
         q = q.order_by(col.asc() if (use_asc if use_asc is not None else False) else col.desc())
     elif sort_by == "date_modified":
         col = Gallery.updated_at

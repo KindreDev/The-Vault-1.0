@@ -14,7 +14,11 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Changed
+- Galleries, Photos, and Videos list their sort and filter buttons in the same order, and the sort menus share names and order. New sorts: Most viewed, Most edged, and Price for galleries; Most edged, Period, Recently viewed, Watch time, and Resolution for photos and videos.
+
 ### Fixed
+- Sorting photos and videos by name now continues correctly from one page to the next.
 - Handy scripts linked to a video start playing with the video again, instead of only working from the Funscripts tab.
 - Creator character search finds video-game characters again instead of showing "Character search is unavailable".
 - Assign and Clear in the Photos and Videos selection bar now change only the selected files, instead of every file in their galleries.

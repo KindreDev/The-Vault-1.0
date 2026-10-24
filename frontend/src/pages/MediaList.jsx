@@ -53,21 +53,28 @@ const TYPE_COLORS = {
   character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
 }
 
-const SORTS = [
-  { value: 'filename',      label: 'Filename' },
-  { value: 'date_added',    label: 'Date Added' },
-  { value: 'date_modified', label: 'Date Modified' },
-  { value: 'view_count',    label: 'Most Viewed' },
-  { value: 'cum_count',     label: 'Most Cummed' },
+// Shared order with the Galleries sorts (GalleryList.jsx): common sorts
+// first, page-specific ones next, Random last.
+const COMMON_SORTS = [
+  { value: 'date_added',    label: 'Date added' },
+  { value: 'date_modified', label: 'Date modified' },
+  { value: 'filename',      label: 'Name' },
   { value: 'rating',        label: 'Rating' },
-  { value: 'file_size',     label: 'File Size' },
-  { value: 'random',        label: 'Random' },
+  { value: 'view_count',    label: 'Most viewed' },
+  { value: 'cum_count',     label: 'Most cummed' },
+  { value: 'edge_count',    label: 'Most edged' },
+  { value: 'period',        label: 'Period' },
+  { value: 'last_viewed',   label: 'Recently viewed' },
+  { value: 'view_seconds',  label: 'Watch time' },
 ]
+const SIZE_SORTS = [
+  { value: 'file_size',     label: 'File size' },
+  { value: 'resolution',    label: 'Resolution' },
+]
+const RANDOM_SORT = { value: 'random', label: 'Random' }
 
-const VIDEO_SORTS = [
-  ...SORTS,
-  { value: 'duration',      label: 'Length' },
-]
+const SORTS = [...COMMON_SORTS, ...SIZE_SORTS, RANDOM_SORT]
+const VIDEO_SORTS = [...COMMON_SORTS, { value: 'duration', label: 'Length' }, ...SIZE_SORTS, RANDOM_SORT]
 
 function formatVideoDuration(seconds) {
   const value = Number(seconds)
@@ -1683,7 +1690,7 @@ export default function MediaList({ onlyVideos = false }) {
   const handleSortChange = (val) => {
     if (val === 'random') setRandomSeed(Math.random())
     setSortBy(val)
-    setSortDir('desc')  // reset to default direction when switching sort column
+    setSortDir(val === 'filename' ? 'asc' : 'desc')  // Name starts A–Z, everything else highest first
   }
 
   // Shift+click selects the range between the last-clicked thumb and this one,

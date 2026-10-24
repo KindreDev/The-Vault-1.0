@@ -38,15 +38,20 @@ const TYPE_COLORS = {
 
 const GL_STATE_KEY = 'vault_gl_state'
 
+// Shared order with the Photos/Videos sorts (MediaList.jsx): common sorts
+// first, page-specific ones next, Random last.
 const SORT_OPTIONS = [
-  { value: 'date_added',    label: 'Date added' },
-  { value: 'date_modified', label: 'Date modified' },
-  { value: 'name',          label: 'Name A–Z' },
-  { value: 'image_count',   label: 'Most photos' },
-  { value: 'rating',        label: 'Highest rated' },
-  { value: 'cum_count',     label: 'Most cummed' },
-  { value: 'period',        label: 'Period' },
-  { value: 'random',        label: 'Random' },
+  { value: 'date_added',     label: 'Date added' },
+  { value: 'date_modified',  label: 'Date modified' },
+  { value: 'name',           label: 'Name' },
+  { value: 'rating',         label: 'Rating' },
+  { value: 'view_count',     label: 'Most viewed' },
+  { value: 'cum_count',      label: 'Most cummed' },
+  { value: 'edge_count',     label: 'Most edged' },
+  { value: 'period',         label: 'Period' },
+  { value: 'image_count',    label: 'Most photos' },
+  { value: 'purchase_value', label: 'Price' },
+  { value: 'random',         label: 'Random' },
 ]
 
 const PAGE_SIZES = [25, 50, 100, 250]
@@ -1654,6 +1659,10 @@ export default function GalleryList() {
           )}
         </div>
 
+        {/* Same order as the Photos and Videos toolbars: sort, creators, types,
+            franchise, period, tags, favorites, then page-specific buttons. */}
+        <SortDropdown value={sortBy} onChange={handleSortChange} options={SORT_OPTIONS} sortDir={sortDir} onSortDirChange={setSortDir} />
+
         <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder={t('All creators')} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
@@ -1679,17 +1688,6 @@ export default function GalleryList() {
           rounded="full"
         />
 
-        <SortDropdown value={sortBy} onChange={handleSortChange} options={SORT_OPTIONS} sortDir={sortDir} onSortDirChange={setSortDir} />
-
-        <button type="button" onMouseDown={() => setUnassignedOnly(!unassignedOnly)}
-                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
-                style={{
-                  background: unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
-                  color: unassignedOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
-                }}>
-          <AlertCircle size={11} /> {t('Unassigned')}
-        </button>
         <button type="button" onMouseDown={() => setFavOnly(!favOnly)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
                 style={{
@@ -1698,6 +1696,15 @@ export default function GalleryList() {
                   border: `0.5px solid ${favOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
           <Star size={11} /> {t('Favorites')}
+        </button>
+        <button type="button" onMouseDown={() => setUnassignedOnly(!unassignedOnly)}
+                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
+                style={{
+                  background: unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: unassignedOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${unassignedOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
+                }}>
+          <AlertCircle size={11} /> {t('Unassigned')}
         </button>
         <button type="button" onMouseDown={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
