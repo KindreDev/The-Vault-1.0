@@ -5,6 +5,7 @@ import { ArrowRight, ChevronLeft, ChevronRight, FolderOpen, Loader2, X } from 'l
 import { relocateApi } from '../lib/api'
 import { useT } from '../i18n'
 
+import ModalLayer from './ModalLayer'
 const LAST_FOLDER_KEY = 'vault_last_folder_picker_location'
 
 function startingPath(initialPath) {
@@ -62,7 +63,7 @@ export default function FolderPicker({ initialPath = '', onSelect, onClose }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[10010] flex items-center justify-center p-6"
+    <ModalLayer><div className="fixed inset-0 z-[10010] flex items-center justify-center p-6"
          style={{ background: 'rgba(0,0,0,0.75)' }} onMouseDown={event => event.stopPropagation()}>
       <div className="flex flex-col rounded-[16px] overflow-hidden"
            style={{ width: 560, maxWidth: '94vw', maxHeight: '78vh', background: 'var(--c-surface)', border: '1px solid rgba(255,255,255,0.14)' }}>
@@ -97,6 +98,6 @@ export default function FolderPicker({ initialPath = '', onSelect, onClose }) {
                   className="px-4 py-2 rounded-lg disabled:opacity-40" style={{ fontSize: 16, background: 'var(--accent)' }}>{submitting ? <Loader2 size={18} className="animate-spin" /> : t('Choose this folder')}</button>
         </div>
       </div>
-    </div>, document.body
+    </div></ModalLayer>, document.body
   )
 }

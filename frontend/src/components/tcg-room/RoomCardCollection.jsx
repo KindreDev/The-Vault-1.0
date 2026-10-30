@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import RoomCardSurface from './RoomCardSurface'
 import { isPremiumRoomCardReady, selectBoundedRoomCards } from './roomCardMaterial'
-import { displaySlotsFor, furnitureModelYawOffset, SURFACE_ASSETS, SURFACE_HOST_ASSETS } from './roomLayout'
+import { CARD_HOLDER_ASSETS, displaySlotsFor, furnitureModelYawOffset } from './roomLayout'
 
 function developmentProofTransform(item) {
   if (!import.meta.env.DEV) return null
@@ -47,7 +48,7 @@ export function displayHostTransform(item, bootstrap) {
   if (!placement) return null
   const instance = bootstrap?.owned_instances?.find(value => value.id === instanceId)
   const definition = (bootstrap?.catalog || []).find(value => value.id === instance?.definition_id)
-  if (!definition || SURFACE_HOST_ASSETS.has(definition.asset_id) || !SURFACE_ASSETS.has(definition.asset_id)) return null
+  if (!definition || !CARD_HOLDER_ASSETS.has(definition.asset_id)) return null
   const slots = displaySlotsFor(definition.asset_id)
   const slotIndex = item.slot_key === 'primary' ? 0 : Number.parseInt(item.slot_key, 10) || 0
   const slot = slots[slotIndex] || slots[0]
@@ -85,6 +86,8 @@ export function displayHostTransform(item, bootstrap) {
     // body, leaving a black rectangle in every wide slot.  Compact stands use
     // their existing opposite-side placement and must remain untouched.
     facePlanePosition: definition.asset_id.startsWith('card_display_stand') ? null : -.0032,
+    holder: slot.holder || null,
+    spin: Boolean(slot.spin),
   }
 }
 
@@ -104,6 +107,27 @@ function transformFor(item, bootstrap) {
   if (proof) return proof
   if (item.surface === 'display') return displayHostTransform(item, bootstrap)
   return null
+}
+
+// A card on the rotating pedestal turns slowly on a small clear foot.  The
+// card body is opaque, so from behind it shows a plain dark back.
+const SPIN_SPEED = .45
+const CARD_HALF_HEIGHT = .1056 / 2
+
+function SpinningCard({ item, transform, quality, onTextureReady }) {
+  const turn = useRef(null)
+  useFrame((_, delta) => { if (turn.current) turn.current.rotation.y += Math.min(delta, .1) * SPIN_SPEED })
+  const { position, rotation, spin, ...surface } = transform
+  const scale = surface.scale || 1
+  return <group position={position} rotation={rotation}>
+    <group ref={turn}>
+      <RoomCardSurface item={item} {...surface} position={[0, 0, 0]} rotation={[0, 0, 0]} quality={quality} onTextureReady={onTextureReady} />
+      <mesh position={[0, -CARD_HALF_HEIGHT * scale - .006, 0]} renderOrder={5}>
+        <boxGeometry args={[.05, .012, .024]} />
+        <meshPhysicalMaterial color="#e4eeff" transparent opacity={.25} depthWrite={false} roughness={.06} clearcoat={1} />
+      </mesh>
+    </group>
+  </group>
 }
 
 function stablePhysicalOrder(items) {
@@ -130,7 +154,9 @@ export default function RoomCardCollection({ payload, bootstrap, quality = 'high
       if (!item.card && !item.dev_fixture) return null
       const transform = transformFor(item, bootstrap)
       if (!transform) return null
-      return <RoomCardSurface key={item.copy.id} item={item} {...transform} quality={quality} onTextureReady={() => markReady(item.copy.id)} />
+      if (transform.spin) return <SpinningCard key={item.copy.id} item={item} transform={transform} quality={quality} onTextureReady={() => markReady(item.copy.id)} />
+      const { spin, ...surface } = transform
+      return <RoomCardSurface key={item.copy.id} item={item} {...surface} quality={quality} onTextureReady={() => markReady(item.copy.id)} />
     })}
   </group>
 }

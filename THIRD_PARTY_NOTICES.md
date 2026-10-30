@@ -1,15 +1,19 @@
 # Third-Party Notices
 
-## MultiFunPlayer serial playback design
+## MultiFunPlayer playback design
 
-The native T-Code playback engine adapts the fixed-update serial output design,
-dirty-value comparison, duration formatting, and PCHIP interpolation behaviour
-from MultiFunPlayer, copyright (c) 2020 Yoooi, licensed under MIT.
+The native T-Code playback engine (`backend/services/serial_playback.py`) and the
+page-side funscript motion core (`frontend/src/services/funscriptMotion.js`)
+adapt the fixed-update serial output design, dirty-value comparison, duration
+formatting, PCHIP interpolation, two-stage media clock, soft sync, speed limit,
+auto-home and polled (keyframe) output behaviour from MultiFunPlayer,
+copyright (c) 2020 Yoooi, licensed under MIT.
 The license text is included in `licenses/MultiFunPlayer-MIT.txt`.
 
 Reference source: https://github.com/Yoooi0/MultiFunPlayer
 Relevant files: `OutputTarget/AbstractOutputTarget.cs`,
-`OutputTarget/ViewModels/SerialOutputTarget.cs`, `OutputTarget/IUpdateContext.cs`,
+`OutputTarget/ViewModels/SerialOutputTarget.cs`, `OutputTarget/ViewModels/ButtplugOutputTarget.cs`,
+`OutputTarget/IUpdateContext.cs`, `UI/Controls/ViewModels/ScriptViewModel.cs`,
 `Common/DeviceAxis.cs`, and `Common/KeyframeCollection.cs`.
 
 Native USB communication uses pySerial 3.5, copyright (c) 2001-2020 Chris Liechti,

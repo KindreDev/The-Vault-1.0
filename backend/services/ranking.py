@@ -80,6 +80,68 @@ def creator_image_counts(db: Session, creator_ids: list[int]) -> dict[int, int]:
     }
 
 
+def _creator_image_sums(db: Session) -> list[tuple]:
+    """Per creator: (creator_id, view_seconds, view_count, image_count,
+    photo_view_seconds, photo_view_count) over every image the creator owns
+    through a gallery or a file-level assignment, each image counted once.
+
+    Same result as joining every (creator, image) pair to the images table,
+    but the images are summed once per gallery first: one pass over the
+    table instead of hundreds of thousands of pair lookups.
+    """
+    photo = Image.is_video == False  # noqa: E712
+    per_gallery = (
+        select(Image.gallery_id.label("gallery_id"),
+               func.sum(Image.view_seconds).label("secs"),
+               func.sum(Image.view_count).label("views"),
+               func.count(Image.id).label("images"),
+               func.sum(case((photo, Image.view_seconds), else_=0)).label("photo_secs"),
+               func.sum(case((photo, Image.view_count), else_=0)).label("photo_views"))
+        .group_by(Image.gallery_id)
+        .subquery()
+    )
+    gallery_pairs = _creator_gallery_pairs()
+    totals = {
+        cid: [int(secs or 0), int(views or 0), int(images or 0), int(psecs or 0), int(pviews or 0)]
+        for cid, secs, views, images, psecs, pviews in (
+            db.query(gallery_pairs.c.creator_id,
+                     func.sum(per_gallery.c.secs), func.sum(per_gallery.c.views),
+                     func.sum(per_gallery.c.images), func.sum(per_gallery.c.photo_secs),
+                     func.sum(per_gallery.c.photo_views))
+              .join(per_gallery, per_gallery.c.gallery_id == gallery_pairs.c.gallery_id)
+              .group_by(gallery_pairs.c.creator_id)
+              .all()
+        )
+    }
+
+    # File-level assignments add images the creator does not already own
+    # through that image's gallery.
+    file_rows = (
+        db.query(image_creators.c.creator_id, Image.gallery_id, Image.view_seconds,
+                 Image.view_count, Image.is_video)
+          .join(Image, Image.id == image_creators.c.image_id)
+          .all()
+    )
+    if file_rows:
+        gallery_ids = {row[1] for row in file_rows}
+        owned = {
+            (cid, gid) for cid, gid in
+            db.query(gallery_pairs.c.creator_id, gallery_pairs.c.gallery_id)
+              .filter(gallery_pairs.c.gallery_id.in_(gallery_ids)).all()
+        }
+        for cid, gid, secs, views, is_video in file_rows:
+            if (cid, gid) in owned:
+                continue
+            entry = totals.setdefault(cid, [0, 0, 0, 0, 0])
+            entry[0] += secs or 0
+            entry[1] += views or 0
+            entry[2] += 1
+            if not is_video:
+                entry[3] += secs or 0
+                entry[4] += views or 0
+    return [(cid, *values) for cid, values in totals.items()]
+
+
 def score_all_creators(db: Session) -> dict:
     """Score every creator with assigned content or logged sessions.
 
@@ -97,18 +159,7 @@ def score_all_creators(db: Session) -> dict:
           .all()
     )
 
-    pairs = _creator_image_pairs()
-    img_rows = (
-        db.query(pairs.c.creator_id,
-                 func.sum(Image.view_seconds),
-                 func.sum(Image.view_count),
-                 func.count(pairs.c.image_id),
-                 func.sum(case((Image.is_video == False, Image.view_seconds), else_=0)),  # noqa: E712
-                 func.sum(case((Image.is_video == False, Image.view_count), else_=0)))  # noqa: E712
-          .join(Image, Image.id == pairs.c.image_id)
-          .group_by(pairs.c.creator_id)
-          .all()
-    )
+    img_rows = _creator_image_sums(db)
     img_map = {
         cid: (int(secs or 0), int(views or 0), int(image_count or 0))
         for cid, secs, views, image_count, _, _ in img_rows

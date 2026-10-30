@@ -16,6 +16,7 @@ import { Clock, X } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
 import { logRecoveredSession } from '../lib/session'
 
+import ModalLayer from './ModalLayer'
 const fmtDuration = (ms) => {
   const total = Math.max(0, Math.round(ms / 60000))
   const h = Math.floor(total / 60)
@@ -58,7 +59,7 @@ export default function SessionRecoveryModal() {
   }
 
   return ReactDOM.createPortal(
-    <div
+    <ModalLayer><div
       className="fixed inset-0 z-[300] flex items-center justify-center animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.78)', padding: 24 }}
     >
@@ -167,7 +168,7 @@ export default function SessionRecoveryModal() {
           </button>
         </div>
       </div>
-    </div>,
+    </div></ModalLayer>,
     document.body
   )
 }

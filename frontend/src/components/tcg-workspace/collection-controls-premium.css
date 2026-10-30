@@ -33,7 +33,7 @@
 .tcgws-filter-trigger.is-open {
   border-color: rgba(164, 156, 255, .78);
   background: rgba(34, 35, 48, .98);
-  box-shadow: 0 0 0 3px rgba(127, 119, 221, .14);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent);
   outline: none;
 }
 
@@ -91,7 +91,7 @@
 .tcgws-filter-menu button:hover,
 .tcgws-filter-menu button:focus-visible,
 .tcgws-filter-menu button[aria-selected="true"] {
-  background: rgba(127, 119, 221, .18);
+  background: color-mix(in srgb, var(--c-accent) 18%, transparent);
   color: #fff;
   outline: none;
 }
@@ -141,7 +141,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid rgba(255, 255, 255, .2);
-  border-top-color: #a49cff;
+  border-top-color: var(--c-accent-text);
   border-radius: 50%;
   animation: tcgws-control-spin .7s linear infinite;
 }
@@ -175,3 +175,6 @@
   .tcgws-filter-control { min-width: min(100%, 190px); flex: 1 1 180px; }
   .tcgws-filter-menu { left: 0; right: auto; }
 }
+
+/* Portaled menu (TCGSelect): positioned inline from the trigger rectangle. */
+.tcgws-filter-menu--portal { top: auto; right: auto; min-width: 0; }

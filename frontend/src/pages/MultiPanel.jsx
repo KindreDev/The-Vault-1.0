@@ -17,6 +17,7 @@ import toast from 'react-hot-toast'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 
+import ModalLayer from '../components/ModalLayer'
 // ── Layout definitions ────────────────────────────────────────────────────────
 const LAYOUTS = [
   { count: 1, label: '1', rows: [[0]] },
@@ -394,7 +395,7 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
   }
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.8)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="flex flex-col rounded-[16px] overflow-hidden shadow-2xl animate-modal-pop"
@@ -545,7 +546,7 @@ function PlaylistsModal({ onClose, queue, layoutIdx, galleryMode, onLoad, manual
           )}
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 

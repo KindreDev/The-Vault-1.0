@@ -4,6 +4,7 @@ import { LockKeyhole, PackageOpen, ShieldCheck } from 'lucide-react'
 import { boosterArtCandidates, sampleBoosterArt } from './boosterArt'
 import './PackBrowser.css'
 import TargetCardTypePicker from './TargetCardTypePicker'
+import TCGSelect from './TCGSelect'
 
 const RARITY_LABELS = { C: 'Common', R: 'Rare', SR: 'Super Rare', UR: 'Ultra Rare', SPR: 'Special Rare' }
 const RARITY_ORDER = { C: 0, R: 1, SR: 2, UR: 3, SPR: 4 }
@@ -157,7 +158,7 @@ export default function PackBrowser({ packs, releases, onOpenPack, pending = fal
       <section><span>{pack.product_kind.replaceAll('_', ' ')}</span><h2>{pack.name}</h2>
         <div className="tcgws-pack-facts"><p><PackageOpen size={16} />{pack.card_count}<LocalizedText text={"Cards"} before={" "} /></p><p><ShieldCheck size={16} />{guaranteedLine(pack)}</p><span>{poolSummary(pack)}</span></div>
         <OddsDisclosure pack={pack} />
-        {isWeekly && pack.tokens > 0 && <label className="tcgws-pack-release"><span><LocalizedText text={"Choose release"} /></span><select value={selectedReleases[pack.id] || ''} onChange={event => setSelectedReleases(current => ({ ...current, [pack.id]: Number(event.target.value) }))}><option value=""><LocalizedText text={"Select a frozen release"} /></option>{releases.filter(release => release.status === 'published').map(release => <option key={release.id} value={release.id}>{release.name}</option>)}</select></label>}
+        {isWeekly && pack.tokens > 0 && <div className="tcgws-pack-release"><TCGSelect label={t('Choose release')} value={selectedReleases[pack.id] || ''} onChange={value => setSelectedReleases(current => ({ ...current, [pack.id]: Number(value) || '' }))} options={[{ value: '', label: t('Choose release') }, ...releases.filter(release => release.status === 'published').map(release => ({ value: release.id, label: release.name }))]} /></div>}
         {isTargetable && <TargetCardTypePicker value={targetTypes[pack.id] || ''} onChange={value => setTargetTypes(current => ({ ...current, [pack.id]: value }))} id={`browser-target-${pack.id}`} />}
         {canOpen ? <button className="tcgws-primary" disabled={pending || (isWeekly && !selectedReleases[pack.id])} onClick={() => onOpenPack(openingProduct, selectedReleases[pack.id] || null, isTargetable ? targetTypes[pack.id] || null : null)}>{pending && pendingPackId === pack.id ? <><PackageOpen size={16} className="tcgws-pack-button-spin" /> {orderMode ? 'Ordering...' : 'Preparing...'}</> : orderMode && !isWeekly ? `Order online - ${pack.price.toLocaleString()} Credits` : isWeekly ? 'Weekly quest reward' : pack.tokens > 0 ? `Open token (${pack.tokens})` : `${pack.price.toLocaleString()} Credits`}</button> : <button disabled><LockKeyhole size={16} />{isWeekly ? 'Weekly quest reward' : schedule || (pack.purchasable ? 'Not currently scheduled' : 'Coming soon')}</button>}
       </section>

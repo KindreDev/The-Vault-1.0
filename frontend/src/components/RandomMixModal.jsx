@@ -7,6 +7,7 @@ import { Shuffle, X, Tag, Search, ChevronDown, Check } from 'lucide-react'
 import { creatorsApi, galleriesApi, tagsApi } from '../lib/api'
 import toast from 'react-hot-toast'
 
+import ModalLayer from './ModalLayer'
 const MAX_TAGS = 10
 
 // ── Reusable custom dropdown ──────────────────────────────────────────────────
@@ -190,7 +191,7 @@ export default function RandomMixModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-[9999] flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.80)' }}
          onMouseDown={onClose}>
       <div className="rounded-[16px] shadow-2xl animate-modal-pop flex flex-col"
@@ -422,6 +423,6 @@ export default function RandomMixModal({ onClose }) {
         </div>
 
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }

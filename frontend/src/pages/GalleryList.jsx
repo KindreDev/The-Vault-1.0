@@ -1,4 +1,4 @@
-import VaultVideo from '../components/VaultVideo'
+import HoverVideoPreview from '../components/HoverVideoPreview'
 import CardCreatorNames from '../components/CardCreatorNames'
 import './gallery-list-cards.css'
 import useSelectedItems from '../hooks/useSelectedItems'
@@ -29,12 +29,14 @@ import FolderPicker from '../components/FolderPicker'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
 import { tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
-import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
+import { CREATOR_TYPE_TEXT } from '../lib/entityColors'
+import ViewModeDropdown from '../components/listViews/ViewModeDropdown'
+import DetailsTable from '../components/listViews/DetailsTable'
+import TimelineSections from '../components/listViews/TimelineSections'
+import { GALLERY_VIEW_MODES, TIMELINE_START_SORTS, useListViewMode, timelineDate, formatShortDate } from '../components/listViews/viewModes'
 
-const TYPE_COLORS = {
-  cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
-  character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
-}
+import ModalLayer from '../components/ModalLayer'
+const TYPE_COLORS = CREATOR_TYPE_TEXT
 
 const GL_STATE_KEY = 'vault_gl_state'
 
@@ -76,7 +78,7 @@ function CreateGalleryModal({ onClose }) {
   const submit = () => { if (name.trim()) createMutation.mutate() }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-80 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-4 flex items-center gap-2">
@@ -102,7 +104,7 @@ function CreateGalleryModal({ onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -127,7 +129,7 @@ function RenameFolderModal({ gallery, onClose }) {
   const submit = () => { if (name.trim() && name.trim() !== folderName) renameMutation.mutate() }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-96 animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[17px] font-medium text-[rgba(255,255,255,0.9)] mb-1 flex items-center gap-2">
@@ -156,7 +158,7 @@ function RenameFolderModal({ gallery, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -203,7 +205,7 @@ function StarRating({ value = 0, onRate, className = '' }) {
 // ── Gallery card ──────────────────────────────────────────────────────────────
 // React.memo: grid of 100 cards won't re-render when parent state changes
 // (search input, sort, modal open, bulk selection of other cards, etc.)
-const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRenameFolder, onContextMenu }) {
+const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelect, onClick, bulkMode, thumbSize = 180, onRenameFolder, onContextMenu, compact = false }) {
   const locale = useVaultStore(s => s.locale)
   const t = useT()
   const [isHovered, setIsHovered]     = useState(false)
@@ -211,10 +213,10 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   const [firstVideo, setFirstVideo]   = useState(null)
   const [localRating, setLocalRating] = useState(gallery.rating ?? 0)
   const [mouseX, setMouseX]           = useState(0.5)
-  const videoRef      = useRef(null)
   const cardRef       = useRef(null)
   const hoverTimer    = useRef(null)
   const hoverGeneration = useRef(0)
+  const hoverPreviews = useVaultStore(s => s.hoverPreviewsEnabled)
   const qc = useQueryClient()
 
   const handleMouseMove = useCallback((e) => {
@@ -241,7 +243,9 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
       try {
         const [rPhotos, rVideo] = await Promise.all([
           imagesApi.list({ gallery_id: gallery.id, is_video: false, sort_by: 'random', limit: 5 }),
-          imagesApi.list({ gallery_id: gallery.id, is_video: true,  sort_by: 'random', limit: 1 }),
+          hoverPreviews
+            ? imagesApi.list({ gallery_id: gallery.id, is_video: true, sort_by: 'random', limit: 1 })
+            : Promise.resolve({ data: [] }),
         ])
         if (generation !== hoverGeneration.current) return
         const toArr = (r) => { const d = r.data; return d?.images ?? (Array.isArray(d) ? d : []) }
@@ -249,7 +253,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         setFirstVideo(toArr(rVideo)[0] ?? null)
       } catch {}
     }, 400)
-  }, [bulkMode, gallery?.id])
+  }, [bulkMode, gallery?.id, hoverPreviews])
 
   const handleMouseLeave = useCallback(() => {
     hoverGeneration.current++
@@ -263,19 +267,6 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   const visCount = fanImgs.length
   const activeIdx = fanImgs.length > 0 ? Math.min(fanImgs.length - 1, Math.floor(mouseX * fanImgs.length)) : 0
 
-  useEffect(() => {
-    const video = videoRef.current
-    if (!isHovered || !firstVideo || !video || !canPlayVideoPreview()) return
-    video.src = `/api/images/${firstVideo.id}/file`
-    video.load()
-    video.play().catch(() => {})
-    const previewTimer = setTimeout(() => setFirstVideo(null), 15000)
-    return () => {
-      clearTimeout(previewTimer)
-      stopVideoPreview(video)
-    }
-  }, [isHovered, firstVideo?.id])
-
   // A pending gallery lookup must not attach a video after this card unmounts.
   useEffect(() => {
     return () => {
@@ -288,7 +279,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
     <>
     <div ref={cardRef}
          className="vault-card overflow-hidden cursor-pointer group relative animate-fade-in"
-         style={{ contentVisibility: 'auto', containIntrinsicSize: `0 ${thumbSize + 146}px` }}
+         style={{ contentVisibility: 'auto', containIntrinsicSize: `0 ${compact ? Math.round(thumbSize * 4 / 3) : thumbSize + 146}px` }}
          onMouseEnter={handleMouseEnter}
          onMouseLeave={handleMouseLeave}
          onMouseMove={isHovered ? handleMouseMove : undefined}
@@ -307,7 +298,8 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
         <div className="media-selection-overlay absolute inset-0 z-10 pointer-events-none rounded-[10px]"
              style={{ border: '1.5px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)' }} />
       )}
-      <div className="relative overflow-hidden" style={{ height: thumbSize, background: 'rgba(255,255,255,0.03)' }}>
+      {/* Compact covers are a 3:4 portrait with the title on the cover. */}
+      <div className="relative overflow-hidden" style={{ height: compact ? Math.round(thumbSize * 4 / 3) : thumbSize, background: 'rgba(255,255,255,0.03)' }}>
         <div className="absolute inset-0">
         {gallery.cover_thumb
           ? <img src={gallery.cover_thumb} alt={gallery.name}
@@ -319,16 +311,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
             </div>
         }
         
-        {firstVideo && (
-          <VaultVideo preview
-            ref={videoRef}
-            muted
-            playsInline
-            preload="none"
-            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-            style={{ opacity: isHovered ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
-          />
-        )}
+        {firstVideo && <HoverVideoPreview imageId={firstVideo.id} hovered={isHovered} />}
 
         {gallery.cum_count > 0 && (
           <div className="absolute top-2 right-2 flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full z-10"
@@ -337,14 +320,29 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
           </div>
         )}
         {gallery.creators?.length === 0 && (
-          <div className="absolute bottom-2 left-2 text-[11px] px-1.5 py-0.5 rounded-full z-10"
+          <div className={`absolute ${compact ? 'top-2' : 'bottom-2'} left-2 text-[11px] px-1.5 py-0.5 rounded-full z-10`}
                style={{ background: 'color-mix(in srgb, var(--c-amber) 70%, transparent)', color: 'var(--c-amber-text)' }}>
             {t('unassigned')}
           </div>
         )}
+        {compact && (
+          <div className="gallery-list-compact-caption absolute inset-x-0 bottom-0 z-10 px-2.5 pt-6 pb-2"
+               style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.55) 60%, transparent)' }}>
+            <div className="text-[15px] font-medium truncate" style={{ color: '#fff' }} title={gallery.name}>{gallery.name}</div>
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <span className="flex-shrink-0">{gallery.image_count} {t('items')}</span>
+              {localRating > 0 && <span className="flex-shrink-0" style={{ color: '#EF9F27' }}>★ {localRating}</span>}
+            </div>
+            {gallery.creators?.length > 0 && (
+              <div style={{ marginTop: 2 }}>
+                <CardCreatorNames creators={gallery.creators} colors={TYPE_COLORS} isMix={gallery.is_mix} />
+              </div>
+            )}
+          </div>
+        )}
         </div>{/* end absolute inset-0 */}
       </div>
-      <div className="p-2.5 gallery-list-card-details">
+      {!compact && <div className="p-2.5 gallery-list-card-details">
         <div className="flex items-center gap-1 group/name">
           <div className="text-[16px] font-medium truncate flex-1" style={{ color: 'var(--c-text)' }} title={gallery.name}>{gallery.name}</div>
           <button type="button"
@@ -374,7 +372,7 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
             onRate={(r) => !rateMutation.isPending && rateMutation.mutate(r)}
           />
         </div>
-      </div>
+      </div>}
     </div>
 
     {/* Photo fan — portal to document.body escapes both the scroll container
@@ -423,11 +421,73 @@ const GalleryCard = React.memo(function GalleryCard({ gallery, selected, onSelec
   prev.gallery   === next.gallery   &&
   prev.selected  === next.selected  &&
   prev.bulkMode  === next.bulkMode  &&
-  prev.thumbSize === next.thumbSize
+  prev.thumbSize === next.thumbSize &&
+  prev.compact   === next.compact
 )
 
+// ── List views (Cards, Compact covers, Details, Timeline) ──────────────────────
+
+function formatPeriod(g, locale) {
+  if (!g.period_year) return '—'
+  if (!g.period_month) return String(g.period_year)
+  return new Date(g.period_year, g.period_month - 1).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' })
+}
+
+function GalleryListView({ mode, galleries, thumbSize, bulkMode, selected, onSelect, onOpen, onRenameFolder, onContextMenu, sortBy, sortDir, onSort, onSortDir }) {
+  const locale = useVaultStore(s => s.locale)
+  const compact = mode === 'compact'
+  const cards = (list) => (
+    <div className="vault-theme-gallery-grid grid gap-3 grid-stagger"
+         style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${compact ? Math.round(thumbSize * 0.75) : thumbSize}px, 1fr))` }}>
+      {list.map(g => (
+        <GalleryCard
+          key={g.id}
+          gallery={g}
+          selected={selected.has(g.id)}
+          onSelect={onSelect}
+          onClick={() => onOpen(g)}
+          bulkMode={bulkMode}
+          thumbSize={thumbSize}
+          compact={compact}
+          onRenameFolder={onRenameFolder}
+          onContextMenu={onContextMenu}
+        />
+      ))}
+    </div>
+  )
+
+  if (mode === 'timeline') {
+    return <TimelineSections items={galleries} getDate={g => timelineDate(g, sortBy, 'updated_at')}
+                             renderGroup={entries => cards(entries.map(e => e.item))} />
+  }
+  if (mode === 'details') {
+    const creatorNames = (g) => (g.creators ?? []).map(c => c.name).join(', ') || '—'
+    const columns = [
+      { key: 'name', label: 'Name', sort: 'name', primary: true, render: g => <span title={g.name}>{g.name}</span> },
+      { key: 'creator', label: 'Creator', render: g => <span title={creatorNames(g)}>{creatorNames(g)}</span> },
+      { key: 'items', label: 'Items', sort: 'image_count', align: 'right', render: g => g.image_count ?? 0 },
+      { key: 'period', label: 'Period', sort: 'period', align: 'right', render: g => formatPeriod(g, locale) },
+      { key: 'rating', label: 'Rating', sort: 'rating', align: 'right', render: g => (g.rating > 0 ? <span style={{ color: '#EF9F27' }}>★ {g.rating}</span> : '—') },
+      { key: 'views', label: 'Views', sort: 'view_count', align: 'right', render: g => g.view_count || 0 },
+      { key: 'cums', label: 'Cums', sort: 'cum_count', align: 'right', render: g => g.cum_count || 0 },
+      { key: 'price', label: 'Price', sort: 'purchase_value', align: 'right', render: g => (g.purchase_value > 0 ? `$${Number(g.purchase_value).toFixed(2)}` : '—') },
+      { key: 'added', label: 'Added', sort: 'date_added', align: 'right', render: g => formatShortDate(g.created_at, locale) },
+    ]
+    return (
+      <DetailsTable rows={galleries} columns={columns}
+                    thumb={g => g.cover_thumb
+                      ? <img src={g.cover_thumb} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      : null}
+                    sortBy={sortBy} sortDir={sortDir} onSort={onSort} onSortDir={onSortDir}
+                    onRowClick={g => onOpen(g)} onContextMenu={onContextMenu}
+                    bulkMode={bulkMode} selected={selected} onSelect={onSelect} />
+    )
+  }
+  return cards(galleries)
+}
+
 // ── Creator dropdown — multi or single-select, ref-based outside-click ──────────
-function CreatorDropdown({ value, onChange, placeholder }) {
+function CreatorDropdown({ value, onChange, placeholder, mode = 'any', onModeChange }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -521,6 +581,24 @@ function CreatorDropdown({ value, onChange, placeholder }) {
               className="w-full bg-transparent text-[13px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] outline-none"
             />
           </div>
+          {isMulti && onModeChange && value.length > 1 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[rgba(255,255,255,0.07)] text-[13px] text-[rgba(255,255,255,0.4)]">
+              {t('Match')}
+              <div className="flex rounded-full overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.15)' }}>
+                {['any', 'all'].map(m => (
+                  <button key={m} type="button" onMouseDown={() => onModeChange(m)}
+                    title={m === 'all' ? t('Only galleries with every picked creator') : t('Galleries with any picked creator')}
+                    className="px-2.5 py-0.5 cursor-pointer"
+                    style={{
+                      background: mode === m ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'transparent',
+                      color: mode === m ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)',
+                    }}>
+                    {m === 'all' ? t('All') : t('Any')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="overflow-y-auto" style={{ maxHeight: 240 }}>
             {hasSelection && (
               <button
@@ -687,7 +765,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    <ModalLayer><div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
          onClick={e => { if (e.target === e.currentTarget && !merging) onClose() }}>
       <div className="rounded-[14px] w-full max-w-md flex flex-col overflow-hidden"
@@ -877,7 +955,7 @@ function BulkMergeModal({ galleries, onClose, onMerged }) {
           </div>
         )}
       </div>
-    </div>
+    </div></ModalLayer>
   , document.body)
 }
 
@@ -888,16 +966,16 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
   return createPortal(
     <>
       {/* Backdrop */}
-      <motion.div
+      <ModalLayer><motion.div
         className="fixed inset-0 z-[200]"
         style={{ background: 'rgba(0,0,0,0.75)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
-      />
+      /></ModalLayer>
       {/* Card */}
-      <motion.div
+      <ModalLayer><motion.div
         className="fixed inset-0 z-[201] flex items-center justify-center pointer-events-none"
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -941,7 +1019,7 @@ function DeleteModal({ count, activeOp, onVault, onDisk, onCancel }) {
             </button>
           </div>
         </div>
-      </motion.div>
+      </motion.div></ModalLayer>
     </>,
     document.body
   )
@@ -1317,6 +1395,7 @@ export default function GalleryList() {
   const activeTags     = useMemo(() => tagTokensFromParams(searchParams, 'tags', 'tag_ids', 'tag'), [searchParams])
   const excludedTags   = useMemo(() => tagTokensFromParams(searchParams, 'exclude_tags', 'exclude_tag_ids'), [searchParams])
   const tagMode        = searchParams.get('tag_mode') === 'any' ? 'any' : 'all'
+  const creatorMode    = searchParams.get('creator_mode') === 'all' ? 'all' : 'any'
   const excludeMode    = searchParams.get('exclude_mode') === 'all' ? 'all' : 'any'
   const page           = parseInt(searchParams.get('page') || '1', 10) || 1
 
@@ -1330,6 +1409,7 @@ export default function GalleryList() {
   })
 
   // Persistent thumb size from store (not a filter, doesn't belong in URL)
+  const [viewMode, setViewMode] = useListViewMode('vault_view_galleries', GALLERY_VIEW_MODES, 'cards')
   const thumbSize         = useVaultStore(s => s.thumbSizeGalleries)
   const setThumbSize      = useVaultStore(s => s.setThumbSizeGalleries)
   const addToMultiViewer  = useVaultStore(s => s.addToMultiViewer)
@@ -1428,13 +1508,14 @@ export default function GalleryList() {
   // Reset pagination when filters change
   const includeTagParams = tagTokensToParams(activeTags)
   const excludeTagParams = tagTokensToParams(excludedTags)
-  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${randomSeed}|${creatorType}|${franchise}|${period}`
+  const filterKey = `${search}|${sortBy}|${sortDir}|${creatorFilter.join(',')}|${creatorMode}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}|${randomSeed}|${creatorType}|${franchise}|${period}`
 
   const params = {
     search: search || undefined,
     sort_by: sortBy,
     sort_dir: sortBy !== 'random' ? sortDir : undefined,
     creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
+    creator_mode: creatorFilter.length > 1 && creatorMode === 'all' ? 'all' : undefined,
     creator_type: creatorType || undefined,
     series: franchise || undefined,
     period: period || undefined,
@@ -1489,6 +1570,7 @@ export default function GalleryList() {
   const periodParams = {
     search: search || undefined,
     creator_id: creatorFilter.length > 0 ? creatorFilter.join(',') : undefined,
+    creator_mode: creatorFilter.length > 1 && creatorMode === 'all' ? 'all' : undefined,
     creator_type: creatorType || undefined,
     series: franchise || undefined,
     unassigned: unassignedOnly || undefined,
@@ -1500,7 +1582,7 @@ export default function GalleryList() {
     exclude_tag_ids: excludeTagParams.ids || undefined,
     exclude_mode: excludeMode,
   }
-  const periodKey = `${search}|${creatorFilter.join(',')}|${creatorType}|${franchise}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
+  const periodKey = `${search}|${creatorFilter.join(',')}|${creatorMode}|${creatorType}|${franchise}|${unassignedOnly}|${favOnly}|${tagTokenKey(activeTags)}|${tagMode}|${tagTokenKey(excludedTags)}|${excludeMode}`
   const { data: periods = [] } = useQuery({
     queryKey: ['gallery-periods', periodKey],
     queryFn: () => galleriesApi.periods(periodParams).then(r => r.data),
@@ -1523,6 +1605,12 @@ export default function GalleryList() {
   }, [setParams])
 
   const setSortDir = useCallback((dir) => setParam('dir', dir), [setParam])
+
+  // Timeline sections follow the active date sort (see TIMELINE_START_SORTS).
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode)
+    if (mode === 'timeline' && !TIMELINE_START_SORTS.includes(sortBy)) handleSortChange('period')
+  }
 
   const handleCreatorFilterChange = useCallback((updater) => {
     setCreatorFilter(typeof updater === 'function' ? updater : () => updater)
@@ -1590,12 +1678,16 @@ export default function GalleryList() {
   // Stable reference — reads lastSelectedId and galleries through refs so the
   // GalleryCard memo comparator (which excludes onSelect) never sees a stale closure
   const toggleSelect = useCallback((id, event) => {
+    // Read the anchor now: the updater below can run later, after the ref
+    // has already moved to this click, which collapsed the range to one item.
+    const anchor = lastSelectedIdRef.current
+    const shift = !!event?.shiftKey
     setSelected(s => {
       const n = new Set(s)
       const currentGalleries = galleriesRef.current
-      if (event && event.shiftKey && lastSelectedIdRef.current !== null && currentGalleries) {
+      if (shift && anchor !== null && currentGalleries) {
         const ids = currentGalleries.map(g => g.id)
-        const idxA = ids.indexOf(lastSelectedIdRef.current)
+        const idxA = ids.indexOf(anchor)
         const idxB = ids.indexOf(id)
         if (idxA !== -1 && idxB !== -1) {
           const start = Math.min(idxA, idxB)
@@ -1639,6 +1731,7 @@ export default function GalleryList() {
   }
 
   const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
+  const openGallery = useCallback(g => navigate(`/galleries/${g.id}`), [navigate])
 
   return (
     <div className="vault-theme-gallery-page p-5 flex flex-col gap-4 w-full">
@@ -1663,7 +1756,10 @@ export default function GalleryList() {
             franchise, period, tags, favorites, then page-specific buttons. */}
         <SortDropdown value={sortBy} onChange={handleSortChange} options={SORT_OPTIONS} sortDir={sortDir} onSortDirChange={setSortDir} />
 
-        <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder={t('All creators')} />
+        <ViewModeDropdown value={viewMode} onChange={handleViewModeChange} modes={GALLERY_VIEW_MODES} />
+
+        <CreatorDropdown value={creatorFilter} onChange={handleCreatorFilterChange} placeholder={t('All creators')}
+          mode={creatorMode} onModeChange={mode => setParams({ creator_mode: mode === 'all' ? 'all' : null, page: null })} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
 
@@ -1732,13 +1828,13 @@ export default function GalleryList() {
 
       {/* Size controls */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        {viewMode !== 'details' && <div className="flex items-center gap-2">
           <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
                  onChange={e => setThumbSize(Number(e.target.value))}
                  className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
-        </div>
+        </div>}
         <div className="flex items-center gap-1">
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">{t('Per page')}</span>
           {PAGE_SIZES.map(n => (
@@ -1826,21 +1922,13 @@ export default function GalleryList() {
           <div className="text-[13px] text-[rgba(255,255,255,0.3)] mb-2">
             {t('{start}–{end} shown of {total} · page {page} of {pages}', { start: (page - 1) * pageSize + 1, end: (page - 1) * pageSize + (galleries?.length ?? 0), total: totalCount, page, pages: totalPages })}
           </div>
-          <div className="vault-theme-gallery-grid grid gap-3 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
-            {galleries.map(g => (
-              <GalleryCard
-                key={g.id}
-                gallery={g}
-                selected={selected.has(g.id)}
-                onSelect={toggleSelect}
-                onClick={() => navigate(`/galleries/${g.id}`)}
-                bulkMode={bulkMode}
-                thumbSize={thumbSize}
-                onRenameFolder={setRenamingFolder}
-                onContextMenu={handleContextMenu}
-              />
-            ))}
-          </div>
+          <GalleryListView
+            mode={viewMode} galleries={galleries} thumbSize={thumbSize}
+            bulkMode={bulkMode} selected={selected} onSelect={toggleSelect}
+            onOpen={openGallery}
+            onRenameFolder={setRenamingFolder} onContextMenu={handleContextMenu}
+            sortBy={sortBy} sortDir={sortDir} onSort={handleSortChange} onSortDir={setSortDir}
+          />
           {/* Pagination controls */}
           <div className="mt-6">
             <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="bottom" />

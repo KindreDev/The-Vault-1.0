@@ -440,42 +440,35 @@ def session_stats(
         if c:
             top_creators_chart.append({ "name": c.name, "count": row.cnt })
 
-    # Top creators by total view time (view_seconds on images)
+    # Top creators by view time and by edges, plus the library-wide view time,
+    # all from one pass over images summed per gallery (was three full scans).
     from models import gallery_creators
-    view_time_rows = (
-        db.query(gallery_creators.c.creator_id, func.sum(Image.view_seconds).label("total_secs"))
-          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
-          .group_by(gallery_creators.c.creator_id)
-          .order_by(func.sum(Image.view_seconds).desc())
-          .limit(6)
-          .all()
-    )
-    top_creators_by_time = []
-    for row in view_time_rows:
-        # This will also use the global import perfectly!
-        c = db.query(Creator).filter(Creator.id == row.creator_id).first()
-        if c and (row.total_secs or 0) > 0:
-            top_creators_by_time.append({"name": c.name, "seconds": int(row.total_secs or 0)})
-
-    total_view_seconds = int(db.query(func.sum(Image.view_seconds)).scalar() or 0)
-
-    # Creators you edge to most — Edge Mode credits the images on screen, so
-    # this rolls those per-image counts up through the gallery→creator join.
-    edge_creator_rows = (
-        db.query(gallery_creators.c.creator_id, func.sum(Image.edge_count).label("edges"))
-          .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
-          .group_by(gallery_creators.c.creator_id)
-          .order_by(func.sum(Image.edge_count).desc())
-          .limit(6)
-          .all()
-    )
-    top_creators_by_edges = []
-    for row in edge_creator_rows:
-        if not (row.edges or 0) > 0:
-            continue
-        c = db.query(Creator).filter(Creator.id == row.creator_id).first()
-        if c:
-            top_creators_by_edges.append({"name": c.name, "edges": int(row.edges)})
+    per_gallery = {
+        gid: (int(secs or 0), int(edges or 0))
+        for gid, secs, edges in db.query(Image.gallery_id, func.sum(Image.view_seconds),
+                                         func.sum(Image.edge_count))
+                                  .group_by(Image.gallery_id).all()
+    }
+    total_view_seconds = sum(secs for secs, _ in per_gallery.values())
+    creator_secs, creator_edges = {}, {}
+    for cid, gid in db.query(gallery_creators.c.creator_id, gallery_creators.c.gallery_id).all():
+        secs, edges = per_gallery.get(gid, (0, 0))
+        creator_secs[cid] = creator_secs.get(cid, 0) + secs
+        creator_edges[cid] = creator_edges.get(cid, 0) + edges
+    top_time_ids = sorted(creator_secs, key=creator_secs.get, reverse=True)[:6]
+    top_edge_ids = sorted(creator_edges, key=creator_edges.get, reverse=True)[:6]
+    names = {c.id: c.name for c in db.query(Creator.id, Creator.name)
+             .filter(Creator.id.in_(set(top_time_ids) | set(top_edge_ids))).all()}
+    top_creators_by_time = [
+        {"name": names[cid], "seconds": creator_secs[cid]}
+        for cid in top_time_ids if cid in names and creator_secs[cid] > 0
+    ]
+    # Edge Mode credits the images on screen, so per-image edge counts roll up
+    # through the gallery->creator link.
+    top_creators_by_edges = [
+        {"name": names[cid], "edges": creator_edges[cid]}
+        for cid in top_edge_ids if cid in names and creator_edges[cid] > 0
+    ]
 
     # Edges per O — how many times you pulled back for each finish.
     edges_per_cum = round(total_edge / total_cum, 1) if total_cum else 0.0

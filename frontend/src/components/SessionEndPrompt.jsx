@@ -1,5 +1,4 @@
 /**
-import { LocalizedText, useT } from '../i18n'
  * "Did you finish?" — shown when Settings → Session is set to ask.
  *
  * Ending a session counts a climax against everything on screen, which is right
@@ -7,11 +6,13 @@ import { LocalizedText, useT } from '../i18n'
  * this asks. Backing out leaves the session running untouched.
  */
 import React, { useEffect } from 'react'
+import { LocalizedText } from '../i18n'
 import ReactDOM from 'react-dom'
 import { Droplets } from 'lucide-react'
 import { useVaultStore } from '../store/vault'
 import { answerClimaxPrompt } from '../lib/session'
 
+import ModalLayer from './ModalLayer'
 export default function SessionEndPrompt() {
   const open = useVaultStore(s => s.climaxPromptOpen)
 
@@ -39,7 +40,7 @@ export default function SessionEndPrompt() {
   })
 
   return ReactDOM.createPortal(
-    <div
+    <ModalLayer><div
       className="fixed inset-0 z-[300] flex items-center justify-center animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.78)', padding: 24 }}
       onClick={() => answerClimaxPrompt('cancel')}
@@ -91,7 +92,7 @@ export default function SessionEndPrompt() {
           ><LocalizedText text={"💦 Count it"} before=" " after=" " /></button>
         </div>
       </div>
-    </div>,
+    </div></ModalLayer>,
     document.body
   )
 }

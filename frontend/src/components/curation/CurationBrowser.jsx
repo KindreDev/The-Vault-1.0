@@ -4,6 +4,7 @@ import { useT } from '../../i18n'
 import { rememberVideoElementVolume, restoreVideoVolume } from '../../lib/videoVolume'
 import VaultVideo from '../VaultVideo'
 
+import ModalLayer from '../ModalLayer'
 // Judging a gallery means actually seeing it, so these start large. The choice
 // persists — the right size depends on the display, not on the gallery.
 // Capped at 440: thumbnails are 640px, so every size renders from a downscale
@@ -191,7 +192,7 @@ export default function CurationBrowser({
       </div>
 
       {current && (
-        <div className="fixed inset-0 flex items-center justify-center"
+        <ModalLayer><div className="fixed inset-0 flex items-center justify-center"
              style={{ background: 'rgba(0,0,0,0.94)', zIndex: 90 }}
              onClick={() => setLightbox(null)}>
 
@@ -240,7 +241,7 @@ export default function CurationBrowser({
                   style={{ background: 'rgba(255,255,255,0.1)' }}>
             <X size={18} color="white" />
           </button>
-        </div>
+        </div></ModalLayer>
       )}
     </>
   )

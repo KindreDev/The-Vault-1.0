@@ -1,9 +1,8 @@
 """Card foil masks — model readiness, backfill, and per-image regeneration."""
 import os
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database import get_db, SessionLocal
@@ -44,22 +43,12 @@ def channel(image_id: int, channel: str, db: Session = Depends(get_db)):
     if not image or not image.mask_path or not os.path.isfile(image.mask_path):
         raise HTTPException(404, "Mask not found")
     try:
-        content = masking.mask_channel_png(image.mask_path, channel)
+        path = masking.mask_channel_path(image.mask_path, channel)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    return Response(
-        content=content,
-        media_type="image/png",
-        headers={"Cache-Control": "private, max-age=300"},
-    )
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
 
 
-@router.post("/download-model")
-def download_model():
-    if masking.is_ready():
-        return {"ready": True, "already": True}
-    threading.Thread(target=masking.download_model, daemon=True).start()
-    return {"ready": False, "downloading": True}
 
 
 @router.post("/backfill")

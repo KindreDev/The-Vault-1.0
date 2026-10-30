@@ -1,16 +1,23 @@
 import { LocalizedText, useT } from '../../i18n'
-import { createPortal } from 'react-dom'
-import { useRef, useState } from 'react'
+import ModalLayer from '../ModalLayer'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ExternalLink, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Star, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { cardMasksApi, tcgV2Api } from '../../lib/api'
+import { cardMasksApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
-import { useScrollLock } from '../../hooks/useScrollLock'
 import { formatHofAwardDescription } from './hofProvenance'
+import TCGSelect from './TCGSelect'
 
-const TABS = ['Overview', 'Classification', 'Ownership', 'Engagement', 'Relationships', 'Tags', 'Editor', 'Audit']
+const BASIC_TABS = ['Overview', 'Copies', 'Sets', 'Tags']
+// Classification overrides, the card editor and the mint audit are tools, not card details.
+const ADVANCED_TABS = ['Overview', 'Copies', 'Sets', 'Tags', 'Classification', 'Editor', 'Rarity']
+const RARITY_NAMES = { C: 'Common', R: 'Rare', SR: 'Super Rare', UR: 'Ultra Rare', SPR: 'Signature Rare' }
+const COPY_LOCATIONS = {
+  unorganized_pile: 'In the room pile', carried: 'Carried in the room', binder_slot: 'In a binder',
+  cabinet_slot: 'In a display cabinet', display_stand: 'On a display stand', traded_away: 'Traded away',
+}
 const CARD_TYPE_LABELS = { image: 'Scene', scene: 'Scene', gallery: 'Gallery', creator: 'Creator', character: 'Character', cosplay: 'Cosplay', collab: 'Collab', bond: 'Bond', hof: 'Hall of Fame' }
 
 function cardTypeLabel(value) {
@@ -18,11 +25,19 @@ function cardTypeLabel(value) {
 }
 
 function ArchivedFace({ card }) {
-  return <div className="tcgws-archived-face tcgws-archived-face--large"><span>{card.print_rarity || card.rarity_class}</span><strong><LocalizedText text={"Archived printing"} /></strong><small><LocalizedText text={"This preserved record has no complete frozen face recipe."} /></small></div>
+  return <div className="tcgws-archived-face tcgws-archived-face--large"><span>{card.print_rarity || card.rarity_class}</span><strong><LocalizedText text={"Archived printing"} /></strong><small><LocalizedText text={"This card's artwork is not available."} /></small></div>
 }
 
 function Field({ label, value }) {
   return <div className="tcgws-field"><span>{label}</span><strong>{value ?? 'Unknown'}</strong></div>
+}
+
+// Where each value came from: your override or the AI.
+function sourceLabel(source) {
+  if (source === 'manual') return 'Set by you'
+  if (source === 'omitted') return 'Not shown'
+  if (source === 'unknown') return "AI wasn't sure"
+  return 'AI'
 }
 
 function ClassificationEditor({ detail, values, advanced }) {
@@ -32,30 +47,32 @@ function ClassificationEditor({ detail, values, advanced }) {
   const [intensity, setIntensity] = useState(detail.classification.manual.intensity || 'AI')
   const mutation = useMutation({
     mutationFn: () => tcgV2Api.classifyCard(detail.card.id, { exposure, intensity }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] }); toast.success(t("Classification saved")) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] })
+      qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] })
+      toast.success(t("Classification saved"))
+    },
     onError: error => toast.error(error.response?.data?.detail || t("Could not save classification")),
   })
   const exposureOmitted = detail.classification.sources.exposure === 'omitted'
   return (
     <div className="tcgws-classification">
       <div className="tcgws-axis">
-        <header><div><span><LocalizedText text={"Exposure"} /></span><strong>{detail.classification.exposure}</strong></div><i>{detail.classification.source}</i></header>
+        <header><div><span><LocalizedText text={"Exposure"} /></span><strong>{detail.classification.exposure}</strong></div><i>{t(sourceLabel(detail.classification.sources?.exposure))}</i></header>
         <p><LocalizedText text={"How much of the body is exposed in the printed artwork. This does not determine sexual intensity."} /></p>
         {exposureOmitted && <p className="tcgws-identity-omission"><LocalizedText text={"Creator and Character cards intentionally omit Exposure on the card face. Sexual Intensity remains independently classified."} /></p>}
-        <select value={exposure} onChange={e => setExposure(e.target.value)} disabled={!advanced || exposureOmitted}>
-          <option value="AI"><LocalizedText text={"Use resolved AI result"} /></option>{values.exposure.map(value => <option key={value}>{value}</option>)}
-        </select>
+        <TCGSelect label={t('Exposure')} hideLabel value={exposure} onChange={setExposure} disabled={!advanced || exposureOmitted}
+                   options={[{ value: 'AI', label: t('Use resolved AI result') }, ...values.exposure.map(value => ({ value, label: value }))]} />
         <small><LocalizedText text={"AI confidence:"} after={" "} />{detail.classification.ai.exposure_confidence == null ? 'Unknown' : `${Math.round(detail.classification.ai.exposure_confidence * 100)}%`}</small>
       </div>
       <div className="tcgws-axis">
-        <header><div><span><LocalizedText text={"Sexual intensity"} /></span><strong>{detail.classification.intensity}</strong></div><i>{detail.classification.source}</i></header>
+        <header><div><span><LocalizedText text={"Sexual intensity"} /></span><strong>{detail.classification.intensity}</strong></div><i>{t(sourceLabel(detail.classification.sources?.intensity))}</i></header>
         <p><LocalizedText text={"Whether the artwork is safe, sexually suggestive, or depicts explicit sexual content."} /></p>
-        <select value={intensity} onChange={e => setIntensity(e.target.value)} disabled={!advanced}>
-          <option value="AI"><LocalizedText text={"Use resolved AI result"} /></option>{values.intensity.map(value => <option key={value}>{value}</option>)}
-        </select>
+        <TCGSelect label={t('Sexual intensity')} hideLabel value={intensity} onChange={setIntensity} disabled={!advanced}
+                   options={[{ value: 'AI', label: t('Use resolved AI result') }, ...values.intensity.map(value => ({ value, label: value }))]} />
         <small><LocalizedText text={"AI confidence:"} after={" "} />{detail.classification.ai.intensity_confidence == null ? 'Unknown' : `${Math.round(detail.classification.ai.intensity_confidence * 100)}%`}</small>
       </div>
-      {advanced && <button className="tcgws-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}><LocalizedText text={"Save manual override"} /></button>}
+      {advanced && <button className="tcgws-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}><LocalizedText text={"Save"} /></button>}
       {!advanced && <p className="tcgws-note"><LocalizedText text={"Enable Advanced Mode to override classifications. Manual values always take precedence over AI."} /></p>}
       {detail.classification.gallery_distribution?.total > 0 && <div className="tcgws-distribution">
         <h4><LocalizedText text={"Gallery-wide distribution"} /></h4>
@@ -70,36 +87,54 @@ function ClassificationEditor({ detail, values, advanced }) {
 function Overview({ detail }) {
   const t = useT()
   const hofAward = formatHofAwardDescription(detail.hof?.provenance, t)
-  return <div className="tcgws-fields">
-    {hofAward && <div className="tcgws-field tcgws-hof-provenance" style={{ gridColumn: '1 / -1' }}><span>{t('Hall of Fame award')}</span><strong>{hofAward}</strong>{detail.hof.provenance.gallery_name && detail.hof.provenance.recipient_type !== 'gallery' && <span>{t('Winning gallery: {name}', { name: detail.hof.provenance.gallery_name })}</span>}</div>}
-    <Field label={t("Medium")} value={detail.medium ? `${detail.medium.charAt(0).toUpperCase()}${detail.medium.slice(1)}` : 'Unknown'} /><Field label={t("User rating")} value={detail.user_rating ? `${detail.user_rating}/10` : 'Unrated'} />
-    <Field label={t("Quantity owned")} value={detail.quantity_owned} /><Field label={t("Published")} value={detail.dates.published?.slice(0, 10)} />
-    <Field label={t("Acquired")} value={detail.dates.acquired?.slice(0, 10)} /><Field label={t("Card published")} value={detail.dates.card_published?.slice(0, 10)} />
-    <Field label={t("Exposure")} value={detail.classification.exposure} /><Field label={t("Sexual intensity")} value={detail.classification.intensity} />
-    {detail.source_links.length > 0 && <div className="tcgws-source-links">{detail.source_links.map(link => <a href={link.url} target="_blank" rel="noreferrer" key={link.url}>{link.label}<ExternalLink size={15} /></a>)}</div>}
+  const engagement = detail.engagement || {}
+  const minutes = Math.round(Number(engagement.view_seconds || 0) / 60)
+  return <div className="tcgws-overview">
+    {hofAward && <div className="tcgws-field tcgws-hof-provenance"><span>{t('Hall of Fame award')}</span><strong>{hofAward}</strong>{detail.hof.provenance.gallery_name && detail.hof.provenance.recipient_type !== 'gallery' && <span>{t('Winning gallery: {name}', { name: detail.hof.provenance.gallery_name })}</span>}</div>}
+    <section>
+      <h4>{t('Your history with it')}</h4>
+      <div className="tcgws-stat-row">
+        <div><strong>{Number(engagement.views || 0).toLocaleString()}</strong><span>{t('Views')}</span></div>
+        <div><strong>{minutes.toLocaleString()}</strong><span>{t('Minutes watched')}</span></div>
+        <div><strong>{Number(engagement.cum_count || 0).toLocaleString()}</strong><span>{t('Cums')}</span></div>
+        <div><strong>{Number(engagement.edge_count || 0).toLocaleString()}</strong><span>{t('Edges')}</span></div>
+        <div><strong>{detail.user_rating ? `${detail.user_rating}/10` : '—'}</strong><span>{t('Your rating')}</span></div>
+      </div>
+    </section>
+    <section>
+      <h4>{t('About this card')}</h4>
+      <div className="tcgws-fields">
+        <Field label={t('Copies owned')} value={detail.quantity_owned} />
+        <Field label={t('First acquired')} value={detail.dates.acquired?.slice(0, 10) || t('Not owned yet')} />
+        <Field label={t('Photo date')} value={detail.dates.published?.slice(0, 10) || t('Unknown')} />
+        <Field label={t('Card created')} value={detail.dates.card_published?.slice(0, 10) || t('Unknown')} />
+        <Field label={t('Exposure')} value={detail.classification.exposure} />
+        <Field label={t('Sexual intensity')} value={detail.classification.intensity} />
+      </div>
+    </section>
+    {detail.source_links.length > 0 && <div className="tcgws-source-links">{detail.source_links.map(link => <a href={link.url} target="_blank" rel="noreferrer" key={link.url}>{t(link.label)}<ExternalLink size={15} /></a>)}</div>}
   </div>
 }
 
 function Ownership({ detail }) {
   const t = useT()
-  const qc = useQueryClient()
-  const dismantle = useMutation({
-    mutationFn: () => tcgV2Api.dismantleDuplicate(detail.card.id),
-    onSuccess: response => {
-      qc.invalidateQueries({ queryKey: ['tcg-v2-card', detail.card.id] })
-      qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] })
-      qc.invalidateQueries({ queryKey: ['tcg-v2-summary'] })
-      qc.invalidateQueries({ queryKey: ['tcg-v2-workshop'] })
-      toast.success(t('Duplicate dismantled · {shards} Shards', { shards: response.data.shards_earned }))
-    },
-    onError: error => toast.error(error.response?.data?.detail || t("Could not dismantle duplicate")),
+  // Each physical copy keeps its own grade and place (binder, stand, pile).
+  const { data: copies = [] } = useQuery({
+    queryKey: ['tcg-room-copies', 'card', detail.card.id],
+    queryFn: () => tcgRoomApi.copies({ card_id: detail.card.id }).then(r => r.data),
   })
-  return <div className="tcgws-timeline"><header><h4>{detail.quantity_owned}<LocalizedText text={"copies owned"} before={" "} /></h4>{detail.quantity_owned > 1 && <button className="tcgws-secondary" disabled={dismantle.isPending} onClick={() => window.confirm(t("Dismantle one duplicate copy into Shards? The last copy is always protected.")) && dismantle.mutate()}><Trash2 size={16} /><LocalizedText text={"Dismantle one duplicate"} before={" "} /></button>}</header>{detail.acquisitions.map(item => <article key={item.id}><i /><div><strong>{t(item.source_type.replaceAll('_', ' '))}</strong><span>{item.acquired_at?.slice(0, 10) || t('Acquisition date unknown')} · {Math.abs(item.quantity)} {t(Math.abs(item.quantity) === 1 ? 'copy' : 'copies')}{item.quantity < 0 ? ` ${t('removed')}` : ''}</span><p>{item.notes}</p></div></article>)}</div>
-}
-
-function Engagement({ detail }) {
-  const t = useT()
-  return <div className="tcgws-fields"><Field label={t("Views")} value={detail.engagement.views.toLocaleString()} /><Field label={t("Viewing time")} value={t('{count} min', { count: Math.round(detail.engagement.view_seconds / 60).toLocaleString() })} /><Field label={t("Cum count")} value={detail.engagement.cum_count.toLocaleString()} /><Field label={t("Edges")} value={detail.engagement.edge_count.toLocaleString()} /><Field label={t("Favorite")} value={t(detail.engagement.favorite ? 'Yes' : 'No')} /></div>
+  const ownedCopies = copies.filter(copy => copy.location_kind !== 'traded_away')
+  return <div className="tcgws-timeline">
+    <header><h4>{detail.quantity_owned}<LocalizedText text={"copies owned"} before={" "} /></h4></header>
+    {ownedCopies.length > 0 && <div className="tcgws-copy-list">
+      {ownedCopies.map(copy => <div key={copy.id} className="tcgws-copy">
+        <strong>{t('Copy #{number}', { number: copy.copy_ordinal })}</strong>
+        <span>{t(COPY_LOCATIONS[copy.location_kind] || copy.location_kind)}</span>
+        <b className={copy.grade ? 'is-graded' : ''}>{copy.grade ? t('Grade {grade}', { grade: copy.grade }) : t('Ungraded')}</b>
+      </div>)}
+    </div>}
+    {detail.acquisitions.map(item => <article key={item.id}><i /><div><strong>{t(item.source_type.replaceAll('_', ' '))}</strong><span>{item.acquired_at?.slice(0, 10) || t('Acquisition date unknown')} · {Math.abs(item.quantity)} {t(Math.abs(item.quantity) === 1 ? 'copy' : 'copies')}{item.quantity < 0 ? ` ${t('removed')}` : ''}</span><p>{item.notes}</p></div></article>)}
+  </div>
 }
 
 function Relationships({ detail }) {
@@ -117,20 +152,37 @@ function Tags({ detail }) {
   return <div className="tcgws-tags">{detail.tags.map(tag => <span data-source={tag.source} key={`${tag.id}-${tag.source}`}>{tag.name}<small>{tag.source}{tag.confidence != null ? ` · ${Math.round(tag.confidence * 100)}%` : ''}</small></span>)}</div>
 }
 
-function Audit({ detail, advanced }) {
+function RarityExplainer({ detail }) {
   const t = useT()
-  if (!advanced) return <p className="tcgws-note"><LocalizedText text={"Mint-score and generation evidence is available in Advanced Mode."} /></p>
-  const personal = detail.mint_audit.personal_value
-  return <div className="tcgws-audit">
-    <Field label={t("Published rarity")} value={detail.mint_audit.published_rarity} />
-    <Field label={t("Personal-value score")} value={personal?.score ?? 'Not recorded'} />
-    <Field label={t("Rarity floor")} value={personal?.rarity_floor || 'None'} />
-    <Field label={t("Catalog code")} value={detail.mint_audit.catalog_code} />
-    <Field label={t("Frozen visual recipe")} value={detail.mint_audit.visual_recipe_frozen ? 'Yes' : 'No'} />
-    <p>{detail.mint_audit.explanation}</p>
-    {personal?.floor_reasons?.length > 0 && <section><h4><LocalizedText text={"Floor reasons"} /></h4>{personal.floor_reasons.map(reason => <p key={reason}>{reason}</p>)}</section>}
-    {personal?.factors?.length > 0 && <section><h4><LocalizedText text={"Personal-value evidence"} /></h4>{personal.factors.map(factor => <div className="tcgws-field" key={factor.key}><span>{factor.label}</span><strong>+{factor.points}</strong><p>{factor.detail}</p></div>)}</section>}
-    <details><summary><LocalizedText text={"Classification evidence"} /></summary><pre>{JSON.stringify(detail.classification.evidence, null, 2)}</pre></details>
+  const audit = detail.mint_audit || {}
+  const personal = audit.personal_value
+  const published = audit.published_rarity
+  const evidence = [...(detail.classification.evidence?.tags || [])].sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1))
+  return <div className="tcgws-rarity-explainer">
+    <section>
+      <h4>{t('Why this rarity')}</h4>
+      <p className="tcgws-rarity-explainer__lead">
+        {t('Published as {rarity}.', { rarity: t(RARITY_NAMES[published] || published || 'Unknown') })}{' '}
+        {personal?.base_rarity && personal.base_rarity !== published
+          ? t('Its random roll was {base}; how much you enjoyed it raised it.', { base: t(RARITY_NAMES[personal.base_rarity] || personal.base_rarity) })
+          : personal?.rarity_floor
+            ? t('Your engagement guaranteed at least {floor}.', { floor: t(RARITY_NAMES[personal.rarity_floor] || personal.rarity_floor) })
+            : t('This is its random roll; engagement did not change it.')}
+      </p>
+      {personal?.floor_reasons?.length > 0 && <ul>{personal.floor_reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      {!personal && <p className="tcgws-note">{audit.explanation}</p>}
+    </section>
+    {personal?.factors?.length > 0 && <section>
+      <h4>{t('What counted')} <small>{t('score {score}', { score: personal.score })}</small></h4>
+      <div className="tcgws-factor-list">{personal.factors.map(factor => <div key={factor.key}>
+        <strong>{factor.label}</strong><b>+{factor.points}</b><p>{factor.detail}</p>
+        {Array.isArray(factor.value) && factor.value.length > 0 && <div className="tcgws-chip-row">{factor.value.map(value => <span key={String(value)}>{String(value)}</span>)}</div>}
+      </div>)}</div>
+    </section>}
+    {evidence.length > 0 && <section>
+      <h4>{t('Tags used to classify it')}</h4>
+      <div className="tcgws-chip-row">{evidence.map(tag => <span key={`${tag.id}-${tag.source}`} data-source={tag.source}>{tag.name}{tag.confidence != null && <small>{Math.round(tag.confidence * 100)}%</small>}</span>)}</div>
+    </section>}
   </div>
 }
 
@@ -252,7 +304,7 @@ function PresentationEditor({ detail }) {
       <TCGV2CardFace card={editorPreviewCard} width="100%" showEffects videoPresentation="full" />
       {hasSignature && <button style={{ left: `${values.signature_x / 10.24}%`, top: `${values.signature_y / 15.36}%` }} onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(true) }}><LocalizedText text={"Drag signature"} /></button>}
     </div>
-    <section>{hasSignature && <><h3><LocalizedText text={"Signature placement"} /></h3><p><LocalizedText text={"Drag directly over the card or use precise controls. The override is versioned and does not alter the frozen card recipe."} /></p>
+    <section>{hasSignature && <><h3><LocalizedText text={"Signature placement"} /></h3><p><LocalizedText text={"Drag on the card or use the sliders. This only changes how the card is shown."} /></p>
       <label><span><LocalizedText text={"Horizontal"} /></span><input type="range" min="0" max="1024" value={values.signature_x} onChange={e => setValues({ ...values, signature_x: Number(e.target.value) })} /></label>
       <label><span><LocalizedText text={"Vertical"} /></span><input type="range" min="0" max="1536" value={values.signature_y} onChange={e => setValues({ ...values, signature_y: Number(e.target.value) })} /></label>
       <label><span><LocalizedText text={"Scale"} /></span><input type="range" min="0.5" max="2" step="0.05" value={values.signature_scale} onChange={e => setValues({ ...values, signature_scale: Number(e.target.value) })} /></label>
@@ -284,10 +336,31 @@ function PresentationEditor({ detail }) {
   </div>
 }
 
-export default function CardInspector({ card, onClose, advanced, classificationValues, disableLayoutAnimation = false }) {
+export default function CardInspector({ card, onClose, advanced, classificationValues, disableLayoutAnimation = false, onPrev = null, onNext = null }) {
   const t = useT()
   const [tab, setTab] = useState('Overview')
-  useScrollLock()
+  const tabs = advanced ? ADVANCED_TABS : BASIC_TABS
+  const qc = useQueryClient()
+  const favorite = useMutation({
+    mutationFn: value => tcgV2Api.setFavorite(card.id, value).then(r => r.data),
+    onSuccess: data => {
+      qc.setQueryData(['tcg-v2-card', card.id], old => old ? { ...old, favorite: data.favorite } : old)
+      qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] })
+    },
+    onError: error => toast.error(error.response?.data?.detail || t('Could not update favorite')),
+  })
+  const activeTab = tabs.includes(tab) ? tab : 'Overview'
+  // Arrow keys step through the cards of the grid the window was opened from.
+  useEffect(() => {
+    const onKey = event => {
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [role="listbox"], [role="slider"]')) return
+      if (event.key === 'ArrowLeft' && onPrev) { event.preventDefault(); onPrev() }
+      if (event.key === 'ArrowRight' && onNext) { event.preventDefault(); onNext() }
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onPrev, onNext, onClose])
   const { data: detail, isLoading } = useQuery({ queryKey: ['tcg-v2-card', card.id], queryFn: () => tcgV2Api.cardDetail(card.id).then(r => r.data) })
   // The regular collection route lives beneath Layout's transformed Framer
   // Motion wrapper. Portal that inspector to body so fixed inset:0 is measured
@@ -296,27 +369,42 @@ export default function CardInspector({ card, onClose, advanced, classificationV
   const inspector = <motion.div className="tcgws-inspector-backdrop" style={!disableLayoutAnimation ? { '--tcg-line': 'rgba(255,255,255,.1)', '--tcg-muted': 'rgba(255,255,255,.52)' } : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onMouseDown={event => event.target === event.currentTarget && onClose()}>
     <motion.section className="tcgws-inspector" initial={{ opacity: 0, scale: 0.96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 12 }} transition={{ type: 'spring', stiffness: 260, damping: 25 }}>
       <button className="tcgws-close" onClick={onClose} title={t("Close")}><X size={22} /></button>
+      {onPrev && <button type="button" className="tcgws-inspector-step is-prev" onClick={onPrev} title={t('Previous card')} aria-label={t('Previous card')}><ChevronLeft size={20} /></button>}
+      {onNext && <button type="button" className="tcgws-inspector-step is-next" onClick={onNext} title={t('Next card')} aria-label={t('Next card')}><ChevronRight size={20} /></button>}
       <motion.div layoutId={disableLayoutAnimation ? undefined : `tcg-card-${card.id}`} className="tcgws-inspector-card"><TCGV2CardFace card={detail ? { ...detail.card, presentation_override: detail.presentation_override } : card} width="min(42vw, 520px)" showEffects videoPresentation="full" fallback={<ArchivedFace card={card} />} /></motion.div>
       <div className="tcgws-inspector-info">
-        <header><div><span>{card.print_rarity || card.rarity_class} · {cardTypeLabel(card.card_type)}</span><h2>{card.display_name || card.creator_name || card.gallery_name}</h2><p>{card.catalog_code || 'Permanent printing'}</p></div>{detail?.classification.badge && <b>{detail.classification.badge}</b>}</header>
-        <nav>{TABS.map(item => <button key={item} onClick={() => setTab(item)} className={tab === item ? 'active' : ''}>{item}</button>)}</nav>
+        <header>
+          <div className="tcgws-inspector-chips">
+            <b data-rarity={card.print_rarity || card.rarity_class}>{t(RARITY_NAMES[card.print_rarity || card.rarity_class] || card.print_rarity || card.rarity_class)}</b>
+            <span>{t(cardTypeLabel(card.card_type))}</span>
+            {detail?.classification.badge && <span>{detail.classification.badge}</span>}
+          </div>
+          <h2>{card.card_code || card.display_name || card.creator_name || card.gallery_name}</h2>
+          <p>{[card.card_code ? (card.display_name || card.creator_name || card.gallery_name) : null, card.catalog_code].filter(Boolean).join(' · ')}</p>
+          <button type="button" className={`tcgws-favorite-toggle${detail?.favorite ? ' is-on' : ''}`} disabled={!detail || favorite.isPending}
+                  aria-pressed={Boolean(detail?.favorite)} onClick={() => favorite.mutate(!detail?.favorite)}>
+            <Star size={17} fill={detail?.favorite ? 'currentColor' : 'none'} />{t(detail?.favorite ? 'Favorite' : 'Add to favorites')}
+          </button>
+        </header>
+        <nav>{tabs.map(item => <button key={item} onClick={() => setTab(item)} className={activeTab === item ? 'active' : ''}>{t(item)}</button>)}</nav>
         <div className="tcgws-inspector-panel">
           {isLoading && <p><LocalizedText text={"Loading complete card record..."} /></p>}
           <AnimatePresence mode="wait" initial={false}>
-            {detail && <motion.div key={tab} className="tcgws-inspector-panel-content" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
-              {tab === 'Overview' && <Overview detail={detail} />}
-              {tab === 'Classification' && <ClassificationEditor detail={detail} values={classificationValues} advanced={advanced} />}
-              {tab === 'Ownership' && <Ownership detail={detail} />}
-              {tab === 'Engagement' && <Engagement detail={detail} />}
-              {tab === 'Relationships' && <Relationships detail={detail} />}
-              {tab === 'Tags' && <Tags detail={detail} />}
-              {tab === 'Editor' && (advanced ? <PresentationEditor detail={detail} /> : <p className="tcgws-note"><LocalizedText text={"Editor settings are available in Advanced Mode."} /></p>)}
-              {tab === 'Audit' && <><button className="tcgws-back tcgws-audit-back" onClick={() => setTab('Overview')}><ArrowLeft size={18} /><LocalizedText text={"Back to card details"} before={" "} /></button><Audit detail={detail} advanced={advanced} /></>}
+            {detail && <motion.div key={activeTab} className="tcgws-inspector-panel-content" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
+              {activeTab === 'Overview' && <Overview detail={detail} />}
+              {activeTab === 'Classification' && <ClassificationEditor detail={detail} values={classificationValues} advanced={advanced} />}
+              {activeTab === 'Copies' && <Ownership detail={detail} />}
+              {activeTab === 'Sets' && <Relationships detail={detail} />}
+              {activeTab === 'Tags' && <Tags detail={detail} />}
+              {activeTab === 'Editor' && (advanced ? <PresentationEditor detail={detail} /> : <p className="tcgws-note"><LocalizedText text={"Editor settings are available in Advanced Mode."} /></p>)}
+              {activeTab === 'Rarity' && <RarityExplainer detail={detail} />}
             </motion.div>}
           </AnimatePresence>
         </div>
       </div>
     </motion.section>
   </motion.div>
-  return disableLayoutAnimation ? inspector : createPortal(inspector, document.body)
+  // The room computer keeps its local mount; everywhere else the window
+  // renders through ModalLayer (portal to <body> plus scroll lock).
+  return disableLayoutAnimation ? inspector : <ModalLayer>{inspector}</ModalLayer>
 }

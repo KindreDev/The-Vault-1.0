@@ -1997,6 +1997,20 @@ def format_hof_period(period_type, period_key) -> Optional[str]:
     return period_key
 
 
+PRINTED_CODE_PREFIXES = {
+    "image": "SCN", "scene": "SCN", "gallery": "GAL", "creator": "CRT", "character": "CHR",
+    "variant": "CSP", "cosplay": "CSP", "collab": "CLB", "hof": "HOF", "bond": "BND",
+}
+
+
+def printed_card_code(card, creator_type=None) -> str:
+    """The code printed on the card face, e.g. SCN-000123 (CHR- for character cards)."""
+    card_type = card.card_type.value if hasattr(card.card_type, "value") else str(card.card_type)
+    if card_type == "creator" and str(getattr(creator_type, "value", creator_type) or "") == "character":
+        card_type = "character"
+    return f"{PRINTED_CODE_PREFIXES.get(card_type, 'CARD')}-{int(card.id):06d}"
+
+
 def compose_display_name(card_type, creator_name=None, gallery_name=None,
                          character_name=None, collab_info=None) -> str:
     """The card's printed name — ONE definition, for every renderer.
@@ -2619,6 +2633,7 @@ def _card_to_dict(db: Session, card: Card, *, include_scene_mask_editor: bool = 
         # CALLED. Any client (web, Unreal) prints these rather than re-deriving
         # them from the components above.
         "display_name": _display_name,
+        "card_code": printed_card_code(card, creator_type if card.source_creator_id else None),
         "display_period": _display_period,
         "display_title": (f"{_display_name}  ·  {_display_period}"
                           if _display_period and card_type_wants_period else _display_name),

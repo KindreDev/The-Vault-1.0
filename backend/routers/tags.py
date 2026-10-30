@@ -76,9 +76,28 @@ def tag_stats(db: Session = Depends(get_db)):
     )
 
 
+_TRENDING_CACHE: dict = {}
+
+
 @router.get("/trending")
 def trending_tags(limit: int = 8, days: int = 30, db: Session = Depends(get_db)):
-    """Tags with the most associations on recently-added images."""
+    """Tags with the most associations on recently-added images.
+
+    Cached per (limit, days) until files are added or the hour changes; the
+    "last N days" window moves slowly, and the join touches millions of rows.
+    """
+    import time as _time
+    newest = db.execute(text("SELECT max(id), count(*) FROM images")).one()
+    key = (limit, days, tuple(newest), int(_time.time() // 3600))
+    cached = _TRENDING_CACHE.get((limit, days))
+    if cached and cached[0] == key:
+        return cached[1]
+    result = _trending_tags(db, limit, days)
+    _TRENDING_CACHE[(limit, days)] = (key, result)
+    return result
+
+
+def _trending_tags(db: Session, limit: int, days: int) -> list:
     rows = db.execute(text("""
         SELECT t.id, t.name, t.category, t.use_count,
                COUNT(it.image_id) AS recent_count

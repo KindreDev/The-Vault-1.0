@@ -29,15 +29,23 @@ from services.scene_eligibility import scene_source_eligible, renderable_scene_c
 FOUNDATION_CODE = "FND-001"
 FOUNDATION_LARGE_LIBRARY_TARGET = 60_000
 FOUNDATION_SEED = "the-vault-foundation-v1"
+# Variety-first mix: special card types fill about 57% of the catalogue and
+# Scenes take the remainder (about 43%).
 FOUNDATION_FAMILY_TARGETS = {
     "gallery": 9_000,
     "creator": 6_000,
     "character": 6_000,
-    "cosplay": 6_000,
+    "cosplay": 10_000,
 }
+# Each collab gallery prints up to this many of its pictures (fewer when the
+# gallery is smaller), spread evenly through the gallery.
+FOUNDATION_COLLAB_PICTURES_PER_GALLERY = 15
+# Each creator or character gets one main card (their live profile picture)
+# plus up to this many portrait cards, chosen by how much you've enjoyed them.
+FOUNDATION_PORTRAITS_PER_PERSON = 14
 FOUNDATION_REAL_CREATOR_TYPES = ("cosplayer", "ethot", "artist", "actress")
 PRINT_RARITIES = ("C", "R", "SR", "UR", "SPR")
-FOUNDATION_ALGORITHM_VERSION = "foundation-v3-multi-family"
+FOUNDATION_ALGORITHM_VERSION = "foundation-v5-loved-portraits"
 FOUNDATION_SPR_UNLOCK_CUM = 6
 
 # The approved September release is the calibration point for the permanent
@@ -134,7 +142,7 @@ def _portrait_groups(db: Session, people: list[Creator], *, character: bool) -> 
             legacy_links.setdefault(int(gallery_id), set()).add(int(character_id))
     for image in rows:
         if (int(image.width or 0) <= 0 or int(image.height or 0) <= 0
-                or int(image.height) <= int(image.width) or not os.path.isfile(image.file_path)):
+                or not os.path.isfile(image.file_path)):
             continue
         owners = set(direct_links.get(int(image.id), ()))
         owners.update(group_links.get(int(image.gallery_id), ()))
@@ -150,6 +158,63 @@ def _valid_still_images(query) -> list[Image]:
         not image.is_video and image.file_path and os.path.isfile(image.file_path)
         and int(image.width or 0) > 0 and int(image.height or 0) > 0
     )]
+
+
+def _photo_value(image: Image) -> float:
+    """How much a photo has been enjoyed: watch time, cums, edges, rating, views, favorite."""
+    return (
+        (image.view_seconds or 0) / 60.0
+        + (image.cum_count or 0) * 30
+        + (image.edge_count or 0) * 10
+        + (image.rating or 0) * 8
+        + (image.view_count or 0) * 2
+        + (40 if image.is_favorite else 0)
+    )
+
+
+def _pick_person_photos(images: list[Image], person_id: int, family: str, limit: int) -> list[Image]:
+    """Best-loved photos first, then random photos of the person to fill up to `limit`.
+
+    Random filler prefers portrait-shaped photos; landscape ones are used only
+    when a person has too few portraits. Deterministic per person.
+    """
+    loved = sorted((image for image in images if _photo_value(image) > 0),
+                   key=lambda image: (-_photo_value(image), int(image.id)))[:limit]
+    chosen = {int(image.id) for image in loved}
+    rest = [image for image in images if int(image.id) not in chosen]
+    portraits = [image for image in rest if int(image.height or 0) > int(image.width or 0)]
+    landscapes = [image for image in rest if int(image.height or 0) <= int(image.width or 0)]
+    for index, pool in enumerate((portraits, landscapes)):
+        pool.sort(key=lambda image: int(image.id))
+        random.Random(_hash_int(family, person_id, "fill", index)).shuffle(pool)
+    return (loved + portraits + landscapes)[:limit]
+
+
+def _round_robin_in_order(groups: dict[int, list], target: int) -> list:
+    """Round-robin across groups, keeping each group's own order (best first)."""
+    selected = []
+    offset = 0
+    ordered_ids = sorted(groups)
+    while len(selected) < target:
+        added = False
+        for identity in ordered_ids:
+            if offset < len(groups[identity]):
+                selected.append(groups[identity][offset])
+                added = True
+                if len(selected) >= target:
+                    break
+        if not added:
+            break
+        offset += 1
+    return selected
+
+
+def _evenly_spaced(items: list, limit: int) -> list:
+    """Pick up to `limit` items spread evenly through an ordered list."""
+    if len(items) <= limit:
+        return list(items)
+    step = len(items) / limit
+    return [items[int(index * step)] for index in range(limit)]
 
 
 def _collab_sources(db: Session) -> list[dict]:
@@ -186,10 +251,11 @@ def _collab_sources(db: Session) -> list[dict]:
         creator_ids = sorted(gallery_people[gallery_id])
         images = images_by_gallery.get(gallery_id, [])
         if len(creator_ids) >= 2 and images:
-            output.append({
-                "family": "collab", "subtype": "gallery", "creator_ids": creator_ids,
-                "gallery": by_gallery[gallery_id], "image": images[0],
-            })
+            for image in _evenly_spaced(images, FOUNDATION_COLLAB_PICTURES_PER_GALLERY):
+                output.append({
+                    "family": "collab", "subtype": "gallery", "creator_ids": creator_ids,
+                    "gallery": by_gallery[gallery_id], "image": image,
+                })
 
     # Image-level people must be linked directly to the still itself and also
     # belong to the supporting gallery's explicit creator set.
@@ -823,11 +889,16 @@ def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJo
             "family": family, "person": person, "image": None,
             "identity_kind": "canonical",
         } for person in sorted(people, key=lambda row: int(row.id))]
+        # Best-loved photos first, capped per person.
         portrait_groups = {
-            int(person.id): [(int(person.id), image) for image in grouped.get(int(person.id), [])]
+            int(person.id): [
+                (int(person.id), image) for image in _pick_person_photos(
+                    grouped.get(int(person.id), []), int(person.id), family, FOUNDATION_PORTRAITS_PER_PERSON,
+                )
+            ]
             for person in people
         }
-        variants = _round_robin_sources(portrait_groups, max(0, target_count - len(cards)), family)
+        variants = _round_robin_in_order(portrait_groups, max(0, target_count - len(cards)))
         people_by_id = {int(person.id): person for person in people}
         cards.extend({
             "family": family, "person": people_by_id[int(person_id)],
@@ -874,7 +945,14 @@ def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJo
     for image in valid_pair_images:
         for pair in pair_by_gallery.get(int(image.gallery_id), []):
             pair_groups.setdefault(pair_keys.index(pair), []).append((pair[0], pair[1], image))
-    selected_cosplay = _round_robin_sources(pair_groups, FOUNDATION_FAMILY_TARGETS["cosplay"], "cosplay")
+    # Creator and character slots the per-person cap leaves unused go to
+    # cosplay first, keeping the catalogue variety-first rather than Scene-heavy.
+    identity_shortfall = (
+        max(0, FOUNDATION_FAMILY_TARGETS["creator"] - len(creator_cards))
+        + max(0, FOUNDATION_FAMILY_TARGETS["character"] - len(character_cards))
+    )
+    selected_cosplay = _round_robin_sources(
+        pair_groups, FOUNDATION_FAMILY_TARGETS["cosplay"] + identity_shortfall, "cosplay")
 
     collab_sources = _collab_sources(db)
     gallery_target = min(FOUNDATION_FAMILY_TARGETS["gallery"], len(eligible_galleries))
@@ -985,21 +1063,26 @@ def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJo
                    f"cosplay:{creator_id}:{character_id}:image:{image.id}",
                    source_creator_id=creator_id, linked_character_id=character_id,
                    source_image_id=image.id)
+    collab_character_names: dict[int, list[str]] = {}
     for row in collab_sources:
         gallery = row["gallery"]
         image = row["image"]
         creator_ids = row["creator_ids"]
         names = [personal_context.creators[cid].name for cid in creator_ids if cid in personal_context.creators]
-        character_names = [
-            person.name for person in db.query(Creator).join(
-                gallery_creators, gallery_creators.c.creator_id == Creator.id
-            ).filter(gallery_creators.c.gallery_id == gallery.id, Creator.creator_type == "character")
-            .order_by(Creator.id.asc()).all()
-        ]
+        if gallery.id not in collab_character_names:
+            collab_character_names[gallery.id] = [
+                person.name for person in db.query(Creator).join(
+                    gallery_creators, gallery_creators.c.creator_id == Creator.id
+                ).filter(gallery_creators.c.gallery_id == gallery.id, Creator.creator_type == "character")
+                .order_by(Creator.id.asc()).all()
+            ]
+        character_names = collab_character_names[gallery.id]
+        # Several pictures from one collab gallery each get their own card, so
+        # the picture is part of the identity for both subtypes.
         source_identity = (
             f"collab:{','.join(str(value) for value in creator_ids)}:image:{image.id}"
             if row["subtype"] == "image"
-            else f"collab:{','.join(str(value) for value in creator_ids)}:gallery:{gallery.id}"
+            else f"collab:{','.join(str(value) for value in creator_ids)}:gallery:{gallery.id}:image:{image.id}"
         )
         append_row(CardType.collab, "collab", source_identity,
                    source_creator_id=None, source_gallery_id=gallery.id,
@@ -1118,7 +1201,7 @@ def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJo
                 "gallery": max(0, FOUNDATION_FAMILY_TARGETS["gallery"] - len(selected_galleries)),
                 "creator": max(0, FOUNDATION_FAMILY_TARGETS["creator"] - len(selected_creator_cards)),
                 "character": max(0, FOUNDATION_FAMILY_TARGETS["character"] - len(selected_character_cards)),
-                "cosplay": max(0, FOUNDATION_FAMILY_TARGETS["cosplay"] - len(selected_cosplay)),
+                "cosplay": max(0, FOUNDATION_FAMILY_TARGETS["cosplay"] + identity_shortfall - len(selected_cosplay)),
                 "scene_residual": max(0, FOUNDATION_LARGE_LIBRARY_TARGET - non_scene_count - len(selected_scenes)),
             },
         })
@@ -1244,6 +1327,9 @@ def _publish_staged_foundation_snapshot(db: Session, job: TCGFoundationRefreshJo
     # active pointer. Partial draft rows above are never eligible for packs.
     release.status = "published"
     state.active_foundation_release_id = release.id
+    # Sessions don't autoflush: write the switch first, or the two steps below
+    # look up the old Foundation and skip the new one.
+    db.flush()
     rarity_result = rebalance_foundation_base_rarities(db)
     spr_result = reconcile_foundation_sprs(db)
     if old_release and old_release.id != release.id:

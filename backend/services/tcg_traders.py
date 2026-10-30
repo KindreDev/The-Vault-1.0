@@ -11,7 +11,7 @@ import random
 import re
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from models import (
@@ -20,7 +20,7 @@ from models import (
     TCGDisplayItemInstance,
     TCGPhysicalCardCopy, TCGRelease,
     TCGTraderDefinition, TCGTraderInventory, TCGTraderOffer, TCGTraderRequest,
-    TCGTraderReservation, TCGTraderSimulationReport, TCGTraderTransaction,
+    TCGTraderReservation, TCGTraderTransaction,
     TCGTraderTransactionLine, TCGTraderVisit, UserProfile, gallery_creators, gallery_tags,
     image_creators, image_tags, Tag,
 )
@@ -62,6 +62,7 @@ CARD_TYPE_VALUE = {
     "collab": 1.1, "bond": 1.12, "hof": 1.15,
 }
 MANIFEST = Path(__file__).resolve().parents[1] / "data" / "tcg_room" / "traders-v1.json"
+FOCUS_TAG_CATEGORY = "character"
 FOCUS_IGNORED_TAGS = {
     "1girl", "1boy", "solo", "nsfw", "rating:safe", "rating:questionable",
     "rating:explicit", "source", "signature", "unknown",
@@ -196,17 +197,24 @@ def _published_card_rarities(db: Session) -> dict[int, str]:
 
 def _focus_catalog(db: Session) -> tuple[list[str], list[str]]:
     """Collect real topics from card artwork, gallery tags, and linked subjects."""
-    direct_tags = db.query(Tag.name).select_from(Card).join(
-        image_tags, image_tags.c.image_id == Card.source_image_id,
-    ).join(Tag, Tag.id == image_tags.c.tag_id).distinct().all()
-    gallery_tags_found = db.query(Tag.name).select_from(Card).join(
-        gallery_tags, gallery_tags.c.gallery_id == Card.source_gallery_id,
-    ).join(Tag, Tag.id == gallery_tags.c.tag_id).distinct().all()
-    gallery_image_tags = db.query(Tag.name).select_from(Card).join(
-        Image, Image.gallery_id == Card.source_gallery_id,
-    ).join(image_tags, image_tags.c.image_id == Image.id).join(
-        Tag, Tag.id == image_tags.c.tag_id,
-    ).distinct().all()
+    # Narrow to distinct images/galleries before touching tags.  Joining every
+    # card to every gallery image multiplies into millions of rows on a large
+    # catalogue; these IN-subqueries return the same names in under a second.
+    # Only character tags make sensible trader interests; general, body,
+    # act and rating tags read badly as "she's looking for <tag>".
+    focus_tag = Tag.category == FOCUS_TAG_CATEGORY
+    card_images = select(Card.source_image_id).where(Card.source_image_id.isnot(None))
+    card_galleries = select(Card.source_gallery_id).where(Card.source_gallery_id.isnot(None))
+    gallery_images = select(Image.id).where(Image.gallery_id.in_(card_galleries))
+    direct_tags = db.query(Tag.name).filter(focus_tag, Tag.id.in_(
+        select(image_tags.c.tag_id).where(image_tags.c.image_id.in_(card_images)),
+    )).all()
+    gallery_tags_found = db.query(Tag.name).filter(focus_tag, Tag.id.in_(
+        select(gallery_tags.c.tag_id).where(gallery_tags.c.gallery_id.in_(card_galleries)),
+    )).all()
+    gallery_image_tags = db.query(Tag.name).filter(focus_tag, Tag.id.in_(
+        select(image_tags.c.tag_id).where(image_tags.c.image_id.in_(gallery_images)),
+    )).all()
     tag_rows = [*direct_tags, *gallery_tags_found, *gallery_image_tags]
     subject_rows = db.query(Creator.name).select_from(Card).join(
         Creator, or_(Card.source_creator_id == Creator.id, Card.linked_character_id == Creator.id),
@@ -317,21 +325,19 @@ def _focus_card_matches(db: Session, terms: list[str]) -> set[int]:
     if not normalized:
         return set()
     matched: set[int] = set()
+    focus_tags = select(Tag.id).where(func.lower(Tag.name).in_(normalized))
+    tagged_images = select(image_tags.c.image_id).where(image_tags.c.tag_id.in_(focus_tags))
     tag_sources = (
-        db.query(Card.id).select_from(Card).join(
-            image_tags, image_tags.c.image_id == Card.source_image_id,
-        ).join(Tag, Tag.id == image_tags.c.tag_id).filter(func.lower(Tag.name).in_(normalized)),
-        db.query(Card.id).select_from(Card).join(
-            gallery_tags, gallery_tags.c.gallery_id == Card.source_gallery_id,
-        ).join(Tag, Tag.id == gallery_tags.c.tag_id).filter(func.lower(Tag.name).in_(normalized)),
-        db.query(Card.id).select_from(Card).join(
-            Image, Image.gallery_id == Card.source_gallery_id,
-        ).join(image_tags, image_tags.c.image_id == Image.id).join(
-            Tag, Tag.id == image_tags.c.tag_id,
-        ).filter(func.lower(Tag.name).in_(normalized)),
+        db.query(Card.id).filter(Card.source_image_id.in_(tagged_images)),
+        db.query(Card.id).filter(Card.source_gallery_id.in_(
+            select(gallery_tags.c.gallery_id).where(gallery_tags.c.tag_id.in_(focus_tags)),
+        )),
+        db.query(Card.id).filter(Card.source_gallery_id.in_(
+            select(Image.gallery_id).where(Image.id.in_(tagged_images)),
+        )),
     )
     for query in tag_sources:
-        matched.update(row[0] for row in query.distinct().all())
+        matched.update(row[0] for row in query.all())
     subjects = db.query(Card.id).select_from(Card).join(
         Creator, or_(Card.source_creator_id == Creator.id, Card.linked_character_id == Creator.id),
     ).filter(func.lower(Creator.name).in_(normalized)).distinct().all()
@@ -710,6 +716,27 @@ def valuation_from_inputs(inputs: dict, trader_traits: dict, *, purpose: str, se
             "engagement": engagement, "noise": noise}, "units": round(units, 3), "seed": seed}
 
 
+def _set_completion(db: Session, set_id: int) -> float:
+    """Owned share of a set's required cards, counted in SQL.
+
+    Sets can hold 100k+ cards, which is far past SQLite's bound-variable
+    limit for an IN list, and one request values many cards from the same
+    set, so the result is cached on the session.
+    """
+    cache = db.info.setdefault("tcg_trader_set_completion", {})
+    if set_id in cache:
+        return cache[set_id]
+    required = db.query(TCGChecklistEntry.card_id).filter_by(set_id=set_id, required_for_complete=True)
+    total = required.distinct().count()
+    owned = 0
+    if total:
+        owned = db.query(func.count(func.distinct(CardInventory.card_id))).filter(
+            CardInventory.card_id.in_(required.scalar_subquery()), CardInventory.quantity > 0,
+        ).scalar() or 0
+    cache[set_id] = owned / total if total else 0.0
+    return cache[set_id]
+
+
 def valuation(db: Session, card: Card, trader: TCGTraderDefinition, *, purpose: str, seed: str,
               focus: dict | None = None, grade: str | None = None) -> dict:
     rarity = card.print_rarity or card.rarity_class or "C"
@@ -724,14 +751,7 @@ def valuation(db: Session, card: Card, trader: TCGTraderDefinition, *, purpose: 
     source = db.get(Image, card.source_image_id) if card.source_image_id else None
     completion_pressure = 0.0
     if checklist and checklist.set_id:
-        set_card_ids = [row[0] for row in db.query(TCGChecklistEntry.card_id).filter_by(
-            set_id=checklist.set_id, required_for_complete=True,
-        ).all()]
-        if set_card_ids:
-            owned_ids = {row[0] for row in db.query(CardInventory.card_id).filter(
-                CardInventory.card_id.in_(set_card_ids), CardInventory.quantity > 0,
-            ).all()}
-            completion_pressure = len(owned_ids) / len(set_card_ids)
+        completion_pressure = _set_completion(db, checklist.set_id)
     provenance = audit.get("components", audit)
     inputs = {
         "card_id": card.id, "rarity": rarity, "mint_score": float(audit.get("score", card.crs or 0) or 0),
@@ -1049,6 +1069,7 @@ def current_visit(db: Session, *, day: date | None = None) -> dict:
                 unit_credits=max(1, round(quote["units"] * 12 * (1.15 + trader.greed * .6))),
                 unit_shards=max(1, round(quote["units"] * 3 * (1.15 + trader.greed * .6))),
             ))
+        _prepare_card_faces(db, frozen)
         _resolve_pending_requests(db, visit, trader, frozen)
         db.commit()
     elif not _load(visit.inventory_frozen_json, []):
@@ -1070,6 +1091,7 @@ def current_visit(db: Session, *, day: date | None = None) -> dict:
                     unit_credits=max(1, round(quote["units"] * 12 * (1.15 + trader.greed * .6))),
                     unit_shards=max(1, round(quote["units"] * 3 * (1.15 + trader.greed * .6))),
                 ))
+            _prepare_card_faces(db, frozen)
             _resolve_pending_requests(db, visit, trader, frozen)
             db.commit()
     trader = db.get(TCGTraderDefinition, visit.trader_id)
@@ -1086,6 +1108,41 @@ def current_visit(db: Session, *, day: date | None = None) -> dict:
                        "visual_manifest": _load(trader.visual_manifest_json, {}), "dialogue_manifest": _load(trader.dialogue_manifest_json, {})}}
 
 
+TRADER_CARD_BATCH_LIMIT = 120
+
+
+def trader_card_faces(db: Session, card_ids: list[int]) -> list[dict]:
+    """Card payloads for the trader screen, fetched together in one request.
+
+    Catalogue cards only freeze their V2 face when first pulled, but the
+    trader shows cards nobody has pulled yet.  Showing a card counts as
+    revealing it, so any missing face is prepared here before it is sent.
+    """
+    from services import cards as card_svc
+
+    wanted = list(dict.fromkeys(int(value) for value in card_ids if int(value) > 0))[:TRADER_CARD_BATCH_LIMIT]
+    if not wanted:
+        return []
+    cards = {card.id: card for card in db.query(Card).filter(Card.id.in_(wanted)).all()}
+    if _prepare_card_faces(db, list(cards.values())):
+        db.commit()
+    return [card_svc._card_to_dict(db, cards[card_id]) for card_id in wanted if card_id in cards]
+
+
+def _prepare_card_faces(db: Session, cards: list[Card] | list[int]) -> bool:
+    """Freeze missing V2 faces; daily stock does this up front so opening is quick."""
+    from services.foundation_catalog import prepare_acquired_visual
+
+    prepared = False
+    for card in cards:
+        if not isinstance(card, Card):
+            card = db.get(Card, card)
+        if card is None or card.visual_recipe or _enum(card.card_type) == "image":
+            continue
+        prepared = prepare_acquired_visual(db, card) or prepared
+    return prepared
+
+
 def trader_inventory(db: Session, visit_id: int) -> list[dict]:
     visit = _active_visit(db, visit_id)
     trader = db.get(TCGTraderDefinition, visit.trader_id)
@@ -1093,6 +1150,8 @@ def trader_inventory(db: Session, visit_id: int) -> list[dict]:
     rows = db.query(TCGTraderInventory).filter_by(visit_id=visit_id).order_by(TCGTraderInventory.id).all()
     result = []
     for row in rows:
+        if row.quantity <= 0 and row.reserved_quantity <= 0:
+            continue  # sold out, or retired from the catalogue
         card = db.get(Card, row.card_id)
         if card is None:
             continue
@@ -1712,7 +1771,17 @@ def offer_dict(row: TCGTraderOffer) -> dict:
 
 
 def list_offers(db: Session, visit_id: int) -> list[dict]:
-    return [offer_dict(row) for row in db.query(TCGTraderOffer).filter_by(visit_id=visit_id).order_by(TCGTraderOffer.id).all()]
+    offers = [offer_dict(row) for row in db.query(TCGTraderOffer).filter_by(visit_id=visit_id).order_by(TCGTraderOffer.id).all()]
+    # The open-deal panel shows the cards on both sides, so resolve the
+    # player's reserved copies to their card ids in one query.
+    copy_ids = {int(copy_id) for offer in offers for copy_id in offer["user_copy_ids"] if str(copy_id).isdigit()}
+    card_by_copy = dict(db.query(TCGPhysicalCardCopy.id, TCGPhysicalCardCopy.card_id).filter(
+        TCGPhysicalCardCopy.id.in_(copy_ids),
+    ).all()) if copy_ids else {}
+    for offer in offers:
+        offer["user_card_ids"] = [card_by_copy[int(copy_id)] for copy_id in offer["user_copy_ids"]
+                                  if str(copy_id).isdigit() and int(copy_id) in card_by_copy]
+    return offers
 
 
 def list_requests(db: Session, visit_id: int) -> list[dict]:
@@ -2053,33 +2122,3 @@ def valuation_audit(db: Session, visit_id: int, card_id: int, purpose: str = "au
     return valuation(db, card, trader, purpose=purpose, seed=visit.visit_seed,
                      focus=_visit_focus(db, visit, trader))
 
-
-def save_simulation_report(db: Session, values: dict) -> dict:
-    version = str(values["version"])
-    row = db.query(TCGTraderSimulationReport).filter_by(version=version).first()
-    if row and row.approved:
-        raise ValueError("An approved simulation report is immutable")
-    if not row:
-        row = TCGTraderSimulationReport(version=version, approved=False)
-        db.add(row)
-    row.weeks_simulated = int(values.get("weeks_simulated", 0))
-    row.seed = str(values.get("seed") or "")
-    row.report_json = _dump(values.get("report") or {})
-    db.commit()
-    return {"id": row.id, "approved": False, "weeks_simulated": row.weeks_simulated}
-
-
-def approve_simulation_report(db: Session, report_id: int) -> dict:
-    row = db.get(TCGTraderSimulationReport, report_id)
-    required = {"supply_by_rarity", "spr_leakage", "refusal_rate", "offers_per_week", "average_cards_surrendered",
-                "credits_created_removed", "shards_created_removed", "duplicate_depletion", "completion_acceleration", "trader_advantage", "exploit_loops"}
-    if not row or row.weeks_simulated < 100000 or not required.issubset(_load(row.report_json, {})):
-        raise ValueError("A complete simulation of at least 100,000 visitor weeks is required")
-    row.approved = True; row.approved_at = datetime.now(); db.commit()
-    return {"id": row.id, "approved": True, "weeks_simulated": row.weeks_simulated}
-
-
-def list_simulation_reports(db: Session) -> list[dict]:
-    return [{"id": row.id, "version": row.version, "weeks_simulated": row.weeks_simulated,
-             "approved": row.approved, "report": _load(row.report_json, {})}
-            for row in db.query(TCGTraderSimulationReport).order_by(TCGTraderSimulationReport.id.desc()).all()]

@@ -39,11 +39,12 @@ export function cardLabel(cardId, details = {}) {
   return details.display_title || details.display_name || details.catalog_code || `Card #${cardId}`
 }
 
-export function offerSummary(offer) {
+export function offerSummary(offer, t = (text, params = {}) => Object.entries(params).reduce((value, [key, part]) => value.replaceAll(`{${key}}`, part), text)) {
   const credits = Number(offer?.credits_delta || 0)
   const shards = Number(offer?.shards_delta || 0)
+  const signed = value => `${value > 0 ? '+' : ''}${value.toLocaleString()}`
   const pieces = []
-  if (credits) pieces.push(`${credits > 0 ? '+' : ''}${credits.toLocaleString()} Credits`)
-  if (shards) pieces.push(`${shards > 0 ? '+' : ''}${shards.toLocaleString()} Shards`)
-  return pieces.join(' / ') || 'Card exchange'
+  if (credits) pieces.push(t('{amount} Credits', { amount: signed(credits) }))
+  if (shards) pieces.push(t('{amount} Shards', { amount: signed(shards) }))
+  return pieces.join(' / ') || t('Card exchange')
 }

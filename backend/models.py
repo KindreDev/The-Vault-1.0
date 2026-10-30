@@ -1301,6 +1301,28 @@ class TCGSet(Base):
     release = relationship("TCGRelease")
 
 
+class TCGCardFavorite(Base):
+    """A card printing you starred in the collection."""
+    __tablename__ = "tcg_card_favorites"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    card_id    = Column(Integer, ForeignKey("cards.id"), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class TCGSetCompletionAward(Base):
+    """One reward per completed set: kind "set" (all base cards) or "master" (every printing)."""
+    __tablename__ = "tcg_set_completion_awards"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    set_id     = Column(Integer, ForeignKey("tcg_sets.id"), nullable=False, index=True)
+    kind       = Column(String, nullable=False)
+    xp         = Column(Integer, default=0, nullable=False)
+    credits    = Column(Integer, default=0, nullable=False)
+    awarded_at = Column(DateTime, default=func.now(), nullable=False)
+    __table_args__ = (UniqueConstraint("set_id", "kind", name="uq_tcg_set_completion_award"),)
+
+
 class TCGChecklistEntry(Base):
     __tablename__ = "tcg_checklist_entries"
 

@@ -255,28 +255,6 @@
 .placement-context-hud__info::before { position: absolute; top: 50%; left: -62px; width: 62px; height: 1px; background: linear-gradient(90deg, rgba(171,142,255,0), rgba(182,155,255,.85)); content: ''; }
 .placement-context-hud__info::after { position: absolute; top: calc(50% - 5px); left: -67px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #38dc75; box-shadow: 0 0 16px rgba(56,220,117,.85); content: ''; }
 .placement-context-hud__info strong { display: block; overflow: hidden; font-size: 20px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
-.placement-context-hud__wheel { position: relative; width: 294px; height: 294px; overflow: hidden; border: 1px solid rgba(222,211,255,.72); border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(20,17,28,.99) 0 27%, rgba(27,24,33,.96) 27.5% 100%); box-shadow: 0 0 0 1px rgba(170,148,255,.24), inset 0 0 34px rgba(162,126,255,.18), 0 16px 36px rgba(0,0,0,.42); }
-.placement-context-hud__wheel::before, .placement-context-hud__wheel::after { position: absolute; z-index: 1; background: rgba(231,223,255,.66); content: ''; pointer-events: none; }
-.placement-context-hud__wheel::before { top: 0; bottom: 0; left: calc(50% - .5px); width: 1px; }
-.placement-context-hud__wheel::after { top: calc(50% - .5px); right: 0; left: 0; height: 1px; }
-.placement-context-hud__action { position: absolute; z-index: 2; display: grid; box-sizing: border-box; place-items: center; gap: 6px; width: 50%; height: 50%; overflow: hidden; padding: 12px; border: 0; border-radius: 0; color: rgba(255,255,255,.9); background: var(--placement-action-base); font-size: 16px; font-weight: 800; cursor: pointer; transition: background .16s ease, color .16s ease, transform .16s ease; }
-.placement-context-hud__action:hover:not(:disabled), .placement-context-hud__action:focus-visible:not(:disabled) { z-index: 3; color: #fff; background: var(--placement-action-hover); outline: none; }
-.placement-context-hud__action:active:not(:disabled) { transform: scale(.96); }
-.placement-context-hud__action:disabled { color: rgba(255,255,255,.35); cursor: not-allowed; }
-.placement-context-hud__action--place { --placement-action-base: rgba(105,83,166,.88); --placement-action-hover: rgba(139,111,207,.96); top: 0; left: 25%; clip-path: polygon(0 0, 100% 0, 50% 100%); }
-.placement-context-hud__action--place > * { transform: translateY(-22px); }
-.placement-context-hud__action--return { --placement-action-base: rgba(27,24,33,.96); --placement-action-hover: rgba(58,51,70,.98); top: 25%; left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-.placement-context-hud__action--return > * { transform: translateX(-18px); }
-.placement-context-hud__action--rotate { --placement-action-base: rgba(27,24,33,.96); --placement-action-hover: rgba(58,51,70,.98); top: 25%; right: 0; clip-path: polygon(0 50%, 100% 0, 100% 100%); }
-.placement-context-hud__action--rotate > * { transform: translateX(18px); }
-.placement-context-hud__action--deselect { --placement-action-base: rgba(42,33,67,.92); --placement-action-hover: rgba(76,59,111,.96); bottom: 0; left: 25%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.placement-context-hud__action--deselect > * { transform: translateY(14px); }
-.placement-context-hud__action-label { position: absolute; z-index: 4; color: rgba(255,255,255,.92); font-size: 16px; font-weight: 800; line-height: 1; white-space: nowrap; pointer-events: none; }
-.placement-context-hud__action-label--place { top: 42%; left: 50%; transform: translate(-50%, -50%); }
-.placement-context-hud__action-label--return { top: 50%; left: 25%; transform: translate(-50%, -50%); }
-.placement-context-hud__action-label--rotate { top: 50%; right: 25%; transform: translate(50%, -50%); }
-.placement-context-hud__action-label--deselect { bottom: 9%; left: 50%; transform: translateX(-50%); }
-.placement-context-hud__action:disabled + .placement-context-hud__action-label { color: rgba(255,255,255,.35); }
 .furniture-store__photo { width: min(94%, 240px); height: 168px; object-fit: contain; background: transparent; }
 .tcg-room-parcel__packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .tcg-room-parcel__packs figure { margin: 0; padding: 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; background: rgba(255,255,255,.04); }
@@ -811,7 +789,13 @@
 .vault-hud__controls-list dt { color: #d7ccff; font-weight: 800; }
 .vault-hud__controls-list dd { margin: 0; color: rgba(255,255,255,.76); }
 .vault-hud__modal label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.vault-hud__modal select { min-height: 40px; padding: 0 10px; color: #fff; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: #171a22; }
+.vault-hud__setting { display: grid; gap: 8px; font-size: 16px; }
+.vault-hud__segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #171a22; }
+.vault-hud__segmented button { min-height: 38px; border: 1px solid transparent; border-radius: 7px; color: rgba(255,255,255,.78); background: transparent; font-size: 16px; cursor: pointer; transition: background .16s ease, color .16s ease, border-color .16s ease; }
+.vault-hud__segmented button:hover { color: #fff; background: rgba(255,255,255,.07); }
+.vault-hud__segmented button.is-selected { color: #fff; border-color: color-mix(in srgb, var(--c-accent, #8b7cf6) 70%, transparent); background: color-mix(in srgb, var(--c-accent, #8b7cf6) 26%, transparent); }
+.vault-hud__modal > div > button { min-height: 40px; padding: 8px 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; color: #fff; background: rgba(255,255,255,.06); font-size: 16px; cursor: pointer; }
+.vault-hud__modal > div > button:hover { border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.11); }
 
 .vault-inv { position: absolute; z-index: 20; display: grid; gap: 12px; padding: 16px 18px 42px; border: 1px solid rgba(255,255,255,.1); border-radius: 22px; background: rgba(12,14,22,.82); box-shadow: 0 30px 80px rgba(0,0,0,.45); backdrop-filter: blur(22px); }
 .vault-inv--cards { inset: 16px; grid-template-columns: 210px minmax(0, .8fr) minmax(400px, .9fr); grid-template-rows: auto minmax(0,1fr); }
@@ -1103,3 +1087,174 @@
 
 .trader-vn-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px; font-size: 16px; }
 .trader-vn-pagination button { font-size: 16px; }
+
+/* Room settings: lighting, LED accents, movement */
+.room-settings { background: rgba(6,7,12,.28); }
+.room-settings > div { width: min(480px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 48px)); grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.room-settings__body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; padding-right: 4px; overscroll-behavior: contain; }
+.room-settings__body h3 { margin: 6px 0 0; color: #d7ccff; font-size: 16px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.room-settings .vault-hud__segmented button { min-height: 40px; padding: 0 6px; }
+.room-settings__toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; color: rgba(255,255,255,.88); background: rgba(255,255,255,.04); font-size: 16px; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
+.room-settings__toggle:hover { border-color: rgba(255,255,255,.26); background: rgba(255,255,255,.08); }
+.room-settings__toggle i { position: relative; flex: none; width: 42px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.16); transition: background .18s ease; }
+.room-settings__toggle i::after { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); content: ''; transition: transform .18s ease; }
+.room-settings__toggle.is-on i { background: color-mix(in srgb, var(--c-accent, #8b7cf6) 85%, transparent); }
+.room-settings__toggle.is-on i::after { transform: translateX(18px); }
+.room-settings__accent { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; transition: opacity .18s ease; }
+.room-settings__accent:disabled { opacity: .42; }
+.room-settings__swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.room-settings__swatches button, .room-settings__custom { position: relative; width: 34px; height: 34px; border: 2px solid rgba(255,255,255,.18); border-radius: 50%; background: var(--swatch); box-shadow: 0 0 14px color-mix(in srgb, var(--swatch) 45%, transparent); cursor: pointer; transition: transform .14s ease, border-color .14s ease; }
+.room-settings__swatches button:hover, .room-settings__custom:hover { transform: scale(1.08); }
+.room-settings__swatches button.is-selected { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.18), 0 0 18px var(--swatch); }
+.room-settings__custom { overflow: hidden; background: conic-gradient(#ff5252, #ffb347, #35e08a, #2fd3ff, #8b7cf6, #ff4fa3, #ff5252); }
+.room-settings__custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.room-settings__slider { display: grid !important; gap: 8px; font-size: 16px; }
+.room-settings__slider > span { display: flex; justify-content: space-between; gap: 12px; }
+.room-settings__slider b { color: #d7ccff; font-variant-numeric: tabular-nums; }
+.room-settings__slider input[type="range"] { width: 100%; accent-color: var(--c-accent, #8b7cf6); cursor: pointer; }
+
+.placement-mode__rail-actions button.is-active { border-color: color-mix(in srgb, var(--c-accent, #8b7cf6) 75%, transparent); color: #fff; background: color-mix(in srgb, var(--c-accent, #8b7cf6) 28%, transparent); }
+.placement-context-hud__reason { display: block; margin-top: 6px; color: #ffb3bd; font-size: 16px; line-height: 1.25; }
+
+/* Name tag that sits beside the carried item. */
+.placement-context-hud__content { width: 224px; transition: translate .18s ease; }
+.placement-context-hud__info { padding: 12px 14px; }
+.placement-context-hud__info strong { font-size: 18px; }
+.placement-context-hud__content[data-side="left"] .placement-context-hud__info::before { right: -62px; left: auto; background: linear-gradient(270deg, rgba(171,142,255,0), rgba(182,155,255,.85)); }
+.placement-context-hud__content[data-side="left"] .placement-context-hud__info::after { right: -67px; left: auto; }
+
+/* ── Trader layout pass ──────────────────────────────────────────────────────
+   Final say on the trader screen.  The loading screen keeps its own centred
+   layout, the desk gives the active tab all remaining height, and the Trade
+   tab's two card lists fill that height instead of a fixed short box. */
+.trader-vn.trader-vn--loading { grid-template: none; grid-template-columns: none; grid-template-rows: none; place-content: center; justify-items: center; }
+.trader-vn:not(.trader-vn--loading) { grid-template-columns: minmax(280px, 24vw) minmax(480px, 1fr) minmax(280px, 21vw); }
+.trader-vn__desk { display: flex; flex-direction: column; min-height: 0; }
+.trader-vn__desk > nav { flex: 0 0 auto; align-items: center; }
+.trader-vn__desk > .trader-vn__content { flex: 1 1 auto; }
+.trader-vn__desk > .trader-vn-offers { flex: 0 0 auto; }
+.trader-vn__status-pill { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; margin-left: auto; padding: 7px 12px; border: 1px solid color-mix(in srgb,var(--trader-accent,#c54978) 30%,transparent); border-radius: 999px; color: var(--trader-accent-soft,#a9ead2); background: color-mix(in srgb,var(--trader-accent,#c54978) 11%,transparent); white-space: nowrap; }
+.trader-vn__status-pill svg { width: 17px; height: 17px; }
+.trader-vn__desk > nav button.active,
+.trader-vn__desk > nav button.active:hover:not(:disabled) { border-color: var(--trader-accent-soft,#efb0ca); color: #1b0e13; background: var(--trader-accent-soft,#efb0ca); }
+
+.trader-vn__content--trade { display: flex; flex-direction: column; padding: 16px; }
+.trader-vn__content--trade > .trader-vn-trade { flex: 1 1 auto; min-height: 560px; }
+.trader-vn-trade { grid-template-columns: minmax(0, 1fr) minmax(220px, 1.1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "head search" "value value" "pair pair" "foot foot"; column-gap: 16px; }
+.trader-vn-trade > header { grid-area: head; margin-bottom: 12px; }
+.trader-vn-trade > header p { display: none; }
+.trader-vn-trade > .trader-vn-trade-search { grid-area: search; align-self: center; margin: 0 0 12px; }
+.trader-vn-trade > .trader-vn-trade-search > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.trader-vn-trade > .trader-vn-value-summary { grid-area: value; margin-bottom: 12px; padding: 9px 13px; }
+.trader-vn-trade .trader-vn-value-summary > div > strong { font-size: 24px; }
+.trader-vn-trade > .trader-vn-offer-pair { grid-area: pair; min-height: 0; }
+.trader-vn-trade > .trader-vn-trade-footer { grid-area: foot; }
+.trader-vn-trade .trader-vn-offer-side { grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+.trader-vn-trade .trader-vn-card-options,
+.trader-vn-grading .trader-vn-card-options { max-height: none; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 9px; }
+.trader-vn-grading .trader-vn-card-options { max-height: min(60vh, 640px); }
+
+/* Compact trade tiles: 104px faces, name and value underneath. */
+.trader-vn-trade .trader-vn-card-options,
+.trader-vn-grading .trader-vn-card-options { grid-auto-rows: max-content; }
+.trader-vn-card-option { grid-template-rows: auto auto; min-height: 0; padding: 8px 6px; gap: 5px; }
+.trader-vn-card-option .trader-vn-card { grid-template-rows: 158px auto auto; gap: 3px; }
+.trader-vn-card-option .trader-vn-card__face { height: 158px; min-height: 158px; }
+.trader-vn-card-option .trader-vn-card > strong { min-height: 0; font-size: 14px; }
+.trader-vn-card-option .trader-vn-card > span,
+.trader-vn-card-option__details,
+.trader-vn-card-option__details span { font-size: 13px; }
+.trader-vn-card-option__details { padding-top: 5px; }
+.trader-vn-card-option__check { top: 6px; right: 6px; width: 26px; height: 26px; }
+.trader-vn-card__missing { display: grid; place-items: center; width: var(--trader-card-width, 132px); aspect-ratio: 2 / 3; padding: 8px; border: 1px dashed rgba(255,255,255,.18); border-radius: 8px; color: rgba(255,255,255,.55); font-size: 13px; text-align: center; }
+
+/* Open deals show both sides of the exchange before you accept. */
+.trader-vn-offers article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.08); }
+.trader-vn-offers article:first-of-type { border-top: 0; }
+.trader-vn-offers__summary { display: grid; gap: 2px; }
+.trader-vn-offers__cards { display: flex; flex-wrap: wrap; gap: 14px; grid-column: 1 / 2; }
+.trader-vn-offers__side { display: grid; gap: 4px; }
+.trader-vn-offers__side > span { color: rgba(255,255,255,.6); font-size: 13px; }
+.trader-vn-offers__side > div { display: flex; gap: 5px; max-width: 420px; overflow-x: auto; }
+.trader-vn-offers__side .trader-vn-card__face { min-height: 0; }
+.trader-vn-offers__actions { display: flex; gap: 8px; grid-column: 2; grid-row: 1 / span 2; }
+
+@media (max-width: 1180px) {
+  .trader-vn:not(.trader-vn--loading) { grid-template-columns: minmax(250px,28vw) minmax(0,1fr); }
+  .trader-vn-trade { grid-template-columns: 1fr; grid-template-areas: "head" "search" "value" "pair" "foot"; }
+}
+@media (max-width: 760px) {
+  .trader-vn:not(.trader-vn--loading) { grid-template-columns: 1fr; }
+  .trader-vn__content--trade > .trader-vn-trade { min-height: 0; }
+  .trader-vn-trade .trader-vn-card-options { max-height: 52vh; }
+  .trader-vn-offers article { grid-template-columns: 1fr; }
+  .trader-vn-offers__actions { grid-column: 1; grid-row: auto; }
+}
+
+/* Earned-card warning inside the trader confirmation dialog. */
+.trader-vn-confirm__warning { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; padding: 12px 14px; border: 1px solid rgba(255,196,110,.42); border-radius: 11px; color: #ffe2b0; background: rgba(186,117,23,.14); }
+.trader-vn-confirm__warning > svg { width: 22px; height: 22px; margin-top: 2px; color: #ffc46e; }
+.trader-vn-confirm__warning p { margin: 0 0 8px; line-height: 1.4; }
+.trader-vn-confirm__warning label { display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,.78); cursor: pointer; }
+.trader-vn-confirm__warning input { width: 18px; height: 18px; accent-color: var(--trader-accent-soft,#efb0ca); }
+
+/* ── Furniture bar: full screen width, taller tiles ───────────────────────── */
+.placement-mode--live { left: 16px; right: 16px; bottom: 14px; align-items: stretch; }
+.placement-mode--live .placement-mode__rail { width: 100%; padding: 10px; }
+.placement-mode--live .placement-mode__strip { gap: 10px; padding-bottom: 4px; }
+.placement-mode--live .placement-mode__strip button { grid-template-columns: 112px minmax(0,1fr); min-width: 250px; min-height: 136px; }
+.placement-mode--live .placement-mode__thumb,
+.placement-mode--live .placement-mode__thumb canvas { width: 112px; height: 112px; }
+.placement-mode--live .placement-mode__poster-thumb { width: 78px; height: 100px; }
+.placement-mode--live .placement-mode__rail-actions button { min-height: 54px; }
+
+/* Trophy shadow box light colour row in the card manager. */
+.tcg-room-display-manager__led { display: grid; gap: 8px; }
+.tcg-room-display-manager__led > span { color: rgba(255,255,255,.72); font-size: 16px; font-weight: 700; }
+
+/* Poster photo fit (fill the frame / show the whole photo). */
+.tcg-room-display-manager__fit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tcg-room-display-manager__fit button { min-height: 38px; padding: 0 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.04); font-weight: 700; }
+.tcg-room-display-manager__fit button.selected { border-color: #9c8cff; background: rgba(127,119,221,.22); }
+
+/* ── Wave-4 panels: lectern binder, screens, poster flip bin ─────────────── */
+.tcg-room-lectern { min-height: 0; }
+.tcg-room-screen-manager { display: grid; gap: 12px; }
+.tcg-room-screen-manager > .primary { min-height: 42px; border-radius: 10px; font-weight: 800; }
+.tcg-room-screen-manager__row { display: grid; gap: 6px; }
+.tcg-room-screen-manager__row > span { color: rgba(255,255,255,.72); font-size: 16px; font-weight: 700; }
+.tcg-room-screen-manager figure { margin: 0; }
+.tcg-room-display-manager__fit button svg { vertical-align: -3px; }
+.tcg-room-flip-bin { display: grid; gap: 14px; }
+.tcg-room-flip-bin__poster { display: grid; place-items: center; height: min(62vh, 640px); margin: 0; overflow: hidden; border-radius: 14px; background: #08070b; }
+.tcg-room-flip-bin__poster img { max-width: 100%; max-height: 100%; object-fit: contain; animation: tcg-room-flip-in .22s ease-out; }
+@keyframes tcg-room-flip-in { from { opacity: 0; transform: translateY(14px) rotateX(10deg); } to { opacity: 1; transform: none; } }
+.tcg-room-flip-bin__controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.tcg-room-flip-bin__controls > span { min-width: 72px; color: rgba(255,255,255,.8); font-size: 16px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.tcg-room-flip-bin__controls button { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 0 14px; border-radius: 10px; }
+.tcg-room-flip-bin__chosen { display: grid; gap: 8px; }
+.tcg-room-flip-bin__chosen > span { color: rgba(255,255,255,.72); font-size: 16px; font-weight: 700; }
+.tcg-room-flip-bin__chosen > div { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.tcg-room-flip-bin__chosen button { position: relative; flex: 0 0 auto; width: 52px; height: 68px; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 6px; }
+.tcg-room-flip-bin__chosen img { width: 100%; height: 100%; object-fit: cover; }
+.tcg-room-flip-bin__chosen svg { position: absolute; top: 2px; right: 2px; padding: 1px; border-radius: 50%; color: #fff; background: rgba(0,0,0,.7); }
+.tcg-room-flip-bin .tcg-room-display-manager__cards button.selected { outline: 2px solid #9c8cff; outline-offset: -2px; }
+
+/* Photo source picker: search, gallery, creator or playlist. */
+.tcg-room-source { display: grid; gap: 8px; }
+.tcg-room-source__kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tcg-room-source__kinds button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 8px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.04); font-weight: 700; }
+.tcg-room-source__kinds button.selected { border-color: #9c8cff; background: rgba(127,119,221,.22); }
+.tcg-room-source__list { display: grid; gap: 6px; }
+.tcg-room-source__list > div { display: grid; gap: 4px; max-height: 240px; overflow-y: auto; }
+.tcg-room-source__list > div button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; padding: 0 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(255,255,255,.03); text-align: left; }
+.tcg-room-source__list > div button:hover { border-color: rgba(156,140,255,.6); background: rgba(127,119,221,.14); }
+.tcg-room-source__list strong { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.tcg-room-source__list small { flex: 0 0 auto; color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; }
+.tcg-room-source__chosen { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 6px 0 12px; border: 1px solid #9c8cff; border-radius: 10px; background: rgba(127,119,221,.16); }
+.tcg-room-source__chosen span { color: rgba(255,255,255,.6); font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.tcg-room-source__chosen strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcg-room-source__chosen button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+.tcg-room-flip-bin__whole { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 8px; padding: 10px 12px; border: 1px solid rgba(156,140,255,.5); border-radius: 10px; background: rgba(127,119,221,.12); font-weight: 800; text-align: left; }
+.tcg-room-flip-bin__whole small { grid-column: 2; color: rgba(255,255,255,.6); font-weight: 600; }
+.tcg-room-flip-bin__note { margin: 0; color: rgba(255,255,255,.6); text-align: center; }

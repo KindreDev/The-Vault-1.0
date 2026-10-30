@@ -13,6 +13,16 @@ const events = {
 
 // The Windows shell uses normal VLC output for every indexed video. Browser
 // clients keep their HTML video element and compatible-stream behavior.
+// VLC availability never changes while the app runs. A gallery of hundreds of
+// video thumbnails used to ask the desktop bridge once per thumbnail.
+let capabilitiesRequest = null
+function nativeCapabilities() {
+  capabilitiesRequest ||= window.pywebview.api.native_video_capabilities()
+    .then(result => { if (!result?.available) capabilitiesRequest = null; return result })
+    .catch(error => { capabilitiesRequest = null; throw error })
+  return capabilitiesRequest
+}
+
 const VaultVideo = forwardRef(function VaultVideo(props, ref) {
   const { src, autoPlay, loop, muted, controls, preview = false, preloadKey, nextSrc, style, className, ...rest } = props
   const previewCleanup = useRef(null)
@@ -119,7 +129,7 @@ const VaultVideo = forwardRef(function VaultVideo(props, ref) {
     if (!native || engine !== 'libVLC') return
     let cancelled = false
     const player = media.current
-    window.pywebview.api.native_video_capabilities().then(capabilities => {
+    nativeCapabilities().then(capabilities => {
       if (cancelled) return
       if (!capabilities.available) { player.fail(capabilities.reason); return }
       if (src !== undefined) {

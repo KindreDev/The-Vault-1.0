@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Eye, Droplets, Clock, TrendingUp, ArrowUp, ArrowDown, Loader2, Waves, Heart } from 'lucide-react'
 import { LocalizedText, useT } from '../i18n'
 
+import ModalLayer from './ModalLayer'
 const PAGE_SIZE = 30
 
 function fmtTime(secs) {
@@ -148,7 +149,7 @@ export default function HofFullListModal({
 
   return createPortal(
     <AnimatePresence>
-      <motion.div
+      <ModalLayer><motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[10000] flex items-center justify-center p-6"
@@ -260,7 +261,7 @@ export default function HofFullListModal({
             </div>
           </div>
         </motion.div>
-      </motion.div>
+      </motion.div></ModalLayer>
     </AnimatePresence>,
     document.body
   )

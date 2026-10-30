@@ -8,11 +8,9 @@ import { patchCachedCreators } from '../lib/creatorCache'
 import { useAllCreators } from '../hooks/useAllCreators'
 import TagAutocompleteInput from './TagAutocompleteInput'
 import toast from 'react-hot-toast'
+import { CREATOR_TYPE_TEXT } from '../lib/entityColors'
 
-const TYPE_COLORS = {
-  cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
-  character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
-}
+const TYPE_COLORS = CREATOR_TYPE_TEXT
 const CREATOR_TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
 
 /**

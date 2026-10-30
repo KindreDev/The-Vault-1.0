@@ -1,7 +1,8 @@
 // VLC paints directly into its native window. Only commands and clock data
 // cross this bridge; the existing controls and device scheduler keep their API.
-import { startNativeLayout, nativeLayout } from './nativeVideoLayout'
+import { startNativeLayout, nativeLayout, scheduleNativeLayout } from './nativeVideoLayout'
 import { canPlayVideoPreview } from './videoPreview'
+import { getSavedVideoLoop } from './videoLoop'
 const players = new Map()
 const preparations = new Map()
 let preparationSuspended = false
@@ -14,7 +15,7 @@ export function prepareVideo(owner, src) {
   if (preparationSuspended || !owner || !window.pywebview?.api?.native_video_prepare) return
   if (!src) return preparations.has(owner) ? clearPreparedVideo(owner) : undefined
   if (preparations.get(owner)?.src === src) return
-  const promise = window.pywebview.api.native_video_prepare(owner, src)
+  const promise = window.pywebview.api.native_video_prepare(owner, src, getSavedVideoLoop())
   const entry = { src, promise }
   preparations.set(owner, entry)
   // Preloading is optional: failure must not interrupt the current video.
@@ -85,13 +86,14 @@ export class NativeMedia extends EventTarget {
   }
   get src() { return this._src }
   set src(value) { if (this._src !== (value || '')) { this._src = value || ''; this.load() } }
-  setCanvas(element) { this.element = element; this.canvas = element; this.style = element.style }
+  setCanvas(element) { this.element = element; this.canvas = element; this.style = element.style; scheduleNativeLayout() }
   getAttribute(name) { return name === 'src' ? this.src : null }
   get currentSrc() { return this._src }
   get currentTime() { return this._time }
   set currentTime(value) {
     this._time = Math.max(0, Number(value) || 0)
     this.ended = false
+    this.clock = null  // the last observation is pre-seek; wait for a fresh one
     this.seekTarget = this._time
     this.emit('seeking')
     if (this.seeking) return
@@ -116,7 +118,7 @@ export class NativeMedia extends EventTarget {
   get loop() { return this._loop }
   set loop(value) { this._loop = !!value; this.command('loop', this._loop) }
   get playbackRate() { return this._rate }
-  set playbackRate(value) { this._rate = Math.max(.25, Math.min(4, Number(value) || 1)); this.command('rate', this._rate) }
+  set playbackRate(value) { this._rate = Math.max(.25, Math.min(4, Number(value) || 1)); this.command('rate', this._rate); this.emit('ratechange') }
   removeAttribute(name) { if (name === 'src') this._src = '' }
   command(command, value = null) {
     const session = this.session
@@ -140,6 +142,7 @@ export class NativeMedia extends EventTarget {
     this.ended = false
     this._time = 0
     this._duration = NaN
+    this.clock = null
     const session = `native-window-${crypto.randomUUID()}`
     this.session = session
     players.set(session, this)
@@ -161,9 +164,17 @@ export class NativeMedia extends EventTarget {
   async poll(generation) {
     if (generation !== this.generation || !this.session) return
     try {
+      const askedAt = performance.now()
       const status = await window.pywebview.api.native_video_status(this.session)
       if (generation !== this.generation || !status) return
       this.stats = status
+      if (status.clock) {
+        // Device output smooths this clock. Anchor it on when VLC was sampled:
+        // the backend's age plus half the bridge round trip.
+        const receivedAt = performance.now()
+        this.clock = { ...status.clock,
+          observedAt: receivedAt - status.clock.age * 1000 - (receivedAt - askedAt) / 2 }
+      }
       if (status.error) { this.fail(status.error); return }
       this._duration = status.duration
       const resized = this.videoWidth !== status.width || this.videoHeight !== status.height
@@ -175,6 +186,7 @@ export class NativeMedia extends EventTarget {
         await window.pywebview.api.native_video_layout(this.session, this.layout())
         if (generation !== this.generation) return
         this.emit('loadedmetadata'); this.emit('loadeddata'); this.emit('canplay')
+        scheduleNativeLayout()  // open the background hole for this video now
       }
       if (this.readyState && !this.presented && this.layout().visible) {
         // Let React remove the loading cover and let the layout/background
@@ -193,7 +205,7 @@ export class NativeMedia extends EventTarget {
       if (status.ended && !this.ended) { this.ended = true; this.emit('ended') }
       if (this.presented && status.playing && status.time >= .3 && this.nextSrc !== this.src) prepareVideo(this.preloadKey, this.nextSrc)
     } catch (error) { if (generation === this.generation) this.fail(error) }
-    if (generation === this.generation) this.timer = setTimeout(() => this.poll(generation), 40)
+    if (generation === this.generation) this.timer = setTimeout(() => this.poll(generation), this.presented ? 100 : 40)
   }
   updateLayout() {
     this.layoutDirty = true

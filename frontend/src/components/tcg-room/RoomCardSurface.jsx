@@ -21,7 +21,40 @@ const CARD_WIDTH = .0756
 const CARD_HEIGHT = .1056
 const CLEAR_LAYER = Object.freeze({ sleeve: .0022, toploader: .004, acrylic_case: .008 })
 const RARITY_VALUE = Object.freeze({ C: 0, R: 1, SR: 2, SPR: 3, UR: 4 })
+// Data URLs of card art are large, so keep only the most recently used ones.
+// Frames, fonts and other shared assets stay warm because they are reused.
+const EMBEDDED_ASSET_CACHE_LIMIT = 96
 const embeddedAssetCache = new Map()
+// Face captures are heavy (React render, CSS scan, three canvas rasters), so
+// run only a couple at a time instead of every card at once.
+const MAX_ACTIVE_CAPTURES = 2
+const SVG_WAIT_ATTEMPTS = 40
+const SVG_WAIT_MS = 250
+let activeCaptures = 0
+const captureWaiters = []
+
+function acquireCaptureSlot() {
+  return new Promise(resolve => {
+    const tryStart = () => {
+      if (activeCaptures < MAX_ACTIVE_CAPTURES) { activeCaptures += 1; resolve() } else captureWaiters.push(tryStart)
+    }
+    tryStart()
+  })
+}
+
+function releaseCaptureSlot() {
+  activeCaptures = Math.max(0, activeCaptures - 1)
+  captureWaiters.shift()?.()
+}
+
+const sleep = ms => new Promise(resolve => window.setTimeout(resolve, ms))
+
+// Each raster is one long main-thread task.  Start them in the gaps between
+// frames so walking stays smooth while cards prepare.
+const whenIdle = () => new Promise(resolve => {
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => resolve(), { timeout: 1200 })
+  else window.setTimeout(resolve, 40)
+})
 
 const GEOMETRY_RESOLVERS = Object.freeze({
   scene: sceneCoverGeometry, character: characterCoverGeometry, cosplay: cosplayCoverGeometry,
@@ -59,7 +92,13 @@ function blobDataUrl(blob) {
 }
 
 function embeddedAsset(url) {
-  if (!embeddedAssetCache.has(url)) {
+  if (embeddedAssetCache.has(url)) {
+    // Refresh recency.
+    const cached = embeddedAssetCache.get(url)
+    embeddedAssetCache.delete(url)
+    embeddedAssetCache.set(url, cached)
+  } else {
+    while (embeddedAssetCache.size >= EMBEDDED_ASSET_CACHE_LIMIT) embeddedAssetCache.delete(embeddedAssetCache.keys().next().value)
     embeddedAssetCache.set(url, fetch(url).then(response => {
       if (!response.ok) throw new Error(`Card asset returned ${response.status}: ${url}`)
       return response.blob()
@@ -130,7 +169,35 @@ function ruleAppliesToSvg(rule, svg) {
   return classes.some(name => svg.getAttribute('class')?.split(/\s+/).includes(name) || svg.querySelector(`.${CSS.escape(name)}`))
 }
 
-async function readableStyleSheetText(svg) {
+// Scanning every app stylesheet rule against a card SVG costs tens of
+// milliseconds, and cards of the same type need the same rules.  Cache the
+// result by the classes and element names the SVG uses.
+const STYLE_CACHE_LIMIT = 64
+const styleTextCache = new Map()
+
+function svgStyleSignature(svg) {
+  const names = new Set([svg.tagName.toLowerCase()])
+  for (const value of (svg.getAttribute('class') || '').split(/\s+/)) if (value) names.add(`.${value}`)
+  svg.querySelectorAll('*').forEach(node => {
+    names.add(node.tagName.toLowerCase())
+    const classes = node.getAttribute('class')
+    if (classes) for (const value of classes.split(/\s+/)) if (value) names.add(`.${value}`)
+  })
+  return `${document.styleSheets.length}|${[...names].sort().join(' ')}`
+}
+
+function readableStyleSheetText(svg) {
+  const key = svgStyleSignature(svg)
+  if (!styleTextCache.has(key)) {
+    while (styleTextCache.size >= STYLE_CACHE_LIMIT) styleTextCache.delete(styleTextCache.keys().next().value)
+    const text = scanStyleSheets(svg)
+    text.catch(() => styleTextCache.delete(key))
+    styleTextCache.set(key, text)
+  }
+  return styleTextCache.get(key)
+}
+
+async function scanStyleSheets(svg) {
   const rules = []
   for (const sheet of document.styleSheets) {
     try {
@@ -143,17 +210,59 @@ async function readableStyleSheetText(svg) {
   return (await Promise.all(rules)).join('\n')
 }
 
+// Non-visual SVG elements a kept layer may rely on.
+const SVG_SUPPORT_TAGS = new Set(['defs', 'style', 'lineargradient', 'radialgradient', 'clippath', 'mask', 'filter', 'pattern', 'symbol', 'marker'])
+
 function isolatedSvg(source, selector) {
   const svg = source.cloneNode(true)
-  svg.querySelectorAll('*').forEach(node => {
-    const keep = node.tagName?.toLowerCase() === 'defs' || node.closest?.('defs') ||
-      node.matches?.(selector) || node.closest?.(selector) || node.querySelector?.(selector)
-    if (!keep) node.setAttribute('visibility', 'hidden')
-  })
+  // Remove everything outside the chosen layer rather than hiding it: hidden
+  // photos were still embedded and decoded, which made each mask cost as
+  // much as the full face.
+  for (const node of [...svg.querySelectorAll('*')]) {
+    if (!node.isConnected) continue
+    const tag = node.tagName?.toLowerCase()
+    if (SVG_SUPPORT_TAGS.has(tag) || node.closest?.('defs')) continue
+    if (node.matches?.(selector) || node.closest?.(selector) || node.querySelector?.(selector)) continue
+    node.remove()
+  }
+  dropUnusedDefs(svg)
   return svg
 }
 
-async function rasterTexture(svg, { opaque = false, resolution = 1024, anisotropy = 16 } = {}) {
+function svgReferences(node) {
+  const ids = []
+  for (const attribute of node.attributes || []) {
+    for (const match of attribute.value.matchAll(/url\(\s*['"]?#([^'")\s]+)/g)) ids.push(match[1])
+    if ((attribute.name === 'href' || attribute.name === 'xlink:href') && attribute.value.startsWith('#')) ids.push(attribute.value.slice(1))
+  }
+  return ids
+}
+
+// After pruning, defs the kept layer never points at (often the photo) go too.
+function dropUnusedDefs(svg) {
+  const byId = new Map([...svg.querySelectorAll('[id]')].map(node => [node.id, node]))
+  const used = new Set()
+  const queue = []
+  svg.querySelectorAll('*').forEach(node => { if (!node.closest('defs')) queue.push(...svgReferences(node)) })
+  while (queue.length) {
+    const id = queue.pop()
+    if (used.has(id)) continue
+    used.add(id)
+    const target = byId.get(id)
+    if (!target) continue
+    queue.push(...svgReferences(target))
+    target.querySelectorAll('*').forEach(child => queue.push(...svgReferences(child)))
+  }
+  for (const defs of svg.querySelectorAll('defs')) {
+    for (const child of [...defs.children]) {
+      if (child.tagName.toLowerCase() === 'style') continue
+      const keep = (child.id && used.has(child.id)) || [...child.querySelectorAll('[id]')].some(node => used.has(node.id))
+      if (!keep) child.remove()
+    }
+  }
+}
+
+async function rasterTexture(svg, { opaque = false, resolution = 1024, anisotropy = 16, styleText = null } = {}) {
   const width = Math.max(1, Math.round(resolution))
   const height = Math.max(1, Math.round(width * 1.5))
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
@@ -189,7 +298,7 @@ async function rasterTexture(svg, { opaque = false, resolution = 1024, anisotrop
   // not only the detached React source node, before creating the texture.
   await waitForSvgImages(svg)
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-  style.textContent = await readableStyleSheetText(svg)
+  style.textContent = styleText ?? await readableStyleSheetText(svg)
   svg.prepend(style)
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' }))
@@ -209,8 +318,51 @@ async function rasterTexture(svg, { opaque = false, resolution = 1024, anisotrop
   })
 }
 
-function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, resolution = 1024, anisotropy = 16 }) {
+// Masks drive highlight placement only, so half resolution is plenty.
+const MASK_SCALE = .5
+
+// Card art points at the original file, which can be many megabytes.  A room
+// texture is at most 1024 px wide, so bake from the server's resized preview
+// (which also serves video posters and keeps GIFs animated) instead.
+const FULL_FILE = /^\/api\/images\/(\d+)\/file$/
+const previewWidth = resolution => (resolution > 768 ? 1440 : 1080)
+
+function previewUrl(value, width) {
+  return typeof value === 'string' && FULL_FILE.test(value) ? value.replace(FULL_FILE, `/api/images/$1/preview?w=${width}`) : value
+}
+
+function withPreviewArt(card, resolution) {
+  const width = previewWidth(resolution)
+  const walk = (value, depth) => {
+    if (Array.isArray(value)) return depth > 3 ? value : value.map(item => walk(item, depth + 1))
+    if (value && typeof value === 'object') return depth > 3 ? value : Object.fromEntries(Object.entries(value).map(([key, item]) => [key, walk(item, depth + 1)]))
+    return previewUrl(value, width)
+  }
+  return walk(card, 0)
+}
+
+// Faces that build their own art URLs (gallery stacks) are caught here.
+function swapSvgPreviewArt(svg, resolution) {
+  const width = previewWidth(resolution)
+  svg.querySelectorAll('image').forEach(node => {
+    for (const attribute of ['href', 'xlink:href']) {
+      const value = node.getAttribute(attribute)
+      const next = previewUrl(value, width)
+      if (next !== value) node.setAttribute(attribute, next)
+    }
+  })
+}
+
+/**
+ * Bakes a card face (and, once wanted, its two foil masks) into textures.
+ * When masks are asked for after the face already exists, only the masks are
+ * rendered and the face is kept.
+ */
+function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, hasFace = false, resolution = 1024, anisotropy = 16 }) {
+  const hasFaceRef = useRef(hasFace)
+  hasFaceRef.current = hasFace
   useLayoutEffect(() => {
+    const masksOnly = includeMasks && hasFaceRef.current
     let cancelled = false
     const host = document.createElement('div')
     host.className = 'tcg-room-card-capture'
@@ -220,11 +372,20 @@ function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, re
     // A physical room card is a baked texture, not a live video surface.
     // Use the reliable poster frame here; the full inspector still receives
     // videoPresentation="full" and plays the original video.
-    root.render(<TCGV2CardFace card={card} width={resolution} showEffects={false} videoPresentation="poster" />)
-    const timer = window.setTimeout(async () => {
+    root.render(<TCGV2CardFace card={withPreviewArt(card, resolution)} width={resolution} showEffects={false} videoPresentation="poster" />)
+    const capture = async () => {
       await document.fonts?.ready
-      const source = host.querySelector('svg')
-      if (!source) return
+      // The face can take longer than one tick to draw its SVG (lazy layers,
+      // slow images). Keep checking instead of giving up and leaving the
+      // card blank for the rest of the visit.
+      let source = null
+      for (let attempt = 0; attempt < SVG_WAIT_ATTEMPTS && !cancelled; attempt += 1) {
+        source = host.querySelector('svg')
+        if (source) break
+        await sleep(SVG_WAIT_MS)
+      }
+      if (!source || cancelled) return
+      swapSvgPreviewArt(source, resolution)
       // Card faces can contain image-backed collage layers.  Capturing the
       // SVG as soon as React has mounted it races those layers and leaves the
       // physical card's face at its dark body material (the compact stand then
@@ -237,16 +398,40 @@ function CardFaceTexture({ card, captureKey, onTextures, includeMasks = true, re
         await waitForImageDecode(absoluteAssetUrl(href))
       }))
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      Promise.all([
-        rasterTexture(source.cloneNode(true), { opaque: true, resolution, anisotropy }),
-        ...(includeMasks ? [
-          rasterTexture(isolatedSvg(source, '[data-effect-layer="frame"]'), { resolution, anisotropy }),
-          rasterTexture(isolatedSvg(source, '[data-effect-layer="rarity"]'), { resolution, anisotropy }),
-        ] : []),
-      ]).then(([face, frameMask = null, rarityMask = null]) => {
-        if (cancelled) { face.dispose(); frameMask?.dispose(); rarityMask?.dispose(); return }
-        onTextures({ face, frameMask, rarityMask })
-      }).catch(error => { if (import.meta.env.DEV) console.error('[TCG room card] SVG capture failed', error) })
+      if (cancelled) return
+      // The face and both masks come from the same SVG, so the stylesheet
+      // scan is shared (and cached across cards of the same type).
+      const styleText = await readableStyleSheetText(source)
+      // One raster at a time, each in an idle gap, so no single frame has to
+      // absorb all three.
+      const made = []
+      const raster = async (svg, options) => {
+        await whenIdle()
+        if (cancelled) return null
+        const texture = await rasterTexture(svg, { anisotropy, styleText, ...options })
+        made.push(texture)
+        return texture
+      }
+      const face = masksOnly ? null : await raster(source.cloneNode(true), { opaque: true, resolution })
+      const maskResolution = Math.round(resolution * MASK_SCALE)
+      const mask = selector => (includeMasks && source.querySelector(selector)
+        ? raster(isolatedSvg(source, selector), { resolution: maskResolution })
+        : null)
+      const frameMask = await mask('[data-effect-layer="frame"]')
+      const rarityMask = await mask('[data-effect-layer="rarity"]')
+      if (cancelled) { made.forEach(texture => texture.dispose()); return }
+      onTextures(masksOnly ? { frameMask, rarityMask } : { face, frameMask, rarityMask })
+    }
+    const timer = window.setTimeout(async () => {
+      await acquireCaptureSlot()
+      await whenIdle()
+      try {
+        if (!cancelled) await capture()
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('[TCG room card] SVG capture failed', error)
+      } finally {
+        releaseCaptureSlot()
+      }
     }, 220)
     return () => {
       cancelled = true
@@ -345,9 +530,70 @@ function ProtectiveLayer({ kind }) {
   if (!thickness) return null
   return <mesh position={[0, 0, thickness * .55]}>
     <boxGeometry args={[CARD_WIDTH + thickness * 4, CARD_HEIGHT + thickness * 4, thickness]} />
-    <meshPhysicalMaterial color="#dfeaff" transparent opacity={kind === 'acrylic_case' ? .16 : .09}
-      roughness={.08} metalness={0} transmission={.82} thickness={.03} clearcoat={1} clearcoatRoughness={.06} />
+    {/* No transmission: it would re-render the whole room every frame for a
+        sliver of plastic.  Alpha plus clearcoat reads the same at this size. */}
+    <meshPhysicalMaterial color="#dfeaff" transparent opacity={kind === 'acrylic_case' ? .2 : .12} depthWrite={false}
+      roughness={.08} metalness={0} clearcoat={1} clearcoatRoughness={.06} />
   </mesh>
+}
+
+// Graded slab used by the wall slab rack: a clear case around the card with a
+// label above it showing the card name and its grade.
+const SLAB = Object.freeze({ width: .084, height: .136, depth: .010, lift: .0134, labelWidth: .076, labelHeight: .019 })
+const GRADE_SCORE = Object.freeze({ S: 10, A: 9, B: 8, C: 7, D: 6 })
+const LABEL_FONT = 'Inter, "Segoe UI", system-ui, sans-serif'
+
+function fittedText(context, text, maxWidth) {
+  if (context.measureText(text).width <= maxWidth) return text
+  let value = text
+  while (value.length > 1 && context.measureText(`${value}…`).width > maxWidth) value = value.slice(0, -1)
+  return `${value.trimEnd()}…`
+}
+
+function slabLabelTexture(title, grade) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 128
+  const context = canvas.getContext('2d')
+  const background = context.createLinearGradient(0, 0, canvas.width, 0)
+  background.addColorStop(0, '#1d1626')
+  background.addColorStop(1, '#2b2137')
+  context.fillStyle = background
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.strokeStyle = '#c9a25a'
+  context.lineWidth = 6
+  context.strokeRect(6, 6, canvas.width - 12, canvas.height - 12)
+  context.textBaseline = 'middle'
+  context.fillStyle = '#f3e7cf'
+  context.font = `600 34px ${LABEL_FONT}`
+  context.fillText(fittedText(context, title || 'Vault card', 330), 26, 48)
+  context.fillStyle = '#b9a98c'
+  context.font = `600 22px ${LABEL_FONT}`
+  context.fillText(grade ? `THE VAULT · GRADE ${grade}` : 'THE VAULT · UNGRADED', 26, 92)
+  context.textAlign = 'right'
+  context.fillStyle = '#e8c472'
+  context.font = `800 66px ${LABEL_FONT}`
+  context.fillText(grade ? String(GRADE_SCORE[grade] ?? grade) : '–', canvas.width - 26, 68)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  return texture
+}
+
+function SlabCase({ title, grade }) {
+  const label = useMemo(() => slabLabelTexture(title, grade), [title, grade])
+  useEffect(() => () => label.dispose(), [label])
+  return <group position={[0, SLAB.lift, 0]}>
+    <mesh position={[0, SLAB.height / 2 - .0035 - SLAB.labelHeight / 2, SLAB.depth / 2 + .0003]}>
+      <planeGeometry args={[SLAB.labelWidth, SLAB.labelHeight]} />
+      <meshBasicMaterial map={label} toneMapped={false} />
+    </mesh>
+    <mesh renderOrder={5}>
+      <boxGeometry args={[SLAB.width, SLAB.height, SLAB.depth]} />
+      <meshPhysicalMaterial color="#e4eeff" transparent opacity={.14} depthWrite={false}
+        roughness={.06} metalness={0} clearcoat={1} clearcoatRoughness={.05} />
+    </mesh>
+  </group>
 }
 
 function LiveFoilSurface({ item, face, faceTexture, surfaceTextures, mode, faceOffset, quality }) {
@@ -370,18 +616,11 @@ function LiveFoilSurface({ item, face, faceTexture, surfaceTextures, mode, faceO
     uniforms.uTime.value = state.clock.elapsedTime
     uniforms.uCameraPosition.value.copy(camera.position)
   })
-  // The baked face is the authoritative card visual.  A physical room card
-  // must never fall back to its dark body just because optional foil maps are
-  // absent (or still loading).  The previous null return made compact stands
-  // render as a black blank card for cards without both maps.  Keep the
-  // already-ready face texture as a deterministic, front-facing fallback;
-  // once both optional maps exist the live foil shader takes over.
-  // useOptionalTexture supplies a neutral 1x1 texture while an URL is absent,
-  // so checking the loaded texture objects is insufficient here: both are
-  // truthy even when this card has no authored foil maps.  Gate the shader on
-  // the persisted sources themselves and show the baked face directly until
-  // every optional effect source is genuinely available.
-  if (!item.card.mask_url || !item.card.foil_map_url || !packedMask || !foilMap) {
+  // The baked face is the authoritative card visual: never fall back to the
+  // dark card body.  Without a subject mask (or while it loads) show the face
+  // directly.  The foil map is optional; the shader uses a neutral relief, so
+  // mask-ready R/SR/SPR cards still get their holo instead of a flat print.
+  if (!item.card.mask_url || !packedMask || !foilMap) {
     return <mesh position={[0, 0, -faceOffset]}>
       <planeGeometry args={[CARD_WIDTH, CARD_HEIGHT]} />
       <meshBasicMaterial map={faceTexture} toneMapped={false} side={THREE.DoubleSide} />
@@ -394,7 +633,7 @@ function LiveFoilSurface({ item, face, faceTexture, surfaceTextures, mode, faceO
   </mesh>
 }
 
-export default function RoomCardSurface({ item, position, rotation, scale = 1, distance = 0, quality = 'high', faceSide = 1, flipHorizontal = false, facePlanePosition = null, onTextureReady }) {
+export default function RoomCardSurface({ item, position, rotation, scale = 1, distance = 0, quality = 'high', faceSide = 1, flipHorizontal = false, facePlanePosition = null, holder = null, onTextureReady }) {
   const [surfaceTextures, setSurfaceTextures] = useState(null)
   const qualityProfile = roomQualityProfile(quality)
   const faceTexture = surfaceTextures?.face || null
@@ -420,25 +659,35 @@ export default function RoomCardSurface({ item, position, rotation, scale = 1, d
   ]), [item.card])
   const face = useMemo(() => resolveTCGV2CardFace(item.card), [captureKey])
   const mode = useMemo(() => roomCardMaterialMode(item.card, distance), [distance, item.card])
-  const liveFoil = distance <= qualityProfile.foilDistance
+  // Live foil follows the real camera distance.  Hysteresis stops it
+  // flickering at the threshold, and once a card's foil masks have been
+  // captured they are kept, so walking back and forth never re-captures.
+  const [liveFoil, setLiveFoil] = useState(false)
+  const [masksWanted, setMasksWanted] = useState(false)
+  const foilState = useRef({ near: false, measured: false, tick: Math.floor(Math.random() * 12) })
+  const worldPoint = useMemo(() => new THREE.Vector3(), [])
+  const readyRef = useRef(onTextureReady)
+  readyRef.current = onTextureReady
   const faceOffset = facePlanePosition ?? (.0032 * (faceSide < 0 ? -1 : 1))
-  useEffect(() => { if (faceTexture) onTextureReady?.() }, [faceTexture, onTextureReady])
+  useEffect(() => { if (faceTexture) readyRef.current?.() }, [faceTexture])
   useEffect(() => () => Object.values(surfaceTextures || {}).forEach(texture => texture?.dispose()), [surfaceTextures])
-  // If a lower quality tier turns foil off, release any masks from the old
-  // tier immediately instead of retaining them until the replacement face
-  // snapshot finishes capturing.
-  useEffect(() => {
-    if (liveFoil) return
-    setSurfaceTextures(previous => {
-      if (!previous?.frameMask && !previous?.rarityMask) return previous
-      previous.frameMask?.dispose(); previous.rarityMask?.dispose()
-      return { ...previous, frameMask: null, rarityMask: null }
-    })
-  }, [liveFoil])
   useEffect(() => () => {
     if (displayFaceTexture && displayFaceTexture !== faceTexture) displayFaceTexture.dispose()
   }, [displayFaceTexture, faceTexture])
   useFrame(() => {
+    const state = foilState.current
+    state.tick += 1
+    if (groupRef.current && (!state.measured || state.tick % 12 === 0)) {
+      state.measured = true
+      groupRef.current.getWorldPosition(worldPoint)
+      const gap = worldPoint.distanceTo(camera.position)
+      const near = state.near ? gap < qualityProfile.foilDistance + .6 : gap < qualityProfile.foilDistance
+      if (near !== state.near) {
+        state.near = near
+        setLiveFoil(near)
+        if (near) setMasksWanted(true)
+      }
+    }
     if (groupRef.current && item.surface === 'carried') {
       // Keep the held card offset in camera space. The previous world-space
       // [.14, -.34, 0] offset made it sweep sideways whenever the player
@@ -453,10 +702,14 @@ export default function RoomCardSurface({ item, position, rotation, scale = 1, d
       groupRef.current.quaternion.copy(camera.quaternion)
     }
   })
-  const receiveTextures = useCallback(next => setSurfaceTextures(previous => { Object.values(previous || {}).forEach(texture => texture?.dispose()); return next }), [])
+  // A mask-only update keeps the face; anything replaced is released.
+  const receiveTextures = useCallback(next => setSurfaceTextures(previous => {
+    for (const [key, texture] of Object.entries(previous || {})) if (key in next && next[key] !== texture) texture?.dispose()
+    return { ...(previous || {}), ...next }
+  }), [])
   return <group ref={groupRef} position={position} rotation={rotation} scale={scale}
     userData={{ physicalCopyId: item.copy.id, rarity: mode.rarity, interactionKey: `inspect-${item.copy?.id || item.preview?.card_id}` }}>
-    <CardFaceTexture card={item.card} captureKey={captureKey} onTextures={receiveTextures} includeMasks={liveFoil} resolution={qualityProfile.cardWidth} anisotropy={qualityProfile.cardAnisotropy} />
+    <CardFaceTexture card={item.card} captureKey={captureKey} onTextures={receiveTextures} includeMasks={masksWanted} hasFace={Boolean(faceTexture)} resolution={qualityProfile.cardWidth} anisotropy={qualityProfile.cardAnisotropy} />
     <mesh castShadow receiveShadow>
       <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, .003]} />
       <meshStandardMaterial color="#17141a" roughness={.74} metalness={0} />
@@ -466,6 +719,7 @@ export default function RoomCardSurface({ item, position, rotation, scale = 1, d
       : <mesh position={[0, 0, -faceOffset]}><planeGeometry args={[CARD_WIDTH, CARD_HEIGHT]} /><meshBasicMaterial map={displayFaceTexture} toneMapped={false} side={THREE.DoubleSide} /></mesh>)}
     <GalleryAngleArt face={face} active={liveFoil && mode.galleryAngleStack} />
     <ProtectiveLayer kind={item.copy.location_kind} />
+    {holder === 'slab' && <SlabCase title={item.preview?.title || item.card?.display_name} grade={item.copy?.grade} />}
   </group>
 }
 

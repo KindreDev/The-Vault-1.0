@@ -140,6 +140,7 @@ class CreatorOut(CreatorBase):
     session_count: Optional[int] = 0
     total_view_seconds: Optional[int] = 0
     total_views: Optional[int] = 0
+    last_viewed_at: Optional[datetime] = None
     collection_value: Optional[float] = 0.0
     sub_value: Optional[float] = 0.0
     one_time_value: Optional[float] = 0.0
@@ -243,6 +244,12 @@ class ImageOut(BaseModel):
     has_image_creators: bool = False
     file_creator_ids: List[int] = []
     gallery_name: Optional[str] = None
+    # Shown by the Details and Timeline list views.
+    created_at: Optional[datetime] = None
+    file_modified_at: Optional[datetime] = None
+    last_viewed_at: Optional[datetime] = None
+    period_year: Optional[int] = None
+    period_month: Optional[int] = None
     class Config:
         from_attributes = True
 

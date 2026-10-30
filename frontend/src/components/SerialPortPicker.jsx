@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Usb, X } from 'lucide-react'
 import { useT } from '../i18n'
 
+import ModalLayer from './ModalLayer'
 export default function SerialPortPicker() {
   const t = useT()
   const [request, setRequest] = useState(null)
@@ -39,7 +40,7 @@ export default function SerialPortPicker() {
   if (!request) return null
   const close = () => { request.reject(new Error('Port selection cancelled')); setRequest(null) }
   return createPortal(
-    <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 12000, background: 'rgba(0,0,0,.75)', display: 'grid', placeItems: 'center', padding: 24 }}>
+    <ModalLayer><div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 12000, background: 'rgba(0,0,0,.75)', display: 'grid', placeItems: 'center', padding: 24 }}>
       <section role="dialog" aria-modal="true" aria-labelledby="serial-port-title" onClick={event => event.stopPropagation()}
         style={{ width: 'min(520px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--c-surface)', color: 'var(--c-text)', border: '1px solid var(--c-border)', borderRadius: 16, boxShadow: '0 16px 70px #0008', fontSize: 16 }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 20, borderBottom: '1px solid var(--c-border)' }}>
@@ -56,6 +57,6 @@ export default function SerialPortPicker() {
           <button onClick={close} style={{ fontSize: 16, padding: '8px 16px', border: '1px solid var(--c-border)', borderRadius: 8 }}>{t('Cancel')}</button>
         </footer>
       </section>
-    </div>, document.body,
+    </div></ModalLayer>, document.body,
   )
 }

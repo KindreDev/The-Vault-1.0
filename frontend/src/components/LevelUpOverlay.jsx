@@ -5,6 +5,7 @@ import confetti from 'canvas-confetti'
 import { useVaultStore } from '../store/vault'
 import { gamiApi } from '../lib/api'
 
+import ModalLayer from './ModalLayer'
 // ── Particle burst ─────────────────────────────────────────────────────────────
 function Particle({ angle, color, delay }) {
   const dist = 120 + Math.random() * 160
@@ -82,7 +83,7 @@ export default function LevelUpOverlay() {
   return (
     <AnimatePresence>
       {levelUpData && (
-        <motion.div
+        <ModalLayer key="levelup-overlay"><motion.div
           key="levelup-overlay"
           className="fixed inset-0 z-[9999] flex items-center justify-center cursor-pointer"
           style={{ background: 'rgba(6, 6, 10, 0.92)', backdropFilter: 'blur(12px)' }}
@@ -210,7 +211,7 @@ export default function LevelUpOverlay() {
               style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}
             ><LocalizedText text={"Click anywhere to continue"} before=" " after=" " /></motion.div>
           </motion.div>
-        </motion.div>
+        </motion.div></ModalLayer>
       )}
     </AnimatePresence>
   )

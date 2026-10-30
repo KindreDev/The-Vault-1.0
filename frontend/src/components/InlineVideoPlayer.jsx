@@ -134,7 +134,7 @@ function FunscriptOffsetControl({ offsetMs, onChange }) {
          }}>
       <span style={{ opacity: 0.75, paddingLeft: 4 }}><LocalizedText text={"Sync"} /></span>
       <button onMouseDown={e => { e.stopPropagation(); onChange(clamp(offsetMs - step)) }}
-              title={t("Shift script earlier")}
+              title={t("Device moves later")}
               className="cursor-pointer flex items-center justify-center rounded-full"
               style={{ width: 16, height: 16, background: 'rgba(255,255,255,0.08)' }}>
         <Minus size={9} />
@@ -142,7 +142,7 @@ function FunscriptOffsetControl({ offsetMs, onChange }) {
       <span className="font-mono tabular-nums" style={{ minWidth: 42, textAlign: 'center' }}>
         {offsetMs > 0 ? '+' : ''}{offsetMs}<LocalizedText text={"ms"} after=" " /></span>
       <button onMouseDown={e => { e.stopPropagation(); onChange(clamp(offsetMs + step)) }}
-              title={t("Shift script later")}
+              title={t("Device moves earlier (use if it lags the video)")}
               className="cursor-pointer flex items-center justify-center rounded-full"
               style={{ width: 16, height: 16, background: 'rgba(255,255,255,0.08)' }}>
         <Plus size={9} />

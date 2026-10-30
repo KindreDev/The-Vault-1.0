@@ -5,15 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Star, StarOff, Globe, Droplets, Images, Columns3, Shuffle,
-  Upload, Camera, X, Image as ImageIcon, Play, Video, MoreHorizontal,
+  ArrowLeft, Star, StarOff, Globe, Droplets, Images, Columns3, Shuffle, Search,
+  Upload, Camera, X, Image as ImageIcon, Video, MoreHorizontal,
   Pencil, Trash2, Sparkles, FolderOpen,
   ExternalLink, Eye, LayoutTemplate, FolderMinus, UserCircle, Newspaper,
 } from 'lucide-react'
 import BondHearts from '../components/BondHearts'
 import SlimContextMenu, { DIVIDER } from '../components/SlimContextMenu'
 import AvatarFramePicker from '../components/AvatarFramePicker'
-import HoverVideoPreview from '../components/HoverVideoPreview'
 import CreatorShowcase from '../components/CreatorShowcase'
 import FolderPicker from '../components/FolderPicker'
 import { creatorsApi, galleriesApi, imagesApi, taggerApi, gamiApi, companionApi, apiErrorMessage } from '../lib/api'
@@ -24,7 +23,12 @@ import { SortDropdown } from '../components/SortDropdown'
 import { COUNTRIES } from '../lib/countries'
 import { useT } from '../i18n'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { creatorTypeColors, RARITY_COLORS } from '../lib/entityColors'
 
+import ModalLayer from '../components/ModalLayer'
+import MediaListView, { SORTS as MEDIA_SORTS, VIDEO_SORTS } from '../components/listViews/MediaListView'
+import ViewModeDropdown from '../components/listViews/ViewModeDropdown'
+import { MEDIA_VIEW_MODES, TIMELINE_START_SORTS, useListViewMode } from '../components/listViews/viewModes'
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
   ...COUNTRIES.map(c => ({ value: c, label: c }))
@@ -75,22 +79,8 @@ function calculateAge(dobString) {
   return age;
 }
 
-const TYPE_COLORS = {
-  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',  text: '#9FE1CB' },
-  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1' },
-  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', text: '#CECBF6' },
-  character: { bg: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',  text: '#FAC775' },
-  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1' },
-  custom:    { bg: 'rgba(136,135,128,0.15)', text: '#D3D1C7' },
-}
+const TYPE_COLORS = creatorTypeColors(15)
 
-const RARITY_COLORS = {
-  common:    '#888780',
-  uncommon:  '#1D9E75',
-  rare:      '#378ADD',
-  epic:      '#7F77DD',
-  legendary: '#BA7517',
-}
 
 const RARITY_LABELS = {
   common:    'Snapshot',
@@ -373,71 +363,6 @@ function GalleryCard({ gallery, onClick, onContextMenu }) {
   )
 }
 
-// ── Square photo/video cell ────────────────────────────────────────────────────
-function fmtDuration(s) {
-  if (!s || !isFinite(s)) return null
-  const m = Math.floor(s / 60)
-  const sec = Math.round(s % 60)
-  return `${m}:${String(sec).padStart(2, '0')}`
-}
-
-function PhotoCell({ image, onClick, onContextMenu }) {
-  const [hovered, setHovered] = useState(false)
-  const dur = image.is_video ? fmtDuration(image.duration) : null
-  return (
-    <motion.div
-      variants={staggerItem}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className="cursor-pointer relative"
-      style={{ aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: '#1a1a1a' }}
-      whileHover={{ scale: 1.04, transition: { duration: 0.18 } }}
-    >
-      <img src={`/api/images/${image.id}/thumb`} alt=""
-           className="w-full h-full object-cover" style={{ display: 'block' }}
-           onError={e => { e.target.style.display = 'none' }} />
-
-      {/* Videos: real playback preview on hover, persistent play badge + duration */}
-      {image.is_video && <HoverVideoPreview imageId={image.id} hovered={hovered} />}
-      {image.is_video && !hovered && (
-        <>
-          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 1 }}>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center"
-                 style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.2)' }}>
-              <Play size={13} fill="white" style={{ color: 'white', marginLeft: 1 }} />
-            </div>
-          </div>
-          {dur && (
-            <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[12px] font-mono font-semibold"
-                 style={{ background: 'rgba(0,0,0,0.72)', color: 'rgba(255,255,255,0.85)', zIndex: 1 }}>
-              {dur}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Photos: dark info overlay on hover (videos show the live preview instead) */}
-      {!image.is_video && (
-        <motion.div
-          animate={{ opacity: hovered ? 1 : 0 }}
-          transition={{ duration: 0.15 }}
-          className="absolute inset-0 flex flex-col items-center justify-center gap-1"
-          style={{ background: 'rgba(0,0,0,0.52)' }}
-        >
-          {image.cum_count > 0 && (
-            <div className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: 'var(--c-pink-text)' }}>
-              <Droplets size={12} /> {image.cum_count}
-            </div>
-          )}
-          {image.is_favorite && <Star size={11} fill="var(--c-amber-text)" stroke="none" />}
-        </motion.div>
-      )}
-    </motion.div>
-  )
-}
-
 // ── Loading skeletons ─────────────────────────────────────────────────────────
 function SkeletonCard() {
   return <div className="rounded-[12px] animate-pulse" style={{ aspectRatio: '2/3', background: '#222' }} />
@@ -604,58 +529,72 @@ function GalleriesTab({ galleries, onGalleryClick, onViewAll, onGalleryContextMe
 }
 
 // ── Photos / Videos tab ───────────────────────────────────────────────────────
+// Same search, sorts and views as the main Photos and Videos lists, loading
+// more as you scroll.
 const MEDIA_PAGE_SIZE = 48
+const NO_SELECTION = new Set()
 
-const MEDIA_SORT_MAP = {
-  most_viewed:    'view_count',
-  recently_added: 'date_added',
-  random:         'random',
-}
-
-function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage, onItemContextMenu, onViewAll, total }) {
+function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage, onItemContextMenu, onViewAll }) {
   const t = useT()
-  const [items, setItems]   = useState([])
-  const [page, setPage]     = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const [sort, setSort]     = useState('recently_added')
+  const [sortBy, setSortBy]   = useState('date_added')
+  const [sortDir, setSortDir] = useState('desc')
+  const [seed, setSeed]       = useState(() => Math.random())
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch]   = useState('')
+  const [viewMode, setViewMode] = useListViewMode(
+    isVideo ? 'vault_view_creator_videos' : 'vault_view_creator_photos', MEDIA_VIEW_MODES, 'grid')
+  const thumbSize    = useVaultStore(s => (isVideo ? s.thumbSizeVideos : s.thumbSizeImages))
+  const setThumbSize = useVaultStore(s => (isVideo ? s.setThumbSizeVideos : s.setThumbSizeImages))
   const ioRef = useRef(null)
   const stateRef = useRef({ hasMore: true, fetching: false })
 
-  const handleSort = (s) => {
-    if (s === sort) return
-    setSort(s)
-    setItems([])
-    setPage(0)
-    setHasMore(true)
-  }
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // Pages and loaded items belong to one search/sort; a new one starts at page 0.
+  const listKey = `${sortBy}|${sortDir}|${search}|${seed}`
+  const [pageState, setPageState] = useState({ key: listKey, page: 0 })
+  const page = pageState.key === listKey ? pageState.page : 0
+  const [loaded, setLoaded] = useState({ key: listKey, items: [], total: 0, hasMore: true })
+  const current = loaded.key === listKey ? loaded : { items: [], total: 0, hasMore: true }
 
   const { data, isFetching } = useQuery({
-    queryKey: ['creator-media', creatorId, isVideo, sort, page],
+    queryKey: ['creator-media', creatorId, isVideo, listKey, page],
     queryFn: () => imagesApi.list({
       creator_id: creatorId,
       is_video: isVideo,
-      sort_by: MEDIA_SORT_MAP[sort] ?? 'view_count',
+      search: search || undefined,
+      sort_by: sortBy,
+      sort_dir: sortBy !== 'random' ? sortDir : undefined,
+      _seed: sortBy === 'random' ? seed : undefined,
       limit: MEDIA_PAGE_SIZE,
       skip: page * MEDIA_PAGE_SIZE,
-    }).then(r => r.data),
+    }).then(r => ({ key: listKey, page, items: r.data, total: parseInt(r.headers['x-total-count'] ?? '0', 10) })),
   })
 
   useEffect(() => {
     if (!data) return
-    setItems(prev => page === 0 ? data : [...prev, ...data])
-    setHasMore(data.length === MEDIA_PAGE_SIZE)
+    setLoaded(prev => ({
+      key: data.key,
+      items: data.page === 0 || prev.key !== data.key ? data.items : [...prev.items, ...data.items],
+      total: data.total,
+      hasMore: data.items.length === MEDIA_PAGE_SIZE,
+    }))
   }, [data])
 
   // Keep a ref mirror so the IntersectionObserver callback never reads stale state
-  stateRef.current = { hasMore, fetching: isFetching }
+  stateRef.current = { hasMore: current.hasMore, fetching: isFetching, key: listKey }
 
   // Auto-load the next page when the sentinel scrolls into view
   const sentinelRef = useCallback(node => {
     ioRef.current?.disconnect()
     if (!node) return
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && stateRef.current.hasMore && !stateRef.current.fetching) {
-        setPage(p => p + 1)
+      const s = stateRef.current
+      if (e.isIntersecting && s.hasMore && !s.fetching) {
+        setPageState(prev => ({ key: s.key, page: (prev.key === s.key ? prev.page : 0) + 1 }))
       }
     }, { rootMargin: '600px' })
     io.observe(node)
@@ -663,87 +602,148 @@ function MediaTab({ creatorId, isVideo, onItemClick, emptyMessage, onItemContext
   }, [])
   useEffect(() => () => ioRef.current?.disconnect(), [])
 
-  const favorites = sort === 'most_viewed' ? items.filter(img => img.is_favorite) : []
-  const isFirstLoad = isFetching && page === 0
-
-  if (isFirstLoad) {
-    return (
-      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-        {Array.from({ length: 12 }).map((_, i) => <SkeletonCell key={i} />)}
-      </div>
-    )
+  const handleSortChange = (val) => {
+    if (val === 'random') setSeed(Math.random())
+    setSortBy(val)
+    setSortDir(val === 'filename' ? 'asc' : 'desc')  // Name starts A–Z, everything else highest first
   }
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode)
+    if (mode === 'timeline' && !TIMELINE_START_SORTS.includes(sortBy)) handleSortChange('period')
+  }
+
+  const items = current.items
+  const isFirstLoad = isFetching && page === 0 && items.length === 0
 
   return (
     <div>
-      {/* Sort header */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          {total ? `${items.length} / ${total}` : `${items.length} ${t('loaded')}`}
-        </span>
-        <div className="flex items-center gap-3">
-          <SortPills sort={sort} onChange={handleSort} />
+      {/* Toolbar — same controls as the Photos and Videos lists */}
+      <div className="vault-filter-toolbar flex items-center gap-2 flex-wrap mb-3">
+        <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full flex-1 min-w-[160px] max-w-xs"
+             style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+          <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)}
+                 placeholder={t('Search by filename…')}
+                 className="bg-transparent border-none outline-none text-[14px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-full" />
+          {searchInput && (
+            <button type="button" onMouseDown={() => setSearchInput('')} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <SortDropdown value={sortBy} onChange={handleSortChange} options={isVideo ? VIDEO_SORTS : MEDIA_SORTS} sortDir={sortDir} onSortDirChange={setSortDir} />
+        <ViewModeDropdown value={viewMode} onChange={handleViewModeChange} modes={MEDIA_VIEW_MODES} />
+        {viewMode !== 'details' && (
+          <div className="flex items-center gap-2 ml-1">
+            <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
+            <input type="range" min={80} max={400} step={10} value={thumbSize}
+                   onChange={e => setThumbSize(Number(e.target.value))}
+                   className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            {(current.total || items.length) ? `${items.length.toLocaleString()} / ${(current.total || items.length).toLocaleString()}` : ''}
+          </span>
           {onViewAll && (
-            <button onClick={onViewAll} className="text-[12px] cursor-pointer" style={{ color: 'var(--accent)' }}>
+            <button type="button" onClick={onViewAll} className="text-[12px] cursor-pointer" style={{ color: 'var(--accent)' }}>
               {t('View all →')}
             </button>
           )}
         </div>
       </div>
 
-      {favorites.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }} className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Star size={13} fill="var(--c-amber-text)" stroke="none" />
-            <span className="text-[13px] font-semibold" style={{ color: 'var(--c-amber-text)' }}>{t('Favorites')}</span>
-            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>· {favorites.length}</span>
+      {isFirstLoad
+        ? (
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
+            {Array.from({ length: 12 }).map((_, i) => <SkeletonCell key={i} />)}
           </div>
-          <div className="flex gap-3 pb-2"
-               style={{ overflowX: 'auto', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
-            {favorites.map(img => (
-              <div key={img.id} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 220 }}>
-                <PhotoCell image={img} onClick={() => onItemClick(img)}
-                           onContextMenu={(e) => onItemContextMenu?.(e, img)} />
-              </div>
-            ))}
-          </div>
-          <div className="h-px my-5" style={{ background: 'rgba(255,255,255,0.07)' }} />
-        </motion.div>
-      )}
-
-      {items.length === 0 && !isFetching
-        ? <EmptyState icon={<ImageIcon size={40} />} message={t(emptyMessage)} />
-        : (
-          <>
-            <motion.div
-              variants={staggerContainer}
-              initial="hidden"
-              animate="visible"
-              className="grid gap-2"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
-            >
-              {items.map(img => (
-                <PhotoCell key={img.id} image={img} onClick={() => onItemClick(img)}
-                           onContextMenu={(e) => onItemContextMenu?.(e, img)} />
-              ))}
-            </motion.div>
-
-            {/* Infinite scroll sentinel + status */}
-            <div ref={hasMore ? sentinelRef : null} className="flex flex-col items-center gap-2 mt-8 mb-4">
-              <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                {total ? `${items.length} / ${total}` : items.length}{hasMore ? '' : t(' · all caught up')}
-              </div>
-              {hasMore && (
-                <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {isFetching ? t('Loading…') : ''}
-                </div>
-              )}
-            </div>
-          </>
         )
+        : items.length === 0 && !isFetching
+          ? <EmptyState icon={<ImageIcon size={40} />} message={search ? t('No results') : t(emptyMessage)} />
+          : (
+            <>
+              <MediaListView
+                mode={viewMode} images={items} onlyVideos={isVideo} thumbSize={thumbSize}
+                bulkMode={false} selected={NO_SELECTION} onSelect={() => {}} hideCreators
+                onOpen={index => onItemClick(items[index])}
+                onContextMenu={(img, e) => onItemContextMenu?.(e, img)}
+                sortBy={sortBy} sortDir={sortDir} onSort={handleSortChange} onSortDir={setSortDir}
+              />
+
+              {/* Infinite scroll sentinel + status */}
+              <div ref={current.hasMore ? sentinelRef : null} className="flex flex-col items-center gap-2 mt-8 mb-4">
+                <div className="text-[13px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  {current.hasMore ? (isFetching ? t('Loading…') : '') : t('All caught up')}
+                </div>
+              </div>
+            </>
+          )
       }
     </div>
+  )
+}
+
+// ── Assign galleries by folder ─────────────────────────────────────────────────
+// One-time setup, so it lives in the ⋯ menu instead of on the page.
+function FolderAssignModal({ creator, folderInput, setFolderInput, mutation, onBrowse, onClose }) {
+  const t = useT()
+  return (
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget && !mutation.isPending) onClose() }}>
+      <div className="rounded-[14px] p-5 w-[520px] max-w-[calc(100vw-32px)] animate-modal-pop shadow-2xl"
+           style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2 text-[16px] font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            <FolderOpen size={15} /> {t('Assign galleries by folder')}
+          </div>
+          <button type="button" onClick={onClose} className="cursor-pointer text-[rgba(255,255,255,0.4)] hover:text-white"><X size={15} /></button>
+        </div>
+        <div className="text-[13px] mb-4" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          {t('Every gallery inside this folder is assigned to {name}. The folder is remembered for future scans.', { name: creator.name })}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            autoFocus
+            value={folderInput}
+            onChange={e => setFolderInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && folderInput.trim()) mutation.mutate(folderInput.trim(), { onSuccess: onClose }) }}
+            placeholder={`e.g. D:\\Media\\${creator.name}`}
+            className="flex-1 min-w-0 rounded-[8px] px-3 py-2 text-[13px] placeholder-[rgba(255,255,255,0.18)] outline-none font-mono"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
+          />
+          <button type="button" onClick={onBrowse} title={t('Browse')} aria-label={t('Browse')}
+                  className="flex-shrink-0 w-9 h-9 rounded-[8px] flex items-center justify-center cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'var(--c-text)' }}>
+            <FolderOpen size={18} />
+          </button>
+        </div>
+        {creator.source_folder && (
+          <div className="flex items-center gap-2 mt-3 text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <span className="truncate font-mono flex-1" title={creator.source_folder}>{t('Saved:')} {creator.source_folder}</span>
+            <button type="button" disabled={mutation.isPending}
+                    onClick={() => mutation.mutate(null, { onSuccess: () => setFolderInput('') })}
+                    className="flex-shrink-0 px-2.5 py-1 rounded-full cursor-pointer disabled:opacity-40"
+                    style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' }}>
+              {t('Clear saved folder')}
+            </button>
+          </div>
+        )}
+        <div className="flex gap-2 justify-end mt-5">
+          <button type="button" onClick={onClose}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            {t('Cancel')}
+          </button>
+          <button type="button" disabled={mutation.isPending || !folderInput.trim()}
+                  onClick={() => mutation.mutate(folderInput.trim(), { onSuccess: onClose })}
+                  className="px-4 py-2 rounded-[8px] text-[13px] font-medium cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                  style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
+            <FolderOpen size={13} /> {mutation.isPending ? t('Assigning…') : t('Assign')}
+          </button>
+        </div>
+      </div>
+    </div></ModalLayer>
   )
 }
 
@@ -784,7 +784,7 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center"
+    <ModalLayer><div className="fixed inset-0 z-[60] flex items-center justify-center"
          style={{ background: 'rgba(0,0,0,0.75)' }}
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="rounded-[14px] w-80 overflow-hidden"
@@ -811,7 +811,7 @@ function AvatarModal({ creatorId, currentAvatarPath, onClose, onSuccess }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -880,7 +880,7 @@ function EditCreatorModal({ creator, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return createPortal((
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={e => e.target === e.currentTarget && onClose()}>
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="rounded-[14px] p-6 w-[880px] max-h-[85vh] overflow-y-auto animate-modal-pop shadow-2xl" style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.15)' }}>
         <div className="flex items-center justify-between mb-5">
           <div className="text-[22px] font-medium text-[rgba(255,255,255,0.9)] flex items-center gap-2">
@@ -1064,7 +1064,7 @@ function EditCreatorModal({ creator, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   ), document.body)
 }
 // ── Main profile page ─────────────────────────────────────────────────────────
@@ -1096,6 +1096,7 @@ export default function CreatorProfile() {
   const [scrollY, setScrollY] = useState(0)
   const [folderInput, setFolderInput] = useState('')
   const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [showFolderAssign, setShowFolderAssign] = useState(false)
   const [ctxMenu, setCtxMenu] = useState(null)              // { type: 'gallery'|'media', item, x, y }
   const [framePicker, setFramePicker] = useState(null)      // { image, creatorId, mode: 'avatar'|'banner' }
   const [activeTab, setActiveTab] = useState('galleries')
@@ -1429,6 +1430,8 @@ export default function CreatorProfile() {
 
   const handleRating = (r) => { setRating(r); ratingMutation.mutate(r) }
   const isCharacter = creator.creator_type === 'character'
+  // image_count counts every file; photos are the files that aren't videos.
+  const photoCount = Math.max(0, (creator.image_count ?? 0) - (creator.video_count ?? 0))
   const age = calculateAge(creator.date_of_birth)
   const dobDisplay = creator.date_of_birth
     ? isCharacter
@@ -1492,10 +1495,17 @@ export default function CreatorProfile() {
               {bannerMenuOpen && (
                 <div className="absolute top-10 right-0 rounded-[10px] w-52 z-20 overflow-hidden"
                      style={{ background: 'rgba(18,18,18,0.97)', border: '0.5px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
-                  <button onClick={() => { setShowWikiModal(true); setBannerMenuOpen(false) }}
+                  {/* The wiki URL and lore live in the Edit window; the old
+                      standalone import window no longer exists. */}
+                  <button onClick={() => { setShowEditModal(true); setBannerMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
                           style={{ color: '#b8b3f0' }}>
-                    <Globe size={12} /> {t('Wiki Import')}
+                    <Globe size={12} /> {t('Edit wiki & lore')}
+                  </button>
+                  <button onClick={() => { setFolderInput(creator.source_folder || ''); setShowFolderAssign(true); setBannerMenuOpen(false) }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[11px] cursor-pointer text-left hover:bg-[rgba(255,255,255,0.05)]"
+                          style={{ color: 'rgba(255,255,255,0.75)' }}>
+                    <FolderOpen size={12} /> {t('Assign galleries by folder…')}
                   </button>
                   <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)' }} />
                   <button onClick={() => { randomizeBanner(); setBannerMenuOpen(false) }}
@@ -1763,15 +1773,18 @@ export default function CreatorProfile() {
         <div className="flex gap-3">
 
           {/* Box 1: Stats — expands, centered */}
-          <div className="rounded-[12px] p-5 flex-1"
+          <div className="rounded-[12px] px-5 py-4 flex-[2] min-w-0"
                style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-            <div className="flex items-center justify-around h-full">
+            {/* Each stat gets its own cell and the row wraps on narrow windows,
+                so numbers never run into each other. */}
+            <div className="grid gap-x-3 gap-y-3 h-full items-center"
+                 style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(84px, 1fr))' }}>
               {[
-                { label: 'Photos',    value: creator.image_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
-                { label: 'Videos',    value: creator.video_count ?? 0,     color: 'rgba(255,255,255,0.9)' },
-                { label: 'Galleries', value: creator.gallery_count ?? 0,   color: 'rgba(255,255,255,0.9)' },
-                { label: 'Views',     value: (creator.total_views ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
-                { label: '💦',        value: creator.cum_count ?? 0,       color: 'var(--c-pink)' },
+                { label: 'Photos',    value: photoCount.toLocaleString(),                   color: 'rgba(255,255,255,0.9)' },
+                { label: 'Videos',    value: (creator.video_count ?? 0).toLocaleString(),   color: 'rgba(255,255,255,0.9)' },
+                { label: 'Galleries', value: (creator.gallery_count ?? 0).toLocaleString(), color: 'rgba(255,255,255,0.9)' },
+                { label: 'Views',     value: (creator.total_views ?? 0).toLocaleString(),   color: 'rgba(255,255,255,0.9)' },
+                { label: 'Cums',      value: (creator.cum_count ?? 0).toLocaleString(),     color: 'var(--c-pink)' },
                 { label: 'Gooning Time', value: (() => {
                   const secs = creator.total_view_seconds || 0
                   if (secs === 0) return '—'
@@ -1781,60 +1794,12 @@ export default function CreatorProfile() {
                 })(), color: 'var(--c-pink)' },
                 { label: 'Size',      value: creator.total_size_gb > 0 ? `${creator.total_size_gb} GB` : '—', color: 'rgba(255,255,255,0.7)' },
               ].map(s => (
-                <div key={s.label} className="flex flex-col items-center">
-                  <div className="text-[22px] font-semibold leading-none" style={{ color: s.color }}>{s.value}</div>
-                  <div className="text-[16px] mt-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{t(s.label)}</div>
+                <div key={s.label} className="flex flex-col items-center text-center min-w-0">
+                  <div className="text-[22px] font-semibold leading-none whitespace-nowrap tabular-nums" style={{ color: s.color }}>{s.value}</div>
+                  <div className="text-[13px] mt-1.5 whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.4)' }}>{t(s.label)}</div>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Box 2: Assign by folder — fixed width (+20%) */}
-          <div className="rounded-[12px] p-4 flex flex-col justify-center gap-1.5 flex-shrink-0"
-               style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', width: 408 }}>
-            <div className="flex items-center gap-2 text-[16px] font-medium uppercase tracking-wider"
-                 style={{ color: 'rgba(255,255,255,0.4)' }}>
-              <FolderOpen size={14} /> {t('Assign Galleries by Folder')}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                value={folderInput}
-                onChange={e => setFolderInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && folderInput.trim()) folderMutation.mutate(folderInput.trim()) }}
-                placeholder={`e.g. D:\\Media\\${creator.name}`}
-                className="flex-1 min-w-0 rounded-[8px] px-3 py-2 text-[13px] placeholder-[rgba(255,255,255,0.18)] outline-none font-mono"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
-              />
-              <button
-                onClick={() => setShowFolderPicker(true)}
-                title={t('Browse')}
-                aria-label={t('Browse')}
-                className="flex-shrink-0 w-9 h-9 rounded-[8px] flex items-center justify-center cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'var(--c-text)' }}>
-                <FolderOpen size={18} />
-              </button>
-              <button
-                onClick={() => folderMutation.mutate(folderInput.trim())}
-                disabled={folderMutation.isPending || !folderInput.trim()}
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[8px] cursor-pointer disabled:opacity-40 text-[13px] font-medium whitespace-nowrap"
-                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-                <FolderOpen size={13} /> {folderMutation.isPending ? t('Assigning…') : t('Assign')}
-              </button>
-              {creator.source_folder && (
-                <button onClick={() => folderMutation.mutate(null)}
-                        disabled={folderMutation.isPending}
-                        title={t('Clear saved folder')}
-                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-40"
-                        style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' }}>
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-            {creator.source_folder && (
-              <div className="text-[11px] font-mono truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                {t('Saved:')} {creator.source_folder}
-              </div>
-            )}
           </div>
 
           {/* Box 3: Collection Value — only when data present */}
@@ -1908,24 +1873,26 @@ export default function CreatorProfile() {
                style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
             {[
               { key: 'galleries', label: 'Galleries', count: creator.gallery_count ?? allGalleries?.length },
-              { key: 'photos',    label: 'Photos',    count: creator.image_count || null },
+              { key: 'photos',    label: 'Photos',    count: photoCount || null },
               { key: 'videos',    label: 'Videos',    count: creator.video_count || null },
             ].map(tab => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => changeTab(tab.key)}
-                className="relative pb-3 px-6 text-[14px] font-medium cursor-pointer transition-colors"
+                className="relative pb-3 px-5 text-[16px] font-medium cursor-pointer transition-colors flex items-center gap-2 hover:text-white"
                 style={{
-                  color: activeTab === tab.key ? '#fff' : 'rgba(255,255,255,0.38)',
+                  color: activeTab === tab.key ? '#fff' : 'rgba(255,255,255,0.62)',
                   background: 'none', border: 'none',
                 }}
               >
                 {t(tab.label)}
                 {tab.count != null && (
-                  <span className="ml-1.5 text-[12px]"
-                        style={{ color: activeTab === tab.key ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)' }}>
-                    {tab.count}
+                  <span className="text-[12px] px-2 py-0.5 rounded-full tabular-nums"
+                        style={activeTab === tab.key
+                          ? { background: 'color-mix(in srgb, var(--c-accent) 22%, transparent)', color: 'var(--c-accent-text)' }
+                          : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
+                    {Number(tab.count).toLocaleString()}
                   </span>
                 )}
                 {activeTab === tab.key && (
@@ -1967,7 +1934,6 @@ export default function CreatorProfile() {
                   emptyMessage="No photos yet"
                   onItemContextMenu={openMediaCtx}
                   onViewAll={() => navigate(`/images?creator_id=${id}`)}
-                  total={creator.image_count}
                 />
               )}
               {activeTab === 'videos' && (
@@ -1978,7 +1944,6 @@ export default function CreatorProfile() {
                   emptyMessage="No videos yet"
                   onItemContextMenu={openMediaCtx}
                   onViewAll={() => navigate(`/videos?creator_id=${id}`)}
-                  total={creator.video_count}
                 />
               )}
             </motion.div>
@@ -2032,7 +1997,7 @@ export default function CreatorProfile() {
 
       {/* Avatar zoom lightbox */}
       {showAvatarZoom && createPortal((
-        <div
+        <ModalLayer><div
           className="fixed inset-0 z-[80] flex items-center justify-center"
           role="dialog"
           aria-modal="true"
@@ -2058,13 +2023,23 @@ export default function CreatorProfile() {
             @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
             @keyframes zoomIn { from { transform: scale(0.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
           `}</style>
-        </div>
+        </div></ModalLayer>
       ), document.body)}
 
       {/* Delete confirmation modal */}
+      {showFolderAssign && (
+        <FolderAssignModal
+          creator={creator}
+          folderInput={folderInput}
+          setFolderInput={setFolderInput}
+          mutation={folderMutation}
+          onBrowse={() => setShowFolderPicker(true)}
+          onClose={() => setShowFolderAssign(false)}
+        />
+      )}
       {showFolderPicker && <FolderPicker initialPath={folderInput} onSelect={path => setFolderInput(path)} onClose={() => setShowFolderPicker(false)} />}
       {confirmDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
+        <ModalLayer><div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="rounded-[16px] p-7 w-[420px] text-center shadow-2xl"
                style={{ background: '#1a1a1a', border: '0.5px solid rgba(255,255,255,0.12)' }}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
@@ -2088,7 +2063,7 @@ export default function CreatorProfile() {
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalLayer>
       )}
     </div>
   )

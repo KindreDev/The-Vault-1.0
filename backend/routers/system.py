@@ -204,6 +204,7 @@ def get_config():
         "use_gpu":            config.get("use_gpu", True),  # GPU on by default
         "funscript_library_path": config.get("funscript_library_path", ""),
         "ignore_hidden_media": config.get("ignore_hidden_media", True),
+        "pregenerate_hover_clips": config.get("pregenerate_hover_clips", False),
     }
 
 
@@ -246,6 +247,36 @@ def set_ignore_hidden_media(body: dict):
     config["ignore_hidden_media"] = enabled
     _write_config(config)
     return {"ignore_hidden_media": enabled}
+
+
+@router.post("/config/hover-clips")
+def set_hover_clip_pregeneration(body: dict):
+    """Turn background building of every video hover clip on or off."""
+    from services import hover_clips
+    enabled = bool(body.get("enabled", False))
+    config = _read_config()
+    config[hover_clips.CONFIG_KEY] = enabled
+    _write_config(config)
+    if enabled:
+        hover_clips.start_pregeneration()
+    else:
+        hover_clips.stop_pregeneration()
+    return hover_clips.pregeneration_status()
+
+
+@router.get("/hover-clips/status")
+def hover_clip_status():
+    """Progress of the pre-generation pass, plus a size estimate for the toggle."""
+    from services import hover_clips
+    from database import SessionLocal
+    from models import Image
+    db = SessionLocal()
+    try:
+        videos = db.query(Image).filter(Image.is_video == True).count()  # noqa: E712
+    finally:
+        db.close()
+    return {**hover_clips.pregeneration_status(), "video_count": videos,
+            "estimated_bytes": videos * hover_clips.AVG_CLIP_BYTES}
 
 
 @router.post("/config/gpu-mode")

@@ -840,6 +840,17 @@ def _migrate_add_indexes():
         "CREATE INDEX IF NOT EXISTS idx_galleries_rating        ON galleries(rating)",
         "CREATE INDEX IF NOT EXISTS idx_galleries_is_favorite   ON galleries(is_favorite)",
         "CREATE INDEX IF NOT EXISTS idx_galleries_updated_at    ON galleries(updated_at)",
+        # "Date added" is the default sort of Galleries/Photos/Videos; without
+        # these every page sorted the whole table (~0.5s on 440k photos).
+        "CREATE INDEX IF NOT EXISTS idx_galleries_created_at    ON galleries(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_images_video_created    ON images(is_video, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_images_created_at       ON images(created_at)",
+        # Period dropdown on Photos/Videos counts files per gallery.
+        "CREATE INDEX IF NOT EXISTS idx_images_video_gallery    ON images(is_video, gallery_id)",
+        # Name sort on Photos/Videos orders by lower(filename).
+        "CREATE INDEX IF NOT EXISTS idx_images_video_name       ON images(is_video, lower(filename))",
+        # Loading Bay duplicate check looks up same-size vault files per incoming file.
+        "CREATE INDEX IF NOT EXISTS idx_images_video_size       ON images(is_video, file_size)",
         # session_logs — FK columns + time ordering (history / stats queries)
         "CREATE INDEX IF NOT EXISTS idx_sessions_gallery_id  ON session_logs(gallery_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_creator_id  ON session_logs(creator_id)",
@@ -1126,6 +1137,36 @@ async def _on_startup():
     _log_direct("INFO",
         f"The Vault started — Python {platform.python_version()} · {platform.system()}"
     )
+    # Compute the Dashboard's library-wide stats in the background so the first
+    # Dashboard load reads them from cache instead of waiting several seconds.
+    try:
+        import asyncio
+
+        def _warm_dashboard():
+            from routers.galleries import vault_stats
+            from routers.tags import trending_tags
+            db = SessionLocal()
+            try:
+                vault_stats(db)
+                trending_tags(limit=8, days=60, db=db)
+            finally:
+                db.close()
+
+        async def _warm():
+            try:
+                await asyncio.to_thread(_warm_dashboard)
+            except Exception as error:
+                _log_direct("WARN", f"Dashboard warm-up skipped: {error}")
+
+        asyncio.create_task(_warm())
+    except Exception as e:
+        _log_direct("WARN", f"Dashboard warm-up not started: {e}")
+    # Pre-build any missing video hover clips when that setting is on.
+    try:
+        from services.hover_clips import start_pregeneration
+        start_pregeneration()
+    except Exception as e:
+        _log_direct("WARN", f"Hover clip pre-generation not started: {e}")
     # Launch the Simulation ("Drama") Mode background engine. It's a cheap no-op
     # while the toggle is off; only spends GPU when simulation_enabled is true.
     try:

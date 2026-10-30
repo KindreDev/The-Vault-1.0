@@ -6,6 +6,7 @@ import { galleriesApi } from '../lib/api'
 import { useT } from '../i18n'
 import toast from 'react-hot-toast'
 
+import ModalLayer from './ModalLayer'
 /**
  * Copy files into a mix gallery.
  *
@@ -104,7 +105,7 @@ export default function GalleryTransferModal({
   const noun = images.length === 1 ? t('image') : t('{count} images', { count: images.length })
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    <ModalLayer><div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
          onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] w-full max-w-sm flex flex-col overflow-hidden"
@@ -208,6 +209,6 @@ export default function GalleryTransferModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   , document.body)
 }

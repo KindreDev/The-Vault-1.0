@@ -144,19 +144,30 @@ def catalog(
     exposure: str | None = None, intensity: str | None = None, search: str | None = None,
     release_id: int | None = None, set_id: int | None = None, signature: str | None = None,
     creator_id: int | None = None, character_id: int | None = None, binder_id: str | None = None,
-    skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
+    skip: int = 0, limit: int = 100, sort: str | None = None, favorites: bool = False,
+    db: Session = Depends(get_db),
 ):
     return tcg_v2.catalog(
         db, ownership=ownership, rarity=rarity, card_type=card_type,
         exposure=exposure, intensity=intensity, search=search, skip=skip, limit=limit,
         release_id=release_id, set_id=set_id, signature=signature,
-        creator_id=creator_id, character_id=character_id, binder_id=binder_id,
+        creator_id=creator_id, character_id=character_id, binder_id=binder_id, sort=sort,
+        favorites=favorites,
     )
 
 
 @router.put("/cards/{card_id}/classification")
 def classify(card_id: int, request: ClassificationRequest, db: Session = Depends(get_db)):
     return _result(tcg_v2.set_manual_classification, db, card_id, request.exposure, request.intensity)
+
+
+class FavoriteRequest(BaseModel):
+    favorite: bool
+
+
+@router.put("/cards/{card_id}/favorite")
+def favorite(card_id: int, request: FavoriteRequest, db: Session = Depends(get_db)):
+    return _result(tcg_v2.set_card_favorite, db, card_id, request.favorite)
 
 
 @router.put("/cards/{card_id}/presentation")

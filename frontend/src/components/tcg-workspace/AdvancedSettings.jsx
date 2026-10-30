@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
+import ModalLayer from '../ModalLayer'
 import { LocalizedText, useT } from '../../i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, BrainCircuit, Check, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { tcgV2Api } from '../../lib/api'
+import TCGSelect from './TCGSelect'
 
 const THEME_SOURCES = [
   ['periods', 'Periods'], ['characters', 'Characters and franchises'], ['cosplay', 'Creator x character cosplay'],
@@ -42,7 +43,7 @@ export default function AdvancedSettings({
       ? t('Catalogue refresh is queued in Task Q')
       : refreshTask?.message || t('No catalogue restore is currently queued')
 
-  return createPortal(
+  return <ModalLayer>
     <div className="tcgws-settings-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
       <aside className="tcgws-settings-panel" role="dialog" aria-modal="true" aria-labelledby="tcgws-advanced-title">
         <header>
@@ -60,7 +61,7 @@ export default function AdvancedSettings({
         <section>
           <SlidersHorizontal size={20} />
           <div><h3><LocalizedText text={"Release generation"} /></h3><p><LocalizedText text={"Automatic and Manual Review use the same validation pipeline."} /></p>
-            <select value={settings.release_generation_mode} onChange={e => save.mutate({ release_generation_mode: e.target.value })}><option value="automatic"><LocalizedText text={"Automatic"} /></option><option value="manual_review"><LocalizedText text={"Manual review"} /></option></select>
+            <TCGSelect label={t('Release generation')} hideLabel value={settings.release_generation_mode} onChange={value => save.mutate({ release_generation_mode: value })} options={[{ value: 'automatic', label: t('Automatic') }, { value: 'manual_review', label: t('Manual review') }]} />
           </div>
         </section>
 
@@ -104,6 +105,6 @@ export default function AdvancedSettings({
         </section>
         </div>
       </aside>
-    </div>, document.body,
-  )
+    </div>
+  </ModalLayer>
 }

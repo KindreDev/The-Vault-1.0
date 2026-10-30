@@ -8,7 +8,7 @@ from fastapi.responses import Response, FileResponse
 from sqlalchemy.orm import Session
 
 from database import get_db, SessionLocal
-from models import IntakeRoot, IntakeFolder, IntakeItem
+from models import IntakeFolder, IntakeItem
 from services import intake as intake_svc
 from services import task_queue
 from services.video_playback import VideoPlaybackError, ensure_browser_playback
@@ -23,34 +23,26 @@ def _launch_in_thread(fn, *args):
 # ── Intake roots ───────────────────────────────────────────────────────────────
 @router.get("/roots")
 def list_roots(db: Session = Depends(get_db)):
-    return db.query(IntakeRoot).all()
+    return intake_svc.list_roots(db)
 
 
 @router.post("/roots", status_code=201)
 def add_root(body: dict, db: Session = Depends(get_db)):
-    path = (body.get("path") or "").strip()
-    if not path:
-        raise HTTPException(400, "path required")
-    if not os.path.isdir(path):
-        raise HTTPException(400, f"Path does not exist: {path}")
-    if db.query(IntakeRoot).filter(IntakeRoot.path == path).first():
-        raise HTTPException(400, "Intake folder already added")
-    if intake_svc._overlaps_library(db, path):
-        raise HTTPException(400, "That folder overlaps a library root — pick a separate folder for intake.")
-    root = IntakeRoot(path=path, label=(body.get("label") or "").strip() or None)
-    db.add(root)
-    db.commit()
-    db.refresh(root)
-    return root
+    try:
+        return intake_svc.add_root(db, body.get("path") or "", body.get("label"))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.delete("/roots/{root_id}", status_code=204)
 def remove_root(root_id: int, db: Session = Depends(get_db)):
-    root = db.query(IntakeRoot).filter(IntakeRoot.id == root_id).first()
-    if not root:
+    if not intake_svc.remove_root(db, root_id):
         raise HTTPException(404, "Intake folder not found")
-    db.delete(root)
-    db.commit()
+
+
+@router.get("/summary")
+def summary(db: Session = Depends(get_db)):
+    return intake_svc.summary(db)
 
 
 # ── Scan / items ───────────────────────────────────────────────────────────────
@@ -160,6 +152,8 @@ def _get_archive_item(db: Session, item_id: int) -> IntakeItem:
         raise HTTPException(404, "Archive item not found")
     if not os.path.exists(item.source_path):
         raise HTTPException(404, "Archive file no longer exists on disk")
+    if not intake_svc._inside_root(db, item.source_path, item.root_id):
+        raise HTTPException(403, "File is outside its Loading Bay root")
     return item
 
 

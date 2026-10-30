@@ -2,9 +2,10 @@ import { LocalizedText, useT } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Redo2, Undo2, X } from 'lucide-react'
+import { Grid3x3, Redo2, Undo2, X } from 'lucide-react'
 import { tcgRoomApi } from '../../lib/api'
-import { AUTHORED_SURFACES, FLOOR_Y, ROOM_SIZE, SHELF_SUPPORT_SLOTS, SURFACE_ASSETS, SURFACE_HOST_ASSETS, WALL_BASE_ORIGIN_ASSETS, furnitureDisplayName, furniturePreviewAssetId, furniturePreviewMirrorX } from './roomLayout'
+import { FLOOR_Y, SURFACE_ASSETS, furnitureDisplayName, furniturePreviewAssetId, furniturePreviewMirrorX } from './roomLayout'
+import { stepRotation, validatePlacement } from './roomPlacementRules'
 
 const point = (x = 0, y = 0, z = 0) => ({ x, y, z })
 const transform = (position = point(), rotation = point()) => ({ position, rotation })
@@ -14,6 +15,7 @@ const transformWithContent = (current, position, rotation) => {
   return next
 }
 const round = value => Math.round(value * 1000) / 1000
+const readGridSnap = () => { try { return localStorage.getItem('vault.tcg-room.grid-snap') !== '0' } catch { return true } }
 
 function furniturePreviewUrl(assetId) {
   return `/tcg-room/shop/${encodeURIComponent(furniturePreviewAssetId(assetId) || '')}.png`
@@ -74,7 +76,7 @@ function FurnitureThumbnail({ assetId }) {
     return () => { image.onload = null }
   }, [assetId])
   if (assetId === 'poster_frame') return <span className="placement-mode__poster-thumb" aria-hidden="true"><i /></span>
-  return <canvas ref={canvasRef} width="82" height="82" aria-hidden="true" />
+  return <canvas ref={canvasRef} width="112" height="112" aria-hidden="true" />
 }
 
 function defaultTransform(definition) {
@@ -83,97 +85,7 @@ function defaultTransform(definition) {
     : transform(point(0, FLOOR_Y, 0), point())
 }
 
-function placementBox(definition, value) {
-  const footprint = definition?.footprint || { width: .5, depth: .5 }
-  const yaw = value.rotation?.y || 0
-  const cosine = Math.abs(Math.cos(yaw))
-  const sine = Math.abs(Math.sin(yaw))
-  const width = cosine * (footprint.width || .5) + sine * (footprint.depth || .5)
-  const depth = sine * (footprint.width || .5) + cosine * (footprint.depth || .5)
-  return { minX: value.position.x - width / 2, maxX: value.position.x + width / 2, minZ: value.position.z - depth / 2, maxZ: value.position.z + depth / 2 }
-}
-
-const overlaps = (a, b) => a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ
-
-function wallBox(definition, value) {
-  const footprint = definition?.footprint || { width: .5, depth: .5 }
-  const yaw = value.rotation?.y || 0
-  const normalX = Math.sin(yaw)
-  const normalZ = Math.cos(yaw)
-  const axis = Math.abs(normalX) >= Math.abs(normalZ) ? 'x' : 'z'
-  const coordinate = axis === 'x' ? value.position.x : value.position.z
-  const tangent = axis === 'x' ? value.position.z : value.position.x
-  const tangentSize = axis === 'x'
-    ? Math.abs(Math.sin(yaw)) * (footprint.width || .5) + Math.abs(Math.cos(yaw)) * (footprint.depth || .5)
-    : Math.abs(Math.cos(yaw)) * (footprint.width || .5) + Math.abs(Math.sin(yaw)) * (footprint.depth || .5)
-  const height = Math.max(.05, definition?.footprint?.height || .5)
-  const baseOrigin = WALL_BASE_ORIGIN_ASSETS.has(definition?.asset_id)
-  return {
-    axis,
-    coordinate,
-    normalSign: axis === 'x' ? (normalX >= 0 ? 1 : -1) : (normalZ >= 0 ? 1 : -1),
-    tangentMin: tangent - tangentSize / 2,
-    tangentMax: tangent + tangentSize / 2,
-    verticalMin: baseOrigin ? value.position.y : value.position.y - height / 2,
-    verticalMax: baseOrigin ? value.position.y + height : value.position.y + height / 2,
-  }
-}
-
-const wallOverlaps = (a, b) => a.axis === b.axis && a.normalSign === b.normalSign && Math.abs(a.coordinate - b.coordinate) <= .16 && a.tangentMin < b.tangentMax && a.tangentMax > b.tangentMin && a.verticalMin < b.verticalMax && a.verticalMax > b.verticalMin
-
-function surfaceHosts(placed, definitions, instances) {
-  const hosts = AUTHORED_SURFACES.map(host => ({ ...host }))
-  for (const row of placed) {
-    const instance = instances.find(item => item.id === row.instance_id)
-    const other = definitions.get(instance?.definition_id)
-    if (!other || !SURFACE_HOST_ASSETS.has(other.asset_id)) continue
-    const slots = other.footprint?.support_slots || SHELF_SUPPORT_SLOTS[other.asset_id] || []
-    for (const slot of slots) {
-      const slotBox = placementBox({ footprint: { width: slot.width, depth: slot.depth } }, row.transform)
-      hosts.push({ minX: slotBox.minX, maxX: slotBox.maxX, minZ: slotBox.minZ, maxZ: slotBox.maxZ, top: (row.transform?.position?.y || 0) + slot.y })
-    }
-  }
-  return hosts
-}
-
-const isShelf = definition => Boolean(definition && SURFACE_HOST_ASSETS.has(definition.asset_id))
-
-function validate(definition, value, placed, definitions, instances, selectedId) {
-  const { position } = value
-  if (definition?.placement_kind === 'wall') {
-    if (position.y < .12 || position.y > 2.75) return 'Keep it on the wall'
-    const box = wallBox(definition, value)
-    if (box.verticalMin < 0 || box.verticalMax > ROOM_SIZE.height) return 'Keep the whole item within the wall height'
-    for (const row of placed) {
-      if (row.instance_id === selectedId) continue
-      const instance = instances.find(item => item.id === row.instance_id)
-      const other = definitions.get(instance?.definition_id)
-      if (isShelf(definition) && isShelf(other) && overlaps(box, placementBox(other, row.transform))) return 'This overlaps another shelf'
-      if (other?.placement_kind === 'wall' && wallOverlaps(box, wallBox(other, row.transform))) return 'This overlaps another wall item'
-    }
-    return null
-  }
-  const box = placementBox(definition, value)
-  if (SURFACE_ASSETS.has(definition?.asset_id)) {
-    const host = surfaceHosts(placed, definitions, instances).find(item => (
-      Math.abs(position.y - item.top) <= .10 &&
-      box.minX >= item.minX && box.maxX <= item.maxX &&
-      box.minZ >= item.minZ && box.maxZ <= item.maxZ
-    ))
-    if (!host) return 'Place this on a table, desk, stand, or counter — not the floor'
-    return null
-  }
-  for (const row of placed) {
-    if (row.instance_id === selectedId) continue
-    const instance = instances.find(item => item.id === row.instance_id)
-    const other = definitions.get(instance?.definition_id)
-    if (isShelf(other) && overlaps(box, placementBox(other, row.transform))) return 'This overlaps another shelf'
-    if (other?.placement_kind === 'floor' && !SURFACE_ASSETS.has(other.asset_id) && overlaps(box, placementBox(other, row.transform))) return 'This overlaps another placed item'
-  }
-  return null
-}
-
-export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceId = null, worldSample = null, onConfirmReady, onLockReady, onDeselectReady, onActionsReady, onExit }) {
+export default function RoomLayoutPanel({ bootstrap, onPreview, placementRequest = null, worldSample = null, onLockReady, onDeselectReady, onExit }) {
   const t = useT()
   const qc = useQueryClient()
   const room = bootstrap?.room || { revision: 0, placements: [] }
@@ -183,15 +95,17 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
   const [draft, setDraft] = useState(null)
   const [pinned, setPinned] = useState(false)
   const [locked, setLocked] = useState(false)
+  const [gridSnap, setGridSnap] = useState(readGridSnap)
   const lastInitialId = useRef(null)
   const commitRef = useRef(null)
   const selected = instances.find(item => item.id === selectedId)
   const definition = definitions.get(selected?.definition_id)
   const placed = room.placements || []
   const existing = placed.find(item => item.instance_id === selectedId)
-  const invalid = draft ? validate(definition, draft, placed, definitions, instances, selectedId) : null
+  const invalid = draft ? validatePlacement(definition, draft, placed, definitions, instances, selectedId) : null
 
-  useEffect(() => { onPreview?.(draft && definition ? { instanceId: selectedId, assetId: definition.asset_id, transform: draft, valid: !invalid, reason: invalid, definition, pinned, locked } : null) }, [definition, draft, invalid, locked, onPreview, pinned, selectedId])
+  useEffect(() => { onPreview?.(draft && definition ? { instanceId: selectedId, assetId: definition.asset_id, transform: draft, valid: !invalid, reason: invalid, definition, pinned, locked, gridSnap } : null) }, [definition, draft, gridSnap, invalid, locked, onPreview, pinned, selectedId])
+  useEffect(() => { try { localStorage.setItem('vault.tcg-room.grid-snap', gridSnap ? '1' : '0') } catch { /* Storage can be unavailable. */ } }, [gridSnap])
   useEffect(() => () => onPreview?.(null), [onPreview])
 
   const select = useCallback(instance => {
@@ -212,53 +126,55 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
     setPinned(false)
   }, [definition, locked, selectedId, worldSample])
   useEffect(() => {
-    if (initialInstanceId == null || lastInitialId.current === initialInstanceId) return
+    if (placementRequest == null || lastInitialId.current === placementRequest.nonce) return
     if (selectedId) return
-    lastInitialId.current = initialInstanceId
-    const instance = instances.find(item => item.id === initialInstanceId)
+    lastInitialId.current = placementRequest.nonce
+    const instance = instances.find(item => item.id === placementRequest.id)
     if (instance) select(instance)
-  }, [initialInstanceId, instances, select, selectedId])
-  const finish = () => { setSelectedId(null); setDraft(null); setPinned(false); setLocked(false); onPreview?.(null) }
+  }, [placementRequest, instances, select, selectedId])
+  const finish = useCallback(() => { setSelectedId(null); setDraft(null); setPinned(false); setLocked(false); onPreview?.(null) }, [onPreview])
   useEffect(() => {
     onDeselectReady?.(finish)
     return () => onDeselectReady?.(() => {})
-  }, [onDeselectReady, selectedId, draft, locked, pinned])
+  }, [finish, onDeselectReady])
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }), qc.invalidateQueries({ queryKey: ['tcg-room-furniture'] })])
-  const handleError = error => { if (error.response?.status === 409) { finish(); refresh(); toast.error(t("The room changed elsewhere. Latest layout loaded; choose the item again.")) } else toast.error(error.response?.data?.detail || t("Could not update the room")) }
+  const handleError = error => {
+    setLocked(false)
+    if (error.response?.status === 409) { finish(); refresh(); toast.error(t("The room changed elsewhere. Latest layout loaded; choose the item again.")) } else toast.error(error.response?.data?.detail || t("Could not update the room"))
+  }
   const commit = useMutation({
     mutationFn: () => existing ? tcgRoomApi.moveFurniture(selectedId, { expected_revision: room.revision, transform: draft, snap_anchor: definition.placement_kind }) : tcgRoomApi.placeFurniture(selectedId, { expected_revision: room.revision, transform: draft, snap_anchor: definition.placement_kind }),
     onSuccess: () => { finish(); refresh(); toast.success(existing ? t("Furniture moved") : t("Furniture placed")) }, onError: handleError,
   })
-  commitRef.current = { commit, invalid, draft, locked }
-  useEffect(() => {
-    onConfirmReady?.(() => {
-      const current = commitRef.current
-      if (!current?.draft || current.invalid || !current.locked) return
-      current.commit.mutate()
-    })
-  }, [onConfirmReady])
   const storeItem = useMutation({ mutationFn: id => tcgRoomApi.returnFurniture(id, room.revision), onSuccess: () => { finish(); refresh(); toast.success(t("Returned to Furniture Inventory")) }, onError: handleError })
   const history = useMutation({ mutationFn: kind => kind === 'undo' ? tcgRoomApi.undoLayout(room.revision) : tcgRoomApi.redoLayout(room.revision), onSuccess: () => { finish(); refresh(); toast.success(t("Layout updated")) }, onError: handleError })
+  commitRef.current = { commit, storeItem, invalid, draft, locked, existing, selectedId }
   useEffect(() => {
-    const lock = () => {
-      const current = commitRef.current
-      if (!current?.draft || current.invalid || current.locked) return
-      setLocked(true)
-    }
+    // One click places the item, like build mode in The Sims.  The item is
+    // frozen while the save is in flight and released again if it fails.
     const place = () => {
       const current = commitRef.current
-      if (!current?.draft || current.invalid || !current.locked || current.commit.isPending) return
+      if (!current?.draft || current.invalid || current.locked || current.commit.isPending) return
+      setLocked(true)
       current.commit.mutate()
     }
-    const returnToInventory = () => {
-      if (existing && selectedId != null) storeItem.mutate(selectedId)
-      else finish()
+    onLockReady?.(place)
+    return () => onLockReady?.(null)
+  }, [onLockReady])
+  useEffect(() => {
+    const keys = event => {
+      if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return
+      if (event.code === 'KeyG') { event.preventDefault(); setGridSnap(value => !value); return }
+      if (!commitRef.current?.selectedId) return
+      if (event.code === 'Delete' || event.code === 'Backspace') {
+        event.preventDefault()
+        if (commitRef.current.existing) commitRef.current.storeItem.mutate(commitRef.current.selectedId)
+        else finish()
+      }
     }
-    const rotate = () => setDraft(current => current && transformWithContent(current, current.position, point(0, round((current.rotation?.y || 0) + .12), 0)))
-    onLockReady?.(lock)
-    onActionsReady?.({ place, returnToInventory, rotate, deselect: finish })
-    return () => { onLockReady?.(null); onActionsReady?.(null) }
-  }, [existing, finish, onActionsReady, onLockReady, selectedId, storeItem])
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [finish])
 
   return <div className="placement-mode placement-mode--live">
     <div className="placement-mode__rail">
@@ -279,11 +195,16 @@ export default function RoomLayoutPanel({ bootstrap, onPreview, initialInstanceI
       </button>
       })}</div>
       <div className="placement-mode__rail-actions">
+        <button type="button" className={gridSnap ? 'is-active' : ''} aria-pressed={gridSnap} onClick={() => setGridSnap(value => !value)} title={t("Snap to grid (G)")}><Grid3x3 size={18} /><span><LocalizedText text={"Grid"} /></span></button>
         <button type="button" disabled={history.isPending} onClick={() => history.mutate('undo')} title={t("Undo")}><Undo2 size={18} /><span><LocalizedText text={"Undo"} /></span></button>
         <button type="button" disabled={history.isPending} onClick={() => history.mutate('redo')} title={t("Redo")}><Redo2 size={18} /><span><LocalizedText text={"Redo"} /></span></button>
         <button type="button" onClick={onExit} title={t("Done")}><X size={18} /><span><LocalizedText text={"Done"} /></span></button>
       </div>
     </div>
-    <span className="placement-mode__context-hint">{locked ? 'Locked · Use Place to commit or Return to cancel' : 'Click a furniture item below to select it · Click the scene to lock its position · Right-click to deselect · Hold right mouse button to look around'}</span>
+    <span className="placement-mode__context-hint">{locked
+      ? t("Saving placement…")
+      : selectedId
+        ? (invalid ? `${t(invalid)} · ` : '') + t("Click to place · Q / E rotate 45° (Alt for 15°) · Alt free move · G grid · Del return to inventory · Esc or right-click cancel")
+        : t("Pick an item below, or click furniture in the room to move it · Hold right mouse button to look around")}</span>
   </div>
 }

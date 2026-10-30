@@ -15,6 +15,7 @@ import { rememberVideoElementVolume, restoreVideoVolume } from '../lib/videoVolu
 import { getSavedVideoLoop, saveVideoLoop, useVideoLoop } from '../lib/videoLoop'
 import VaultVideo from '../components/VaultVideo'
 
+import ModalLayer from '../components/ModalLayer'
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ images, startIdx, onClose }) {
   const t = useT()
@@ -85,7 +86,7 @@ function Lightbox({ images, startIdx, onClose }) {
     : (img.thumb_path ? `/thumbs/${img.thumb_path.replace(/\\/g, '/').split('/thumbs/').pop()}` : `/api/images/${img.id}/file`)
 
   return createPortal((
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#070707' }}
+    <ModalLayer><div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#070707' }}
          onClick={onClose}>
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-2.5 flex-shrink-0"
@@ -136,7 +137,7 @@ function Lightbox({ images, startIdx, onClose }) {
           </button>
         )}
       </div>
-    </div>
+    </div></ModalLayer>
   ), document.body)
 }
 

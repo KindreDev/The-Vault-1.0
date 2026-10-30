@@ -1,8 +1,10 @@
 """Desktop T-Code output, independent of the WebView/UI thread.
 
-The fixed-update design follows MultiFunPlayer's MIT-licensed SerialOutputTarget
-and ThreadAbstractOutputTarget: monotonic 10 ms clock, synchronous grouped writes,
-dirty-value filtering and no queue of old samples. See THIRD_PARTY_NOTICES.md.
+The fixed-update design follows MultiFunPlayer's MIT-licensed SerialOutputTarget,
+ThreadAbstractOutputTarget and ScriptViewModel: monotonic 10 ms clock,
+synchronous grouped writes, dirty-value filtering, no queue of old samples, a
+smoothed media clock, soft sync after jumps, a speed limit and auto-home.
+See THIRD_PARTY_NOTICES.md.
 """
 from __future__ import annotations
 
@@ -13,10 +15,22 @@ import time
 
 AXES = frozenset(("L0", "L1", "L2", "R0", "R1", "R2"))
 INTERVAL = .010
+HOME = 50.
+# A media observation further than this from the followed clock is a seek.
+SEEK_THRESHOLD = 1.
+# Jumps smaller than this (rate changes, tiny corrections) re-anchor without a
+# soft-sync ramp.
+SYNC_JUMP = .25
+# VLC's clock can sit on one value for a few hundred ms. Past this, treat the
+# media as stalled and hold output instead of extrapolating into the future.
+STALL_SECONDS = 1.
 
 
 def finite(value, default=0.):
-    result = float(value)
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
     return result if math.isfinite(result) else default
 
 
@@ -24,17 +38,27 @@ def clamp(value, low, high):
     return max(low, min(high, value))
 
 
+def smoothstep(t):
+    t = clamp(t, 0., 1.)
+    return t * t * (3 - 2 * t)
+
+
 class Curve:
-    """Precomputed shape-preserving Hermite segments, with MFP end ghosts."""
+    """Precomputed shape-preserving Hermite segments, with MFP end ghosts.
+
+    sample() keeps a forward cursor (MFP's AdvanceIndex) so steady playback
+    never searches; a backwards or distant jump falls back to bisect.
+    """
     def __init__(self, actions):
         points = {}
         for action in actions:
-            at, pos = float(action["at"]), float(action.get("pos", action.get("position", 0)))
+            at, pos = finite(action.get("at"), math.nan), finite(action.get("pos", action.get("position")), math.nan)
             if math.isfinite(at) and math.isfinite(pos):
                 points[at] = clamp(pos, 0, 100)
         self.times = sorted(points)
         self.values = [points[t] for t in self.times]
         self.slopes = []
+        self._cursor = 0
         for i in range(len(self.times) - 1):
             t0, t1 = self.times[i:i + 2]
             p0, p1 = self.values[i:i + 2]
@@ -51,6 +75,21 @@ class Curve:
             self.slopes.append((slope(dp, d, 2 * h + hp, h + 2 * hp),
                                 slope(d, dn, 2 * hn + h, hn + 2 * h)))
 
+    def _index(self, ms):
+        times, i = self.times, self._cursor
+        if i < len(times) - 1 and times[i] <= ms:
+            # Steady playback: advance a few segments at most.
+            for _ in range(8):
+                if times[i + 1] > ms:
+                    self._cursor = i
+                    return i
+                i += 1
+                if i >= len(times) - 1:
+                    break
+        i = bisect.bisect_right(times, ms) - 1
+        self._cursor = i
+        return i
+
     def sample(self, ms):
         if not self.times:
             return None
@@ -58,14 +97,83 @@ class Curve:
             return self.values[0]
         if ms >= self.times[-1]:
             return self.values[-1]
-        i = bisect.bisect_right(self.times, ms) - 1
+        i = self._index(ms)
         h = self.times[i + 1] - self.times[i]
         u = (ms - self.times[i]) / h
+        u2 = u * u
+        u3 = u2 * u
         m0, m1 = self.slopes[i]
-        return clamp((2*u**3 - 3*u**2 + 1) * self.values[i]
-                     + (u**3 - 2*u**2 + u) * h * m0
-                     + (-2*u**3 + 3*u**2) * self.values[i + 1]
-                     + (u**3 - u**2) * h * m1, 0, 100)
+        return clamp((2*u3 - 3*u2 + 1) * self.values[i]
+                     + (u3 - 2*u2 + u) * h * m0
+                     + (-2*u3 + 3*u2) * self.values[i + 1]
+                     + (u3 - u2) * h * m1, 0, 100)
+
+
+class ClockFollower:
+    """MultiFunPlayer's two-stage media clock.
+
+    `internal` advances with the wall clock and is pulled a third of the way to
+    each new media observation. `output` chases `internal` at 0.9x-1.1x speed,
+    so a coarse or jittery player clock never makes the script step or run
+    backwards. Distant observations (seeks) snap both.
+    """
+    def __init__(self):
+        self.reset()
+
+    def reset(self, seconds=None):
+        self.internal = self.output = seconds
+        self.raw = None
+        self.raw_at = None
+        self.force_next = False
+
+    def invalidate(self):
+        """A known discontinuity: re-anchor on the next observation."""
+        self.force_next = True
+        self.raw = None
+
+    def observe(self, raw, observed_at, rate, now, force=False):
+        """Feed a media position. Returns the size of a snap, or 0.
+
+        Only a changed value counts: a coarse clock re-reports the same time
+        many times, and re-anchoring on each would drag the clock backwards.
+        force=True is a known discontinuity (seek, rate change, loop wrap).
+        """
+        force = force or self.force_next
+        if raw == self.raw and self.internal is not None and not force:
+            return 0.
+        self.raw, self.raw_at = raw, observed_at
+        expected = raw + max(0., now - observed_at) * rate
+        if force or self.internal is None or abs(expected - self.internal) > SEEK_THRESHOLD:
+            jump = math.inf if self.internal is None else abs(expected - self.internal)
+            self.internal = self.output = expected
+            self.force_next = False
+            return jump
+        self.internal += .33 * (expected - self.internal)
+        return 0.
+
+    def stalled(self, now):
+        return self.raw_at is not None and now - self.raw_at > STALL_SECONDS
+
+    def advance(self, dt, rate):
+        if self.internal is None:
+            return None
+        step = max(0., dt) * rate
+        self.internal += step
+        self.output += clamp(self.internal - self.output, step * .9, step * 1.1)
+        return self.output
+
+
+def motion_settings(raw):
+    raw = raw or {}
+    home = raw.get("autoHome") or {}
+    return {
+        "syncSeconds": clamp(finite(raw.get("syncSeconds", 1), 1), 0, 10),
+        # Percent of full travel per second; 0 disables the limit.
+        "speedLimit": max(0., finite(raw.get("speedLimit", 0))),
+        "autoHome": bool(home.get("enabled", True)),
+        "homeDelay": clamp(finite(home.get("delay", 5), 5), 0, 120),
+        "homeDuration": clamp(finite(home.get("duration", 3), 3), 0, 30),
+    }
 
 
 class SerialPlayback:
@@ -80,6 +188,15 @@ class SerialPlayback:
         self._track = None
         self._manual = {}
         self._last_values = {}
+        # Last commanded value per axis. Unlike _last_values (the dirty filter),
+        # this survives stop/seek so soft sync and auto-home know where the
+        # device actually is.
+        self._sent = {}
+        self._sync = None
+        self._home = None
+        self._motion = motion_settings(None)
+        self._clock = ClockFollower()
+        self._held = True
         self._error = None
         self._time = 0.
         self._ended = False
@@ -111,6 +228,8 @@ class SerialPlayback:
             self._ended = False
             self._writes = 0
             self._max_gap_ms = 0.
+            self._sent.clear()
+            self._sync = self._home = None
             self._closing.clear()
             self._thread = threading.Thread(target=self._run, name="vault-tcode-output", daemon=True)
             self._thread.start()
@@ -128,13 +247,18 @@ class SerialPlayback:
             if generation < self._generation:
                 return False
             self._generation = generation
-            self._track = dict(payload, curves=curves, anchor=time.perf_counter(),
+            now = time.perf_counter()
+            self._track = dict(payload, curves=curves, anchor=now,
                                startTime=max(0., finite(payload.get("startTime", 0))),
                                speed=clamp(finite(payload.get("speed", 1), 1), .25, 4),
-                               duration=finite(payload.get("duration", 0)) or max(c.times[-1] for c in curves.values()) / 1000,
-                               mediaRaw=None, mediaAnchor=None)
+                               duration=finite(payload.get("duration", 0)) or max(c.times[-1] for c in curves.values()) / 1000)
+            if "motion" in payload:
+                self._motion = motion_settings(payload["motion"])
+            self._clock.reset()
+            self._held = True
             self._manual.clear()
             self._last_values.clear()
+            self._home = None
             self._ended = False
             self._error = None
             self._wake.set()
@@ -149,16 +273,35 @@ class SerialPlayback:
             if "speed" in patch and s.get("owner") != "video":
                 s["startTime"] += (now - s["anchor"]) * s["speed"]
                 s["anchor"] = now
-            for key in ("range", "intensity", "axisEnabled", "loop", "loopRegion", "strokeFloor", "strokeCeiling", "offsetMs", "gate"):
+            resync = False
+            for key in ("range", "intensity", "axisEnabled", "axisSettings", "loop", "loopRegion",
+                        "strokeFloor", "strokeCeiling", "offsetMs", "gate"):
                 if key in patch:
+                    if key == "gate":
+                        # Edge Mode ramps the gate in small steps; only an abrupt
+                        # release would jolt the device.
+                        resync |= abs(finite(patch[key], 1) - finite(s.get(key, 1), 1)) > .3
+                    else:
+                        resync |= key in ("offsetMs", "axisSettings", "range", "intensity") and patch[key] != s.get(key)
                     s[key] = patch[key]
+            if "motion" in patch:
+                self._motion = motion_settings(patch["motion"])
             if "speed" in patch:
                 s["speed"] = clamp(finite(patch["speed"], 1), .25, 4)
             if "startTime" in patch:
                 s["startTime"] = max(0., finite(patch["startTime"]))
                 s["anchor"] = now
+                if patch.get("seek"):
+                    # HTML video seek: snap to it even when it is close by.
+                    self._clock.invalidate()
+                if s.get("owner") != "video":
+                    # An independent-player seek: the script jumps.
+                    self._clock.reset()
+                    resync = True
             if "playing" in patch:
                 s["playing"] = bool(patch["playing"])
+            if resync:
+                self._begin_sync(now)
             self._last_values.clear()
             self._wake.set()
 
@@ -171,19 +314,35 @@ class SerialPlayback:
                 return
             self._generation = int(generation)
             self._track = None
+            self._home = None
+            self._sync = None
             self._manual[axis] = (clamp(finite(position), 0, 100), clamp(finite(duration, 10), 1, 60000))
             self._wake.set()
 
-    def stop(self, generation):
+    def stop(self, generation, park=False):
         # Holding this same lock through write means no sample can arrive after
         # stop returns. The port remains open; only disconnect releases it.
+        # park=True (pause) lets auto-home ease the device back to centre after
+        # its delay. A plain Stop never moves the device again.
         with self._guard:
             if int(generation) < self._generation:
                 return
             self._generation = int(generation)
+            track = self._track
             self._track = None
             self._manual.clear()
             self._last_values.clear()
+            self._sync = None
+            self._home = None
+            if park and self._motion["autoHome"] and self._sent:
+                targets = {axis: HOME for axis in self._sent}
+                if track and "L0" in targets:
+                    floor = finite(track.get("strokeFloor", 0))
+                    ceiling = finite(track.get("strokeCeiling", 100), 100)
+                    targets["L0"] = (floor + ceiling) / 2
+                self._home = {"start": time.perf_counter() + self._motion["homeDelay"],
+                              "duration": self._motion["homeDuration"],
+                              "from": None, "targets": targets}
             self._wake.set()
 
     def status(self):
@@ -191,7 +350,8 @@ class SerialPlayback:
             return {"connected": self._port is not None and self._port.is_open,
                     "error": self._error, "time": self._time, "ended": self._ended,
                     "generation": self._generation, "writes": self._writes,
-                    "maxGapMs": self._max_gap_ms}
+                    "maxGapMs": self._max_gap_ms, "homing": self._home is not None,
+                    "syncing": self._sync is not None}
 
     def disconnect(self):
         self._closing.set()
@@ -209,6 +369,8 @@ class SerialPlayback:
             self._track = None
             self._manual.clear()
             self._last_values.clear()
+            self._sent.clear()
+            self._sync = self._home = None
 
     def _require_port(self):
         if self._error:
@@ -216,41 +378,112 @@ class SerialPlayback:
         if not self._port or not self._port.is_open:
             raise RuntimeError("Serial device is not connected")
 
-    def _position_time(self, s, now):
+    def _begin_sync(self, now):
+        seconds = self._motion["syncSeconds"]
+        self._sync = {"start": now, "duration": seconds, "from": dict(self._sent)} if seconds > 0 else None
+
+    def _position_time(self, s, now, elapsed):
+        rate = s["speed"]
         if s.get("owner") == "video":
             if s.get("mediaSession"):
                 clock = self._media_clock(s["mediaSession"]) if self._media_clock else None
                 if not clock or not clock["playing"]:
-                    s["mediaRaw"] = None
+                    self._clock.reset()
                     return None
-                raw, rate = clock["time"], clock["rate"]
-                revision = clock.get('revision')
-                if revision != s.get('mediaRevision'):
-                    s['mediaRaw'] = None
-                    s['mediaRevision'] = revision
-                # VLC's get_time advances in coarse steps. Interpolate between
-                # observations instead of commanding the same position 25 times.
-                predicted = raw if s["mediaRaw"] is None else s["mediaTime"] + (now - s["mediaAnchor"]) * rate
-                if s["mediaRaw"] != raw:
-                    if s["mediaRaw"] is None or raw < s["mediaRaw"] or abs(raw - predicted) > .5:
-                        predicted = raw
-                    else:
-                        predicted += clamp((raw - predicted) * .1, -.01, .01)
-                    s["mediaRaw"], s["mediaTime"], s["mediaAnchor"] = raw, predicted, now
-                return min(clock["duration"] or float("inf"), predicted)
+                rate = finite(clock.get("rate", 1), 1)
+                revision = clock.get("revision")
+                # Seek, rate change or loop wrap: re-anchor on this value. Only a
+                # real jump (not a rate change) earns a soft-sync ramp.
+                force = revision != s.get("mediaRevision")
+                s["mediaRevision"] = revision
+                raw = finite(clock["time"])
+                observed = finite(clock.get("observedAt", now), now)
+                # MFP order: advance to now, then correct toward the observation.
+                if not self._clock.stalled(now):
+                    self._clock.advance(elapsed, rate)
+                jump = self._clock.observe(raw, min(observed, now), rate, now, force)
+                if jump > SYNC_JUMP:
+                    self._begin_sync(now)
+                return min(clock["duration"] or math.inf, self._clock.output)
+            # HTML video: the page sends observations as startTime updates.
             if not s.get("playing", True) or now - s["anchor"] > 2:
+                self._clock.reset()
                 return None  # browser media clock lease expired; hold output
-        return s["startTime"] + (now - s["anchor"]) * s["speed"]
+            self._clock.advance(elapsed, rate)
+            jump = self._clock.observe(s["startTime"], s["anchor"], rate, now)
+            if jump > SYNC_JUMP:
+                self._begin_sync(now)
+            return self._clock.output
+        return s["startTime"] + (now - s["anchor"]) * rate
+
+    def _axis_value(self, s, axis, curve, seconds, gate):
+        settings = (s.get("axisSettings") or {}).get(axis) or {}
+        value = curve.sample(seconds * 1000 + finite(s.get("offsetMs", 0)) + finite(settings.get("offsetMs", 0)))
+        if settings.get("invert"):
+            value = 100 - value
+        bounds = s.get("range") or {"min": 0, "max": 100}
+        value = finite(bounds.get("min", 0)) + (finite(bounds.get("max", 100), 100) - finite(bounds.get("min", 0))) * value / 100
+        if axis == "L0":
+            value = 50 + (value - 50) * clamp(finite(s.get("intensity", 1), 1), 0, 2)
+            value = 50 + (value - 50) * gate
+            floor, ceiling = finite(s.get("strokeFloor", 0)), finite(s.get("strokeCeiling", 100), 100)
+            return floor + (ceiling - floor) * clamp(value, 0, 100) / 100
+        low = clamp(finite(settings.get("min", 0)), 0, 100)
+        high = clamp(finite(settings.get("max", 100), 100), low, 100)
+        return low + (high - low) * clamp(value, 0, 100) / 100
+
+    def _shape(self, axis, value, now, elapsed):
+        """Soft sync, then speed limit, against the last commanded value."""
+        sync = self._sync
+        if sync:
+            progress = (now - sync["start"]) / sync["duration"] if sync["duration"] else 1
+            if progress >= 1:
+                self._sync = None
+            else:
+                start = sync["from"].get(axis, HOME)
+                value = start + (value - start) * smoothstep(progress)
+        limit = self._motion["speedLimit"]
+        previous = self._sent.get(axis)
+        if limit > 0 and previous is not None:
+            step = limit * max(elapsed, INTERVAL)
+            value = clamp(value, previous - step, previous + step)
+        return clamp(value, 0, 100)
+
+    def _sample_home(self, now):
+        home = self._home
+        if not home or now < home["start"]:
+            return {}
+        if home["from"] is None:
+            home["from"] = {axis: self._sent.get(axis, HOME) for axis in home["targets"]}
+        progress = 1 if home["duration"] <= 0 else (now - home["start"]) / home["duration"]
+        eased = smoothstep(progress)
+        values = {}
+        for axis, target in home["targets"].items():
+            start = home["from"][axis]
+            value = start + (target - start) * eased
+            previous = self._last_values.get(axis)
+            if previous is None or abs(previous - value) >= .01:
+                values[axis] = (value, max(1, round(INTERVAL * 1000)))
+        if progress >= 1:
+            self._home = None
+        return values
 
     def _sample(self, now, elapsed):
         s = self._track
         if not s:
-            values, self._manual = self._manual, {}
-            return values
-        seconds = self._position_time(s, now)
+            if self._manual:
+                values, self._manual = self._manual, {}
+                return values
+            return self._sample_home(now)
+        seconds = self._position_time(s, now, elapsed)
         if seconds is None:
+            self._held = True
             self._last_values.clear()
             return {}
+        if self._held:
+            # First sample after start, pause or a lost clock lease.
+            self._held = False
+            self._begin_sync(now)
         if s.get("owner") != "video":
             region = s.get("loopRegion") or {}
             start = max(0., finite(region.get("start", 0)))
@@ -262,6 +495,7 @@ class SerialPlayback:
                     seconds = start + (seconds - start) % (end - start)
                     s["startTime"], s["anchor"] = seconds, now
                     self._last_values.clear()
+                    self._begin_sync(now)
                 else:
                     # Emit the actual final point before marking completion.
                     seconds = end
@@ -272,18 +506,11 @@ class SerialPlayback:
         gate = clamp(finite(s.get("gate", 1), 1), 0, 1)
         if gate <= 0:
             return values
+        enabled = s.get("axisEnabled") or {}
         for axis, curve in s["curves"].items():
-            if (s.get("axisEnabled") or {}).get(axis) is False:
+            if enabled.get(axis) is False:
                 continue
-            value = curve.sample(seconds * 1000 + finite(s.get("offsetMs", 0)))
-            bounds = s.get("range") or {"min": 0, "max": 100}
-            value = finite(bounds.get("min", 0)) + (finite(bounds.get("max", 100)) - finite(bounds.get("min", 0))) * value / 100
-            if axis == "L0":
-                value = 50 + (value - 50) * clamp(finite(s.get("intensity", 1), 1), 0, 2)
-                value = 50 + (value - 50) * gate
-                floor, ceiling = finite(s.get("strokeFloor", 0)), finite(s.get("strokeCeiling", 100))
-                value = floor + (ceiling - floor) * clamp(value, 0, 100) / 100
-            value = clamp(value, 0, 100)
+            value = self._shape(axis, self._axis_value(s, axis, curve, seconds, gate), now, elapsed)
             previous = self._last_values.get(axis)
             # MFP compares against last successfully sent value at device precision.
             if previous is None or abs(previous - value) >= .01:
@@ -314,6 +541,7 @@ class SerialPlayback:
                         if written != len(encoded):
                             raise IOError("Incomplete serial write")
                         self._last_values.update({a: p for a, (p, _) in values.items()})
+                        self._sent.update({a: p for a, (p, _) in values.items()})
                         self._writes += 1
                         self._max_gap_ms = max(self._max_gap_ms, elapsed * 1000)
             except Exception as exc:
@@ -321,6 +549,7 @@ class SerialPlayback:
                     self._error = f"Serial output stopped: {exc}"
                     self._track = None
                     self._manual.clear()
+                    self._home = None
                 break
             # Like MFP, subtract work time; slow writes never create catch-up
             # bursts or an unbounded queue. Python 3.11+ uses a high-resolution

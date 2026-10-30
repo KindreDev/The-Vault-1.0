@@ -61,6 +61,10 @@ export function mutationQueryRoots(config, data) {
     add(TAGS, MEDIA, STATS, ['curation-debt'])
   } else if (/^\/(curation|relocate)(\/|$)/.test(path)) {
     add(LIBRARY, REWARDS)
+  } else if (path === '/gamification/login') {
+    // The daily check-in only changes rewards. Refreshing stats here used to
+    // restart every Dashboard stats query right as the app opened.
+    add(REWARDS)
   } else if (/^\/gamification(\/|$)/.test(path)) {
     add(REWARDS, CARDS, STATS)
   } else if (/^\/(cards|tcg-v2)(\/|$)/.test(path)) {
@@ -96,8 +100,28 @@ export async function invalidateQueryRoots(client, roots) {
   return client.invalidateQueries(filters)
 }
 
+// Views and watch-time are logged on every photo flip. Their refreshes are
+// collected and applied once the viewer has been quiet for a while, instead of
+// re-downloading the gallery, profile and stats on every image.
+const QUIET_REFRESH_MS = 20000
+const quietRoots = new Set()
+let quietTimer = null
+
+export function isQuietMutation(config) {
+  return /^\/(images|galleries)\/[^/]+\/(view|duration)$/.test(requestPath(config))
+}
+
 export function refreshAfterMutation(client, config, data) {
-  return invalidateQueryRoots(client, mutationQueryRoots(config, data))
+  const roots = mutationQueryRoots(config, data)
+  if (!isQuietMutation(config)) return invalidateQueryRoots(client, roots)
+  roots.forEach(root => quietRoots.add(root))
+  clearTimeout(quietTimer)
+  quietTimer = setTimeout(() => {
+    const pending = [...quietRoots]
+    quietRoots.clear()
+    void invalidateQueryRoots(client, pending).catch(() => {})
+  }, QUIET_REFRESH_MS)
+  return Promise.resolve()
 }
 
 // Queue history catches tiny jobs that finish between polls, as well as partial

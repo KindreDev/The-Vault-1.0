@@ -2,15 +2,15 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Star, Droplets, Clock, Shuffle, Dice6, Target, CheckCircle2, Circle,
-  Plus, Images, Eye, User, HardDrive, Video, Trophy, Flame, X, Play,
-  BarChart2, Calendar, Tag as TagIcon, Hash, Activity, Zap, Info, PlayCircle, StarHalf,
-  ChevronDown, Heart, LayoutTemplate, FolderSearch, Loader2, Check, Inbox, Sparkles, ArrowRight,
+  Star, Droplets, Clock, Shuffle, Dice6, Target, Plus, Images, Eye,
+  User, HardDrive, Video, Trophy, Flame, X, Play, BarChart2, Calendar,
+  Tag as TagIcon, Hash, Zap, PlayCircle, StarHalf, LayoutTemplate, FolderSearch, Check, Inbox,
+  Sparkles, ArrowRight,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi, gamiApi, sessionsApi, imagesApi, economyApi, playlistsApi, tagsApi, cardsApi, scannerApi, curationApi } from '../lib/api'
+import { galleriesApi, creatorsApi, gamiApi, imagesApi, economyApi, tagsApi, cardsApi, scannerApi, curationApi, intakeApi } from '../lib/api'
 import { useSession } from '../hooks/useSession'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
@@ -22,7 +22,9 @@ import { useCountUp } from '../hooks/useCountUp'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 import { useScrollLock } from '../hooks/useScrollLock'
 import toast from 'react-hot-toast'
+import { creatorTypeColors, RARITY_COLORS } from '../lib/entityColors'
 
+import ModalLayer from '../components/ModalLayer'
 // ── Animated numeric stat value ───────────────────────────────────────────────
 // Counts up from 0 when the target value first arrives (data load).
 // Falls back to raw display for non-numeric or string values.
@@ -54,29 +56,7 @@ function fmtMs(ms, t) {
   return translateTime('<1m')
 }
 
-function timeAgo(ts, t) {
-  const translateTime = typeof t === 'function' ? t : fallbackTranslate
-  // Backend returns naive UTC strings without 'Z' — append it so the browser parses correctly
-  const normalized = ts && !String(ts).endsWith('Z') && !String(ts).includes('+') ? ts + 'Z' : ts
-  const diff = Date.now() - new Date(normalized).getTime()
-  const d = Math.floor(diff / 86400000)
-  const h = Math.floor(diff / 3600000)
-  const m = Math.floor(diff / 60000)
-  if (d > 1) return translateTime('{count}d ago', { count: d })
-  if (d === 1) return translateTime('Yesterday')
-  if (h >= 1) return translateTime('{count}h ago', { count: h })
-  if (m >= 1) return translateTime('{count}m ago', { count: m })
-  return translateTime('Just now')
-}
-
-const TYPE_COLORS = {
-  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 20%, transparent)',  text: '#9FE1CB' },
-  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 20%, transparent)',  text: '#ED93B1' },
-  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', text: '#CECBF6' },
-  character: { bg: 'color-mix(in srgb, var(--c-amber) 20%, transparent)',  text: '#FAC775' },
-  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 20%, transparent)',  text: '#ED93B1' },
-  custom:    { bg: 'rgba(136,135,128,0.2)', text: '#D3D1C7' },
-}
+const TYPE_COLORS = creatorTypeColors(20)
 
 // ── Favorite creator card (big circle, no container) ─────────────────────────
 function FavCreatorCard({ creator, onClick, avatarBust }) {
@@ -110,74 +90,6 @@ function FavCreatorCard({ creator, onClick, avatarBust }) {
   )
 }
 
-// ── Image HOF card ────────────────────────────────────────────────────────────
-function ImageHofCard({ item, onClick }) {
-  return (
-    <div onClick={onClick}
-         className="rounded-[8px] overflow-hidden cursor-pointer group"
-         style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-      <div className="overflow-hidden" style={{ height: 240, background: 'rgba(255,255,255,0.03)' }}>
-        <img src={`/api/images/${item.id}/thumb`} alt=""
-             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-             onError={e => { e.target.style.display = 'none' }} />
-      </div>
-      <div className="p-2">
-        <div className="text-[13px] font-medium text-[rgba(255,255,255,0.6)] truncate mb-1">{item.filename}</div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            <Eye size={10} /> {item.view_count ?? 0}
-          </span>
-          {(item.cum_count ?? 0) > 0 && (
-            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: 'var(--c-pink)' }}>
-              <Droplets size={10} /> {item.cum_count}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Gallery HOF card ──────────────────────────────────────────────────────────
-function GalleryHofCard({ gallery, onClick }) {
-  const [failed, setFailed] = useState(false)
-  return (
-    <div onClick={onClick}
-         className="rounded-[8px] overflow-hidden cursor-pointer group"
-         style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-      <div className="overflow-hidden" style={{ height: 240, background: 'rgba(255,255,255,0.03)' }}>
-        {gallery.cover_thumb && !failed
-          ? <img src={gallery.cover_thumb} alt={gallery.name}
-                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                 onError={() => setFailed(true)} />
-          : <div className="w-full h-full flex items-center justify-center opacity-15"><Images size={40} /></div>
-        }
-      </div>
-      <div className="p-2">
-        <div className="text-[13px] font-medium text-[rgba(255,255,255,0.75)] truncate mb-1">{gallery.name}</div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            <Eye size={10} /> {gallery.view_count ?? 0}
-          </span>
-          {(gallery.cum_count ?? 0) > 0 && (
-            <span className="vault-cum-stat flex items-center gap-1 text-[12px]" style={{ color: 'var(--c-pink)' }}>
-              <Droplets size={10} /> {gallery.cum_count}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const RARITY_COLORS = {
-  common:    '#888780',
-  uncommon:  '#1D9E75',
-  rare:      '#378ADD',
-  epic:      '#7F77DD',
-  legendary: '#BA7517',
-}
-
 const RARITY_LABELS = {
   common:    'Snapshot',
   uncommon:  'Album · 500+',
@@ -205,7 +117,7 @@ function CreatorHofCard({ creator, onClick, avatarBust }) {
          }}>
       <div className="overflow-hidden flex items-center justify-center" style={{ height: 380, background: hasAvatar ? '#111' : tc.bg }}>
         {hasAvatar
-          ? <img src={`/api/creators/${creator.id}/avatar?v=${avatarBust}`} alt={creator.name}
+          ? <img src={`/api/creators/${creator.id}/avatar-thumb?size=640&v=${avatarBust}`} alt={creator.name}
                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                  onError={() => setImgFailed(true)} />
           : <span className="text-[80px] font-semibold select-none" style={{ color: tc.text, opacity: 0.6 }}>{initials}</span>
@@ -363,7 +275,7 @@ function SpinModal({ onClose, onSpent }) {
   const alreadySpun = result?.already_spun
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.75)' }}
          onClick={phase === 'result' ? onClose : undefined}>
       <div className="rounded-[24px] px-12 py-10 flex flex-col items-center gap-5 animate-modal-pop"
@@ -412,7 +324,7 @@ function SpinModal({ onClose, onSpent }) {
           <div className="text-[16px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{t('click to close')}</div>
         )}
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -435,11 +347,9 @@ function MoreStatsModal({ stats, onClose }) {
     </div>
   )
 
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in backdrop-blur-md" 
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in backdrop-blur-md" 
          style={{ background: 'rgba(0,0,0,0.6)' }} onMouseDown={onClose}>
       <div className="rounded-[16px] shadow-2xl animate-modal-pop flex flex-col max-h-[85vh] w-full max-w-4xl"
            style={{ background: '#181818', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}
@@ -488,7 +398,7 @@ function MoreStatsModal({ stats, onClose }) {
 
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -511,86 +421,95 @@ const CAT_COLORS = {
 const catColor = (cat) => CAT_COLORS[cat] || 'var(--c-accent)'
 
 // ── Trending Tags sidebar widget ──────────────────────────────────────────────
-function TrendingTagsWidget({ onTagClick }) {
+// Rail card with a title and a small segmented switch between related lists.
+// The switch reuses the Curation mode toggle style so Dashboard controls match.
+function RailTabsCard({ icon: Icon, iconColor, title, tabs, action }) {
+  const [active, setActive] = useState(tabs[0]?.id)
+  const current = tabs.find(tab => tab.id === active) || tabs[0]
+  if (!current) return null
+  return (
+    <div className="rounded-[12px] p-4"
+         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
+             style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
+          <Icon size={14} style={{ color: iconColor }} /> {title}
+        </div>
+        {action}
+      </div>
+      {tabs.length > 1 && (
+        <div className="flex items-center gap-0.5 p-0.5 rounded-full mb-3 w-fit" role="tablist"
+             style={{ background: 'rgba(0,0,0,0.2)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
+          {tabs.map(tab => (
+            <button key={tab.id} type="button" role="tab" onClick={() => setActive(tab.id)}
+                    aria-selected={current.id === tab.id}
+                    className="px-2 py-1 rounded-full cursor-pointer"
+                    style={{ fontSize: 16, background: current.id === tab.id ? 'color-mix(in srgb, var(--c-accent) 28%, transparent)' : 'transparent', color: current.id === tab.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)' }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {current.content}
+    </div>
+  )
+}
+
+function QuestProgressList({ quests, color }) {
+  const t = useT()
+  return (
+    <div className="flex flex-col gap-3">
+      {quests.map(q => {
+        const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0
+        return (
+          <div key={q.id}>
+            <div className="flex items-center justify-between mb-1">
+              <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                {t(q.title || q.key)}
+              </span>
+              <span style={{ fontSize: 14, color, fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward}<LocalizedText text={"XP"} before=" " /></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--c-green)' : color, borderRadius: 99, transition: 'width 0.4s ease' }} />
+              </div>
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Daily and weekly quests in one card; a tab appears only while it has open quests.
+function QuestsCard({ quests, onSeeAll }) {
+  const t = useT()
+  const open = type => (quests ?? []).filter(q => q.quest_type === type && q.status !== 'completed')
+  const daily = open('daily'), weekly = open('weekly')
+  const tabs = [
+    ...(daily.length ? [{ id: 'daily', label: t('Daily'), content: <QuestProgressList quests={daily} color="var(--c-amber)" /> }] : []),
+    ...(weekly.length ? [{ id: 'weekly', label: t('Weekly'), content: <QuestProgressList quests={weekly} color="var(--c-accent)" /> }] : []),
+  ]
+  return (
+    <RailTabsCard icon={Target} iconColor="var(--c-amber)" title={t('Quests')} tabs={tabs}
+                  action={<button onClick={onSeeAll} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>} />
+  )
+}
+
+// Trending, top and often-together tags in one card.
+function TagsCard({ onTagClick, onPairClick, onPairTagClick }) {
   const t = useT()
   const { data: trending } = useQuery({
     queryKey: ['trending-tags'],
     queryFn: () => tagsApi.trending(8, 60).then(r => r.data),
     staleTime: 120000,
   })
-  if (!trending || trending.length === 0) return null
-  return (
-    <div className="rounded-[12px] p-4"
-         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-      <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
-           style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Activity size={14} style={{ color: 'var(--c-green)' }} /> {t('Trending Tags')}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {trending.map(t => (
-          <button key={t.id} onClick={() => onTagClick(t.name)}
-                  className="flex items-center justify-between px-2.5 py-1.5 rounded-[7px] w-full text-left cursor-pointer transition-all"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(t.category) }} />
-              <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {t.name}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-              <span style={{ fontSize: 14, color: 'var(--c-green)', fontWeight: 600 }}>+{t.recent_count}</span>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)' }}>{t.use_count}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Top Tags sidebar widget ───────────────────────────────────────────────────
-function TopTagsWidget({ onTagClick }) {
-  const t = useT()
   const { data: allTags } = useQuery({
     queryKey: ['top-tags'],
     queryFn: () => tagsApi.list().then(r => r.data?.slice(0, 8) ?? []),
     staleTime: 120000,
   })
-  if (!allTags || allTags.length === 0) return null
-  const maxUse = Math.max(1, ...allTags.map(t => t.use_count ?? 0))
-  return (
-    <div className="rounded-[12px] p-4"
-         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-      <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
-           style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Hash size={14} style={{ color: 'var(--c-amber)' }} /> {t('Top Tags')}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {allTags.map(t => (
-          <button key={t.id} onClick={() => onTagClick(t.name)}
-                  className="flex items-center gap-2 w-full text-left cursor-pointer group/tt"
-                  style={{}}>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                <span style={{ fontSize: 13, color: 'var(--c-amber)', fontWeight: 700, marginLeft: 6, flexShrink: 0 }}>{(t.use_count ?? 0).toLocaleString()}</span>
-              </div>
-              <div style={{ height: 3, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${((t.use_count ?? 0) / maxUse) * 100}%`, background: catColor(t.category), borderRadius: 99, transition: 'width 0.3s ease' }} />
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Co-occurring Tags sidebar widget ──────────────────────────────────────────
-function CoOccurringWidget({ onTagClick, onPairClick }) {
-  const t = useT()
   const { data: pairs } = useQuery({
     queryKey: ['co-occurring-tags'],
     queryFn: () => tagsApi.coOccurring(8).then(r => r.data),
@@ -598,80 +517,80 @@ function CoOccurringWidget({ onTagClick, onPairClick }) {
     retry: false,
     refetchOnWindowFocus: false,
   })
-  if (!pairs || pairs.length === 0) return null
-  return (
-    <div className="rounded-[12px] p-4"
-         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-      <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-3"
-           style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-        <Hash size={14} style={{ color: 'var(--c-accent)' }} /> {t('Often Together')}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {pairs.map((p, i) => (
-          <div key={i} className="flex items-center gap-1 px-2 py-1.5 rounded-[7px] group/pair cursor-pointer"
-               style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.05)' }}
-               onClick={() => onPairClick ? onPairClick(p.tag1.name, p.tag2.name) : onTagClick(p.tag1.name)}
-               onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'}
-               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
-            <button onClick={e => { e.stopPropagation(); onTagClick(p.tag1.name) }}
-                    className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
-                    style={{ fontSize: 14, color: catColor(p.tag1.category), background: `${catColor(p.tag1.category)}18` }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-              {p.tag1.name}
-            </button>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>+</span>
-            <button onClick={e => { e.stopPropagation(); onTagClick(p.tag2.name) }}
-                    className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
-                    style={{ fontSize: 14, color: catColor(p.tag2.category), background: `${catColor(p.tag2.category)}18` }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-              {p.tag2.name}
-            </button>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginLeft: 'auto', flexShrink: 0 }}>{p.co_count}</span>
-            <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[16px] transition-opacity"
-                  style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{t('view →')}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── More Like This gallery strip ──────────────────────────────────────────────
-function MoreLikeThis({ refGalleryId, refGalleryName, onNavigate }) {
-  const navigate = useNavigate()
-  const t = useT()
-  const { data: similar } = useQuery({
-    queryKey: ['similar-galleries', refGalleryId],
-    queryFn: () => galleriesApi.similar(refGalleryId, 6).then(r => r.data),
-    enabled: !!refGalleryId,
-    staleTime: 120000,
-  })
-  if (!similar || similar.length === 0) return null
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-[17px] font-medium text-[rgba(255,255,255,0.85)]">
-          <Zap size={16} style={{ color: 'var(--c-accent)' }} /> {t('More Like This')}
-          {refGalleryName && (
-            <span className="text-[14px] font-normal text-[rgba(255,255,255,0.3)] ml-1">{t('based on')} {refGalleryName}</span>
-          )}
+  const maxUse = Math.max(1, ...(allTags ?? []).map(tag => tag.use_count ?? 0))
+  const tabs = []
+  if (trending?.length) tabs.push({ id: 'trending', label: t('Trending'), content: (
+  <div className="flex flex-col gap-1.5">
+    {trending.map(t => (
+      <button key={t.id} onClick={() => onTagClick(t.name)}
+              className="flex items-center justify-between px-2.5 py-1.5 rounded-[7px] w-full text-left cursor-pointer transition-all"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(t.category) }} />
+          <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {t.name}
+          </span>
         </div>
-        <button onClick={() => onNavigate ? onNavigate() : null}
-                className="text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>{t('browse all')}</button>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <span style={{ fontSize: 14, color: 'var(--c-green)', fontWeight: 600 }}>+{t.recent_count}</span>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)' }}>{t.use_count}</span>
+        </div>
+      </button>
+    ))}
+  </div>
+  ) })
+  if (allTags?.length) tabs.push({ id: 'top', label: t('Top'), content: (
+  <div className="flex flex-col gap-1.5">
+    {allTags.map(t => (
+      <button key={t.id} onClick={() => onTagClick(t.name)}
+              className="flex items-center gap-2 w-full text-left cursor-pointer group/tt"
+              style={{}}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+            <span style={{ fontSize: 13, color: 'var(--c-amber)', fontWeight: 700, marginLeft: 6, flexShrink: 0 }}>{(t.use_count ?? 0).toLocaleString()}</span>
+          </div>
+          <div style={{ height: 3, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${((t.use_count ?? 0) / maxUse) * 100}%`, background: catColor(t.category), borderRadius: 99, transition: 'width 0.3s ease' }} />
+          </div>
+        </div>
+      </button>
+    ))}
+  </div>
+  ) })
+  if (pairs?.length) tabs.push({ id: 'together', label: t('Together'), content: (
+  <div className="flex flex-col gap-1.5">
+    {pairs.map((p, i) => (
+      <div key={i} className="flex items-center gap-1 px-2 py-1.5 rounded-[7px] group/pair cursor-pointer"
+           style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.05)' }}
+           onClick={() => onPairClick ? onPairClick(p.tag1.name, p.tag2.name) : onPairTagClick(p.tag1.name)}
+           onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'}
+           onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
+        <button onClick={e => { e.stopPropagation(); onPairTagClick(p.tag1.name) }}
+                className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
+                style={{ fontSize: 14, color: catColor(p.tag1.category), background: `${catColor(p.tag1.category)}18` }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+          {p.tag1.name}
+        </button>
+        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>+</span>
+        <button onClick={e => { e.stopPropagation(); onPairTagClick(p.tag2.name) }}
+                className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
+                style={{ fontSize: 14, color: catColor(p.tag2.category), background: `${catColor(p.tag2.category)}18` }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+          {p.tag2.name}
+        </button>
+        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginLeft: 'auto', flexShrink: 0 }}>{p.co_count}</span>
+        <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[16px] transition-opacity"
+              style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{t('view →')}</span>
       </div>
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-        {similar.map(g => (
-          <PortraitCard key={g.id}
-            imgSrc={g.cover_thumb}
-            title={g.name}
-            sub={t('{count} photos · {tags} tags', { count: g.image_count ?? 0, tags: g.shared_tags })}
-            onClick={() => navigate(`/galleries/${g.id}`)} />
-        ))}
-      </div>
-    </div>
-  )
+    ))}
+  </div>
+  ) })
+  return <RailTabsCard icon={Hash} iconColor="var(--c-accent)" title={t('Tags')} tabs={tabs} />
 }
 
 // ── Daily greeting (shown once per app launch, not per route visit) ──────────
@@ -758,7 +677,7 @@ function ScanModal({ onClose }) {
   )
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.7)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[16px] shadow-2xl animate-modal-pop w-[420px]"
@@ -861,7 +780,7 @@ function ScanModal({ onClose }) {
           )}
         </div>
       </div>
-    </div>,
+    </div></ModalLayer>,
     document.body
   )
 }
@@ -938,109 +857,6 @@ function DashboardContextMenu({ item, itemType, position, onClose }) {
   )
 }
 
-// ── Gallery hover preview tile ────────────────────────────────────────────────
-function GalleryHoverTile({ gallery, onClick, onContextMenu }) {
-  const t = useT()
-  const [hovered, setHovered]   = useState(false)
-  const [imgs, setImgs]         = useState([])
-  const [mouseX, setMouseX]     = useState(0.5)
-  const fetchedRef              = useRef(false)
-
-  const onMouseEnter = async () => {
-    setHovered(true)
-    if (!fetchedRef.current && gallery?.id) {
-      fetchedRef.current = true
-      try {
-        const r = await imagesApi.list({ gallery_id: gallery.id, limit: 8 })
-        const raw = r.data
-        setImgs((raw?.images ?? (Array.isArray(raw) ? raw : [])).filter(i => !i.is_video).slice(0, 6))
-      } catch {}
-    }
-  }
-
-  const onMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    setMouseX(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
-  }
-
-  const visCount  = Math.min(imgs.length, 5)
-  const activeIdx = imgs.length > 0 ? Math.min(imgs.length - 1, Math.floor(mouseX * imgs.length)) : 0
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={() => setHovered(false)}
-      onMouseMove={onMouseMove}
-      className="group rounded-[12px] cursor-pointer text-left relative flex flex-col"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '0.5px solid rgba(255,255,255,0.1)',
-        minHeight: 88,
-        overflow: hovered && imgs.length > 0 ? 'visible' : 'hidden',
-        transition: 'border-color 0.15s, background 0.15s',
-      }}
-      onMouseEnterCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
-      onMouseLeaveCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
-    >
-      {/* Blurred cover background */}
-      {gallery?.cover_thumb && (
-        <div className="absolute inset-0 transition-opacity duration-300"
-             style={{ opacity: hovered ? 0.08 : 0.18, overflow: 'hidden', borderRadius: 12 }}>
-          <img src={gallery.cover_thumb} className="w-full h-full object-cover" alt="" />
-        </div>
-      )}
-
-      {/* Floating photo fan on hover */}
-      {hovered && imgs.length > 0 && (
-        <div className="absolute pointer-events-none"
-             style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', paddingBottom: 10, zIndex: 50 }}>
-          <div className="relative flex items-end justify-center" style={{ width: 320, height: 200 }}>
-            {imgs.slice(0, visCount).map((img, i) => {
-              const isActive = i === activeIdx % visCount
-              const spread   = (i - (visCount - 1) / 2) * 44
-              const rot      = (i - (visCount - 1) / 2) * 5
-              return (
-                <div key={img.id} style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: '50%',
-                  transform: `translateX(calc(-50% + ${spread}px)) rotate(${rot}deg) translateY(${isActive ? -18 : 0}px)`,
-                  transition: 'transform 0.18s ease, box-shadow 0.18s ease, z-index 0s',
-                  zIndex: isActive ? 10 : visCount - Math.abs(i - activeIdx % visCount),
-                  boxShadow: isActive ? '0 14px 32px rgba(0,0,0,0.8)' : '0 6px 16px rgba(0,0,0,0.6)',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  width: isActive ? 108 : 78,
-                  border: `1px solid ${isActive ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)'}`,
-                }}>
-                  <img src={`/api/images/${img.id}/thumb`} alt=""
-                       style={{ width: '100%', display: 'block', aspectRatio: '2/3', objectFit: 'cover' }} />
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Tile content */}
-      <div className="relative p-3 flex flex-col justify-between" style={{ minHeight: 88 }}>
-        <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          {t('Random gallery')}
-        </div>
-        <div>
-          <div className="text-[15px] font-semibold text-white truncate">{gallery?.name ?? '—'}</div>
-          <div className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            {gallery?.image_count ?? 0} {t('photos')}{gallery?.creator_name ? ` · ${gallery.creator_name}` : ''}
-          </div>
-        </div>
-      </div>
-    </button>
-  )
-}
-
 // ── Tabbed random discovery section ──────────────────────────────────────────
 const RAND_TABS = [
   { key: 'galleries', label: 'Galleries', color: 'var(--c-accent)' },
@@ -1109,7 +925,7 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, c
           // creators — no context menu
           const tc = TYPE_COLORS[item.creator_type] || TYPE_COLORS.custom
           const initials = item.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-          return <PortraitCard key={item.id} imgSrc={item.avatar_path ? `/api/creators/${item.id}/avatar` : null}
+          return <PortraitCard key={item.id} imgSrc={item.avatar_path ? `/api/creators/${item.id}/avatar-thumb?size=480` : null}
                     title={item.title || item.name} sub={t(item.creator_type)}
                     onClick={() => navigate(`/creators/${item.id}`)}
                     fallbackIcon={<span className="text-[40px] font-semibold select-none" style={{ color: tc.text, opacity: 0.7 }}>{initials}</span>} />
@@ -1125,11 +941,10 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, c
 export default function Dashboard() {
   const t = useT()
   const navigate = useNavigate()
-  const addXpToast       = useVaultStore(s => s.addXpToast)
   const avatarBust       = useVaultStore(s => s.avatarBust)
   const sessionActive    = useVaultStore(s => s.sessionActive)
   const sessionStartAt   = useVaultStore(s => s.sessionStartAt)
-  const { sessionActive: _sa, startSession, finishSession } = useSession()
+  const { startSession, finishSession } = useSession()
   const qc = useQueryClient()
 
   const profile = useVaultStore(s => s.profile)
@@ -1145,8 +960,6 @@ export default function Dashboard() {
 
   // Greeting — pick once per app launch (sessionStorage clears on tab close)
   const [greeting] = useState(() => getOrCreateGreeting(profile?.username || profile?.name))
-
-  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
 
   const [showCuration, setShowCuration] = useState(false)
   const [curationMode, setCurationMode] = useState('gallery')
@@ -1194,33 +1007,21 @@ export default function Dashboard() {
   }, [])
 
   const { data: stats, isLoading: statsLoading } = useQuery({ queryKey: ['vault-stats'], queryFn: () => galleriesApi.stats().then(r => r.data) })
+  const { data: intakeSummary } = useQuery({ queryKey: ['intake-summary'], queryFn: () => intakeApi.summary().then(r => r.data), staleTime: 60_000 })
   const { data: favorites }      = useQuery({ queryKey: ['favorites',        avatarBust], queryFn: () => creatorsApi.favorites().then(r => r.data) })
-  const { data: imageHof }       = useQuery({ queryKey: ['hof',          4],              queryFn: () => galleriesApi.hof(4).then(r => r.data) })
-  const { data: galleryHof }     = useQuery({ queryKey: ['gallery-hof',  4],              queryFn: () => galleriesApi.galleryHof(4).then(r => r.data) })
   const { data: creatorHof }     = useQuery({ queryKey: ['creator-hof',  4, avatarBust],  queryFn: () => creatorsApi.hof(4).then(r => r.data) })
   const { data: quests }         = useQuery({ queryKey: ['quests'],           queryFn: () => gamiApi.quests().then(r => r.data) })
   const { data: recent }         = useQuery({ queryKey: ['recent-galleries', 24], queryFn: () => galleriesApi.recent(24).then(r => r.data) })
-  const { data: sesStats }       = useQuery({ queryKey: ['ses-stats', new Date().getTimezoneOffset()],        queryFn: () => sessionsApi.stats({ timezone_offset: new Date().getTimezoneOffset() }).then(r => r.data) })
   const { data: randomGalleries} = useQuery({ queryKey: ['random-galleries', 24], queryFn: () => galleriesApi.randomPicks(24).then(r => r.data) })
   const { data: randomImages }   = useQuery({ queryKey: ['random-images', 24],    queryFn: () => imagesApi.randomPicks(24).then(r => r.data) })
   const { data: randomVideos }   = useQuery({ queryKey: ['random-videos', 24],    queryFn: () => imagesApi.randomVideos(24).then(r => r.data) })
   const { data: randomCreators } = useQuery({ queryKey: ['random-creators', 24],  queryFn: () => creatorsApi.randomPicks(24).then(r => r.data) })
   const { data: topCollections }  = useQuery({ queryKey: ['top-collections'],  queryFn: () => creatorsApi.topByValue(5).then(r => r.data), enabled: collectionsOpen })
-  const { data: recentSessions } = useQuery({ queryKey: ['recent-sessions'], queryFn: () => sessionsApi.list({ limit: 8 }).then(r => r.data) })
   const { data: balance }        = useQuery({ queryKey: ['economy-balance'], queryFn: () => economyApi.balance().then(r => r.data) })
   const { data: curationDebt }   = useQuery({ queryKey: ['curation-debt', curationMode], queryFn: () => curationApi.debt(curationMode).then(r => r.data) })
   const { data: epicCards }      = useQuery({ queryKey: ['epic-cards-strip'], queryFn: () => cardsApi.inventory({ sort: 'rarity_desc', limit: 20 }).then(r => (r.data?.items ?? []).filter(c => ['epic','legendary','relic','celestial'].includes(c.rarity))) })
 
-  const sessionMutation = useMutation({
-    mutationFn: (data = {}) => sessionsApi.log(data).then(r => r.data),
-    onSuccess: (data) => {
-      addXpToast(`+${data.xp_earned} XP`)
-      toast.success(t('Session logged ❤️'))
-      qc.invalidateQueries({ queryKey: ['vault-stats'] })
-      qc.invalidateQueries({ queryKey: ['quests'] })
-      qc.invalidateQueries({ queryKey: ['ses-stats'] })
-    }
-  })
+
 
   const handleSessionBtn = () => {
     // No media context here, so the orgasm lands on whatever the registry still
@@ -1616,7 +1417,7 @@ export default function Dashboard() {
                 items={creatorHof}
                 cardMinWidth={260}
                 emptyMsg={t('Log sessions to build your creator hall of fame')}
-                onSeeAll={() => navigate('/hall-of-fame')}
+                onSeeAll={() => navigate('/progress/hall-of-fame')}
                 renderCard={(c) => (
                   <CreatorHofCard key={c.id} creator={c} avatarBust={avatarBust} onClick={() => navigate(`/creators/${c.id}`)} />
                 )}
@@ -1653,6 +1454,7 @@ export default function Dashboard() {
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
                       style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
                 <Inbox size={15} /> {t('Loading Bay')}
+                {intakeSummary?.pending > 0 && <span className="ml-auto px-2 rounded-full" title={t('Waiting in the Loading Bay')} style={{ fontSize: 13, background: 'color-mix(in srgb, var(--c-accent) 28%, transparent)' }}>{intakeSummary.pending}</span>}
               </button>
               <button onClick={() => setShowCuration(true)}
                       className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
@@ -1662,186 +1464,15 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── Daily Quests ─────────────────────────────────── */}
-          {(quests ?? []).filter(q => q.quest_type === 'daily' && q.status !== 'completed').length > 0 && (
-            <div className="rounded-[12px] p-4"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
-                     style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                  <Calendar size={14} style={{ color: 'var(--c-amber)' }} /> {t('Daily Quests')}
-                </div>
-                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>
-              </div>
-              <div className="flex flex-col gap-3">
-                {quests.filter(q => q.quest_type === 'daily' && q.status !== 'completed').map(q => {
-                  const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0
-                  return (
-                    <div key={q.id}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                          {t(q.title || q.key)}
-                        </span>
-                        <span style={{ fontSize: 14, color: 'var(--c-amber)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward}<LocalizedText text={"XP"} before=" " /></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--c-green)' : 'var(--c-amber)', borderRadius: 99, transition: 'width 0.4s ease' }} />
-                        </div>
-                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {/* ── Quests (daily + weekly) ────────────────────────── */}
+          <QuestsCard quests={quests} onSeeAll={() => navigate('/progress/quests')} />
 
-          {/* ── Weekly Quests ─────────────────────────────────── */}
-          {(quests ?? []).filter(q => q.quest_type === 'weekly' && q.status !== 'completed').length > 0 && (
-            <div className="rounded-[12px] p-4"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
-                     style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                  <Target size={14} style={{ color: 'var(--c-accent)' }} /> {t('Weekly Quests')}
-                </div>
-                <button onClick={() => navigate('/quests')} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>
-              </div>
-              <div className="flex flex-col gap-3">
-                {quests.filter(q => q.quest_type === 'weekly' && q.status !== 'completed').map(q => {
-                  const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0
-                  return (
-                    <div key={q.id}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                          {t(q.title || q.key)}
-                        </span>
-                        <span style={{ fontSize: 14, color: 'var(--c-accent)', fontWeight: 600, flexShrink: 0 }}>+{q.xp_reward}<LocalizedText text={"XP"} before=" " /></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div style={{ flex: 1, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--c-green)' : 'var(--c-accent)', borderRadius: 99, transition: 'width 0.4s ease' }} />
-                        </div>
-                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{q.progress}/{q.target}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── Trending Tags ────────────────────────────────── */}
-          <TrendingTagsWidget onTagClick={(tag) => navigate(`/galleries?tag=${encodeURIComponent(tag)}`)} />
-
-          {/* ── Top Tags ─────────────────────────────────────── */}
-          <TopTagsWidget onTagClick={(tag) => navigate(`/galleries?tag=${encodeURIComponent(tag)}`)} />
-
-          {/* ── Often Together ───────────────────────────────── */}
-          <CoOccurringWidget
-            onTagClick={(tag) => navigate(`/images?tag=${encodeURIComponent(tag)}`)}
+          {/* ── Tags (trending, top, often together) ───────────── */}
+          <TagsCard
+            onTagClick={(tag) => navigate(`/galleries?tag=${encodeURIComponent(tag)}`)}
+            onPairTagClick={(tag) => navigate(`/images?tag=${encodeURIComponent(tag)}`)}
             onPairClick={(t1, t2) => navigate(`/images?tags=${encodeURIComponent(t1)},${encodeURIComponent(t2)}`)}
           />
-
-          {/* ── Recent Sessions ─────────────────────────────── */}
-          <div className="rounded-[12px] p-4"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
-                   style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-                <Heart size={14} style={{ color: 'var(--c-pink)' }} /> {t('Recent Sessions')}
-              </div>
-              <button onClick={() => navigate('/sessions')} style={{ fontSize: 15, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('view all')}</button>
-            </div>
-            {(!recentSessions || recentSessions.length === 0) ? (
-              <div style={{ fontSize: 15, padding: '8px 0', color: 'rgba(255,255,255,0.2)' }}>{t('No sessions yet')}</div>
-            ) : (
-              <div className="flex flex-col">
-                {recentSessions.slice(0, 6).map(s => (
-                  <div key={s.id} className="flex items-center gap-2 py-2 border-b last:border-0"
-                       style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                    <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }}>{timeAgo(s.logged_at, t)}</div>
-                      {s.duration_sec > 0 && (
-                        <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.28)' }}>{fmtMs(s.duration_sec * 1000, t)}</div>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-accent)', flexShrink: 0 }}>+{s.xp_earned}<LocalizedText text={"XP"} before=" " /></div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={handleSessionBtn}
-              className="w-full mt-3 py-2.5 rounded-[8px] font-medium cursor-pointer transition-all"
-              style={{
-                fontSize: 17,
-                ...(sessionActive
-                  ? { background: 'color-mix(in srgb, var(--c-pink) 30%, transparent)', color: '#FFD4E2', border: '1px solid color-mix(in srgb, var(--c-pink) 60%, transparent)' }
-                  : { background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)' })
-              }}>
-              {sessionActive ? t('⏹ End session') : t('▶ Start session')}
-            </button>
-          </div>
-
-          {/* ── Vault Health ─────────────────────────────────── */}
-          <div className="rounded-[12px] p-4"
-               style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider mb-4"
-                 style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-              <Zap size={14} style={{ color: 'var(--c-amber)' }} /> {t('Vault Health')}
-            </div>
-
-            <div className="mb-4">
-              <div className="flex justify-between mb-1.5" style={{ fontSize: 15 }}>
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Tagged files')}</span>
-                <span style={{ color: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? 'var(--c-amber)' : 'var(--c-green)' }}>
-                  {100 - (stats?.untagged_pct ?? 0)}%
-                </span>
-              </div>
-              <div className="h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-                <div className="h-full rounded-full transition-all duration-700" style={{
-                  width: `${100 - (stats?.untagged_pct ?? 0)}%`,
-                  background: (stats?.untagged_pct ?? 0) > 30 ? '#E24B4A' : (stats?.untagged_pct ?? 0) > 10 ? 'var(--c-amber)' : 'var(--c-green)',
-                }} />
-              </div>
-              <div style={{ fontSize: 15, marginTop: 4, color: 'rgba(255,255,255,0.25)' }}>
-                {stats?.untagged_files ?? 0} {t('files need tags')}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2.5 mb-3">
-              {(stats?.avg_rating ?? 0) > 0 && (
-                <div className="flex justify-between items-center">
-                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t('Avg rating')}</span>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-amber)' }}>★ {stats.avg_rating}</span>
-                </div>
-              )}
-              {stats?.most_common_tag && (
-                <div className="flex justify-between items-center">
-                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t('Top tag')}</span>
-                  <span style={{ fontSize: 15, padding: '3px 8px', borderRadius: 20, background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
-                    #{stats.most_common_tag}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>{t('Galleries')}</span>
-                <span style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
-                  {(stats?.total_galleries ?? 0).toLocaleString()} {t('total')}
-                </span>
-              </div>
-            </div>
-
-            {(curationDebt?.pending ?? 0) > 0 && (
-              <button onClick={() => setShowCuration(true)}
-                      className="w-full py-2.5 rounded-[8px] font-medium cursor-pointer"
-                      style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)' }}>
-                ✨ {t('Curate')} — {curationDebt.pending.toLocaleString()} {t('waiting')}
-              </button>
-            )}
-          </div>
 
           {/* ── Economy / Wallet ─────────────────────────────── */}
           {balance && (

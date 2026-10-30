@@ -74,31 +74,51 @@ function coverPhotoFromCard(card) {
 function CoverPicker({ photos, selectedId, loading, loadingMore, hasMore, total, query, onQuery, onLoadMore, onPick }) {
   const t = useT()
   return <div className="tcgws-cover-picker">
-    <header><div><strong><LocalizedText text={"Choose a Vault photo"} /></strong><span>{photos.length}<LocalizedText text={"photos loaded"} before={" "} />{total ? ` from ${total} matching cards` : ''}</span></div></header>
+    <header><div><strong><LocalizedText text={"Choose a Vault photo"} /></strong><span>{photos.length}<LocalizedText text={"photos loaded"} before={" "} />{total ? ` ${t('from {total} matching cards', { total })}` : ''}</span></div></header>
     <input autoFocus value={query} onChange={event => onQuery(event.target.value)} placeholder={t("Search your owned cards")} />
     {loading ? <div className="tcgws-cover-picker-empty"><LocalizedText text={"Loading owned cards..."} /></div> : photos.length ? <>
       <div>{photos.map(photo => <button type="button" key={photo.id} draggable onDragStart={event => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('application/x-vault-image-id', String(photo.id)) }} className={photo.id === selectedId ? 'selected' : ''} onClick={() => onPick(photo)} title={photo.label}>
         <img src={photo.image_url} alt={photo.label} loading="lazy" />
       </button>)}</div>
-      {hasMore && <button type="button" className="tcgws-cover-picker__more" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? 'Loading more...' : 'Load more owned cards'}</button>}
+      {hasMore && <button type="button" className="tcgws-cover-picker__more" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? t('Loading more...') : t('Load more owned cards')}</button>}
     </> : <div className="tcgws-cover-picker-empty"><LocalizedText text={"No owned cards match that search."} /></div>}
   </div>
 }
 
-function CardPicker({ inventory, onPick, onClose }) {
+const PICKER_PAGE_SIZE = 60
+
+// Searches the whole owned collection on the server, so every owned card can
+// be placed, not just the cards on the collection page that was last loaded.
+function CardPicker({ onPick, onClose }) {
   const t = useT()
   const [query, setQuery] = useState('')
-  const cards = inventory.filter(card => `${card.display_name || ''} ${card.creator_name || ''} ${card.gallery_name || ''}`.toLowerCase().includes(query.toLowerCase()))
+  const search = useDeferredValue(query.trim())
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useInfiniteQuery({
+    queryKey: ['tcg-v2-binder-card-picker', search],
+    queryFn: ({ pageParam = 0 }) => tcgV2Api.catalog({ ownership: 'owned', search: search || undefined, skip: pageParam, limit: PICKER_PAGE_SIZE }).then(r => r.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((count, page) => count + (page.items?.length || 0), 0)
+      return loaded < (lastPage.total || 0) ? loaded : undefined
+    },
+  })
+  const cards = useMemo(() => (data?.pages || []).flatMap(page => (page.items || []).map(item => item.card ? { ...item.card, quantity: item.quantity } : null).filter(Boolean)), [data])
+  const total = data?.pages?.[0]?.total || 0
   return <motion.div className="tcgws-binder-picker" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 30 }}>
-    <header><div><strong><LocalizedText text={"Choose a card"} /></strong><span>{cards.length}<LocalizedText text={"owned printings"} before={" "} /></span></div><button onClick={onClose} title={t("Close")}><X size={20} /></button></header>
+    <header><div><strong><LocalizedText text={"Choose a card"} /></strong><span>{total.toLocaleString()}<LocalizedText text={"owned printings"} before={" "} /></span></div><button onClick={onClose} title={t("Close")}><X size={20} /></button></header>
     <input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder={t("Search your collection")} />
-    <div>{cards.slice(0, 80).map(card => <button key={card.id} onClick={() => onPick(card.id)} title={card.display_name || card.creator_name}>
-      <TCGV2CardFace card={card} width="100%" showEffects={false} />
-    </button>)}</div>
+    <div>
+      {cards.map(card => <button key={card.id} onClick={() => onPick(card.id)} title={card.display_name || card.creator_name}>
+        <TCGV2CardFace card={card} width="100%" showEffects={false} />
+      </button>)}
+      {isLoading && <span className="tcgws-binder-picker__note"><LocalizedText text={"Loading owned cards..."} /></span>}
+      {!isLoading && !cards.length && <span className="tcgws-binder-picker__note"><LocalizedText text={"No owned cards match that search."} /></span>}
+      {hasNextPage && <button type="button" className="tcgws-binder-picker__more" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>{isFetchingNextPage ? t('Loading more...') : t('Load more owned cards')}</button>}
+    </div>
   </motion.div>
 }
 
-function BinderCustomizer({ binder, inventory, coverPhotos, coverPhotosLoading, coverPhotosLoadingMore, coverPhotosHasMore, coverPhotosTotal, coverSearch, onCoverSearch, onLoadMoreCovers, onSave, onClose, busy }) {
+function BinderCustomizer({ binder, coverPhotos, coverPhotosLoading, coverPhotosLoadingMore, coverPhotosHasMore, coverPhotosTotal, coverSearch, onCoverSearch, onLoadMoreCovers, onSave, onClose, busy }) {
   const t = useT()
   const [name, setName] = useState(binder.name || '')
   const [material, setMaterial] = useState(binder.cover_style || 'obsidian')
@@ -108,7 +128,7 @@ function BinderCustomizer({ binder, inventory, coverPhotos, coverPhotosLoading, 
   const [coverScale, setCoverScale] = useState(Number(binder.cover_scale || 1))
   const [showCovers, setShowCovers] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const photos = useMemo(() => (Array.isArray(coverPhotos) ? coverPhotos : inventory.map(coverPhotoFromCard).filter(Boolean)), [coverPhotos, inventory])
+  const photos = coverPhotos
   const chooseCover = photo => { setCover(photo); setShowCovers(false); setIsDragOver(false) }
   const dropCover = event => {
     event.preventDefault()
@@ -122,22 +142,24 @@ function BinderCustomizer({ binder, inventory, coverPhotos, coverPhotosLoading, 
       <header><div><span><LocalizedText text={"Binder details"} /></span><h2 id="binder-customizer-title"><LocalizedText text={"Customize"} after={" "} />{binder.name}</h2></div><button onClick={onClose} title={t("Close")}><X size={20} /></button></header>
       <label><span><LocalizedText text={"Binder name"} /></span><input value={name} onChange={event => setName(event.target.value)} /></label>
       <div className="tcgws-material-picker"><span className="tcgws-field-label"><LocalizedText text={"Material"} /></span>{MATERIALS.map(([id, label, url]) => <button key={id} className={material === id ? 'active' : ''} onClick={() => setMaterial(id)} title={label} style={{ backgroundImage: `url(${url})` }}><span>{label}</span>{material === id && <Check size={17} />}</button>)}</div>
-      <button type="button" className="tcgws-cover-choice" onClick={() => setShowCovers(value => !value)}><Image size={18} />{cover ? 'Change Vault photo' : 'Choose a Vault photo'}</button>
+      <button type="button" className="tcgws-cover-choice" onClick={() => setShowCovers(value => !value)}><Image size={18} />{cover ? t('Change Vault photo') : t('Choose a Vault photo')}</button>
       {showCovers && <CoverPicker photos={photos} selectedId={cover?.id} loading={coverPhotosLoading} loadingMore={coverPhotosLoadingMore} hasMore={coverPhotosHasMore} total={coverPhotosTotal} query={coverSearch} onQuery={onCoverSearch} onLoadMore={onLoadMoreCovers} onPick={chooseCover} />}
       {cover && <div className="tcgws-cover-editor"><div className={`tcgws-selected-cover${isDragOver ? ' is-drag-over' : ''}`} aria-label={t("Selected Vault cover photo. Drop a Vault photo here to replace it.")} onDragOver={event => { event.preventDefault(); setIsDragOver(true) }} onDragLeave={() => setIsDragOver(false)} onDrop={dropCover}><div><img src={cover.image_url} alt={cover.label || ''} style={{ objectPosition: `${coverX}% ${coverY}%`, transform: `scale(${coverScale})` }} /></div></div><label><span><LocalizedText text={"Horizontal crop"} /></span><input type="range" min="0" max="100" value={coverX} onChange={event => setCoverX(Number(event.target.value))} /></label><label><span><LocalizedText text={"Vertical crop"} /></span><input type="range" min="0" max="100" value={coverY} onChange={event => setCoverY(Number(event.target.value))} /></label><label><span><LocalizedText text={"Cover zoom"} /></span><input type="range" min="1" max="3" step="0.05" value={coverScale} onChange={event => setCoverScale(Number(event.target.value))} /></label></div>}
-      <footer><button className="tcgws-secondary" onClick={onClose}><LocalizedText text={"Cancel"} /></button><button className="tcgws-primary" disabled={!name.trim() || busy} onClick={() => onSave({ name, cover_style: material, cover_image_id: cover?.id || null, cover_x: coverX / 100, cover_y: coverY / 100, cover_scale: coverScale })}>{busy ? 'Saving...' : 'Save binder'}</button></footer>
+      <footer><button className="tcgws-secondary" onClick={onClose}><LocalizedText text={"Cancel"} /></button><button className="tcgws-primary" disabled={!name.trim() || busy} onClick={() => onSave({ name, cover_style: material, cover_image_id: cover?.id || null, cover_x: coverX / 100, cover_y: coverY / 100, cover_scale: coverScale })}>{busy ? t('Saving...') : t('Save binder')}</button></footer>
     </motion.section>
   </motion.div>
 }
 
-export default function BinderWorkspace({ inventory, onOpenCard }) {
+// initialBinderId / initialSpread open straight to a binder page (the room's
+// lectern uses this); onViewChange reports the open binder and spread.
+export default function BinderWorkspace({ onOpenCard, initialBinderId = null, initialSpread = 0, onViewChange }) {
   const t = useT()
   const qc = useQueryClient()
   const room = useRef(null)
-  const [selected, setSelected] = useState(null)
+  const [selected, setSelected] = useState(initialBinderId)
   const [isClosing, setIsClosing] = useState(false)
   const [customizing, setCustomizing] = useState(null)
-  const [spread, setSpread] = useState(0)
+  const [spread, setSpread] = useState(initialBinderId ? initialSpread : 0)
   const [direction, setDirection] = useState(1)
   const [isTurning, setIsTurning] = useState(false)
   const [target, setTarget] = useState(null)
@@ -207,6 +229,9 @@ export default function BinderWorkspace({ inventory, onOpenCard }) {
     setIsClosing(true)
   }
   useEffect(() => { if (selected) room.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [selected])
+  const viewChange = useRef(onViewChange)
+  viewChange.current = onViewChange
+  useEffect(() => { if (selected && !isClosing) viewChange.current?.({ binderId: selected, spread }) }, [isClosing, selected, spread])
   useEffect(() => { setShelfPage(page => Math.min(page, shelfPageCount - 1)) }, [shelfPageCount])
   useEffect(() => () => { if (turnTimer.current) window.clearTimeout(turnTimer.current) }, [])
 
@@ -229,8 +254,8 @@ export default function BinderWorkspace({ inventory, onOpenCard }) {
           </div>
           <AnimatePresence initial={false}>{isTurning && <motion.div key={`${spread}-${direction}`} className={`tcgws-page-turn ${direction > 0 ? 'turn-right-page' : 'turn-left-page'}`} initial={{ rotateY: 0 }} animate={{ rotateY: direction > 0 ? -180 : 180 }} exit={{ opacity: 0 }} transition={{ duration: .43, ease: [0.22, 1, 0.36, 1] }}><BinderPage pageNumber={direction > 0 ? pages[1] : pages[0]} slots={binder?.slots || []} side={direction > 0 ? 'right' : 'left'} onPlace={() => {}} onOpen={onOpenCard} /></motion.div>}</AnimatePresence>
         </div>
-        <AnimatePresence>{target && <CardPicker inventory={inventory} onPick={id => place.mutate(id)} onClose={() => setTarget(null)} />}</AnimatePresence>
+        <AnimatePresence>{target && <CardPicker onPick={id => place.mutate(id)} onClose={() => setTarget(null)} />}</AnimatePresence>
       </motion.div>}
-    <AnimatePresence>{customizing && <BinderCustomizer binder={customizing} inventory={inventory} coverPhotos={coverPhotos} coverPhotosLoading={coverPhotosLoading} coverPhotosLoadingMore={coverPhotosLoadingMore} coverPhotosHasMore={coverPhotosHasMore} coverPhotosTotal={coverPhotosTotal} coverSearch={coverSearch} onCoverSearch={setCoverSearch} onLoadMoreCovers={() => loadMoreCovers()} onSave={values => update.mutate(values)} onClose={() => setCustomizing(null)} busy={update.isPending} />}</AnimatePresence>
+    <AnimatePresence>{customizing && <BinderCustomizer binder={customizing} coverPhotos={coverPhotos} coverPhotosLoading={coverPhotosLoading} coverPhotosLoadingMore={coverPhotosLoadingMore} coverPhotosHasMore={coverPhotosHasMore} coverPhotosTotal={coverPhotosTotal} coverSearch={coverSearch} onCoverSearch={setCoverSearch} onLoadMoreCovers={() => loadMoreCovers()} onSave={values => update.mutate(values)} onClose={() => setCustomizing(null)} busy={update.isPending} />}</AnimatePresence>
   </section>
 }

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { CheckSquare2, Library, Search } from 'lucide-react'
 import { tcgRoomApi, tcgV2Api } from '../../lib/api'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
+import TCGSelect from '../tcg-workspace/TCGSelect'
 
 export default function RoomCopyManager({ context }) {
   const t = useT()
@@ -23,7 +24,7 @@ export default function RoomCopyManager({ context }) {
     mutationFn: ({ target, ids }) => target === 'binder'
       ? tcgRoomApi.moveToBinder(Number(binderId), ids)
       : tcgRoomApi.moveCopies(ids.map(id => ({ copy_id: id, location_kind: target }))),
-    onSuccess: (_, variables) => { setSelected(new Set()); qc.invalidateQueries({ queryKey: ['tcg-room-copies'] }); qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-binders'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-binder'] }); toast.success(variables.target === t("binder") ? t("Exact physical copies filed in the authoritative binder") : t("Physical card locations updated")) },
+    onSuccess: (_, variables) => { setSelected(new Set()); qc.invalidateQueries({ queryKey: ['tcg-room-copies'] }); qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }); qc.invalidateQueries({ queryKey: ['tcg-room-visible-cards'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-binders'] }); qc.invalidateQueries({ queryKey: ['tcg-v2-binder'] }); toast.success(variables.target === t("binder") ? t("Cards filed in the binder") : t("Physical card locations updated")) },
     onError: error => toast.error(error.response?.data?.detail || t("Could not move those physical copies")),
   })
   const selectedRows = rows.filter(copy => selected.has(copy.id))
@@ -36,7 +37,7 @@ export default function RoomCopyManager({ context }) {
     {selected.size > 0 && <footer>
       {pileIds.length > 0 && <button disabled={move.isPending} onClick={() => move.mutate({ target: 'carried', ids: pileIds })}><LocalizedText text={"Carry"} after={" "} />{pileIds.length}<LocalizedText text={"selected"} before={" "} /></button>}
       {carriedIds.length > 0 && <button disabled={move.isPending} onClick={() => move.mutate({ target: 'unorganized_pile', ids: carriedIds })}><LocalizedText text={"Return"} after={" "} />{carriedIds.length}<LocalizedText text={"to pile"} before={" "} /></button>}
-      {context === 'pile' && <><label><Library size={18} /><span><LocalizedText text={"Send to binder"} /></span><select value={binderId} onChange={event => setBinderId(event.target.value)}><option value=""><LocalizedText text={"Choose binder"} /></option>{binders.map(binder => <option key={binder.id} value={binder.id}>{binder.name}</option>)}</select></label><button disabled={move.isPending || !binderId} onClick={() => move.mutate({ target: 'binder', ids: [...selected] })}><LocalizedText text={"File"} after={" "} />{selected.size}<LocalizedText text={"selected"} before={" "} /></button></>}
+      {context === 'pile' && <><div className="room-copy__binder"><Library size={18} /><TCGSelect label={t('Send to binder')} value={binderId} onChange={setBinderId} options={[{ value: '', label: t('Choose binder') }, ...binders.map(binder => ({ value: String(binder.id), label: binder.name }))]} /></div><button disabled={move.isPending || !binderId} onClick={() => move.mutate({ target: 'binder', ids: [...selected] })}><LocalizedText text={"File"} after={" "} />{selected.size}<LocalizedText text={"selected"} before={" "} /></button></>}
     </footer>}
   </div>
 }

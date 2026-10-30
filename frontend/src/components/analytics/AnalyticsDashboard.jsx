@@ -427,7 +427,7 @@ export default function AnalyticsDashboard() {
       <Panel title="Cumulative Session Hours" question="How quickly did session time accumulate?"><TrendChart data={cumulative} rolling={false} unit={t('h')} axisLabel="Cumulative session hours" color="var(--c-pink)" /><div className="analytics-milestones">{asArray(data.cumulative_lifetime_hours?.milestones).map(hours => <span className={numeric(cumulative?.at?.(-1)?.hours) >= hours ? 'is-reached' : ''} key={hours}>{hours.toLocaleString()}{t('h')}</span>)}</div></Panel>
     </div>
 
-    <Link className="analytics-recap-link" to="/recap">
+    <Link className="analytics-recap-link" to="/progress/recap">
       <span><Sparkles size={25} /></span>
       <div><strong>{t('Want the story instead of the charts?')}</strong><p>{t('Recap turns your day, week, month, or year into a designed snapshot.')}</p></div>
       <b>{t('Open Recap')} →</b>

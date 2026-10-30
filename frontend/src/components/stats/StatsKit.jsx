@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useT } from '../../i18n'
 
+import ModalLayer from '../ModalLayer'
 export const fmtDuration = (secs) => {
   if (!secs || secs <= 0) return null
   const h = Math.floor(secs / 3600)
@@ -117,7 +118,7 @@ export function StatsModalShell({ open, onClose, children, maxWidth = 1080 }) {
 
   return createPortal(
     <AnimatePresence>
-      <motion.div
+      <ModalLayer><motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[10001] flex items-start justify-center overflow-y-auto p-6"
@@ -138,7 +139,7 @@ export function StatsModalShell({ open, onClose, children, maxWidth = 1080 }) {
           </button>
           <div className="p-6">{children}</div>
         </motion.div>
-      </motion.div>
+      </motion.div></ModalLayer>
     </AnimatePresence>,
     document.body
   )

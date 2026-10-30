@@ -1,8 +1,4 @@
 import ViewerInfo from '../components/ViewerInfo'
-import CardCreatorNames from '../components/CardCreatorNames'
-import './media-list-cards.css'
-import VaultVideo from '../components/VaultVideo'
-import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 import useSelectedItems from '../hooks/useSelectedItems'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
@@ -11,10 +7,10 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Search, X, ChevronLeft, ChevronRight, Droplets, Heart, Waves,
-  ZoomIn, ZoomOut, Maximize, Minimize, Images as ImagesIcon, GalleryThumbnails,
+  ZoomIn, ZoomOut, Maximize, Minimize, GalleryThumbnails,
   ChevronDown, ExternalLink, Tag, Play, Pause,
   LayoutGrid, Star,
-  CheckSquare, Square, UserPlus, UserX, Check, Trash2, LayoutTemplate, GripHorizontal,
+  CheckSquare, UserPlus, UserX, Check, Trash2, LayoutTemplate,
   FolderOpen, Zap, FolderOutput, HardDrive, Copy, AlertCircle,
 } from 'lucide-react'
 import { imagesApi, creatorsApi, galleriesApi, sessionsApi, apiErrorMessage } from '../lib/api'
@@ -47,240 +43,13 @@ import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
 import { readFilmstripVisibility, saveFilmstripVisibility } from '../lib/viewerPreferences'
 import { normalizeTagTokens, tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
+import { CREATOR_TYPE_TEXT } from '../lib/entityColors'
+import ViewModeDropdown from '../components/listViews/ViewModeDropdown'
+import { MEDIA_VIEW_MODES, TIMELINE_START_SORTS, useListViewMode } from '../components/listViews/viewModes'
 
-const TYPE_COLORS = {
-  cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
-  character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
-}
-
-// Shared order with the Galleries sorts (GalleryList.jsx): common sorts
-// first, page-specific ones next, Random last.
-const COMMON_SORTS = [
-  { value: 'date_added',    label: 'Date added' },
-  { value: 'date_modified', label: 'Date modified' },
-  { value: 'filename',      label: 'Name' },
-  { value: 'rating',        label: 'Rating' },
-  { value: 'view_count',    label: 'Most viewed' },
-  { value: 'cum_count',     label: 'Most cummed' },
-  { value: 'edge_count',    label: 'Most edged' },
-  { value: 'period',        label: 'Period' },
-  { value: 'last_viewed',   label: 'Recently viewed' },
-  { value: 'view_seconds',  label: 'Watch time' },
-]
-const SIZE_SORTS = [
-  { value: 'file_size',     label: 'File size' },
-  { value: 'resolution',    label: 'Resolution' },
-]
-const RANDOM_SORT = { value: 'random', label: 'Random' }
-
-const SORTS = [...COMMON_SORTS, ...SIZE_SORTS, RANDOM_SORT]
-const VIDEO_SORTS = [...COMMON_SORTS, { value: 'duration', label: 'Length' }, ...SIZE_SORTS, RANDOM_SORT]
-
-function formatVideoDuration(seconds) {
-  const value = Number(seconds)
-  if (!Number.isFinite(value) || value <= 0) return '—'
-  const total = Math.round(value)
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const secs = total % 60
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-    : `${minutes}:${String(secs).padStart(2, '0')}`
-}
-
-
-// ── Thumbnail ──────────────────────────────────────────────────────────────────
-function ImageThumb({ image, onClick, bulkMode, selected, onSelect, onContextMenu, masonry = false }) {
-  const [failed, setFailed] = useState(false)
-  const [hoverVideo, setHoverVideo] = useState(false)
-  const videoRef = useRef(null)
-  const hoverTimerRef = useRef(null)
-  const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
-  const queue = useVaultStore(s => s.multiViewerQueue)
-  const MAX = useVaultStore(s => s.MULTIVIEWER_MAX)
-  const t = useT()
-  const inQueue = queue.some(q => q.id === `img-${image.id}`)
-
-  const handleSendToViewer = (e) => {
-    e.stopPropagation()
-    if (queue.length >= MAX) { toast.error(t('Playlists full ({max}/{max})', { max: MAX })); return }
-    const ok = addToMultiViewer({ id: `img-${image.id}`, type: 'image', media: image })
-    if (ok) toast.success(t('Sent to Playlists'))
-    else toast(t('Already in Playlists'), { icon: '✓' })
-  }
-
-  const handleMouseEnter = useCallback(() => {
-    if (!image.is_video) return
-    setHoverVideo(true)
-    hoverTimerRef.current = setTimeout(() => setHoverVideo(false), 15000)
-  }, [image.is_video])
-
-  const handleMouseLeave = useCallback(() => {
-    if (!image.is_video) return
-    clearTimeout(hoverTimerRef.current)
-    setHoverVideo(false)
-  }, [image.is_video])
-
-  useEffect(() => {
-    return () => {
-      const vid = videoRef.current
-      if (!vid) return
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
-    }
-  }, [])
-
-  useEffect(() => {
-    const vid = videoRef.current
-    if (!vid) return
-    if (!hoverVideo || !canPlayVideoPreview()) {
-      stopVideoPreview(vid)
-      return
-    }
-    vid.src = `/api/images/${image.id}/file`
-    const seekAndPlay = () => {
-      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
-      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
-      vid.play().catch(() => {})
-    }
-    if (vid.readyState >= 1) seekAndPlay()
-    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-    return () => {
-      clearTimeout(hoverTimerRef.current)
-      vid.removeEventListener('loadedmetadata', seekAndPlay)
-      stopVideoPreview(vid)
-    }
-  }, [hoverVideo, image.id])
-
-  return (
-    <div onClick={bulkMode ? (e) => onSelect(image.id, e) : onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(image, e) }}
-      className="media-list-card relative rounded-[8px] overflow-hidden cursor-pointer group animate-fade-in"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: `0.5px solid ${inQueue ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-
-      }}>
-      <div className="relative overflow-hidden media-list-card-image" style={{
-        // Preserve the original square or masonry thumbnail proportions.
-        aspectRatio: masonry && image.width && image.height
-          ? `${image.width} / ${image.height}` : '1',
-      }}>
-
-      {bulkMode && (
-        <div className="absolute top-2 left-2 z-[20]"
-          onClick={e => { e.stopPropagation(); onSelect(image.id) }}>
-          {selected
-            ? <CheckSquare size={16} style={{ color: 'var(--c-accent)' }} />
-            : <Square size={16} style={{ color: 'rgba(255,255,255,0.5)', fill: 'rgba(0,0,0,0.4)' }} />
-          }
-        </div>
-      )}
-      {selected && (
-        <div className="media-selection-overlay absolute inset-0 z-10 pointer-events-none rounded-[8px]"
-          style={{ border: '2px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)' }} />
-      )}
-
-      {/* Static thumbnail */}
-      {!failed
-        ? <img src={`/api/images/${image.id}/thumb`} alt={image.filename}
-          className="w-full h-full object-cover transition-transform duration-200"
-          style={{ objectPosition: 'center top', transform: hoverVideo ? 'scale(1)' : undefined }}
-          onError={() => setFailed(true)} />
-        : <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
-          <ImagesIcon size={20} style={{ color: 'rgba(255,255,255,0.1)' }} />
-          <div className="text-[16px] text-[rgba(255,255,255,0.2)] text-center truncate w-full">{image.filename}</div>
-        </div>
-      }
-
-      {/* Video hover preview */}
-      {image.is_video && (
-        <VaultVideo preview
-          ref={videoRef}
-          muted
-          playsInline
-          preload="none"
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-          style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
-        />
-      )}
-
-      {/* Video play icon (when not hovering) */}
-      {image.is_video && !hoverVideo && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 1 }}>
-          <div className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.55)', border: '0.5px solid rgba(255,255,255,0.2)' }}>
-            <Play size={11} fill="white" style={{ color: 'white', marginLeft: 1 }} />
-          </div>
-        </div>
-      )}
-
-      {/* Funscripted badge */}
-      {image.funscript_path && (
-        <div className="absolute top-1 left-1 text-[16px] font-bold px-1 py-0.5 rounded"
-          style={{ background: 'color-mix(in srgb, var(--c-accent) 85%, transparent)', color: '#fff', zIndex: 4, letterSpacing: '0.05em' }}><LocalizedText text={"FS"} before=" " after=" " /></div>
-      )}
-
-      {/* Scanned video duration */}
-      {image.is_video && (
-        <div
-          className="absolute top-1 right-1 rounded-md px-2 py-1 font-semibold leading-none tabular-nums"
-          title={image.duration > 0 ? 'Video duration' : 'Video duration not available'}
-          style={{
-            background: 'rgba(0,0,0,0.82)',
-            border: '1px solid color-mix(in srgb, var(--c-accent) 65%, transparent)',
-            color: 'var(--c-accent-text)',
-            fontSize: 16,
-            zIndex: 4,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-          }}
-        >
-          {formatVideoDuration(image.duration)}
-        </div>
-      )}
-
-      {(image.rating > 0 || image.cum_count > 0) && (
-        <div className="absolute bottom-1 right-1 flex items-center gap-1" style={{ zIndex: 3 }}>
-          {image.rating > 0 && (
-            <div className="flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,0.75)', color: '#EF9F27' }}>
-              <span style={{ fontSize: 9, lineHeight: 1 }}>★</span> {image.rating}
-            </div>
-          )}
-          {image.cum_count > 0 && (
-            <div className="flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--c-pink-text)' }}>
-              <Droplets size={8} /> {image.cum_count}
-            </div>
-          )}
-        </div>
-      )}
-      {/* Send to Playlists */}
-      <button
-        onMouseDown={handleSendToViewer}
-        title={t('Send to Playlists')}
-        className="absolute top-9 right-1 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer z-10"
-        style={inQueue
-          ? { background: 'color-mix(in srgb, var(--c-accent) 70%, transparent)', opacity: 1 }
-          : { background: 'rgba(0,0,0,0.6)', opacity: 0, transition: 'opacity 0.15s' }
-        }
-        onMouseEnter={e => { if (!inQueue) e.currentTarget.style.opacity = '1' }}
-        onMouseLeave={e => { if (!inQueue) e.currentTarget.style.opacity = '0' }}>
-        <LayoutGrid size={9} color="#fff" />
-      </button>
-      {image.creators?.length > 0 && <div className="media-list-card-creators"
-        style={{ bottom: image.rating > 0 || image.cum_count > 0 ? 32 : 6 }}>
-        <CardCreatorNames creators={image.creators} colors={TYPE_COLORS} />
-      </div>}
-      </div>
-    </div>
-  )
-}
-
-
+import ModalLayer from '../components/ModalLayer'
+import MediaListView, { SORTS, VIDEO_SORTS } from '../components/listViews/MediaListView'
+const TYPE_COLORS = CREATOR_TYPE_TEXT
 
 // ── Full-screen image viewer ───────────────────────────────────────────────────
 export function ImageViewer({ images, startIdx, onClose }) {
@@ -587,7 +356,7 @@ export function ImageViewer({ images, startIdx, onClose }) {
   const filmstripVisible = !image.is_video && showFilmstrip && (!isFullscreen || showViewerChrome)
 
   return createPortal((
-    <div ref={viewerRef} className="fixed inset-0 z-[300] flex" style={{ background: '#090909' }}
+    <ModalLayer><div ref={viewerRef} className="fixed inset-0 z-[300] flex" style={{ background: '#090909' }}
       onMouseMove={handleMouseMove}>
 
       {/* ── Main stage ─────────────────────────────────────────────────── */}
@@ -987,7 +756,7 @@ export function ImageViewer({ images, startIdx, onClose }) {
           </button>
         </div>
       </div>}
-    </div>
+    </div></ModalLayer>
   ), document.body)
 }
 
@@ -1168,7 +937,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
     : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.75)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] p-5 w-[420px] animate-modal-pop shadow-2xl flex flex-col gap-4"
@@ -1244,7 +1013,7 @@ function ExtractModal({ selectedImages, onClose, onExtracted }) {
           )}
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -1577,14 +1346,11 @@ export default function MediaList({ onlyVideos = false }) {
   // Persistent thumb size & layout
   const thumbSize = useVaultStore(s => onlyVideos ? s.thumbSizeVideos : s.thumbSizeImages)
   const setThumbSizeStore = useVaultStore(s => onlyVideos ? s.setThumbSizeVideos : s.setThumbSizeImages)
-  const [masonryGrid, setMasonryGrid] = useState(() => localStorage.getItem('vault_masonry_images') === 'true')
-  const toggleMasonry = useCallback(() => {
-    setMasonryGrid(v => {
-      const next = !v
-      localStorage.setItem('vault_masonry_images', String(next))
-      return next
-    })
-  }, [])
+  const [viewMode, setViewMode] = useListViewMode(
+    onlyVideos ? 'vault_view_videos' : 'vault_view_images', MEDIA_VIEW_MODES, 'grid',
+    // The old Masonry toggle (photos only) carries over as the starting view.
+    onlyVideos ? undefined : () => (localStorage.getItem('vault_masonry_images') === 'true' ? 'masonry' : null),
+  )
 
   const [pageLimit, setPageLimit] = useState(100)
   const [page, setPage] = useState(1)
@@ -1697,6 +1463,12 @@ export default function MediaList({ onlyVideos = false }) {
     setSortDir(val === 'filename' ? 'asc' : 'desc')  // Name starts A–Z, everything else highest first
   }
 
+  // Timeline sections follow the active date sort (see TIMELINE_START_SORTS).
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode)
+    if (mode === 'timeline' && !TIMELINE_START_SORTS.includes(sortBy)) handleSortChange('period')
+  }
+
   // Shift+click selects the range between the last-clicked thumb and this one,
   // matching GalleryList/GalleryView. Range membership follows the currently
   // rendered order, so it respects the active sort and filters.
@@ -1729,6 +1501,12 @@ export default function MediaList({ onlyVideos = false }) {
     })
   }
   const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
+
+  // Right-clicking a selected file in Select mode acts on the whole selection.
+  const openThumbMenu = (im, e) => {
+    const bulkImages = bulkMode && selected.has(im.id) ? selectedImages : null
+    setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
+  }
 
   return (
     <div className="vault-theme-media-page p-5">
@@ -1770,6 +1548,8 @@ export default function MediaList({ onlyVideos = false }) {
 
         <SortDropdown value={sortBy} onChange={handleSortChange} options={onlyVideos ? VIDEO_SORTS : SORTS} sortDir={sortDir} onSortDirChange={setSortDir} />
 
+        <ViewModeDropdown value={viewMode} onChange={handleViewModeChange} modes={MEDIA_VIEW_MODES} />
+
         <CreatorFilter value={creatorId} onChange={v => { setCreatorId(v); if (v) setUnassignedOnly(false) }} />
 
         <CreatorTypeDropdown value={creatorType} onChange={setCreatorType} />
@@ -1805,20 +1585,6 @@ export default function MediaList({ onlyVideos = false }) {
         {onlyVideos && toggleBtn(scriptedOnly, () => { setScriptedOnly(v => !v); setPage(1) },
           <span className="flex items-center gap-1.5"><Zap size={12} /> {t('Funscript')}</span>)}
 
-        {/* Masonry Toggle — Only for Images view */}
-        {!onlyVideos && (
-          <button type="button" onMouseDown={toggleMasonry}
-            className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-[8px] cursor-pointer"
-            style={{
-              background: masonryGrid ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
-              color: masonryGrid ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
-              border: `0.5px solid ${masonryGrid ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
-            }}
-            title={t('Toggle Masonry Grid')}>
-            <GripHorizontal size={11} /> {t('Masonry')}
-          </button>
-        )}
-
         <button type="button" onMouseDown={() => { setBulkMode(!bulkMode); setSelected(new Set()); lastSelectedIdRef.current = null }}
           className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-[8px] cursor-pointer ml-auto"
           style={{
@@ -1832,13 +1598,13 @@ export default function MediaList({ onlyVideos = false }) {
 
       {/* Size controls */}
       <div className="flex items-center gap-3 flex-wrap mb-1">
-        <div className="flex items-center gap-2">
+        {viewMode !== 'details' && <div className="flex items-center gap-2">
           <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
           <input type="range" min={80} max={400} step={10} value={thumbSize}
             onChange={e => setThumbSizeStore(Number(e.target.value))}
             className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{thumbSize}</span>
-        </div>
+        </div>}
         <div className="flex items-center gap-1">
           <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">{t('Per page')}</span>
           {IMG_PAGE_SIZES.map(n => (
@@ -1889,31 +1655,12 @@ export default function MediaList({ onlyVideos = false }) {
       ) : !images || images.length === 0 ? (
         <div className="text-[16px] text-[rgba(255,255,255,0.25)] py-20 text-center">{t('No images found')}</div>
       ) : (
-        (!onlyVideos && masonryGrid) ? (
-          <div className="vault-theme-media-grid grid-stagger" style={{ columns: `${thumbSize}px`, columnGap: '8px' }}>
-            {images.map((img, i) => (
-              <div key={img.id} style={{ breakInside: 'avoid', marginBottom: '8px' }}>
-                <ImageThumb image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
-                            onContextMenu={(im, e) => {
-                              const inSel = bulkMode && selected.has(im.id)
-                              const bulkImages = inSel ? selectedImages : null
-                              setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
-                            }} masonry />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="vault-theme-media-grid grid gap-2 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${thumbSize}px, 100%), ${thumbSize}px))`, justifyContent: 'center' }}>
-            {images.map((img, i) => (
-              <ImageThumb key={img.id} image={img} onClick={() => setViewerIdx(i)} bulkMode={bulkMode} selected={selected.has(img.id)} onSelect={toggleSelect}
-                          onContextMenu={(im, e) => {
-                            const inSel = bulkMode && selected.has(im.id)
-                            const bulkImages = inSel ? selectedImages : null
-                            setImageCtxMenu({ image: im, x: e.clientX, y: e.clientY, bulkImages })
-                          }} />
-            ))}
-          </div>
-        )
+        <MediaListView
+          mode={viewMode} images={images} onlyVideos={onlyVideos} thumbSize={thumbSize}
+          bulkMode={bulkMode} selected={selected} onSelect={toggleSelect}
+          onOpen={setViewerIdx} onContextMenu={openThumbMenu}
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSortChange} onSortDir={setSortDir}
+        />
       )}
 
       {/* Pagination controls */}

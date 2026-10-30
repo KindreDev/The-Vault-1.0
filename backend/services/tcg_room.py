@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 import math
+import re
 import secrets
 
 from sqlalchemy.orm import Session
@@ -49,13 +50,27 @@ LIVE_SHOP_ASSETS = frozenset({
     "card_display_stand_white", "card_display_stand_black",
     "graded_card_stand_white", "graded_card_stand_black",
     "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet", "poster_frame",
+    "card_wall_frame", "trophy_shadow_box", "graded_slab_rack",
+    *("poster_banner", "poster_landscape", "poster_gallery", "poster_lightbox", "wall_scroll"),
+    *("shop_counter", "rotating_pedestal", "pack_shelf"),
+    *("binder_lectern", "wall_tv", "digital_photo_frame", "poster_flip_bin"),
 })
 MANUAL_ASSET_IDS = LIVE_SHOP_ASSETS
+# Wall-mounted displays that hold physical cards, and how many slots each has.
+WALL_CARD_SLOTS = {"card_wall_frame": 9, "trophy_shadow_box": 1, "graded_slab_rack": 12}
+# Floor furniture that holds physical cards itself.
+FLOOR_CARD_SLOTS = {"shop_counter": 12, "rotating_pedestal": 1}
 SURFACE_HOST_ASSETS = frozenset({
-    "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet",
+    "glass_display_case", "glass_display_cabinet", "floating_glass_cabinet", "shop_counter",
 })
 SHELF_ASSETS = SURFACE_HOST_ASSETS
-WALL_BASE_ORIGIN_ASSETS = frozenset({"floating_glass_cabinet"})
+POSTER_BIN_LIMIT = 24
+MEDIA_SOURCE_KINDS = frozenset({"search", "gallery", "creator", "playlist"})
+# Wall pieces that show a Vault photo (the original poster plus the wave-2 frames).
+POSTER_ASSETS = frozenset({"poster_frame", "poster_banner", "poster_landscape", "poster_gallery",
+                           "poster_lightbox", "wall_scroll"})
+WALL_BASE_ORIGIN_ASSETS = frozenset({"floating_glass_cabinet", "pack_shelf", "wall_tv", "digital_photo_frame", *WALL_CARD_SLOTS,
+                                     *(POSTER_ASSETS - {"poster_frame"})})
 
 # These are measured from the authored GLB origins.  A support item is placed
 # on one of these shelf tops, inside the host's clear opening.  Keeping the
@@ -75,6 +90,10 @@ SHELF_SUPPORT_SLOTS = {
         {"y": 1.56, "width": .48, "depth": .30},
         {"y": 1.97, "width": .48, "depth": .30},
         {"y": 2.38, "width": .48, "depth": .30},
+    ),
+    # Stands can sit on the shop counter's glass top.
+    "shop_counter": (
+        {"y": .954, "width": 1.16, "depth": .46},
     ),
     "floating_glass_cabinet": (
         {"y": .04, "width": .62, "depth": .24},
@@ -183,8 +202,46 @@ def _canonical_transform(raw: dict, definition: TCGDisplayItemDefinition) -> dic
     clean_content = {}
     if content.get("image_id") is not None:
         clean_content["image_id"] = int(content["image_id"])
-    if "landscape" in content:
+    if content.get("landscape") is not None:
         clean_content["landscape"] = bool(content.get("landscape"))
+    if content.get("fit") in {"cover", "contain"}:
+        clean_content["fit"] = content["fit"]
+    # Binder lectern: which binder lies open, and at which spread.
+    for key in ("binder_id", "spread", "video_id", "front"):
+        value = content.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10_000_000:
+            clean_content[key] = value
+    # Screens: a slideshow of a photo search, or one looping video.
+    if content.get("screen_mode") in {"slideshow", "video"}:
+        clean_content["screen_mode"] = content["screen_mode"]
+    if isinstance(content.get("query"), str):
+        clean_content["query"] = content["query"].strip()[:120]
+    interval = content.get("interval")
+    if isinstance(interval, int) and not isinstance(interval, bool) and 3 <= interval <= 600:
+        clean_content["interval"] = interval
+    # Where photos come from: a search, a gallery, a creator or a playlist.
+    # Screens and a "whole source" flip bin follow it live; pickers start there.
+    source = content.get("source")
+    if isinstance(source, dict) and source.get("kind") in MEDIA_SOURCE_KINDS:
+        clean_source = {"kind": source["kind"]}
+        source_id = source.get("id")
+        if isinstance(source_id, int) and not isinstance(source_id, bool) and source_id > 0:
+            clean_source["id"] = source_id
+        for key, limit in (("query", 120), ("name", 80)):
+            if isinstance(source.get(key), str) and source[key].strip():
+                clean_source[key] = source[key].strip()[:limit]
+        if clean_source["kind"] == "search" or "id" in clean_source:
+            clean_content["source"] = clean_source
+    if isinstance(content.get("use_source"), bool):
+        clean_content["use_source"] = content["use_source"]
+    # Poster flip bin: the photos in the bin, front first.
+    image_ids = content.get("image_ids")
+    if isinstance(image_ids, list):
+        clean_content["image_ids"] = [int(value) for value in image_ids[:POSTER_BIN_LIMIT]
+                                      if isinstance(value, int) and not isinstance(value, bool) and value > 0]
+    led_color = content.get("led_color")
+    if isinstance(led_color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", led_color):
+        clean_content["led_color"] = led_color.lower()
     result = {"position": {"x": px, "y": py, "z": pz},
               "rotation": normalized_rotation}
     result.update(result_metadata)
@@ -574,7 +631,25 @@ def seed_display_catalog(db: Session) -> None:
         ("room-glass-cabinet", "Glass display cabinet", "cabinet_slot", "glass_display_cabinet", "credits", 1400, ["mahogany"], "floor", .6, .46, 2.41),
         ("room-floating-cabinet", "Floating glass cabinet", "cabinet_slot", "floating_glass_cabinet", "credits", 720, ["clear"], "wall", .77, .38, 1.83),
         ("room-poster-frame", "Vault poster", "display_stand", "poster_frame", "shards", 45, ["black"], "wall", .8, .08, 1.1),
+        ("room-card-wall-frame", "9-pocket card frame", "display_stand", "card_wall_frame", "credits", 420, ["black"], "wall", .39, .05, .48),
+        ("room-trophy-shadow-box", "Trophy shadow box", "display_stand", "trophy_shadow_box", "credits", 600, ["black"], "wall", .30, .11, .38),
+        ("room-graded-slab-rack", "Graded slab rack", "display_stand", "graded_slab_rack", "credits", 540, ["walnut"], "wall", .46, .06, .62),
+        ("room-poster-banner", "Tall banner poster", "display_stand", "poster_banner", "shards", 60, ["black"], "wall", .49, .03, 1.37),
+        ("room-poster-landscape", "Landscape poster", "display_stand", "poster_landscape", "shards", 70, ["black"], "wall", 1.09, .03, .71),
+        ("room-poster-gallery", "Gallery frame", "display_stand", "poster_gallery", "shards", 140, ["walnut"], "wall", 1.01, .055, 1.29),
+        ("room-poster-lightbox", "Backlit lightbox", "display_stand", "poster_lightbox", "shards", 160, ["aluminium"], "wall", .72, .05, 1.02),
+        ("room-wall-scroll", "Anime wall scroll", "display_stand", "wall_scroll", "shards", 80, ["crimson"], "wall", .62, .04, 1.49),
+        ("room-shop-counter", "Card shop counter", "display_stand", "shop_counter", "credits", 980, ["walnut"], "floor", 1.20, .50, .95),
+        ("room-rotating-pedestal", "Rotating pedestal", "display_stand", "rotating_pedestal", "credits", 750, ["black"], "floor", .46, .46, 1.20),
+        ("room-pack-shelf", "Booster pack shelf", "cabinet_slot", "pack_shelf", "credits", 380, ["walnut"], "wall", .66, .12, .78),
+        ("room-binder-lectern", "Binder lectern", "cabinet_slot", "binder_lectern", "credits", 520, ["walnut"], "floor", .62, .50, 1.15),
+        ("room-wall-tv", "Wall TV", "display_stand", "wall_tv", "credits", 900, ["black"], "wall", 1.064, .045, .609),
+        ("room-digital-photo-frame", "Digital photo frame", "display_stand", "digital_photo_frame", "credits", 300, ["walnut"], "wall", .44, .035, .56),
+        ("room-poster-flip-bin", "Poster flip bin", "cabinet_slot", "poster_flip_bin", "shards", 120, ["walnut"], "floor", .68, .40, .95),
     )
+    # The room polls endpoints that call this, so load the definitions once
+    # instead of one lookup per default and per legacy Workshop item.
+    by_code = {row.code: row for row in db.query(TCGDisplayItemDefinition).all()}
     for values in defaults:
         code, name, kind, asset_id, currency, cost, variants, placement_kind, width, depth, *height_values = values
         height = height_values[0] if height_values else .5
@@ -582,15 +657,19 @@ def seed_display_catalog(db: Session) -> None:
         if asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand"):
             footprint["support"] = "surface"
             footprint["slots"] = 9 if asset_id.startswith("graded_card_stand") else 1
+        if asset_id in WALL_CARD_SLOTS or asset_id in FLOOR_CARD_SLOTS:
+            footprint["slots"] = {**WALL_CARD_SLOTS, **FLOOR_CARD_SLOTS}[asset_id]
         if asset_id in SHELF_SUPPORT_SLOTS:
             footprint["support_slots"] = list(SHELF_SUPPORT_SLOTS[asset_id])
-        definition = db.query(TCGDisplayItemDefinition).filter_by(code=code).first()
+        definition = by_code.get(code)
         if not definition:
-            db.add(TCGDisplayItemDefinition(
+            definition = TCGDisplayItemDefinition(
                 code=code, name=name, item_type=kind, currency=currency,
                 asset_id=asset_id, unit_cost=cost, variants_json=_dump(variants),
                 placement_kind=placement_kind, footprint_json=_dump(footprint),
-            ))
+            )
+            db.add(definition)
+            by_code[code] = definition
         else:
             definition.name = name
             definition.item_type = kind
@@ -615,7 +694,7 @@ def seed_display_catalog(db: Session) -> None:
     }
     for legacy in db.query(TCGWorkshopUnlock).all():
         code = f"workshop-{legacy.item_code}"
-        definition = db.query(TCGDisplayItemDefinition).filter_by(code=code).first()
+        definition = by_code.get(code)
         mapped = legacy_assets.get(legacy.item_code)
         if not definition:
             definition = TCGDisplayItemDefinition(
@@ -627,6 +706,7 @@ def seed_display_catalog(db: Session) -> None:
                                       "height": mapped[4] if mapped else .5}),
             )
             db.add(definition); db.flush()
+            by_code[code] = definition
         elif mapped:
             definition.asset_id = mapped[0]
             definition.placement_kind = mapped[1]
@@ -886,7 +966,9 @@ def _mutate_furniture(db: Session, instance_id: int, expected_revision: int, act
         current = state["placements"][index]
         if action == "move":
             incoming = dict(transform or {})
-            if "content" not in incoming:
+            # The router always sends a "content" key (None when absent), so
+            # check for a value, not the key, or a plain move drops it.
+            if not incoming.get("content"):
                 old = current.get("transform") or {}
                 if isinstance(old, dict) and old.get("content"):
                     incoming["content"] = old["content"]
@@ -933,11 +1015,21 @@ def return_furniture(db: Session, instance_id: int, expected_revision: int) -> d
     return _mutate_furniture(db, instance_id, expected_revision, "return")
 
 
+def _holds_cards(asset_id: str | None) -> bool:
+    asset_id = asset_id or ""
+    return (asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand")
+            or asset_id in WALL_CARD_SLOTS or asset_id in FLOOR_CARD_SLOTS)
+
+
 def assign_display_copy(db: Session, instance_id: int, copy_id: int | None, slot_key: str = "primary") -> dict:
     instance = db.get(TCGDisplayItemInstance, instance_id)
     definition = db.get(TCGDisplayItemDefinition, instance.definition_id) if instance else None
-    if not instance or not definition or definition.item_type != "display_stand" or definition.asset_id == "poster_frame":
+    if not instance or not definition or definition.item_type != "display_stand" or not _holds_cards(definition.asset_id):
         raise ValueError("Only card stands can hold cards")
+    slot_count = _load(definition.footprint_json, {}).get("slots") or 1
+    slot_index = 0 if slot_key == "primary" else int(slot_key) if str(slot_key).isdigit() else -1
+    if not 0 <= slot_index < slot_count:
+        raise ValueError("That display has no such slot")
     assignment = db.query(TCGDisplayAssignment).filter_by(display_instance_id=instance_id, slot_key=slot_key).first()
     if assignment:
         old = db.get(TCGPhysicalCardCopy, assignment.physical_copy_id)
@@ -977,7 +1069,7 @@ def _frozen_order_snapshot(db: Session, product, selected_release_id: int | None
             Card.is_legacy.is_(False), Card.card_type == CardType(target_card_type),
         ).first()
         if not available and not earned_available:
-            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Standard Booster pool")
+            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Choice Booster pool")
         snapshot["target_card_type"] = target_card_type
     rows = _eligible_pack_query(db, product, selected_release_id).with_entities(
         TCGChecklistEntry.id,
@@ -1097,8 +1189,10 @@ def parcel_status(db: Session, parcel_id: int) -> dict:
     parcel = db.get(TCGParcel, parcel_id)
     if not parcel:
         raise ValueError("Booster pack delivery not found")
+    was_mailed = parcel.status == "mailed"
     _refresh_ready(db, parcel)
-    db.commit()
+    if was_mailed and parcel.status != "mailed":
+        db.commit()
     order = db.get(TCGOnlineOrder, parcel.order_id)
     contents = _load(order.contents_json, [])
     # Older pending orders predate the per-product snapshot list.  Backfill
@@ -1392,7 +1486,7 @@ def visible_room_cards(db: Session) -> dict:
         ).all()} if stand_instances else {}
         for item in stand_instances:
             asset_id = (stand_defs.get(item.definition_id).asset_id if stand_defs.get(item.definition_id) else "") or ""
-            if asset_id.startswith("card_display_stand") or asset_id.startswith("graded_card_stand"):
+            if _holds_cards(asset_id):
                 stand_instance_ids.add(item.id)
     selected.extend((assigned[row.physical_copy_id], "display", row.display_instance_id, row.slot_key)
                     for row in assignments
@@ -1413,6 +1507,7 @@ def visible_room_cards(db: Session) -> dict:
                 "id": copy.id, "card_id": copy.card_id, "copy_ordinal": copy.copy_ordinal,
                 "location_kind": copy.location_kind, "location_ref": copy.location_ref,
                 "location_slot": copy.location_slot, "trade_locked": copy.trade_locked,
+                "grade": copy.grade,
             },
             "surface": surface, "display_instance_id": instance_id, "slot_key": slot_key,
             "material_ready": ready, "preparation_reason": reason,

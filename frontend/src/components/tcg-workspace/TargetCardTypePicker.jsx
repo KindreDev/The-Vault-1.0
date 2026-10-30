@@ -1,19 +1,20 @@
 import { useT } from '../../i18n'
+import TCGSelect from './TCGSelect'
 import './target-card-type-picker.css'
 
 const OPTIONS = [
-  ['', 'Any card type'], ['image', 'Photo'], ['gallery', 'Gallery'],
+  ['', 'Any card type'], ['image', 'Scene'], ['gallery', 'Gallery'],
   ['creator', 'Creator'], ['bond', 'Bond'], ['variant', 'Cosplay'], ['collab', 'Collab'],
 ]
 
+// One compact dropdown, so a targetable pack is the same height as the others.
 export default function TargetCardTypePicker({ value = '', onChange, id = 'pack-target-type' }) {
   const t = useT()
-  return <fieldset className="tcg-target-picker" aria-describedby={`${id}-help`}>
-    <legend>{t('Target card type')}</legend>
-    <div>{OPTIONS.map(([type, label]) => <button key={type || 'any'} type="button" aria-pressed={value === type} onClick={() => onChange(type)}>{t(label)}</button>)}</div>
-    <p id={`${id}-help`}>{value === 'image' || value === 'gallery'
-      ? t('At least half the pack will match your target.')
-      : value ? t('At least one card will match your target. Hall of Fame cards may still appear randomly.')
-        : t('Choose a type to guarantee matching cards. Hall of Fame cards may appear randomly.')}</p>
-  </fieldset>
+  return <div className="tcg-target-picker" aria-describedby={value ? `${id}-help` : undefined}>
+    <TCGSelect label={t('Target card type')} value={value} onChange={onChange}
+               options={OPTIONS.map(([type, label]) => ({ value: type, label: t(label) }))} />
+    {value && <p id={`${id}-help`}>{value === 'image' || value === 'gallery'
+      ? t('At least half the pack will match.')
+      : t('At least one card will match.')}</p>}
+  </div>
 }

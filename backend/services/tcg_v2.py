@@ -14,7 +14,7 @@ import re
 from threading import RLock
 from typing import Iterable
 
-from sqlalchemy import String, and_, cast, func, or_
+from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, object_session
 
@@ -26,10 +26,10 @@ from models import (
     CardInventory, CardPresentationOverride, CraftingMaterials, Creator, CreatorShowcase,
     Gallery, HofCrown, Image, Tag, TCGChecklistEntry, TCGBinder, TCGBinderSection,
     TCGBinderSlot, TCGPackOpening, TCGPackOpeningCard, TCGPackProduct, TCGPackPurchase,
-    TCGPackToken, TCGRelease, TCGSet, TCGSettings, TCGWorkshopUnlock,
+    TCGCardFavorite, TCGPackToken, TCGRelease, TCGSet, TCGSetCompletionAward, TCGSettings, TCGWorkshopUnlock,
     TCGPhysicalCardCopy, TCGDisplayAssignment, TCGOnlineOrder, TCGOnlineOrderLine,
     TCGParcel, TCGParcelPack,
-    TCGSetupState, TCGTraderInventory, TCGTraderOffer, TCGTraderReservation,
+    TCGSetupState, TCGTraderInventory, TCGTraderOffer, TCGTraderRequest, TCGTraderReservation, TCGTraderVisit,
     UserProfile, gallery_creators, gallery_tags, image_creators, image_tags,
 )
 from services.cards import _card_to_dict, prepare_card_face_for_reveal
@@ -49,14 +49,17 @@ GENERIC_RELEASE_TEMPLATE_CODES = {"RELEASE-STANDARD", "RELEASE-PREMIUM"}
 FOUNDER_SELECTION_PRODUCT_CODE = "FND-CORE-STD"
 FOUNDER_STANDARD_PRODUCT_CODE = "FND-CORE-STD-PLAIN"
 PERMANENT_PRODUCT_CODE = "VAULT-PERMANENT"
+# Per 620 base cards. Variety-first: Scenes about a third, cosplays and
+# collabs well represented.
 MONTHLY_RELEASE_TYPE_WEIGHTS = {
-    "scene": 248,
-    "gallery": 93,
-    "creator": 93,
-    "character": 93,
-    "cosplay": 62,
-    "collab": 31,
+    "scene": 200,
+    "gallery": 85,
+    "creator": 80,
+    "character": 80,
+    "cosplay": 110,
+    "collab": 65,
 }
+MIN_RELEASE_SET_SIZE = 12
 PACK_PRICE_DEFAULTS = {
     "release_standard": {"regular_price": 550, "launch_price": 700},
     "release_premium": {"regular_price": 1000, "launch_price": 1250},
@@ -421,6 +424,10 @@ def classification_dict(row: CardContentClassification) -> dict:
 
 
 def set_manual_classification(db: Session, card_id: int, exposure: str | None, intensity: str | None) -> dict:
+    # "AI" (or nothing) means "no manual override" for that one field, so you
+    # can correct exposure and keep the AI's intensity, or the other way round.
+    exposure = None if exposure in (None, "", "AI") else exposure
+    intensity = None if intensity in (None, "", "AI") else intensity
     if exposure is not None and exposure not in EXPOSURE_VALUES:
         raise ValueError("Invalid exposure value")
     if intensity is not None and intensity not in INTENSITY_VALUES:
@@ -440,21 +447,25 @@ def backfill_v2_records(db: Session) -> dict:
     settings = get_settings(db)
     acquisitions = 0
     classifications = 0
-    inventory = db.query(CardInventory).all()
-    for inv in inventory:
-        exists = db.query(CardAcquisition.id).filter(CardAcquisition.card_id == inv.card_id).first()
-        if not exists:
-            db.add(CardAcquisition(
-                card_id=inv.card_id,
-                quantity=max(1, inv.quantity or 1),
-                acquired_at=None,
-                source_type="legacy_import",
-                notes="Quantity preserved from pre-ledger inventory; acquisition date is unknown.",
-            ))
-            acquisitions += 1
-        if not db.query(CardContentClassification.id).filter(CardContentClassification.card_id == inv.card_id).first():
-            resolve_card_classification(db, inv.card)
-            classifications += 1
+    # Runs on most TCG reads, so only load the inventory rows that actually
+    # need a ledger row or a classification instead of checking every card.
+    has_acquisition = db.query(CardAcquisition.id).filter(CardAcquisition.card_id == CardInventory.card_id).exists()
+    for inv in db.query(CardInventory).filter(~has_acquisition).all():
+        db.add(CardAcquisition(
+            card_id=inv.card_id,
+            quantity=max(1, inv.quantity or 1),
+            acquired_at=None,
+            source_type="legacy_import",
+            notes="Quantity preserved from pre-ledger inventory; acquisition date is unknown.",
+        ))
+        acquisitions += 1
+    has_classification = db.query(CardContentClassification.id).filter(
+        CardContentClassification.card_id == CardInventory.card_id).exists()
+    for inv in db.query(CardInventory).filter(~has_classification).all():
+        if inv.card is None:
+            continue
+        resolve_card_classification(db, inv.card)
+        classifications += 1
     seed_foundation_release(db)
     seed_pack_products(db)
     seed_workshop(db)
@@ -704,7 +715,7 @@ def _backfill_release_products(db: Session) -> None:
             product = db.query(TCGPackProduct).filter(TCGPackProduct.code == code).first()
             price_metadata = _release_price_metadata(release, product_kind)
             is_founder_standard = release.release_kind == "foundation" and product_kind == "release_standard"
-            product_name = "Selection Founders Standard Booster" if is_founder_standard else f"{release.name} {definition['name']}"
+            product_name = "Founder Choice Booster" if is_founder_standard else f"{release.name} {definition['name']}"
             if not product:
                 product = TCGPackProduct(
                     code=code, name=product_name,
@@ -760,30 +771,13 @@ def _backfill_release_products(db: Session) -> None:
             product.purchasable = bool(report.get("approved"))
 
             if is_founder_standard:
+                # The old "Founder Standard Booster" was the Choice pack without a target
+                # picker. Choice works untargeted too, so the copy is retired (kept for history).
                 plain_code = FOUNDER_STANDARD_PRODUCT_CODE if release.code == "FND-CORE" else f"{release.code}-STD-PLAIN"
                 plain = db.query(TCGPackProduct).filter(TCGPackProduct.code == plain_code).first()
-                if not plain:
-                    plain = TCGPackProduct(code=plain_code)
-                    db.add(plain)
-                plain.name = "Founder Standard Booster"
-                plain.product_kind = product.product_kind
-                plain.release_id = product.release_id
-                plain.card_count = product.card_count
-                plain.rarity_floor = product.rarity_floor
-                plain.guaranteed_slots = product.guaranteed_slots
-                plain.odds_json = product.odds_json
-                plain.replacement_rules = product.replacement_rules
-                plain.duplicate_protection = product.duplicate_protection
-                plain.eligible_pool_json = product.eligible_pool_json
-                plain.regular_price = product.regular_price
-                plain.launch_price = product.launch_price
-                plain.launch_days = product.launch_days
-                plain.available_from = product.available_from
-                plain.available_until = product.available_until
-                plain.purchase_limit = product.purchase_limit
-                plain.active = product.active
-                plain.purchasable = product.purchasable
-                plain.simulation_report = product.simulation_report
+                if plain:
+                    plain.active = False
+                    plain.purchasable = False
 
 
 def seed_pack_products(db: Session) -> None:
@@ -861,36 +855,50 @@ def seed_workshop(db: Session) -> None:
             db.add(TCGWorkshopUnlock(item_code=code, item_type=item_type, name=name, shard_cost=cost))
 
 
+def _owned_entry_flag():
+    """1 when the checklist entry's card is owned, else 0 (EXISTS, so duplicate
+    inventory rows can never double-count)."""
+    owned = (
+        select(CardInventory.id)
+        .where(CardInventory.card_id == TCGChecklistEntry.card_id, CardInventory.quantity > 0)
+        .exists()
+    )
+    return case((owned, 1), else_=0)
+
+
 def _completion(db: Session, release_id: int, set_id: int | None = None) -> dict:
-    q = db.query(TCGChecklistEntry).filter(TCGChecklistEntry.release_id == release_id)
+    # Counted in SQL: Foundation alone has 60,000 entries, and loading them as
+    # objects on every Releases/Sets view made those pages slow.
+    owned = _owned_entry_flag()
+    required = case((TCGChecklistEntry.required_for_complete.is_(True), 1), else_=0)
+    q = db.query(
+        func.coalesce(func.sum(required), 0),
+        func.coalesce(func.sum(required * owned), 0),
+        func.count(TCGChecklistEntry.id),
+        func.coalesce(func.sum(owned), 0),
+    ).filter(TCGChecklistEntry.release_id == release_id)
     if set_id is not None:
         q = q.filter(TCGChecklistEntry.set_id == set_id)
-    entries = q.order_by(TCGChecklistEntry.collector_position).all()
-    owned = {row[0] for row in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()}
-    base = [entry for entry in entries if entry.required_for_complete]
-    master = entries
-    owned_base = sum(entry.card_id in owned for entry in base)
-    owned_master = sum(entry.card_id in owned for entry in master)
+    base_total, owned_base, master_total, owned_master = (int(value or 0) for value in q.one())
     return {
-        "base_owned": owned_base, "base_total": len(base),
-        "master_owned": owned_master, "master_total": len(master),
-        "set_complete": bool(base) and owned_base == len(base),
-        "master_set": bool(master) and owned_master == len(master),
-        "percent": round((owned_base / len(base) * 100) if base else 0, 1),
+        "base_owned": owned_base, "base_total": base_total,
+        "master_owned": owned_master, "master_total": master_total,
+        "set_complete": bool(base_total) and owned_base == base_total,
+        "master_set": bool(master_total) and owned_master == master_total,
+        "percent": round((owned_base / base_total * 100) if base_total else 0, 1),
     }
 
 
 def _completion_by_rarity(db: Session, release_id: int, set_id: int | None = None) -> dict:
-    q = db.query(TCGChecklistEntry).filter(TCGChecklistEntry.release_id == release_id)
+    owned = _owned_entry_flag()
+    q = db.query(
+        TCGChecklistEntry.published_rarity, func.count(TCGChecklistEntry.id), func.coalesce(func.sum(owned), 0),
+    ).filter(TCGChecklistEntry.release_id == release_id)
     if set_id is not None:
         q = q.filter(TCGChecklistEntry.set_id == set_id)
-    entries = q.all()
-    owned = {row[0] for row in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()}
-    result = {}
-    for rarity in ("C", "R", "SR", "UR", "SPR"):
-        rows = [entry for entry in entries if entry.published_rarity == rarity]
-        result[rarity] = {"owned": sum(entry.card_id in owned for entry in rows), "total": len(rows)}
-    return result
+    counts = {rarity: (int(total or 0), int(have or 0)) for rarity, total, have in q.group_by(TCGChecklistEntry.published_rarity).all()}
+    return {rarity: {"owned": counts.get(rarity, (0, 0))[1], "total": counts.get(rarity, (0, 0))[0]}
+            for rarity in ("C", "R", "SR", "UR", "SPR")}
 
 
 def _checklist_cover_cards(db: Session, release_id: int, set_id: int | None = None, limit: int = 3) -> list[dict]:
@@ -902,7 +910,7 @@ def _checklist_cover_cards(db: Session, release_id: int, set_id: int | None = No
     for entry in entries:
         # Index covers only need source art. Avoid fully resolving masks and
         # every frozen face layer for dozens of cards on a collection index.
-        art_url = f"/api/images/{entry.card.source_image_id}/file" if entry.card.source_image_id else None
+        art_url = f"/api/images/{entry.card.source_image_id}/preview?w=720" if entry.card.source_image_id else None
         if not art_url:
             rendered = _card_to_dict(db, entry.card)
             art_url = rendered.get("art_url") or rendered.get("image_url") or rendered.get("source_url")
@@ -922,13 +930,23 @@ def _is_staged_foundation_snapshot():
     )
 
 
+def _is_hidden_release():
+    """Releases that are not part of the visible catalogue: staged Foundation
+    snapshots that are still being built, and retired (archived) releases."""
+    return or_(_is_staged_foundation_snapshot(), TCGRelease.status == "archived")
+
+
 def list_releases(db: Session) -> list[dict]:
     seed_foundation_release(db)
     db.commit()
-    releases = db.query(TCGRelease).filter(~_is_staged_foundation_snapshot()).order_by(
+    releases = db.query(TCGRelease).filter(~_is_hidden_release()).order_by(
         TCGRelease.published_at.desc(), TCGRelease.id.desc(),
     ).all()
-    return [{
+    return [_release_summary(db, release) for release in releases]
+
+
+def _release_summary(db: Session, release: TCGRelease) -> dict:
+    return {
         "id": release.id, "code": release.code, "name": release.name,
         "description": release.description, "status": release.status,
         "release_kind": release.release_kind, "published_at": release.published_at.isoformat() if release.published_at else None,
@@ -938,7 +956,7 @@ def list_releases(db: Session) -> list[dict]:
         "cover_design": {"layout": "release-collage-v1", "seed": release.generation_seed},
         "set_count": db.query(func.count(TCGSet.id)).filter(TCGSet.release_id == release.id).scalar() or 0,
         "validation": _json(release.validation_report, {}),
-    } for release in releases]
+    }
 
 
 def list_sets(db: Session) -> list[dict]:
@@ -948,7 +966,7 @@ def list_sets(db: Session) -> list[dict]:
     sets = (
         db.query(TCGSet)
         .join(TCGRelease, TCGRelease.id == TCGSet.release_id)
-        .filter(TCGRelease.status != "draft")
+        .filter(TCGRelease.status.notin_(("draft", "archived")))
         .order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc(), TCGSet.position)
         .all()
     )
@@ -967,11 +985,12 @@ def list_sets(db: Session) -> list[dict]:
             changed = True
     if changed:
         db.commit()
+    awards = set_completion_awards(db)
     return [{
         "id": item.id,
         "code": item.code,
         "name": item.name,
-        "description": item.description,
+        "description": set_description(db, item),
         "theme_key": item.theme_key,
         "theme_source": item.theme_source,
         "cover_path": item.cover_path,
@@ -982,6 +1001,7 @@ def list_sets(db: Session) -> list[dict]:
         "completion": _completion(db, item.release_id, item.id),
         "completion_by_rarity": _completion_by_rarity(db, item.release_id, item.id),
         "cover_cards": _checklist_cover_cards(db, item.release_id, item.id, 1),
+        "completion_awards": awards.get(item.id, []),
     } for item in sets]
 
 
@@ -1188,7 +1208,10 @@ def _release_candidate_cache(db: Session, cards: list[Card], threshold: float) -
         ).filter(gallery_creators.c.gallery_id.in_(chunk)).order_by(
             gallery_creators.c.gallery_id, gallery_creators.c.creator_id,
         ).all():
-            gallery_creator.setdefault(gallery_id, creator_id)
+            # The first pass stored None for these galleries, so setdefault
+            # would never replace it; fill only the still-empty ones.
+            if not gallery_creator.get(gallery_id):
+                gallery_creator[gallery_id] = creator_id
 
     image_creator = {}
     for chunk in _chunks(relevant_image_ids):
@@ -1270,9 +1293,15 @@ def _candidate_metadata_cached(card: Card, threshold: float, cache: dict, prior_
     base_rarity = "UR" if (card.print_rarity or card.rarity_class) == "SPR" else (card.print_rarity or card.rarity_class or "C")
     published_rarity = apply_rarity_floor(base_rarity, personal_value["rarity_floor"])
     engagement += personal_value["score"] * 2
+    collab = _json(card.collab_data, {}) if _enum(card.card_type) == "collab" else {}
+    if not isinstance(collab, dict):
+        collab = {}
+    collab_ids = sorted({int(value) for value in (collab.get("creator_ids") or []) if str(value).isdigit()})
     return {
         "source_card_id": card.id, "source_key": source_key, "creator_id": creator_id,
         "creator_name": creator.name if creator else None,
+        "collab_key": ",".join(map(str, collab_ids)) if len(collab_ids) >= 2 else None,
+        "collab_names": [name for name in (collab.get("creator_names") or []) if name],
         "gallery_id": gallery_id, "gallery_name": gallery.name if gallery else None,
         "period_year": gallery.period_year if gallery else None,
         "period_month": gallery.period_month if gallery else None,
@@ -1315,9 +1344,15 @@ def _candidate_metadata(db: Session, card: Card, threshold: float, prior_printin
     creator = db.get(Creator, creator_id) if creator_id else None
     source_key = _source_key(card)
     creator_type = _enum(creator.creator_type) if creator else None
+    collab = _json(card.collab_data, {}) if _enum(card.card_type) == "collab" else {}
+    if not isinstance(collab, dict):
+        collab = {}
+    collab_ids = sorted({int(value) for value in (collab.get("creator_ids") or []) if str(value).isdigit()})
     return {
         "source_card_id": card.id, "source_key": source_key, "creator_id": creator_id,
         "creator_name": creator.name if creator else None,
+        "collab_key": ",".join(map(str, collab_ids)) if len(collab_ids) >= 2 else None,
+        "collab_names": [name for name in (collab.get("creator_names") or []) if name],
         "card_type": _enum(card.card_type),
         "release_type": _release_card_type(
             card, {card.source_creator_id: creator_type}
@@ -1368,9 +1403,24 @@ TYPE_SET_NAMES = {
 }
 
 
-def _theme_name(source: str, key: str, sample: dict) -> str:
+_FILENAME_LIKE = re.compile(r"^\d|_|\.(?:jpe?g|png|webp|gif)$|^(?:img|dsc|pxl)\b", re.IGNORECASE)
+
+
+def _looks_like_filename(value: str | None) -> bool:
+    return bool(value) and bool(_FILENAME_LIKE.search(value.strip()))
+
+
+def _theme_name(source: str, key: str, sample: dict) -> str | None:
+    """Return a set name, or None when no real name is known for it."""
     if source == "gallery":
-        return f"{sample.get('gallery_name') or 'Gallery'}: Selected Scenes"
+        gallery = sample.get("gallery_name")
+        if gallery and not _looks_like_filename(gallery):
+            return f"{gallery}: Selected Scenes"
+        creator = sample.get("creator_name")
+        return f"{creator}: Selected Scenes" if creator else None
+    if source == "collab":
+        names = sample.get("collab_names") or []
+        return f"{' & '.join(names[:3])}: Double Feature" if len(names) >= 2 else None
     if source == "period":
         try:
             return datetime.strptime(key, "%Y-%m").strftime("After Hours: %B %Y")
@@ -1379,15 +1429,17 @@ def _theme_name(source: str, key: str, sample: dict) -> str:
     if source == "year":
         return f"The Best of {key}"
     if source == "character":
-        return f"{sample.get('character_name') or 'Character'} After Dark"
+        character = sample.get("character_name")
+        return f"{character} After Dark" if character else None
     if source == "cosplay":
-        creator = sample.get("creator_name") or "The Vault"
-        character = sample.get("character_name") or "Character"
-        return f"{character}, Reimagined by {creator}"
+        creator = sample.get("creator_name")
+        character = sample.get("character_name")
+        return f"{character}, Reimagined by {creator}" if creator and character else None
     if source == "card_type":
         return TYPE_SET_NAMES.get(key, f"{key.replace('_', ' ').title()} Collection")
     if source == "creator":
-        return f"{sample.get('creator_name') or 'Creator'}: Private Collection"
+        creator = sample.get("creator_name")
+        return f"{creator}: Private Collection" if creator else None
     if source == "tag":
         normalized = key.strip().lower().replace(" ", "_")
         return TAG_SET_NAMES.get(normalized, normalized.replace("_", " ").title())
@@ -1398,7 +1450,89 @@ def _theme_name(source: str, key: str, sample: dict) -> str:
     return key.replace("_", " ").title()
 
 
-def _theme_proposals(candidates: list[dict], enabled_sources: list[str]) -> list[dict]:
+_EXPOSURE_DESCRIPTIONS = {
+    "Topless": "A collection of topless cards.",
+    "Bottomless": "A collection of bottomless cards.",
+    "Nude": "A collection of fully nude cards.",
+    "Implied nude": "A collection of implied-nude cards.",
+    "Partial": "A collection of partly clothed cards.",
+    "Mixed": "A mix of every state of undress.",
+}
+_INTENSITY_DESCRIPTIONS = {
+    "Safe": "A collection of softer, safe-for-work cards.",
+    "Suggestive": "A collection of suggestive, teasing cards.",
+    "Explicit": "A collection of explicit sex cards.",
+}
+_TAG_DESCRIPTIONS = {
+    "nipples": "A collection focused on visible nipples.",
+    "navel": "A collection focused on bare midriffs.",
+    "breasts": "A collection focused on breasts.",
+    "large breasts": "A collection focused on big breasts.",
+    "underboob": "A collection of underboob-focused cards.",
+    "anal": "A collection focused on anal sex.",
+}
+_CARD_TYPE_DESCRIPTIONS = {
+    "image": "A collection of single-photo scene cards.",
+    "scene": "A collection of single-photo scene cards.",
+    "gallery": "A collection of gallery cards, each one a whole shoot.",
+    "creator": "A collection of creator and character portrait cards.",
+    "variant": "A collection of cosplay cards.",
+    "cosplay": "A collection of cosplay cards.",
+    "collab": "A collection of collab cards, creators shooting together.",
+}
+
+
+def set_description(db: Session, tcg_set: TCGSet) -> str:
+    """One short line saying what a set is about, from its theme."""
+    source = "card_type" if tcg_set.theme_source == "type" else (tcg_set.theme_source or "")
+    key = str(tcg_set.theme_key or "")
+    try:
+        if source == "exposure" and key in _EXPOSURE_DESCRIPTIONS:
+            return _EXPOSURE_DESCRIPTIONS[key]
+        if source == "intensity" and key in _INTENSITY_DESCRIPTIONS:
+            return _INTENSITY_DESCRIPTIONS[key]
+        if source == "tag" and key:
+            words = key.replace("_", " ").strip()
+            return _TAG_DESCRIPTIONS.get(words.lower(), f"A collection focused on {words}.")
+        if source == "card_type" and key in _CARD_TYPE_DESCRIPTIONS:
+            return _CARD_TYPE_DESCRIPTIONS[key]
+        if source == "period" and key:
+            return f"Cards from shoots in {datetime.strptime(key, '%Y-%m').strftime('%B %Y')}."
+        if source == "year" and key:
+            return f"The standout cards from {key}."
+        if source == "creator" and key.isdigit():
+            creator = db.get(Creator, int(key))
+            if creator:
+                return f"A collection of {creator.name}'s cards."
+        if source == "character" and key.isdigit():
+            character = db.get(Creator, int(key))
+            if character:
+                return f"A collection of {character.name} cards."
+        if source == "cosplay" and ":" in key:
+            creator_id, character_id = key.split(":", 1)
+            creator = db.get(Creator, int(creator_id)) if creator_id.isdigit() else None
+            character = db.get(Creator, int(character_id)) if character_id.isdigit() else None
+            if creator and character:
+                return f"{creator.name} cosplaying {character.name}."
+        if source == "collab" and key:
+            names = [person.name for person in (db.get(Creator, int(value)) for value in key.split(",") if value.isdigit()) if person]
+            if len(names) >= 2:
+                return f"{' and '.join([', '.join(names[:-1]), names[-1]])} together."
+        if source == "gallery" and key.isdigit():
+            gallery = db.get(Gallery, int(key))
+            if gallery and not _looks_like_filename(gallery.name):
+                return f"Selected scenes from the {gallery.name} shoot."
+            if gallery and gallery.creators:
+                return f"Selected scenes from a {gallery.creators[0].name} shoot."
+    except (TypeError, ValueError):
+        pass
+    if not source and tcg_set.release and tcg_set.release.release_kind == "foundation":
+        return "Every card in the permanent Founder's Catalogue."
+    return tcg_set.description or ""
+
+
+def _theme_proposals(candidates: list[dict], enabled_sources: list[str],
+                     used_before: set[tuple[str, str]] | None = None) -> list[dict]:
     enabled = set(enabled_sources or [
         "periods", "characters", "cosplay", "exposure", "sexual-content",
         "clothing", "medium", "creator-spotlights", "collaborations",
@@ -1426,10 +1560,12 @@ def _theme_proposals(candidates: list[dict], enabled_sources: list[str]) -> list
                 counts[("tag", tag)] += 1
         if "creator-spotlights" in enabled and candidate["creator_id"]:
             counts[("creator", str(candidate["creator_id"]))] += 1
+        if "collaborations" in enabled and candidate.get("collab_key"):
+            counts[("collab", candidate["collab_key"])] += 1
     by_source = {}
     for (source, key), count in counts.most_common():
-        minimum = 4 if source == "cosplay" else 6 if source in {"gallery", "character"} else 8
-        if count < minimum:
+        # A set needs enough matching cards to fill it.
+        if count < MIN_RELEASE_SET_SIZE:
             continue
         # Very generic model tags do not make useful set identities.
         if key in {"1girl", "solo", "looking at viewer", "highres", "photo"}:
@@ -1437,19 +1573,30 @@ def _theme_proposals(candidates: list[dict], enabled_sources: list[str]) -> list
         matching = [candidate for candidate in candidates if _matches_theme(candidate, {"source": source, "key": key})]
         if not matching:
             continue
-        sample = next((candidate for candidate in matching if candidate.get("gallery_name") or candidate.get("creator_name") or candidate.get("character_name")), matching[0])
+        name_field = {"gallery": "gallery_name", "creator": "creator_name", "character": "character_name",
+                      "cosplay": "character_name", "collab": "collab_names"}.get(source)
+        sample = next((candidate for candidate in matching if not name_field or candidate.get(name_field)), matching[0])
+        name = _theme_name(source, key, sample)
+        if not name:
+            continue
         proposal = {
             "source": source, "key": key,
-            "name": _theme_name(source, key, sample),
+            "name": name,
             "eligible": count,
             "confidence": round(sum(candidate["confidence"] for candidate in matching) / max(1, len(matching)), 3),
         }
         by_source.setdefault(source, []).append(proposal)
 
+    # Themes earlier months already used go to the back of their queue, so each
+    # release brings new set identities before repeating old ones.
+    used_before = used_before or set()
+    for options in by_source.values():
+        options.sort(key=lambda proposal: ((proposal["source"], proposal["key"]) in used_before, -proposal["eligible"]))
+
     # A release should feel like a collection, not a list of the most common
     # classifier tags. Round-robin across sources before taking a second theme
     # from any one source.
-    source_order = ["gallery", "character", "cosplay", "period", "year", "card_type", "creator", "tag", "exposure", "intensity"]
+    source_order = ["gallery", "character", "cosplay", "collab", "period", "year", "card_type", "creator", "tag", "exposure", "intensity"]
     proposals = []
     seen_names = set()
     depth = 0
@@ -1484,6 +1631,7 @@ def _matches_theme(candidate: dict, theme: dict) -> bool:
         or (theme["source"] == "period" and candidate.get("period_year") and candidate.get("period_month") and f"{candidate['period_year']:04d}-{candidate['period_month']:02d}" == theme["key"])
         or (theme["source"] == "character" and str(candidate.get("character_id")) == theme["key"])
         or (theme["source"] == "cosplay" and f"{candidate.get('creator_id')}:{candidate.get('character_id')}" == theme["key"])
+        or (theme["source"] == "collab" and candidate.get("collab_key") == theme["key"])
         or (theme["source"] == "card_type" and candidate.get("card_type") == theme["key"])
     )
 
@@ -1982,18 +2130,174 @@ def _enforce_release_creator_cap(allocated: list[dict], candidates: list[dict], 
     return result
 
 
-def wipe_owned_cards(db: Session, confirmation: str) -> dict:
-    """Clear current owned card copies while preserving catalogue and audit history."""
+BOOSTER_CARD_TYPES = (CardType.image, CardType.gallery, CardType.creator, CardType.variant, CardType.collab)
+
+
+def wipe_pack_cards(db: Session) -> dict:
+    """Clear owned booster cards only. Earned Hall of Fame and Bond cards stay."""
+    return wipe_owned_cards(db, "WIPE OWNED CARDS", card_types=BOOSTER_CARD_TYPES)
+
+
+def set_card_favorite(db: Session, card_id: int, favorite: bool) -> dict:
+    """Star or unstar one card printing."""
+    if not db.get(Card, card_id):
+        raise ValueError("Card not found")
+    row = db.query(TCGCardFavorite).filter(TCGCardFavorite.card_id == card_id).first()
+    if favorite and not row:
+        db.add(TCGCardFavorite(card_id=card_id))
+    elif not favorite and row:
+        db.delete(row)
+    db.commit()
+    return {"card_id": card_id, "favorite": bool(favorite)}
+
+
+def _favorite_ids(db: Session, card_ids) -> set[int]:
+    ids = [int(value) for value in card_ids if value is not None]
+    if not ids:
+        return set()
+    return {row[0] for row in db.query(TCGCardFavorite.card_id).filter(TCGCardFavorite.card_id.in_(ids)).all()}
+
+
+SET_COMPLETION_REWARDS = {
+    # kind: (XP reason in gamification.XP_REWARDS, Vault Credits)
+    "set": ("tcg_set_completed", 300),
+    "master": ("tcg_master_set_completed", 600),
+}
+
+
+def set_completion_awards(db: Session) -> dict[int, list[str]]:
+    """Completed-set badges already earned, by set id."""
+    awards: dict[int, list[str]] = {}
+    for set_id, kind in db.query(TCGSetCompletionAward.set_id, TCGSetCompletionAward.kind).all():
+        awards.setdefault(set_id, []).append(kind)
+    return awards
+
+
+def _owned_set_progress(db: Session) -> list[tuple]:
+    """(set_id, base_total, base_owned, total, owned) for published sets you own a card from."""
+    owned_ids = [row[0] for row in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()]
+    if not owned_ids:
+        return []
+    candidate_sets = set()
+    for start in range(0, len(owned_ids), 900):
+        candidate_sets.update(row[0] for row in db.query(TCGChecklistEntry.set_id).join(
+            TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+        ).filter(
+            TCGRelease.status == "published", TCGChecklistEntry.set_id.isnot(None),
+            TCGChecklistEntry.card_id.in_(owned_ids[start:start + 900]),
+        ).distinct().all())
+    if not candidate_sets:
+        return []
+    owned_flag = case((CardInventory.quantity > 0, 1), else_=0)
+    return db.query(
+        TCGChecklistEntry.set_id,
+        func.sum(case((TCGChecklistEntry.required_for_complete.is_(True), 1), else_=0)),
+        func.sum(case((and_(TCGChecklistEntry.required_for_complete.is_(True), CardInventory.quantity > 0), 1), else_=0)),
+        func.count(TCGChecklistEntry.id),
+        func.sum(owned_flag),
+    ).outerjoin(CardInventory, CardInventory.card_id == TCGChecklistEntry.card_id).filter(
+        TCGChecklistEntry.set_id.in_(candidate_sets),
+    ).group_by(TCGChecklistEntry.set_id).all()
+
+
+def award_set_completions(db: Session) -> list[dict]:
+    """Reward each newly completed set once: base set, then master set.
+
+    Runs when the collection summary loads, which the app refreshes after
+    every pack, trade and parcel, so every acquisition path is covered.
+    """
+    rows = _owned_set_progress(db)
+    if not rows:
+        return []
+    already = set_completion_awards(db)
+    new_awards = []
+    from services.gamification import award_xp, get_or_create_profile
+    from models import CreditEvent
+    for set_id, base_total, base_owned, total, owned in rows:
+        base_owned = base_owned or 0
+        earned = []
+        if base_total and base_owned >= base_total:
+            earned.append("set")
+        if total and (owned or 0) >= total:
+            earned.append("master")
+        for kind in earned:
+            if kind in already.get(set_id, []):
+                continue
+            reason, credits = SET_COMPLETION_REWARDS[kind]
+            xp_event = award_xp(db, reason)
+            profile = get_or_create_profile(db)
+            profile.vault_credits = (profile.vault_credits or 0) + credits
+            db.add(CreditEvent(source=reason, amount=credits))
+            db.add(TCGSetCompletionAward(set_id=set_id, kind=kind, xp=int(xp_event.amount or 0), credits=credits))
+            tcg_set = db.get(TCGSet, set_id)
+            new_awards.append({
+                "set_id": set_id, "kind": kind, "xp": int(xp_event.amount or 0), "credits": credits,
+                "set_name": tcg_set.name if tcg_set else None,
+                "release_name": tcg_set.release.name if tcg_set and tcg_set.release else None,
+            })
+    if new_awards:
+        db.commit()
+    return new_awards
+
+
+def retire_trader_stock_for_retired_cards(db: Session) -> dict:
+    """Drop retired printings from active trader stock and open card requests.
+
+    A printing is retired when it only appears in archived releases. Stock held
+    by an open offer stays until that offer resolves; deal history is untouched.
+    """
+    archived_ids = {row[0] for row in db.query(TCGChecklistEntry.card_id).join(
+        TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+    ).filter(TCGRelease.status == "archived").all()}
+    live_ids = {row[0] for row in db.query(TCGChecklistEntry.card_id).join(
+        TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
+    ).filter(TCGRelease.status == "published").all()}
+    retired = archived_ids - live_ids
+    if not retired:
+        return {"stock_removed": 0, "requests_refused": 0}
+    active_visit_ids = [row[0] for row in db.query(TCGTraderVisit.id).filter(TCGTraderVisit.status == "active").all()]
+    stock_removed = 0
+    requests_refused = 0
+    if active_visit_ids:
+        retired_list = sorted(retired)
+        for start in range(0, len(retired_list), 900):
+            chunk = retired_list[start:start + 900]
+            # Deal history can point at these rows, so mark them sold out
+            # instead of deleting them.
+            stock_removed += db.query(TCGTraderInventory).filter(
+                TCGTraderInventory.visit_id.in_(active_visit_ids),
+                TCGTraderInventory.card_id.in_(chunk),
+                TCGTraderInventory.reserved_quantity == 0,
+                TCGTraderInventory.quantity > 0,
+            ).update({TCGTraderInventory.quantity: 0}, synchronize_session=False)
+    pending = db.query(TCGTraderRequest).filter(TCGTraderRequest.status == "pending").all()
+    for request in pending:
+        if request.card_id in retired:
+            request.status = "refused"
+            requests_refused += 1
+    db.commit()
+    return {"stock_removed": stock_removed, "requests_refused": requests_refused}
+
+
+def wipe_owned_cards(db: Session, confirmation: str, *, card_types=None) -> dict:
+    """Clear current owned card copies while preserving catalogue and audit history.
+
+    `card_types` limits the wipe to those card types (all types when omitted).
+    """
     if confirmation != "WIPE OWNED CARDS":
         raise ValueError('Type "WIPE OWNED CARDS" to confirm this action')
 
-    inventory_count = db.query(CardInventory.id).count()
-    inventory_id_query = db.query(CardInventory.id).subquery()
-    owned_card_id_query = db.query(CardInventory.card_id).subquery()
-    owned_copy_query = db.query(TCGPhysicalCardCopy.id).filter(
-        TCGPhysicalCardCopy.location_kind != "traded_away",
-    )
-    owned_copy_id_query = owned_copy_query.subquery()
+    inventory_scope = db.query(CardInventory)
+    copy_scope = db.query(TCGPhysicalCardCopy.id).filter(TCGPhysicalCardCopy.location_kind != "traded_away")
+    if card_types:
+        scoped_card_ids = db.query(Card.id).filter(Card.card_type.in_(card_types)).scalar_subquery()
+        inventory_scope = inventory_scope.filter(CardInventory.card_id.in_(scoped_card_ids))
+        copy_scope = copy_scope.filter(TCGPhysicalCardCopy.card_id.in_(scoped_card_ids))
+    inventory_count = inventory_scope.count()
+    inventory_id_query = inventory_scope.with_entities(CardInventory.id).scalar_subquery()
+    owned_card_id_query = inventory_scope.with_entities(CardInventory.card_id).scalar_subquery()
+    owned_copy_query = copy_scope
+    owned_copy_id_query = owned_copy_query.scalar_subquery()
     physical_copy_count = owned_copy_query.count()
     offer_ids = sorted({row[0] for row in db.query(TCGTraderReservation.offer_id).filter(
         TCGTraderReservation.status == "active",
@@ -2043,7 +2347,9 @@ def wipe_owned_cards(db: Session, confirmation: str) -> dict:
             TCGPhysicalCardCopy.id.in_(owned_copy_id_query),
         ).delete(synchronize_session=False)
     if inventory_count:
-        db.query(CardInventory).delete(synchronize_session=False)
+        db.query(CardInventory).filter(
+            CardInventory.id.in_(inventory_scope.with_entities(CardInventory.id).scalar_subquery()),
+        ).delete(synchronize_session=False)
 
     try:
         db.commit()
@@ -2261,7 +2567,7 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
     prior_printings = Counter()
     for (reason,) in db.query(TCGChecklistEntry.selection_reason).join(
         TCGRelease, TCGChecklistEntry.release_id == TCGRelease.id,
-    ).filter(TCGRelease.release_kind != "foundation").all():
+    ).filter(TCGRelease.release_kind != "foundation", TCGRelease.status != "archived").all():
         parsed = _json(reason, {})
         if parsed.get("source_key"):
             prior_printings[parsed["source_key"]] += 1
@@ -2299,18 +2605,33 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
         for family in type_targets
     }
     rng.shuffle(candidates)
-    themes = _theme_proposals(candidates, _json(settings.enabled_theme_sources, []))
+    used_themes = {
+        (source or "", key or "") for source, key in db.query(TCGSet.theme_source, TCGSet.theme_key).join(
+            TCGRelease, TCGRelease.id == TCGSet.release_id,
+        ).filter(
+            TCGRelease.release_kind == "monthly", TCGRelease.status == "published", TCGRelease.code != code,
+        ).all()
+    }
+    themes = _theme_proposals(candidates, _json(settings.enabled_theme_sources, []), used_themes)
 
     allocated = []
     used = set()
     set_target = max(0, target - min(40, target))
     per_set = math.ceil(set_target / max(1, len(themes))) if themes else 0
-    for set_index, theme in enumerate(themes):
+    kept_themes = []
+    for theme in themes:
         matches = [candidate for candidate in candidates if candidate["source_key"] not in used and _matches_theme(candidate, theme)]
+        # Earlier sets can use up a theme's cards; a set that would end up
+        # tiny folds into the general pool instead.
+        if min(len(matches), per_set) < MIN_RELEASE_SET_SIZE:
+            continue
+        set_index = len(kept_themes)
+        kept_themes.append(theme)
         matches.sort(key=lambda item: (item["prior_printings"], -item["confidence"], -item["engagement"], item["source_key"]))
         for candidate in matches[:per_set]:
             candidate = {**candidate, "theme_index": set_index, "lane": "themed_set"}
             allocated.append(candidate); used.add(candidate["source_key"])
+    themes = kept_themes
 
     remaining = [candidate for candidate in candidates if candidate["source_key"] not in used]
     remaining.sort(key=lambda item: (item["prior_printings"], -item["engagement"], item["source_key"]))
@@ -2397,6 +2718,55 @@ def draft_release(db: Session, *, year: int, month: int, regenerate: bool = Fals
     db.commit()
     if settings.release_generation_mode == "automatic" and validation["valid"]:
         return publish_release(db, release.id)
+    return release_detail(db, release.id)
+
+
+def archive_monthly_release(db: Session, *, year: int, month: int) -> dict | None:
+    """Retire a published monthly release, keeping it for history.
+
+    The release, its sets and its pack products get renamed codes (codes are
+    unique) and leave the catalogue, the shop and future reprint counts.
+    Returns the original dates so a rebuilt release can keep them.
+    """
+    code = f"REL-{year:04d}-{month:02d}"
+    old = db.query(TCGRelease).filter(TCGRelease.code == code).first()
+    if not old:
+        return None
+    if old.release_kind != "monthly":
+        raise ValueError(f"{code} is not a monthly release")
+    dates = {"published_at": old.published_at, "available_from": old.available_from, "frozen_at": old.frozen_at}
+    suffix = f"-A{old.id}"
+    old.status = "archived"
+    old.code = f"{code}{suffix}"
+    for tcg_set in db.query(TCGSet).filter(TCGSet.release_id == old.id).all():
+        if not tcg_set.code.endswith(suffix):
+            tcg_set.code = f"{tcg_set.code}{suffix}"
+    for product in db.query(TCGPackProduct).filter(TCGPackProduct.release_id == old.id).all():
+        product.active = False
+        product.purchasable = False
+        if not product.code.endswith(suffix):
+            product.code = f"{product.code}{suffix}"
+    db.commit()
+    return dates
+
+
+def rebuild_monthly_release(db: Session, *, year: int, month: int, dates: dict | None = None) -> dict:
+    """Publish a fresh monthly release, archiving any current one for that month first."""
+    archived_dates = archive_monthly_release(db, year=year, month=month)
+    dates = dates or archived_dates
+    code = f"REL-{year:04d}-{month:02d}"
+    draft_release(db, year=year, month=month)
+    release = db.query(TCGRelease).filter(TCGRelease.code == code).first()
+    if not release:
+        raise RuntimeError(f"{code} was not drafted")
+    if release.status != "published":
+        publish_release(db, release.id)
+        db.refresh(release)
+    if dates and dates.get("published_at"):
+        release.published_at = dates["published_at"]
+        release.available_from = dates.get("available_from") or dates["published_at"]
+        release.frozen_at = dates.get("frozen_at") or dates["published_at"]
+        db.commit()
     return release_detail(db, release.id)
 
 
@@ -2576,17 +2946,19 @@ def release_detail(db: Session, release_id: int) -> dict:
         raise ValueError("This Foundation snapshot is still being prepared")
     sets = db.query(TCGSet).filter(TCGSet.release_id == release.id).order_by(TCGSet.position).all()
     products = db.query(TCGPackProduct).filter(or_(TCGPackProduct.release_id == release.id, TCGPackProduct.product_kind == "permanent")).all()
+    awards = set_completion_awards(db)
     return {
-        **next(item for item in list_releases(db) if item["id"] == release.id),
+        **_release_summary(db, release),
         "manifest": _json(release.manifest_json, {}),
         "rarity_distribution": _json(release.rarity_distribution, {}),
         "generation_report": _json(release.generation_report, {}),
         "sets": [{
-            "id": item.id, "code": item.code, "name": item.name, "description": item.description,
+            "id": item.id, "code": item.code, "name": item.name, "description": set_description(db, item),
             "theme_key": item.theme_key, "theme_source": item.theme_source, "cover_path": item.cover_path,
             "completion": _completion(db, release.id, item.id),
             "completion_by_rarity": _completion_by_rarity(db, release.id, item.id),
             "cover_cards": _checklist_cover_cards(db, release.id, item.id, 1),
+            "completion_awards": awards.get(item.id, []),
         } for item in sets],
         "boosters": [pack_dict(product, release) for product in products],
     }
@@ -2596,7 +2968,7 @@ def checklist(db: Session, *, release_id: int | None = None, set_id: int | None 
               skip: int = 0, limit: int = 100) -> dict:
     q = db.query(TCGChecklistEntry).join(
         TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
-    ).filter(~_is_staged_foundation_snapshot())
+    ).filter(~_is_hidden_release())
     if release_id is not None:
         q = q.filter(TCGChecklistEntry.release_id == release_id)
     if set_id is not None:
@@ -2694,7 +3066,7 @@ def catalog_filter_options(db: Session) -> dict:
     backfill_v2_records(db)
     staged_card_ids = db.query(TCGChecklistEntry.card_id).join(
         TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
-    ).filter(_is_staged_foundation_snapshot()).subquery()
+    ).filter(_is_hidden_release()).subquery()
     current = and_(Card.is_legacy.is_(False), ~Card.id.in_(staged_card_ids))
     creator_ids = {
         value for (value,) in db.query(Card.source_creator_id).filter(current).all() if value
@@ -2769,7 +3141,8 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             signature: str | None = None,
             creator_id: int | None = None, character_id: int | None = None,
             binder_id: str | None = None,
-            skip: int = 0, limit: int = 100) -> dict:
+            skip: int = 0, limit: int = 100, sort: str | None = None,
+            favorites: bool = False) -> dict:
     """Release-aware catalog page with honest owned and missing states."""
     backfill_v2_records(db)
     legacy_scope = ownership == "legacy"
@@ -2800,12 +3173,11 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
     else:
         q = q.filter(Card.is_legacy.is_(False))
         # Draft refresh batches are committed incrementally, but are not part
-        # of the visible catalogue until activation. Retain an owned card if
-        # one is ever associated with such a draft; archive/history rows are
-        # unaffected because only staged draft Foundation releases match.
+        # of the visible catalogue until activation, and retired (archived)
+        # releases leave it. Owned cards stay visible either way.
         q = q.filter(or_(
             TCGRelease.id.is_(None),
-            ~_is_staged_foundation_snapshot(),
+            ~_is_hidden_release(),
             CardInventory.quantity > 0,
         ))
     if ownership == "owned":
@@ -2847,6 +3219,8 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
                 TCGBinderSlot.binder_id == selected_binder_id,
                 TCGBinderSlot.card_id.isnot(None),
             )))
+    if favorites:
+        q = q.filter(Card.id.in_(select(TCGCardFavorite.card_id)))
     if exposure and not legacy_scope:
         q = q.filter(CardContentClassification.exposure_resolved == exposure)
     if intensity and not legacy_scope:
@@ -2928,10 +3302,31 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             elif token in {"cosplay", "variant"}:
                 matches.append(Card.card_type == CardType.variant)
             q = q.filter(or_(*matches))
-    rows = q.order_by(TCGChecklistEntry.release_id.desc(), TCGChecklistEntry.collector_position, Card.id).all()
-    total = len(rows)
+    # Count and page in SQL. Loading every matching row to slice one page out
+    # in Python was the main cost of the Missing view (tens of thousands of rows).
+    total = q.order_by(None).count()
+    page_size = max(0, min(int(limit or 0), 250))
+    default_order = (TCGChecklistEntry.release_id.desc(), TCGChecklistEntry.collector_position, Card.id)
+    rarity_rank = case(
+        {"C": 0, "R": 1, "SR": 2, "UR": 3, "SPR": 4},
+        value=func.coalesce(TCGChecklistEntry.published_rarity, Card.print_rarity, Card.rarity_class),
+        else_=-1,
+    )
+    # Sorting happens in SQL so it covers the whole collection, not one page.
+    sort_orders = {
+        "rarity_high": (rarity_rank.desc(), *default_order),
+        "rarity_low": (rarity_rank.asc(), *default_order),
+        "newest_acquired": (latest_acquisition.c.acquired_at.is_(None), latest_acquisition.c.acquired_at.desc(), *default_order),
+        "newest_published": (Card.generated_at.is_(None), Card.generated_at.desc(), *default_order),
+        "quantity": (func.coalesce(CardInventory.quantity, 0).desc(), *default_order),
+    }
+    rows = (
+        q.order_by(*sort_orders.get(sort or "", default_order))
+        .offset(max(0, int(skip or 0))).limit(page_size).all()
+    ) if page_size else []
     items = []
-    for entry, card, inventory, classification, acquired_at in rows[skip:skip + min(limit, 250)]:
+    favorite_ids = _favorite_ids(db, [row[1].id for row in rows])
+    for entry, card, inventory, classification, acquired_at in rows:
         owned = bool(inventory and inventory.quantity > 0)
         items.append({
             "id": entry.id if entry else f"earned-{card.id}", "owned": owned, "quantity": inventory.quantity if inventory else 0,
@@ -2942,6 +3337,7 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
             "identity": _card_identity(db, card, entry),
             "acquisition_policy": _acquisition_policy(card.card_type),
             "card": _card_to_dict(db, card) if owned else None,
+            "favorite": card.id in favorite_ids,
             "classification": classification_dict(classification) if classification else None,
         })
     return {"total": total, "items": items}
@@ -3107,11 +3503,13 @@ def card_detail(db: Session, card_id: int) -> dict:
             ),
         },
         "presentation_override": override_dict(override),
+        "favorite": card.id in _favorite_ids(db, [card.id]),
     }
 
 
 def workspace_summary(db: Session) -> dict:
     backfill_v2_records(db)
+    new_completion_awards = award_set_completions(db)
     current_cards = Card.is_legacy.is_(False)
     legacy_cards = Card.is_legacy.is_(True)
     owned_printings = (
@@ -3140,7 +3538,7 @@ def workspace_summary(db: Session) -> dict:
     )
     visible_checklists = db.query(TCGChecklistEntry).join(
         TCGRelease, TCGRelease.id == TCGChecklistEntry.release_id,
-    ).filter(~_is_staged_foundation_snapshot())
+    ).filter(~_is_hidden_release())
     checklist_total = visible_checklists.with_entities(func.count(TCGChecklistEntry.id)).scalar() or 0
     duplicates = (
         db.query(func.sum(CardInventory.quantity - 1))
@@ -3159,13 +3557,53 @@ def workspace_summary(db: Session) -> dict:
         "has_legacy_cards": legacy_printings > 0,
         "catalog_total": checklist_total, "missing": max(0, checklist_total - owned_printings),
         "duplicates": duplicates,
-        "release_count": db.query(func.count(TCGRelease.id)).filter(~_is_staged_foundation_snapshot()).scalar() or 0,
+        "release_count": db.query(func.count(TCGRelease.id)).filter(~_is_hidden_release()).scalar() or 0,
         "set_count": db.query(func.count(TCGSet.id)).join(
             TCGRelease, TCGRelease.id == TCGSet.release_id,
-        ).filter(~_is_staged_foundation_snapshot()).scalar() or 0,
+        ).filter(~_is_hidden_release()).scalar() or 0,
         "by_rarity": by_rarity,
         "settings": settings_dict(get_settings(db)),
         "classification_values": {"exposure": EXPOSURE_VALUES, "intensity": INTENSITY_VALUES},
+        "current_release": _current_release_progress(db),
+        "nearest_set": _nearest_set_progress(db),
+        "new_completion_awards": new_completion_awards,
+    }
+
+
+def _current_release_progress(db: Session) -> dict | None:
+    """The newest published monthly release (Foundation when none) with its completion."""
+    release = db.query(TCGRelease).filter(
+        TCGRelease.status == "published", TCGRelease.release_kind == "monthly",
+    ).order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc()).first() or db.query(TCGRelease).filter(
+        TCGRelease.status == "published",
+    ).order_by(TCGRelease.published_at.desc(), TCGRelease.id.desc()).first()
+    if not release:
+        return None
+    return {"id": release.id, "code": release.code, "name": release.name, "completion": _completion(db, release.id)}
+
+
+def _nearest_set_progress(db: Session) -> dict | None:
+    """The unfinished set closest to completion among sets you own cards from."""
+    best = None
+    monthly_set_ids = {row[0] for row in db.query(TCGSet.id).join(TCGRelease, TCGRelease.id == TCGSet.release_id).filter(
+        TCGRelease.release_kind == "monthly", TCGRelease.status == "published").all()}
+    for set_id, base_total, base_owned, _total, _owned in _owned_set_progress(db):
+        if set_id not in monthly_set_ids:
+            continue
+        base_owned = base_owned or 0
+        if not base_total or base_owned >= base_total:
+            continue
+        ratio = base_owned / base_total
+        if best is None or ratio > best[1] or (ratio == best[1] and base_total - base_owned < best[3] - best[2]):
+            best = (set_id, ratio, base_owned, base_total)
+    if not best:
+        return None
+    tcg_set = db.get(TCGSet, best[0])
+    return {
+        "id": best[0], "name": tcg_set.name if tcg_set else None,
+        "release_id": tcg_set.release_id if tcg_set else None,
+        "release_name": tcg_set.release.name if tcg_set and tcg_set.release else None,
+        "owned": best[2], "total": best[3], "percent": round(best[1] * 100),
     }
 
 
@@ -3207,17 +3645,24 @@ def _card_identity(db: Session, card: Card, entry: TCGChecklistEntry | None = No
     creator = card.source_creator
     character = card.linked_character
 
-    if card_type in {"creator", "variant"}:
-        display_name = creator.name if creator else None
-    elif card_type == "gallery":
-        display_name = gallery.name if gallery else None
-    elif card_type == "collab":
-        display_name = gallery.name if gallery else None
-    else:
-        display_name = gallery.name if gallery else (creator.name if creator else None)
-    if card_type == "variant" and creator and character:
-        display_name = f"{creator.name} / {character.name}"
-    display_name = display_name or f"Card {card.id}"
+    # Name missing cards exactly like owned ones (services.cards.compose_display_name):
+    # a Scene is named after its creator, not the gallery folder it sits in.
+    from services.cards import compose_display_name, printed_card_code
+    named_creator = creator
+    if named_creator is None and gallery is not None:
+        named_creator = (gallery.creators[0] if gallery.creators else None) or gallery.creator
+    if named_creator is None and image is not None and image.image_creators:
+        named_creator = image.image_creators[0]
+    collab_info = _json(card.collab_data, {}) if card_type == "collab" else None
+    display_name = compose_display_name(
+        card_type,
+        creator_name=named_creator.name if named_creator else None,
+        gallery_name=gallery.name if gallery else None,
+        character_name=character.name if character else None,
+        collab_info=collab_info if isinstance(collab_info, dict) else None,
+    )
+    if display_name == "Unknown":
+        display_name = f"Card {card.id}"
 
     collector_number = entry.collector_position if entry else card.collector_number
     collector_suffix = entry.collector_suffix if entry else ""
@@ -3237,6 +3682,7 @@ def _card_identity(db: Session, card: Card, entry: TCGChecklistEntry | None = No
             f"{collector_number:03d}{collector_suffix}" if collector_number is not None else None
         ),
         "card_type": card_type, "display_name": display_name,
+        "card_code": printed_card_code(card, creator.creator_type if creator else None),
         "creator_name": creator.name if creator else None,
         "character_name": character.name if character else None,
         "gallery_name": gallery.name if gallery else None,
@@ -3250,7 +3696,7 @@ def _pack_display_context(product: TCGPackProduct, release: TCGRelease | None) -
             db.query(func.count(TCGSet.id)).filter(TCGSet.release_id == release.id).scalar()
             if db else 0
         ) or 0
-        return release.name, int(set_count), f"{product.card_count} cards from {release.name} across {set_count} sets"
+        return release.name, int(set_count), f"{product.card_count} cards from {release.name}" + (f" across {set_count} sets" if int(set_count) > 1 else "")
     if product.product_kind == "weekly_protection":
         return "Selected published release", 0, f"{product.card_count} cards from your selected published release"
     if product.product_kind == "limited":
@@ -3306,7 +3752,15 @@ def list_packs(db: Session) -> list[dict]:
     for product in db.query(TCGPackProduct).order_by(TCGPackProduct.id).all():
         if product.code in GENERIC_RELEASE_TEMPLATE_CODES:
             continue
-        pack = {**pack_dict(product, releases.get(product.release_id)), "tokens": int(token_counts.get(product.id, 0) or 0)}
+        tokens = int(token_counts.get(product.id, 0) or 0)
+        release = releases.get(product.release_id)
+        # Only list packs you can actually get: buyable now, or held as reward
+        # tokens. Retired releases' packs and unscheduled products stay hidden.
+        if release is not None and release.status != "published" and not tokens:
+            continue
+        if not tokens and not (product.active and product.purchasable):
+            continue
+        pack = {**pack_dict(product, release), "tokens": tokens}
         if product.product_kind == "weekly_protection":
             previews_by_release = {
                 str(release_id): preview_art_urls
@@ -3570,7 +4024,7 @@ def _validated_pack_target(db: Session, product, target_card_type: str | None) -
     release = db.get(TCGRelease, product.release_id) if product.release_id else None
     if (product.product_kind != "release_standard" or not release
             or release.release_kind != "foundation" or not product.code.endswith("-STD")):
-        raise ValueError("Card type targeting is only available for the Selection Founders Standard Booster")
+        raise ValueError("Card type targeting is only available for the Founder Choice Booster")
     if value not in TARGETABLE_CARD_TYPES:
         raise ValueError("Choose a valid target card type; Hall of Fame cannot be targeted")
     return value
@@ -3674,7 +4128,7 @@ def open_pack_product(
             ).all())
         target_entries = [entry for entry in entries if entry.card_id in target_ids]
         if not target_entries:
-            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Standard Booster pool")
+            raise ValueError(f"No eligible {target_card_type} cards are available in this Founder Choice Booster pool")
     current_owned = {card_id for (card_id,) in db.query(CardInventory.card_id).filter(CardInventory.quantity > 0).all()}
     owned = set(product_snapshot.get("owned_card_ids", current_owned)) if product_snapshot else current_owned
     frozen = product_snapshot or {}

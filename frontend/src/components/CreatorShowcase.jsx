@@ -4,8 +4,9 @@ import { Plus, X, Trophy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { creatorsApi } from '../lib/api'
-import VaultCard from './VaultCard'
+import TCGCardButton from './tcg-v2/TCGCardButton'
 
+import ModalLayer from './ModalLayer'
 const SLOT_META = {
   creator:  { label: 'Creator',  hint: 'Her creator or HOF card' },
   gallery:  { label: 'Gallery',  hint: 'One of her 10 rarest gallery cards' },
@@ -25,7 +26,7 @@ function SlotPicker({ creatorId, slot, onClose, onPicked }) {
   })
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center"
+    <ModalLayer><div className="fixed inset-0 z-[300] flex items-center justify-center"
          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="rounded-2xl p-5 flex flex-col gap-4"
@@ -50,13 +51,13 @@ function SlotPicker({ creatorId, slot, onClose, onPicked }) {
           ) : (
             <div className="flex flex-wrap gap-4 justify-center py-2">
               {(eligible || []).map(c => (
-                <VaultCard key={c.inventory_id} card={c} width={170} onClick={() => onPicked(c)} />
+                <TCGCardButton key={c.inventory_id} card={c} width={170} onClick={() => onPicked(c)} />
               ))}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -121,8 +122,7 @@ export default function CreatorShowcase({ creatorId, slotWidth = SLOT_W }) {
           const card = slots[slot]
           return card ? (
             <div key={slot} className="relative group/slot">
-              <VaultCard card={card} width={slotWidth} hideLabel disableTilt
-                         onClick={() => setPickingSlot(slot)} />
+              <TCGCardButton card={card} width={slotWidth} onClick={() => setPickingSlot(slot)} />
               <button
                 onClick={e => { e.stopPropagation(); clearSlot.mutate(slot) }}
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full items-center justify-center hidden group-hover/slot:flex"

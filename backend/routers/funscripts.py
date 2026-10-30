@@ -249,9 +249,3 @@ def remove_funscript_tag(funscript_id: int, tag_id: int, db: Session = Depends(g
     return service.serialize(script)
 
 
-@router.get("/{funscript_id}/source-video")
-def get_funscript_source_video(funscript_id: int, db: Session = Depends(get_db)):
-    script = db.query(Funscript).filter(Funscript.id == funscript_id).first()
-    if not script:
-        raise HTTPException(404, "Funscript not found")
-    return {"source_image_id": script.source_image_id, "source_image": service._source_data(script)}

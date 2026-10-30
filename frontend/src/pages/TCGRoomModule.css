@@ -20,6 +20,8 @@
 .tcg-room-module__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
 .tcg-room-module button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: white; background: rgba(127,119,221,.75); font-size: 16px; }
 .tcg-room-module button:disabled { opacity: .42; cursor: not-allowed; }
+.tcg-room-module__enter { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid rgba(255,255,255,.18); border-radius: 12px; color: white; background: rgba(127,119,221,.95); font-size: 16px; text-decoration: none; }
+.tcg-room-module__enter:hover { background: #8d86e6; }
 .tcg-room-module__progress { margin-top: 22px; }
 .tcg-room-module__progress > div:first-child { display: flex; justify-content: space-between; font-size: 16px; }
 .tcg-room-module__bar { height: 10px; margin-top: 10px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }

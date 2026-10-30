@@ -55,7 +55,7 @@
   justify-content: center;
   white-space: nowrap;
 }
-.tcgws-release-browser__view-count strong { color: var(--c-accent-text, #c8c4ff); font-size: 20px; line-height: 1; }
+.tcgws-release-browser__view-count strong { color: var(--c-accent-text, var(--c-accent-text)); font-size: 20px; line-height: 1; }
 .tcgws-release-browser__view-count span { margin-top: 3px; color: var(--release-muted); }
 .tcgws-release-browser .tcgws-generate {
   display: inline-flex;
@@ -227,7 +227,7 @@
 .tcgws-release-economy > div { display: flex; min-width: 0; padding: 10px 12px; border: 1px solid var(--release-border); border-radius: 9px; background: var(--release-surface); flex-direction: column; gap: 4px; }
 .tcgws-release-economy span,
 .tcgws-release-economy small { color: var(--release-muted); }
-.tcgws-release-economy strong { color: var(--c-accent-text, #c8c4ff); line-height: 1.25; }
+.tcgws-release-economy strong { color: var(--c-accent-text, var(--c-accent-text)); line-height: 1.25; }
 .tcgws-release-browser .tcgws-release-packs { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 0 0 16px; }
 .tcgws-release-browser .tcgws-release-packs > h3 { display: flex; min-width: 190px; margin: 0; align-items: center; gap: 8px; }
 .tcgws-release-browser .tcgws-release-packs > span { display: flex; min-width: 210px; padding: 10px 12px; border: 1px solid var(--release-line); border-radius: 9px; background: var(--release-surface); flex: 1 1 210px; flex-direction: column; gap: 4px; }
@@ -293,3 +293,45 @@
   .tcgws-release-browser *::before,
   .tcgws-release-browser *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Completed-set badges (set tiles and the release set strip). */
+.tcgws-set-awards { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tcgws-set-awards span {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 16px;
+  border: .5px solid color-mix(in srgb, var(--c-green, #3ee8a5) 50%, transparent);
+  background: color-mix(in srgb, var(--c-green, #3ee8a5) 14%, transparent);
+  color: var(--c-green-text, #8ff3c9);
+}
+.tcgws-set-awards span.is-master {
+  border-color: color-mix(in srgb, var(--c-amber, #ffcf5c) 55%, transparent);
+  background: color-mix(in srgb, var(--c-amber, #ffcf5c) 14%, transparent);
+  color: var(--c-amber-text, #ffe29a);
+}
+
+/* Rarity counts wrap instead of cutting off ("0 / 22", not "0 /…"). */
+.tcgws-release-rarity-summary { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); }
+.tcgws-release-rarity-summary b,
+.tcgws-release-rarity-summary strong { overflow: visible; text-overflow: clip; }
+
+/* "Only what I own cards from" switch on the Releases and Sets lists. */
+.tcgws-owned-toggle {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 14px;
+  border-radius: 999px; border: .5px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .7); font-size: 16px; cursor: pointer; white-space: nowrap;
+}
+.tcgws-owned-toggle i {
+  position: relative; width: 34px; height: 20px; border-radius: 999px; background: rgba(255, 255, 255, .14); transition: background .18s ease;
+}
+.tcgws-owned-toggle i::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .18s ease;
+}
+.tcgws-owned-toggle.is-on { border-color: var(--c-accent-line); color: var(--c-accent-text); background: var(--c-accent-fill); }
+.tcgws-owned-toggle.is-on i { background: var(--c-accent); }
+.tcgws-owned-toggle.is-on i::after { transform: translateX(14px); }
+
+/* Owned counts first: the number you own is bold, the total sits underneath. */
+.tcgws-release-rarity-summary > span { align-items: flex-start; padding: 6px 8px; }
+.tcgws-release-rarity-summary strong { color: rgba(255, 255, 255, .45); font-weight: 600; font-size: 18px; }
+.tcgws-release-rarity-summary strong.has-owned { color: #fff; }
+.tcgws-release-rarity-summary small { color: var(--release-muted, rgba(255, 255, 255, .5)); font-size: 16px; line-height: 1.1; white-space: nowrap; }
+.tcgws-release-browser__completion-copy b.has-owned { color: var(--c-accent-text); }

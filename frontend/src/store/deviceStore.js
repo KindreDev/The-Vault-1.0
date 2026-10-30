@@ -54,8 +54,83 @@ function _persistEdgeSettings(state) {
   try { localStorage.setItem('vault_edge_mode', JSON.stringify(blob)) } catch {}
 }
 
+// ── Funscript motion settings (MultiFunPlayer-style output shaping) ──────────
+// One persisted blob. Applies to every provider unless noted:
+//   syncSeconds  — after a seek, play, start or offset change, ease from where
+//                  the device is to the script over this long (0 = off)
+//   speedLimit   — max travel in % of range per second (0 = off)
+//   autoHome     — after a pause, wait `delay` s then ease every axis back to
+//                  centre over `duration` s. Ordinary Stop never moves the device.
+//   latencyMs    — per-provider compensation added to each video's own offset;
+//                  raise it when the device moves late
+//   intifaceMode — 'stream' (50 ms samples) or 'keyframe' (next authored point)
+//   axisSettings — { [axis]: { invert, offsetMs, min, max } }; min/max are for
+//                  T-Code L1–R2 (L0 uses the Stroke Range limiter)
+export const MOTION_AXES = ['L0', 'L1', 'L2', 'R0', 'R1', 'R2']
+export const MOTION_DEFAULTS = {
+  syncSeconds: 1,
+  speedLimit: 0,
+  autoHome: { enabled: true, delay: 5, duration: 3 },
+  latencyMs: { intiface: 0, handy: 0, serial: 0 },
+  intifaceMode: 'stream',
+  axisSettings: {},
+}
+
+function _num(value, fallback, lo, hi) {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback
+}
+
+export function normalizeMotionSettings(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {}
+  const home = r.autoHome || {}
+  const latency = r.latencyMs || {}
+  const axisSettings = {}
+  for (const axis of MOTION_AXES) {
+    const a = r.axisSettings?.[axis]
+    if (!a) continue
+    const min = _num(a.min, 0, 0, 100)
+    axisSettings[axis] = {
+      invert: !!a.invert,
+      offsetMs: Math.round(_num(a.offsetMs, 0, -1000, 1000)),
+      min,
+      max: _num(a.max, 100, min, 100),
+    }
+  }
+  return {
+    syncSeconds: _num(r.syncSeconds, MOTION_DEFAULTS.syncSeconds, 0, 10),
+    speedLimit: _num(r.speedLimit, 0, 0, 5000),
+    autoHome: {
+      enabled: home.enabled === undefined ? MOTION_DEFAULTS.autoHome.enabled : !!home.enabled,
+      delay: _num(home.delay, MOTION_DEFAULTS.autoHome.delay, 0, 120),
+      duration: _num(home.duration, MOTION_DEFAULTS.autoHome.duration, 0, 30),
+    },
+    latencyMs: Object.fromEntries(['intiface', 'handy', 'serial'].map(p =>
+      [p, Math.round(_num(latency[p], 0, -1000, 1000))])),
+    intifaceMode: r.intifaceMode === 'keyframe' ? 'keyframe' : 'stream',
+    axisSettings,
+  }
+}
+
+function _readMotionSettings() {
+  try { return normalizeMotionSettings(JSON.parse(localStorage.getItem('vault_motion_settings') || 'null')) }
+  catch { return normalizeMotionSettings(null) }
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 export const useDeviceStore = create((set, get) => ({
+
+  // ── Funscript motion shaping (see MOTION_DEFAULTS) ──────────────────────────
+  motion: _readMotionSettings(),
+  setMotion: (patch) => {
+    const motion = normalizeMotionSettings({ ...get().motion, ...patch })
+    try { localStorage.setItem('vault_motion_settings', JSON.stringify(motion)) } catch {}
+    set({ motion })
+  },
+  setAxisMotion: (axis, patch) => {
+    const current = get().motion.axisSettings[axis] || { invert: false, offsetMs: 0, min: 0, max: 100 }
+    get().setMotion({ axisSettings: { ...get().motion.axisSettings, [axis]: { ...current, ...patch } } })
+  },
 
   // ── Connection ──────────────────────────────────────────────────────────────
   status:    'disconnected',   // 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -188,8 +263,9 @@ export const useDeviceStore = create((set, get) => ({
   isAxisEnabled: (axisId) => get().funscriptAxes[axisId] !== false,
 
   // ── Funscript sync offset (video mode) ──────────────────────────────────────
-  // Milliseconds. +offset = the script is delayed relative to the video (its
-  // actions fire later than authored); -offset = the script plays early.
+  // Milliseconds. +offset = the device moves EARLIER than authored (use it when
+  // the device lags the video); -offset = the device moves later. Note this is
+  // the opposite sign to MultiFunPlayer's script offset.
   // In-memory only — the video player component owns per-video persistence
   // to localStorage, since the store has no concept of "which video".
   funscriptOffsetMs: 0,

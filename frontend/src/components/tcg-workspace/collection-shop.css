@@ -55,3 +55,21 @@
 .collection-shop-wrapper > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .collection-shop-wrapper > img.collection-shop-pack-art { top: 20.5%; left: 20.4%; width: 58.5%; height: 58%; object-fit: cover; }
 .collection-shop-cart-lines .collection-shop-wrapper { height: 65px; }
+
+/* Two actions per pack: add to cart, or open right away. */
+.collection-shop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.collection-shop-actions .collection-shop-buy { flex: 1 1 140px; }
+.collection-shop-buy.is-secondary {
+  background: rgba(255, 255, 255, .05);
+  border-color: rgba(255, 255, 255, .12);
+  color: rgba(255, 255, 255, .85);
+}
+
+/* Booster packs are the stars of the shop: bigger art, equal-height cards. */
+.collection-shop-grid { align-items: stretch; }
+.collection-shop-art.is-booster { height: 300px; }
+.collection-shop-art.is-binder { height: 240px; }
+.collection-shop-wrapper { height: 270px; transform: rotate(-6deg); }
+.collection-shop-product:hover .collection-shop-wrapper { transform: rotate(-3deg) translateY(-4px) scale(1.03); transition: transform .25s ease; }
+.collection-shop-product .collection-shop-wrapper { transition: transform .25s ease; }
+.collection-shop-product-body > .collection-shop-price { margin-top: auto; }

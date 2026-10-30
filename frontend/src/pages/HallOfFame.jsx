@@ -1,6 +1,7 @@
-import VaultVideo from '../components/VaultVideo'
+import HoverVideoPreview from '../components/HoverVideoPreview'
+import { useVaultStore } from '../store/vault'
 import { LocalizedText, useT } from '../i18n'
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock, TrendingUp, ArrowUp, ArrowDown, ChevronDown, X } from 'lucide-react'
@@ -11,24 +12,12 @@ import CreatorStatsModal from '../components/CreatorStatsModal'
 import HofFullListModal from '../components/HofFullListModal'
 import GalleryStatsModal from '../components/stats/GalleryStatsModal'
 import MediaStatsModal from '../components/stats/MediaStatsModal'
+import { creatorTypeColors, RARITY_COLORS } from '../lib/entityColors'
 
+import ModalLayer from '../components/ModalLayer'
 // ── Color maps ────────────────────────────────────────────────────────────────
-const TYPE_COLORS = {
-  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 25%, transparent)',  text: '#9FE1CB' },
-  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 25%, transparent)',  text: '#ED93B1' },
-  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', text: '#CECBF6' },
-  character: { bg: 'color-mix(in srgb, var(--c-amber) 25%, transparent)',  text: '#FAC775' },
-  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 25%, transparent)',  text: '#ED93B1' },
-  custom:    { bg: 'rgba(136,135,128,0.25)', text: '#D3D1C7' },
-}
+const TYPE_COLORS = creatorTypeColors(25)
 
-const RARITY_COLORS = {
-  common:    '#888780',
-  uncommon:  '#1D9E75',
-  rare:      '#378ADD',
-  epic:      '#7F77DD',
-  legendary: '#BA7517',
-}
 
 const RARITY_LABELS = {
   common:    'Snapshot',
@@ -560,7 +549,7 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
 
 function FullPageHofState({ loading, onRetry, t }) {
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6"
+    <ModalLayer><div className="fixed inset-0 z-[9999] flex items-center justify-center px-6"
          style={{ background: 'var(--c-bg, #0e0e0e)' }}>
       <div className="flex flex-col items-center gap-6 text-center" role={loading ? 'status' : 'alert'} aria-live="polite">
         <div className="flex h-16 w-16 items-center justify-center rounded-[18px]"
@@ -594,7 +583,7 @@ function FullPageHofState({ loading, onRetry, t }) {
           </div>
         )}
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 
@@ -603,55 +592,15 @@ function FullPageHofState({ loading, onRetry, t }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
   const [hoverVideo, setHoverVideo] = useState(false)
-  const videoRef = useRef(null)
-  const timerRef = useRef(null)
 
+  const hoverPreviews = useVaultStore(s => s.hoverPreviewsEnabled)
   const handleMouseEnter = useCallback(() => {
-    if (!item.is_video) return
-    setHoverVideo(true)
-    timerRef.current = setTimeout(() => setHoverVideo(false), 15000)
-  }, [item.is_video])
+    if (item.is_video && hoverPreviews) setHoverVideo(true)
+  }, [item.is_video, hoverPreviews])
 
   const handleMouseLeave = useCallback(() => {
-    if (!item.is_video) return
-    clearTimeout(timerRef.current)
-    setHoverVideo(false)
+    if (item.is_video) setHoverVideo(false)
   }, [item.is_video])
-
-  useEffect(() => {
-    return () => {
-      const vid = videoRef.current
-      if (!vid) return
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
-    }
-  }, [])
-
-  useEffect(() => {
-    const vid = videoRef.current
-    if (!vid) return
-    if (hoverVideo) {
-      vid.src = `/api/images/${item.id}/file`
-      const seekAndPlay = () => {
-        if (vid.duration && !isNaN(vid.duration)) {
-          vid.currentTime = vid.duration * 0.5
-        }
-        vid.play().catch(() => {})
-      }
-      if (vid.readyState >= 1) {
-        seekAndPlay()
-      } else {
-        vid.load()
-        vid.addEventListener('loadedmetadata', seekAndPlay, { once: true })
-      }
-    } else {
-      vid.pause()
-      vid.removeAttribute('src')
-      vid.load()
-    }
-    return () => clearTimeout(timerRef.current)
-  }, [hoverVideo, item.id])
 
   const stillSrc = imgHeight >= 300
     ? `/api/images/${item.id}/preview?w=700`
@@ -672,14 +621,7 @@ function MediaCard({ item, rank, imgHeight = 220, showRank = false, onClick }) {
           style={{ transform: hoverVideo ? 'scale(1)' : undefined }}
           onError={e => { e.target.style.display = 'none' }}
         />
-        {item.is_video && (
-          <VaultVideo
-            ref={videoRef}
-            muted playsInline preload="none"
-            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-            style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
-          />
-        )}
+        {item.is_video && <HoverVideoPreview imageId={item.id} hovered={hoverVideo} />}
         {item.is_video && !hoverVideo && (
           <div className="absolute top-1.5 right-1.5 z-[3] flex items-center gap-1 px-1.5 py-0.5 rounded-full"
                style={{ background: 'rgba(0,0,0,0.65)', color: 'rgba(255,255,255,0.85)' }}>

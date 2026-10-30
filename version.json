@@ -1,7 +1,7 @@
 {
-  "version": "2.0.3",
+  "version": "2.0.4",
   "download_url": "https://downloads.vault-app.site/VaultSetup.exe",
-  "changelog": "The Vault 2.0.3 — audio playback hotfix\n\nFixed\n- Muted hover previews and next-video preparation no longer mute the video currently playing in Windows Mixer.",
+  "changelog": "The Vault 2.0.4 \n\nFixes\n- Fixed Handy script playback issues. Funscript playback overall is much smoother now. Fixed stutters when playing videos on high resolution videos. \n Changed \n- To simplify the left nav bar, Stats, Recap, Quests, Hall of fame were moved to a single 'Progress' Menu. There are no new features.\n- Tag manager, duplicates, console were moved to a unified 'tools' menu.  ",
   "survey": {
     "enabled": true,
     "url": "https://forms.gle/EhN28Ye2tcfjgUCF6"

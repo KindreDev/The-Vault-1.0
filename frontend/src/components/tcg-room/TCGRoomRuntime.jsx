@@ -1,6 +1,6 @@
 import { LocalizedText, useT } from '../../i18n'
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Box, CircleHelp, DoorOpen, Home, PackageOpen, Settings2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { apiErrorMessage, cardsApi, tcgRoomApi, tcgV2Api } from '../../lib/api'
@@ -9,9 +9,12 @@ import RoomDeviceSurface from './RoomDeviceSurface'
 import RoomParcelPanel from './RoomParcelPanel'
 import RoomCopyManager from './RoomCopyManager'
 import RoomDisplayManager from './RoomDisplayManager'
+import { RoomFlipBinPanel, RoomLecternPanel, RoomScreenManager } from './RoomMediaPanels'
 import RoomLayoutPanel from './RoomLayoutPanel'
 import RoomInventory from './RoomInventory'
 import TraderVN from './TraderVN'
+import RoomSettingsPanel from './RoomSettingsPanel'
+import { readStoredLighting, readStoredLook, storeLighting, storeLook } from './roomLightingSettings'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
 import './tcg-room.css'
 
@@ -23,6 +26,9 @@ class RoomCanvasBoundary extends Component {
     return this.props.children
   }
 }
+
+const EMPTY_LIST = Object.freeze([])
+const EMPTY_VISIBLE_CARDS = Object.freeze({ items: EMPTY_LIST, counts: {} })
 
 const DEV_FOCUS = Object.freeze({
   computer: { interactive: 'computer', position: [-4.45, 1.25, -3.58], copy: ['Use computer', 'Browse the real TCG collection and order packs online'] },
@@ -49,6 +55,29 @@ function PerformanceOverlay({ metrics, quality, visibleCards, loadedAssets }) {
   </aside>
 }
 
+// Holds its own tilt state so moving the pointer only re-renders this panel,
+// not the whole room and its 3D scene.
+function CardInspectPanel({ card, onClose }) {
+  const t = useT()
+  const [tilt, setTilt] = useState({ x: 0, y: 0 })
+  return <section className="tcg-room__card-inspector" onMouseMove={event => {
+    const box = event.currentTarget.getBoundingClientRect()
+    setTilt({ x: ((event.clientY - box.top) / box.height - .5) * -18, y: ((event.clientX - box.left) / box.width - .5) * 24 })
+  }}>
+    <button className="close" onClick={onClose}><X size={22} /><LocalizedText text={"Put card back"} before={" "} /></button>
+    <div className="tcg-room__card-inspector-art" style={{ transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}>
+      <TCGV2CardFace card={card} width={Math.min(520, Math.max(300, window.innerWidth * .38))}
+                     showEffects interactive disablePointerTilt idleEffects videoPresentation="full" />
+    </div>
+    <strong>{card.display_name || card.name || t('Card inspection')}</strong>
+    <span><LocalizedText text={"Move your pointer across the card to rotate it · Esc to put it back"} /></span>
+  </section>
+}
+
+function readStoredQuality() {
+  try { return localStorage.getItem('vault.tcg-room.quality') || 'medium' } catch { return 'medium' }
+}
+
 function developmentPreview() {
   if (!import.meta.env.DEV) return { focus: null, parcel: null, traderProof: null }
   const params = new URLSearchParams(window.location.search)
@@ -63,7 +92,9 @@ function developmentPreview() {
 }
 
 export default function TCGRoomRuntime({ version }) {
+  const t = useT()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const preview = useMemo(developmentPreview, [])
   // The room is immediately walkable when it mounts. Menus and interactions
   // still pause it explicitly; entering/exiting inventory is not required to
@@ -76,32 +107,46 @@ export default function TCGRoomRuntime({ version }) {
   const [inventoryTab, setInventoryTab] = useState('cards')
   const [helpOpen, setHelpOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [placementInstanceId, setPlacementInstanceId] = useState(null)
+  const [placementRequest, setPlacementRequest] = useState(null)
+  const placementPreviewRef = useRef(null)
   const [placementPreview, setPlacementPreview] = useState(null)
+  placementPreviewRef.current = placementPreview
   const [worldSample, setWorldSample] = useState(null)
-  const confirmPlacement = useRef(() => {})
   const lockPlacement = useRef(() => {})
   const deselectPlacement = useRef(() => {})
-  const returnPlacement = useRef(() => {})
-  const rotatePlacement = useRef(() => {})
   const [doorTransition, setDoorTransition] = useState(false)
   const [traderOpen, setTraderOpen] = useState(false)
-  const [quality, setQuality] = useState(() => localStorage.getItem('vault.tcg-room.quality') || 'medium')
+  const [quality, setQuality] = useState(readStoredQuality)
+  const [lighting, setLighting] = useState(readStoredLighting)
+  const [look, setLook] = useState(readStoredLook)
   const [confirmExit, setConfirmExit] = useState(false)
   const [metrics, setMetrics] = useState({ frameMs: 0, calls: 0, triangles: 0, textures: 0, geometries: 0 })
   const [loadedAssets, setLoadedAssets] = useState(0)
   const [sceneReady, setSceneReady] = useState(false)
   const [visibleCardCount, setVisibleCardCount] = useState(0)
   const [perfOpen, setPerfOpen] = useState(false)
-  const [inspectTilt, setInspectTilt] = useState({ x: 0, y: 0 })
   const readySeen = useRef(null)
-  const { data, isError, error, refetch } = useQuery({ queryKey: ['tcg-room-bootstrap'], queryFn: () => tcgRoomApi.bootstrap().then(r => r.data), refetchInterval: 3000 })
-  const { data: furniture } = useQuery({ queryKey: ['tcg-room-furniture'], queryFn: () => tcgRoomApi.furniture().then(r => r.data), refetchInterval: 3000 })
-  const { data: inventorySummary } = useQuery({ queryKey: ['tcg-room-inventory'], queryFn: () => tcgRoomApi.inventory().then(r => r.data), refetchInterval: 8000 })
-  const { data: ownedCatalog } = useQuery({ queryKey: ['tcg-v2-catalog', 'room-count'], queryFn: () => tcgV2Api.catalog({ ownership: 'owned', limit: 1 }).then(r => r.data), staleTime: 15_000 })
+  // Room actions invalidate these queries themselves, so background polling is
+  // only a slow safety net. Bootstrap polls quickly only while a delivery is on
+  // its way, so the parcel shows up as soon as it arrives.
+  const { data, isError, error, refetch } = useQuery({
+    queryKey: ['tcg-room-bootstrap'], queryFn: () => tcgRoomApi.bootstrap().then(r => r.data),
+    refetchInterval: query => (query.state.data?.parcels || []).some(parcel => parcel.status === 'mailed') ? 3000 : 20_000,
+  })
+  const { data: furniture } = useQuery({ queryKey: ['tcg-room-furniture'], queryFn: () => tcgRoomApi.furniture().then(r => r.data), refetchInterval: 30_000 })
+  const { data: inventorySummary } = useQuery({ queryKey: ['tcg-room-inventory'], queryFn: () => tcgRoomApi.inventory().then(r => r.data), refetchInterval: 30_000 })
+  // Unopened packs (collected deliveries plus pack tokens), one entry per
+  // pack, for the booster pack shelves.  Capped well above what fits.
+  const sealedPacks = useMemo(() => [
+    ...(inventorySummary?.parcels || []).flatMap(row => (row.contents || []).flatMap(line =>
+      Array.from({ length: Math.max(0, Number(line.quantity || 0)) }, () => line.product || {}))),
+    ...(inventorySummary?.pack_tokens || []).flatMap(row =>
+      Array.from({ length: Math.max(0, Number(row.token_count || 0)) }, () => row.product || {})),
+  ].slice(0, 120), [inventorySummary])
+  const { data: ownedCatalog } = useQuery({ queryKey: ['tcg-v2-catalog', 'room-count'], queryFn: () => tcgV2Api.catalog({ ownership: 'owned', limit: 0 }).then(r => r.data), staleTime: 15_000 })
   const roomData = useMemo(() => furniture ? { ...data, ...furniture, room: data?.room, assignments: data?.assignments } : data, [data, furniture])
-  const { data: carriedCopies = [] } = useQuery({ queryKey: ['tcg-room-copies', 'carried'], queryFn: () => tcgRoomApi.copies({ location_kind: 'carried' }).then(r => r.data), refetchInterval: 3000 })
-  const { data: visibleCards = { items: [], counts: {} } } = useQuery({ queryKey: ['tcg-room-visible-cards'], queryFn: () => tcgRoomApi.visibleCards().then(r => r.data), refetchInterval: 3000 })
+  const { data: carriedCopies = EMPTY_LIST } = useQuery({ queryKey: ['tcg-room-copies', 'carried'], queryFn: () => tcgRoomApi.copies({ location_kind: 'carried' }).then(r => r.data), refetchInterval: 20_000 })
+  const { data: visibleCards = EMPTY_VISIBLE_CARDS } = useQuery({ queryKey: ['tcg-room-visible-cards'], queryFn: () => tcgRoomApi.visibleCards().then(r => r.data), refetchInterval: 20_000 })
   const proofParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null
   const fixtureCardId = Number(proofParams?.get('roomCardFixture') || 0)
   const fixtureInstanceId = Number(proofParams?.get('roomCardFixtureInstance') || 0)
@@ -123,7 +168,9 @@ export default function TCGRoomRuntime({ version }) {
   const sceneVisibleCards = fixtureItem ? { items: [fixtureItem], counts: { rendered: 1, preparing: 0 } } : visibleCards
   const proofCard = proofCardId ? sceneVisibleCards.items.find(item => Number(item.preview?.card_id) === proofCardId) : null
 
-  useEffect(() => { localStorage.setItem('vault.tcg-room.quality', quality) }, [quality])
+  useEffect(() => { try { localStorage.setItem('vault.tcg-room.quality', quality) } catch { /* Storage can be unavailable. */ } }, [quality])
+  useEffect(() => { storeLighting(lighting) }, [lighting])
+  useEffect(() => { storeLook(look) }, [look])
   useEffect(() => {
     if (loadedAssets > 0 && data) {
       setSceneReady(true)
@@ -143,15 +190,15 @@ export default function TCGRoomRuntime({ version }) {
         if (inventoryOpen) { setInventoryOpen(false); setPaused(false); return }
         if (confirmExit || traderOpen) return
         document.exitPointerLock?.()
-        setFocused(null); setArranging(false); setPlacementInstanceId(null); setPaused(true); setInventoryTab('cards'); setInventoryOpen(true)
+        setFocused(null); setArranging(false); setPlacementRequest(null); setPaused(true); setInventoryTab('cards'); setInventoryOpen(true)
         return
       }
       if (event.code === 'Tab') {
         event.preventDefault()
         if (confirmExit || traderOpen || inventoryOpen) return
-        if (arranging) { setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setPaused(false); return }
+        if (arranging) { setArranging(false); setPlacementRequest(null); setPlacementPreview(null); setPaused(false); return }
         document.exitPointerLock?.()
-        setFocused(null); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false); setArranging(true)
+        setFocused(null); setPlacementRequest(null); setPlacementPreview(null); setWorldSample(null); setPaused(false); setArranging(true)
         return
       }
       if (event.code !== 'Escape') return
@@ -160,6 +207,7 @@ export default function TCGRoomRuntime({ version }) {
       if (inventoryOpen) { setInventoryOpen(false); setPaused(false); return }
       if (confirmExit) { setConfirmExit(false); return }
       if (traderOpen) { setTraderOpen(false); setDoorTransition(false); setFocused(null); setPaused(true); return }
+      if (arranging && placementPreviewRef.current) { deselectPlacement.current?.(); return }
       if (focused || arranging) { setFocused(null); setArranging(false); setPaused(false); return }
       if (!paused) { document.exitPointerLock?.(); setPaused(true) }
     }
@@ -170,25 +218,32 @@ export default function TCGRoomRuntime({ version }) {
     if (!nearby || paused) return
     document.exitPointerLock?.(); setFocused(nearby); setPaused(true)
   }, [nearby, paused])
-  const parcels = preview.parcel ? [preview.parcel] : (data?.parcels || [])
+  const parcels = useMemo(() => preview.parcel ? [preview.parcel] : (data?.parcels || EMPTY_LIST), [preview.parcel, data?.parcels])
   const readyParcel = useMemo(() => parcels.find(parcel => parcel.status === 'ready'), [parcels])
   const worldParcel = useMemo(() => parcels.find(parcel => ['ready', 'collected', 'placed'].includes(parcel.status)), [parcels])
   const focusKind = focused?.interactive
   const promptTarget = preview.traderProof === 'prompt' ? DEV_FOCUS.door : nearby
-  const closePanel = () => { deselectPlacement.current?.(); setFocused(null); setInspectTilt({ x: 0, y: 0 }); setArranging(false); setPlacementInstanceId(null); setPlacementPreview(null); setWorldSample(null); setPaused(false) }
+  const closePanel = () => { deselectPlacement.current?.(); setFocused(null); setArranging(false); setPlacementRequest(null); setPlacementPreview(null); setWorldSample(null); setPaused(false) }
   const openInventory = (tab = 'cards') => {
     document.exitPointerLock?.()
-    setFocused(null); setArranging(false); setPlacementInstanceId(null); setPaused(true)
+    setFocused(null); setArranging(false); setPlacementRequest(null); setPaused(true)
     setInventoryTab(tab); setInventoryOpen(true)
   }
-  const openFurniturePlacement = instanceId => { setInventoryOpen(false); setPlacementInstanceId(instanceId); setFocused(null); setArranging(true); setPaused(false) }
+  // Each request carries a fresh token so picking up the same item again
+  // (after placing it) is still a new request.
+  const requestPlacement = instanceId => setPlacementRequest(current => ({ id: instanceId, nonce: (current?.nonce || 0) + 1 }))
+  const openFurniturePlacement = instanceId => { setInventoryOpen(false); requestPlacement(instanceId); setFocused(null); setArranging(true); setPaused(false) }
   useEffect(() => {
     if (focusKind !== 'door' || traderOpen) return
     setDoorTransition(true)
     const timer = window.setTimeout(() => { setTraderOpen(true); setDoorTransition(false) }, 900)
     return () => window.clearTimeout(timer)
   }, [focusKind, traderOpen])
-  const closeTrader = () => { setTraderOpen(false); setDoorTransition(false); setFocused(null); setPaused(true) }
+  const closeTrader = () => {
+    setTraderOpen(false); setDoorTransition(false); setFocused(null); setPaused(true)
+    // Trades can move physical copies, so refresh what the room shows.
+    queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0] || '').startsWith('tcg-room-') })
+  }
   useEffect(() => {
     const readyIds = new Set(parcels.filter(parcel => parcel.status === 'ready').map(parcel => parcel.id))
     if (readySeen.current && [...readyIds].some(id => !readySeen.current.has(id))) {
@@ -206,7 +261,7 @@ export default function TCGRoomRuntime({ version }) {
 
   return <main className={`tcg-room ${proofCardId ? 'tcg-room--proof' : ''}${sceneReady ? '' : ' tcg-room--booting'}`} style={{ background: '#12111a' }}>
     <div style={{ position: 'absolute', inset: 0, visibility: sceneReady ? 'visible' : 'hidden' }}>
-      <RoomCanvasBoundary><RoomScene version={version} quality={quality} paused={paused} focused={focused} arranging={arranging} parcel={worldParcel} parcels={parcels} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={setMetrics} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onLockPlacement={() => lockPlacement.current?.()} onConfirmPlacement={() => confirmPlacement.current?.()} onReturnPlacement={() => returnPlacement.current?.()} onRotatePlacement={() => rotatePlacement.current?.()} onSelectPlaced={id => { if (!placementPreview) setPlacementInstanceId(id) }} onDeselectPlacement={() => deselectPlacement.current?.()} /></RoomCanvasBoundary>
+      <RoomCanvasBoundary><RoomScene version={version} sealedPacks={sealedPacks} quality={quality} lighting={lighting} look={look} paused={paused} renderOnDemand={traderOpen || inventoryOpen} focused={focused} arranging={arranging} parcel={worldParcel} parcels={parcels} bootstrap={roomData} placementPreview={placementPreview} visibleCards={sceneVisibleCards} onVisibleCards={setVisibleCardCount} onNearby={setNearby} onInteract={interact} onMetrics={perfOpen ? setMetrics : undefined} onLoaded={setLoadedAssets} onWorldSample={setWorldSample} onLockPlacement={() => lockPlacement.current?.()} onSelectPlaced={id => { if (!placementPreview) requestPlacement(id) }} onDeselectPlacement={() => deselectPlacement.current?.()} /></RoomCanvasBoundary>
     </div>
     {!sceneReady && <div className="tcg-room__boot" role="status" style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'grid', placeContent: 'center', background: '#12111a' }}><i className="tcg-room__boot-mark" /></div>}
     {sceneReady && !arranging && <div className="tcg-room__reticle" aria-hidden="true" />}
@@ -232,29 +287,21 @@ export default function TCGRoomRuntime({ version }) {
       </div>}
     </div>}
     {sceneReady && !paused && promptTarget?.copy && <button className="tcg-room__prompt" onClick={interact}><kbd><LocalizedText text={"E"} /></kbd><span><strong>{promptTarget.copy[0]}</strong><small>{promptTarget.copy[1]}</small></span></button>}
-    {sceneReady && paused && !focused && !arranging && !inventoryOpen && !confirmExit && !helpOpen && !settingsOpen && <button type="button" className="vault-hud__resume" onClick={() => setPaused(false)}><LocalizedText text={"Click to explore · WASD · E interact · I inventory · Tab placement"} /></button>}
+    {sceneReady && paused && !focused && !arranging && !inventoryOpen && !confirmExit && !helpOpen && !settingsOpen && <button type="button" className="vault-hud__resume" onClick={() => setPaused(false)}><LocalizedText text={"Click to explore · WASD move · Shift sprint · E interact · I inventory · Tab placement"} /></button>}
     {confirmExit && <section className="tcg-room__exit-confirm" role="dialog" aria-modal="true" aria-labelledby="room-exit-title"><div><h2 id="room-exit-title"><LocalizedText text={"Leave your room?"} /></h2><p><LocalizedText text={"Your layout is saved. Closing a menu or pressing Escape never exits the room."} /></p><button className="primary" onClick={() => navigate('/collection')}><LocalizedText text={"Yes, exit to collection"} /></button><button onClick={() => { setConfirmExit(false); setPaused(false) }}><LocalizedText text={"No, return to room"} /></button></div></section>}
     {inventoryOpen && <RoomInventory initialTab={inventoryTab} onTabChange={setInventoryTab} onClose={() => { setInventoryOpen(false); setPaused(false) }} onPlaceFurniture={openFurniturePlacement} />}
-    {arranging && <RoomLayoutPanel bootstrap={roomData} initialInstanceId={placementInstanceId} worldSample={worldSample} onPreview={setPlacementPreview} onConfirmReady={fn => { confirmPlacement.current = fn }} onLockReady={fn => { lockPlacement.current = fn || (() => {}) }} onDeselectReady={fn => { deselectPlacement.current = fn }} onActionsReady={actions => { returnPlacement.current = actions?.returnToInventory || (() => {}); rotatePlacement.current = actions?.rotate || (() => {}) }} onExit={closePanel} />}
-    {focused?.interactive === 'card-inspect' && focused.card && <section className="tcg-room__card-inspector" onMouseMove={event => {
-      const box = event.currentTarget.getBoundingClientRect()
-      setInspectTilt({ x: ((event.clientY - box.top) / box.height - .5) * -18, y: ((event.clientX - box.left) / box.width - .5) * 24 })
-    }}>
-      <button className="close" onClick={closePanel}><X size={22} /><LocalizedText text={"Put card back"} before={" "} /></button>
-      <div className="tcg-room__card-inspector-art" style={{ transform: `rotateX(${inspectTilt.x}deg) rotateY(${inspectTilt.y}deg)` }}>
-        <TCGV2CardFace card={focused.card} width={Math.min(520, Math.max(300, window.innerWidth * .38))}
-                       showEffects interactive disablePointerTilt idleEffects videoPresentation="full" />
-      </div>
-      <strong>{focused.card.display_name || focused.card.name || 'Card inspection'}</strong>
-      <span><LocalizedText text={"Move your pointer across the card to rotate it · Esc to put it back"} /></span>
-    </section>}
-    {focused && !['door', 'card-inspect'].includes(focusKind) && <section className={`tcg-room__focus-panel ${focusKind === 'computer' ? 'tcg-room__computer-screen' : ''} ${focusKind === 'binder' ? 'wide' : ''}`}>
+    {arranging && <RoomLayoutPanel bootstrap={roomData} placementRequest={placementRequest} worldSample={worldSample} onPreview={setPlacementPreview} onLockReady={fn => { lockPlacement.current = fn || (() => {}) }} onDeselectReady={fn => { deselectPlacement.current = fn }} onExit={closePanel} />}
+    {focused?.interactive === 'card-inspect' && focused.card && <CardInspectPanel key={focused.key} card={focused.card} onClose={closePanel} />}
+    {focused && !['door', 'card-inspect'].includes(focusKind) && <section className={`tcg-room__focus-panel ${focusKind === 'computer' ? 'tcg-room__computer-screen' : ''} ${['binder', 'lectern'].includes(focusKind) ? 'wide' : ''}`}>
       <button className="close" onClick={closePanel}><X size={22} /><LocalizedText text={"Return to room"} before={" "} /></button>
-      {focusKind !== 'computer' && <><h2>{focused?.copy?.[0] || 'Room interaction'}</h2><p>{focused?.copy?.[1]}</p></>}
+      {focusKind !== 'computer' && <><h2>{focused?.copy?.[0] || t('Room interaction')}</h2><p>{focused?.copy?.[1]}</p></>}
       {focusKind === 'computer' && <RoomDeviceSurface roomBootstrap={roomData} />}
       {['mail', 'parcel'].includes(focusKind) && <RoomParcelPanel parcels={parcels} context={focusKind} suggestedSurface={focused?.parcelAnchor} onCollected={() => openInventory('packs')} />}
       {focusKind === 'pile' && <RoomCopyManager context="pile" />}
       {['display', 'poster'].includes(focusKind) && <RoomDisplayManager context={focusKind} bootstrap={roomData} instanceId={focused?.instanceId} />}
+      {focusKind === 'lectern' && <RoomLecternPanel bootstrap={roomData} instanceId={focused?.instanceId} />}
+      {focusKind === 'screen' && <RoomScreenManager bootstrap={roomData} instanceId={focused?.instanceId} assetId={focused?.assetId} />}
+      {focusKind === 'flipbin' && <RoomFlipBinPanel bootstrap={roomData} instanceId={focused?.instanceId} />}
     </section>}
     {doorTransition && <section className="tcg-room__door-transition"><DoorOpen size={44} /><span><LocalizedText text={"VISIT TRADER"} /></span><strong><LocalizedText text={"Approaching the door…"} /></strong><p><LocalizedText text={"Your room is staying exactly where you left it."} /></p></section>}
     {traderOpen && <TraderVN onClose={closeTrader} />}
@@ -264,19 +311,24 @@ export default function TCGRoomRuntime({ version }) {
     {helpOpen && <section className="vault-hud__modal" role="dialog" aria-labelledby="room-controls-title"><div><h2 id="room-controls-title"><LocalizedText text={"Controls"} /></h2><dl className="vault-hud__controls-list">
       {[
         ['WASD', 'Movement'],
+        ['Shift', 'Sprint'],
         ['Mouse', 'Look'],
         ['E', 'Interact'],
         ['I', 'Inventory'],
         ['Tab', 'Placement mode'],
-        ['Left click', 'Select / lock placement'],
-        ['Q / E', 'Rotate furniture'],
+        ['Left click', 'Pick up / place furniture'],
+        ['Q / E', 'Rotate furniture 45° (hold Alt for 15°)'],
         ['Mouse wheel', 'Rotate furniture / scroll items'],
-        ['Right mouse', 'Look / deselect placement'],
-        ['C', 'Crouch'],
-        ['Esc', 'Close'],
+        ['Alt', 'Place freely off the grid'],
+        ['G', 'Toggle grid snapping'],
+        ['Delete', 'Return furniture to inventory'],
+        ['Right mouse', 'Zoom in 2× / 4× / back (placement: look / cancel)'],
+        ['C', 'Crouch / stand up'],
+        ['Esc', 'Cancel / close'],
       ].map(([key, label]) => <div key={key}><dt>{key}</dt><dd>{label}</dd></div>)}
     </dl><button type="button" onClick={() => { setHelpOpen(false); setPaused(false) }}><LocalizedText text={"Close"} /></button></div></section>}
-    {settingsOpen && <section className="vault-hud__modal" role="dialog"><div><h2><LocalizedText text={"Settings"} /></h2><label><LocalizedText text={"Graphics quality"} /><select value={quality} onChange={event => setQuality(event.target.value)}><option value="high"><LocalizedText text={"High"} /></option><option value="medium"><LocalizedText text={"Medium"} /></option><option value="low"><LocalizedText text={"Low"} /></option></select></label><button type="button" onClick={() => { setSettingsOpen(false); setPaused(false) }}><LocalizedText text={"Close"} /></button></div></section>}
+    {settingsOpen && <RoomSettingsPanel quality={quality} onQuality={setQuality} lighting={lighting} onLighting={setLighting} look={look} onLook={setLook}
+      onManage={() => navigate('/collection/room?manage=1')} onClose={() => { setSettingsOpen(false); setPaused(false) }} />}
     {proofCard && <aside className="tcg-room__proof-card"><strong>{proofCard.dev_fixture ? 'DEV-only visual fixture' : 'Persisted physical card proof'}</strong><span><LocalizedText text={"Copy"} after={" "} />{proofCard.copy.id}<LocalizedText text={"· Card"} before={" "} after={" "} />{proofCard.preview.card_id}</span><span>{proofCard.preview.card_type} · {proofCard.preview.rarity}<LocalizedText text={"· packed mask"} before={" "} after={" "} />{proofCard.card?.mask_url ? 'loaded' : 'not required'}</span></aside>}
     {proofCard?.card && <aside className="tcg-room__proof-reference"><strong><LocalizedText text={"Authoritative 2D reference"} /></strong><TCGV2CardFace card={proofCard.card} width={250} showEffects={false} /></aside>}
     {sceneReady && !data && <div className="tcg-room__loading"><LocalizedText text={"Loading saved room state..."} /></div>}

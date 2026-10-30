@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Layout from './components/layout/Layout'
 import { gamiApi } from './lib/api'
@@ -14,6 +14,14 @@ import { startSessionHeartbeat, stopSessionHeartbeat } from './lib/session'
 
 // ── Route-level code splitting ────────────────────────────────────────────────
 // Each page becomes its own chunk — only downloaded when first visited.
+
+// Old page addresses now live inside the Progress and Tools hubs. Keep any
+// query string so existing links (e.g. ?period=week) still work.
+function MovedTo({ path }) {
+  const location = useLocation()
+  return <Navigate to={path + location.search + location.hash} replace />
+}
+
 const Dashboard     = lazy(() => import('./pages/Dashboard'))
 const GalleryList   = lazy(() => import('./pages/GalleryList'))
 const GalleryView   = lazy(() => import('./pages/GalleryView'))
@@ -24,26 +32,20 @@ const VideoList     = lazy(() => import('./pages/VideoList'))
 const Funscripts    = lazy(() => import('./pages/Funscripts'))
 const Feed          = lazy(() => import('./pages/Feed'))
 const Explore       = lazy(() => import('./pages/Explore'))
-const TagManager    = lazy(() => import('./pages/TagManager'))
 const MultiPanel    = lazy(() => import('./pages/MultiPanel'))
 const DeviceControl = lazy(() => import('./pages/DeviceControl'))
 const Collection    = lazy(() => import('./pages/TCGCollection'))
 const TCGRoomModule = lazy(() => import('./pages/TCGRoomModule'))
 const Profile       = lazy(() => import('./pages/Profile'))
 const PlaylistView  = lazy(() => import('./pages/PlaylistView'))
-const HallOfFame    = lazy(() => import('./pages/HallOfFame'))
-const Duplicates    = lazy(() => import('./pages/Duplicates'))
-const TaskQueue     = lazy(() => import('./pages/TaskQueue'))
 // Named exports need a .then() shim
-const Quests     = lazy(() => import('./pages/pages').then(m => ({ default: m.Quests })))
-const Stats      = lazy(() => import('./pages/pages').then(m => ({ default: m.Stats })))
-const Recap      = lazy(() => import('./pages/Recap'))
-const Settings   = lazy(() => import('./pages/pages').then(m => ({ default: m.Settings })))
+const Settings   = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })))
 const XPHistory  = lazy(() => import('./pages/pages').then(m => ({ default: m.XPHistory })))
-const ScanLog    = lazy(() => import('./pages/pages').then(m => ({ default: m.ScanLog })))
-const Console    = lazy(() => import('./pages/Console'))
 const Help       = lazy(() => import('./pages/Help'))
 const ErikaAI    = lazy(() => import('./pages/ErikaAI'))
+const ProgressHub = lazy(() => import('./pages/ProgressHub'))
+const ToolsHub    = lazy(() => import('./pages/ToolsHub'))
+const TaskQueue   = lazy(() => import('./pages/TaskQueue'))
 
 export default function App() {
   const setProfile         = useVaultStore(s => s.setProfile)
@@ -144,22 +146,24 @@ export default function App() {
           <Route path="playlists"      element={<MultiPanel />} />
           <Route path="multi-panel"     element={<MultiPanel />} />
           <Route path="device-control"  element={<DeviceControl />} />
-          <Route path="quests"       element={<Quests />} />
-          <Route path="stats"        element={<Stats />} />
-          <Route path="recap"        element={<Recap />} />
+          <Route path="quests"       element={<MovedTo path="/progress/quests" />} />
+          <Route path="stats"        element={<MovedTo path="/progress/stats" />} />
+          <Route path="recap"        element={<MovedTo path="/progress/recap" />} />
           <Route path="xp-history"   element={<XPHistory />} />
           <Route path="settings"     element={<Settings />} />
-          <Route path="scan-log"     element={<ScanLog />} />
           <Route path="collection"   element={<Collection />} />
           <Route path="collection/room" element={<TCGRoomModule />} />
           <Route path="profile"      element={<Profile />} />
           <Route path="playlists/:id"  element={<PlaylistView />} />
-          <Route path="hall-of-fame"  element={<HallOfFame />} />
-          <Route path="tags"          element={<TagManager />} />
-          <Route path="duplicates"    element={<Duplicates />} />
+          <Route path="hall-of-fame"  element={<MovedTo path="/progress/hall-of-fame" />} />
+          <Route path="tags"          element={<MovedTo path="/tools/tags" />} />
+          <Route path="duplicates"    element={<MovedTo path="/tools/duplicates" />} />
           <Route path="task-queue"    element={<TaskQueue />} />
-          <Route path="scan-log"      element={<TaskQueue />} />
-          <Route path="console"       element={<Console />} />
+          <Route path="tools/task-queue" element={<MovedTo path="/task-queue" />} />
+          <Route path="scan-log"      element={<MovedTo path="/tools/scan-log" />} />
+          <Route path="console"       element={<MovedTo path="/tools/console" />} />
+          <Route path="progress/:tab?" element={<ProgressHub />} />
+          <Route path="tools/:tab?"    element={<ToolsHub />} />
           <Route path="help"          element={<Help />} />
           <Route path="erika"         element={<ErikaAI />} />
         </Route>

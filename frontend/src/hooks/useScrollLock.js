@@ -6,6 +6,12 @@ import { useEffect } from 'react'
 // survive until the final overlay closes.
 let activeLocks = 0
 let previousStyles = null
+let lockedScrollers = []
+
+// The app does not scroll <body>: the page scrolls inside <main class=
+// "vault-main">. Locking only the document left that container scrolling
+// behind every modal, so the scroll containers are locked as well.
+const SCROLL_CONTAINERS = '.vault-main'
 
 function lockDocument() {
   if (typeof document === 'undefined') return () => {}
@@ -25,6 +31,13 @@ function lockDocument() {
     root.style.overflow = 'hidden'
     root.style.overscrollBehavior = 'none'
     root.setAttribute('data-vault-scroll-locked', 'true')
+    // overflow:hidden keeps the current scroll position; it is restored as-is.
+    lockedScrollers = [...document.querySelectorAll(SCROLL_CONTAINERS)].map(element => {
+      const saved = { element, overflow: element.style.overflow, overflowY: element.style.overflowY }
+      element.style.overflow = 'hidden'
+      element.style.overflowY = 'hidden'
+      return saved
+    })
   }
   activeLocks += 1
 
@@ -40,6 +53,11 @@ function lockDocument() {
     root.style.overscrollBehavior = previousStyles.rootOverscroll
     if (previousStyles.rootScrollLocked === null) root.removeAttribute('data-vault-scroll-locked')
     else root.setAttribute('data-vault-scroll-locked', previousStyles.rootScrollLocked)
+    for (const { element, overflow, overflowY } of lockedScrollers) {
+      element.style.overflow = overflow
+      element.style.overflowY = overflowY
+    }
+    lockedScrollers = []
     previousStyles = null
   }
 }

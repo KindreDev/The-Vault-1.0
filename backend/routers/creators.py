@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, select, union, or_
+from sqlalchemy import func, case, select, union, or_, nullslast, Integer
+from datetime import datetime
 from typing import List, Optional
 from PIL import Image as PILImage
 from io import BytesIO
@@ -13,7 +14,7 @@ import os
 
 from database import get_db, DATA_DIR
 from models import (
-    Creator, Gallery, Image, SessionLog, Tag, UserProfile,
+    Creator, CreatorType, Gallery, Image, SessionLog, Tag, UserProfile,
     Card, CardInventory, CreatorShowcase, CompanionMessage,
     gallery_creators, image_creators, image_tags,
 )
@@ -147,6 +148,57 @@ def _compute_rarity(image_count: int, rating: float = 0.0, session_count: int = 
     return "common"                                # Snapshot
 
 
+_PERSON_TYPES = ("actress", "cosplayer", "ethot")
+
+
+def _blank(col):
+    return or_(col.is_(None), col == "")
+
+
+def _incomplete_filter():
+    """Profiles missing what the list relies on: an avatar for everyone, a
+    franchise for characters, a country for real people. Artists and custom
+    creators often have no known country, so that isn't required of them."""
+    return or_(
+        _blank(Creator.avatar_path),
+        (Creator.creator_type == "character") & _blank(Creator.series),
+        Creator.creator_type.in_(_PERSON_TYPES) & _blank(Creator.country),
+    )
+
+
+def _creator_gallery_sum(db: Session, expr, label: str):
+    """Per-creator aggregate over the creator's galleries (gallery_creators)."""
+    return (
+        db.query(gallery_creators.c.creator_id.label("creator_id"), expr.label(label))
+        .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+        .group_by(gallery_creators.c.creator_id)
+        .subquery()
+    )
+
+
+def _creator_image_agg(db: Session, expr, label: str):
+    """Per-creator aggregate over the files in the creator's galleries."""
+    return (
+        db.query(gallery_creators.c.creator_id.label("creator_id"), expr.label(label))
+        .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+        .group_by(gallery_creators.c.creator_id)
+        .subquery()
+    )
+
+
+@router.get("/countries")
+def list_creator_countries(db: Session = Depends(get_db)):
+    """Countries in use, most creators first, for the list's Country filter."""
+    rows = (
+        db.query(Creator.country, func.count(Creator.id))
+        .filter(~_blank(Creator.country))
+        .group_by(Creator.country)
+        .order_by(func.count(Creator.id).desc(), Creator.country)
+        .all()
+    )
+    return [{"country": c, "count": n} for c, n in rows]
+
+
 @router.get("/", response_model=List[CreatorOut])
 def list_creators(
     response: Response,
@@ -155,7 +207,14 @@ def list_creators(
     favorite: Optional[bool] = None,
     search: Optional[str] = None,
     series: Optional[str] = None,  # franchise / series filter (partial match)
-    sort_by: Optional[str] = "name",  # name | rating | image_count | cum_count | date_added | rarity | random
+    country: Optional[str] = None,
+    status: Optional[str] = None,  # Active | Hiatus | Retired (no status counts as Active)
+    period: Optional[str] = None,  # "YYYY" or "YYYY-MM": creators with galleries from then
+    unrated: Optional[bool] = None,
+    incomplete: Optional[bool] = None,
+    # date_added | date_modified | name | rating | view_count | cum_count | edge_count |
+    # last_viewed | image_count | gallery_count | session_count | bond_level | age | origin | rarity | random
+    sort_by: Optional[str] = "name",
     sort_dir: Optional[str] = None,  # asc | desc
     skip: int = 0,
     limit: int = 200,
@@ -174,9 +233,34 @@ def list_creators(
     if favorite is not None:
         q = q.filter(Creator.is_favorite == favorite)
     if search:
-        q = q.filter(Creator.name.ilike(f"%{search}%"))
+        # Cards show the title when there is one, so search it too, plus
+        # aliases and real names.
+        like = f"%{search}%"
+        q = q.filter(or_(Creator.name.ilike(like), Creator.title.ilike(like),
+                         Creator.aliases.ilike(like), Creator.real_name.ilike(like)))
     if series:
         q = q.filter(Creator.series.ilike(f"%{series}%"))
+    if country:
+        q = q.filter(Creator.country == country)
+    if status == "Active":
+        q = q.filter(or_(_blank(Creator.status), Creator.status == "Active"))
+    elif status:
+        q = q.filter(Creator.status == status)
+    if unrated:
+        q = q.filter(or_(Creator.rating.is_(None), Creator.rating == 0))
+    if incomplete:
+        q = q.filter(_incomplete_filter())
+    if period:
+        parts = period.split('-')
+        if parts[0].isdigit():
+            dated = (
+                select(gallery_creators.c.creator_id)
+                .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+                .where(Gallery.period_year == int(parts[0]))
+            )
+            if len(parts) > 1 and parts[1].isdigit():
+                dated = dated.where(Gallery.period_month == int(parts[1]))
+            q = q.filter(Creator.id.in_(dated))
 
     # Total count under the current filters, exposed so the frontend can
     # compute the real last page instead of guessing with a fixed window.
@@ -189,6 +273,15 @@ def list_creators(
     elif sort_dir == "desc":
         use_asc = False
 
+    def by_total(column, default_asc=False):
+        """Order by an aggregate column; creators with none sink to the bottom."""
+        asc_dir = use_asc if use_asc is not None else default_asc
+        return q.order_by(
+            case((func.coalesce(column, 0) > 0, 1), else_=0).desc(),
+            column.asc() if asc_dir else column.desc(),
+            Creator.name,
+        )
+
     if sort_by == "rating":
         col = Creator.rating
         asc_dir = use_asc if use_asc is not None else False
@@ -197,61 +290,80 @@ def list_creators(
         col = Creator.created_at
         asc_dir = use_asc if use_asc is not None else False
         q = q.order_by(col.asc() if asc_dir else col.desc())
+    elif sort_by == "date_modified":
+        col = Creator.updated_at
+        asc_dir = use_asc if use_asc is not None else False
+        q = q.order_by(nullslast(col.asc() if asc_dir else col.desc()), Creator.name)
     elif sort_by == "image_count":
-        # Sum of Gallery.image_count per creator, via the gallery_creators M2M join
-        # table — matches how image_count is actually computed for display below
-        # (galleries are assigned to creators through this table, not the legacy
-        # Gallery.creator_id FK, which is stale/unpopulated for most galleries).
-        img_subq = (
-            db.query(
-                gallery_creators.c.creator_id.label("creator_id"),
-                func.sum(Gallery.image_count).label("total_images")
-            )
-            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-            .group_by(gallery_creators.c.creator_id)
-            .subquery()
-        )
-        q = q.outerjoin(img_subq, Creator.id == img_subq.c.creator_id)
-        asc_dir = use_asc if use_asc is not None else False
-        
-        # Place creators with 0 photos at the bottom of the "most photos" list
-        has_photos_case = case(
-            (func.coalesce(img_subq.c.total_images, 0) > 0, 1),
-            else_=0
-        )
-        q = q.order_by(
-            has_photos_case.desc(),
-            img_subq.c.total_images.asc() if asc_dir else img_subq.c.total_images.desc(),
-            Creator.name
-        )
+        # Sum of Gallery.image_count via gallery_creators, matching how the
+        # count is shown below (the legacy Gallery.creator_id is stale).
+        sq = _creator_gallery_sum(db, func.sum(Gallery.image_count), "total")
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
+        q = by_total(sq.c.total)
     elif sort_by == "cum_count":
-        # Sum of Gallery.cum_count per creator, via the gallery_creators M2M join
-        # table — same reasoning as the image_count sort above.
-        cum_subq = (
-            db.query(
-                gallery_creators.c.creator_id.label("creator_id"),
-                func.sum(Gallery.cum_count).label("total_cums")
-            )
-            .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
-            .group_by(gallery_creators.c.creator_id)
-            .subquery()
-        )
-        q = q.outerjoin(cum_subq, Creator.id == cum_subq.c.creator_id)
+        sq = _creator_gallery_sum(db, func.sum(Gallery.cum_count), "total")
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
+        q = by_total(sq.c.total)
+    elif sort_by == "gallery_count":
+        sq = _creator_gallery_sum(db, func.count(Gallery.id), "total")
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
+        q = by_total(sq.c.total)
+    elif sort_by == "edge_count":
+        sq = _creator_image_agg(db, func.sum(Image.edge_count), "total")
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
+        q = by_total(sq.c.total)
+    elif sort_by == "view_count":
+        # Same definition as the profile's total views: file views plus
+        # gallery opens.
+        img = _creator_image_agg(db, func.sum(Image.view_count), "views")
+        gal = _creator_gallery_sum(db, func.sum(Gallery.view_count), "opens")
+        q = q.outerjoin(img, Creator.id == img.c.creator_id).outerjoin(gal, Creator.id == gal.c.creator_id)
+        q = by_total(func.coalesce(img.c.views, 0) + func.coalesce(gal.c.opens, 0))
+    elif sort_by == "last_viewed":
+        sq = _creator_image_agg(db, func.max(Image.last_viewed_at), "seen")
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
         asc_dir = use_asc if use_asc is not None else False
-        
-        has_cums_case = case(
-            (func.coalesce(cum_subq.c.total_cums, 0) > 0, 1),
-            else_=0
+        q = q.order_by(nullslast(sq.c.seen.asc() if asc_dir else sq.c.seen.desc()), Creator.name)
+    elif sort_by == "session_count":
+        sq = (db.query(SessionLog.creator_id.label("creator_id"), func.count(SessionLog.id).label("total"))
+              .group_by(SessionLog.creator_id).subquery())
+        q = q.outerjoin(sq, Creator.id == sq.c.creator_id)
+        q = by_total(sq.c.total)
+    elif sort_by == "bond_level":
+        # Same score the bond hearts are computed from below; male/unknown
+        # artists have no bond and sort as zero.
+        secs = (db.query(gallery_creators.c.creator_id.label("creator_id"), func.sum(Image.view_seconds).label("secs"))
+                .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+                .group_by(gallery_creators.c.creator_id).subquery())
+        sess = (db.query(SessionLog.creator_id.label("creator_id"), func.count(SessionLog.id).label("n"))
+                .group_by(SessionLog.creator_id).subquery())
+        q = q.outerjoin(secs, Creator.id == secs.c.creator_id).outerjoin(sess, Creator.id == sess.c.creator_id)
+        excluded = (Creator.creator_type == 'artist') & or_(Creator.gender.is_(None), Creator.gender.notin_(('Female', 'Other')))
+        score = case((excluded, 0), else_=(
+            func.coalesce(secs.c.secs, 0) * 0.1 + func.coalesce(sess.c.n, 0) * 50 + func.coalesce(Creator.bond_gifts, 0) * 500))
+        q = by_total(score)
+    elif sort_by == "age":
+        # date_of_birth is "YYYY-MM(-DD)" for people and a plain age ("17")
+        # for characters. Approximate age in years; unknown ages sink.
+        dob = Creator.date_of_birth
+        this_year = datetime.now().year
+        age = case(
+            (dob.op('GLOB')('[12][0-9][0-9][0-9]*'), this_year - func.cast(func.substr(dob, 1, 4), Integer)),
+            (dob.op('GLOB')('[0-9]') | dob.op('GLOB')('[0-9][0-9]') | dob.op('GLOB')('[0-9][0-9][0-9]'), func.cast(dob, Integer)),
+            else_=None,
         )
-        q = q.order_by(
-            has_cums_case.desc(),
-            cum_subq.c.total_cums.asc() if asc_dir else cum_subq.c.total_cums.desc(),
-            Creator.name
-        )
-    elif sort_by == "rarity":
         asc_dir = use_asc if use_asc is not None else True
+        q = q.order_by(nullslast(age.asc() if asc_dir else age.desc()), Creator.name)
+    elif sort_by == "origin":
+        # Origin/Universe (characters): A–Z by default, creators without one last.
+        asc_dir = use_asc if use_asc is not None else True
+        col = func.lower(func.nullif(func.trim(Creator.origin), ''))
+        q = q.order_by(nullslast(col.asc() if asc_dir else col.desc()), Creator.name)
+    elif sort_by == "rarity":
+        # Collection size: descending (the list's default) is biggest first.
+        asc_dir = use_asc if use_asc is not None else False
         q = q.order_by(
-            _RARITY_RANK.asc() if asc_dir else _RARITY_RANK.desc(),
+            _RARITY_RANK.desc() if asc_dir else _RARITY_RANK.asc(),
             Creator.name
         )
     elif sort_by == "random":
@@ -304,9 +416,29 @@ def list_creators(
         .all()
     )
 
+    file_views = {}
+    last_seen = {}
+    for cid, views, seen in (
+        db.query(gallery_creators.c.creator_id, func.coalesce(func.sum(Image.view_count), 0), func.max(Image.last_viewed_at))
+        .join(Image, Image.gallery_id == gallery_creators.c.gallery_id)
+        .filter(gallery_creators.c.creator_id.in_(creator_ids))
+        .group_by(gallery_creators.c.creator_id)
+    ):
+        file_views[cid] = int(views or 0)
+        last_seen[cid] = seen
+    gallery_opens = dict(
+        db.query(gallery_creators.c.creator_id, func.coalesce(func.sum(Gallery.view_count), 0))
+        .join(Gallery, Gallery.id == gallery_creators.c.gallery_id)
+        .filter(gallery_creators.c.creator_id.in_(creator_ids))
+        .group_by(gallery_creators.c.creator_id)
+        .all()
+    )
+
     result = []
     for c in creators:
         d = {col.name: getattr(c, col.name) for col in c.__table__.columns}
+        d["total_views"] = file_views.get(c.id, 0) + int(gallery_opens.get(c.id, 0) or 0)
+        d["last_viewed_at"] = last_seen.get(c.id)
         gc = gallery_counts.get(c.id, 0)
         ic = int(image_counts.get(c.id, 0) or 0)
         sc = session_counts.get(c.id, 0)
@@ -571,142 +703,6 @@ def top_creators_by_value(db: Session = Depends(get_db), limit: int = 5):
     return ranked[:limit]
 
 
-def _parse_physical(about: str) -> dict:
-    """Best-effort extraction of height, age, gender from MAL character about text."""
-    out = {}
-    if not about:
-        return out
-
-    # Height — "165 cm", "165cm", "Height: 165", also feet/inches
-    h = re.search(r'(?:height[:\s]*)?(\d{2,3})\s*cm', about, re.IGNORECASE)
-    if h:
-        val = int(h.group(1))
-        if 100 <= val <= 250:
-            out["height_cm"] = val
-    else:
-        ft = re.search(r"(\d)['′](\d{1,2})[\"″]?", about)
-        if ft:
-            cm = round((int(ft.group(1)) * 12 + int(ft.group(2))) * 2.54)
-            if 100 <= cm <= 250:
-                out["height_cm"] = cm
-
-    # Age — "Age: 17", "17 years old", "17-year-old"
-    age = re.search(r'\bage[d]?[:\s]+(\d{1,3})', about, re.IGNORECASE)
-    if not age:
-        age = re.search(r'(\d{1,3})[\s\-]year[s]?[\s\-]old', about, re.IGNORECASE)
-    if age:
-        val = int(age.group(1))
-        if 1 <= val <= 120:
-            out["age"] = val
-
-    # Gender — explicit label first, then pronoun scan of first 300 chars
-    gm = re.search(r'\bgender[:\s]+(male|female)\b', about, re.IGNORECASE)
-    if gm:
-        out["gender"] = gm.group(1).capitalize()
-    else:
-        snippet = about[:300]
-        females = len(re.findall(r'\b(she|her|girl|woman)\b', snippet, re.IGNORECASE))
-        males   = len(re.findall(r'\b(he|him|boy|man)\b',    snippet, re.IGNORECASE))
-        if females > males and females >= 2:
-            out["gender"] = "Female"
-        elif males > females and males >= 2:
-            out["gender"] = "Male"
-
-    return out
-
-
-@router.get("/jikan-search")
-async def jikan_search(q: str, limit: int = 8):
-    """Search MyAnimeList characters via the Jikan v4 API (no auth required)."""
-    if not q or len(q.strip()) < 2:
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(
-                "https://api.jikan.moe/v4/characters",
-                params={"q": q.strip(), "limit": limit, "order_by": "favorites", "sort": "desc"},
-            )
-        # Without this an upstream failure (504 when MyAnimeList is unreachable,
-        # 429 when rate-limited) parses to a body with no "data" key and returns
-        # an empty list — indistinguishable from "no character matched", which
-        # makes an outage look like a broken search box.
-        resp.raise_for_status()
-        data = resp.json()
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        if code == 429:
-            raise HTTPException(429, "MyAnimeList search is rate-limited — wait a few seconds and try again")
-        raise HTTPException(
-            503,
-            "MyAnimeList character search is unavailable right now "
-            f"(Jikan returned {code}). This is upstream — try again later.",
-        )
-    except Exception:
-        raise HTTPException(503, "Jikan API unavailable")
-
-    results = []
-    for item in data.get("data", []):
-        anime_titles = [a["anime"]["title"] for a in item.get("anime", [])[:3] if a.get("anime")]
-        manga_titles = [m["manga"]["title"] for m in item.get("manga", [])[:3] if m.get("manga")]
-        series_list  = anime_titles or manga_titles
-
-        about = (item.get("about") or "").strip()
-        first_line = about.split("\n")[0].strip() if about else ""
-        if first_line.lower().startswith(item["name"].lower()):
-            about = "\n".join(about.split("\n")[1:]).strip()
-
-        physical = _parse_physical(about)
-
-        results.append({
-            "mal_id":     item["mal_id"],
-            "name":       item["name"],
-            "name_kanji": item.get("name_kanji") or "",
-            "about":      about[:600],
-            "image_url":  (item.get("images") or {}).get("jpg", {}).get("image_url"),
-            "series":     series_list,
-            "url":        item.get("url") or f"https://myanimelist.net/character/{item['mal_id']}",
-            "favorites":  item.get("favorites", 0),
-            # Physical attributes — present only when found
-            **physical,
-        })
-    return results
-
-
-@router.get("/jikan-character/{mal_id}")
-async def jikan_character_detail(mal_id: int):
-    """Fetch full character data from Jikan v4 including confirmed anime/manga appearances."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"https://api.jikan.moe/v4/characters/{mal_id}/full")
-        resp.raise_for_status()
-        item = resp.json().get("data", {})
-    except Exception as exc:
-        raise HTTPException(502, f"Jikan request failed: {exc}")
-
-    anime_titles = [a["anime"]["title"] for a in item.get("anime", [])[:5] if a.get("anime")]
-    manga_titles = [m["manga"]["title"] for m in item.get("manga", [])[:5] if m.get("manga")]
-    series_list  = anime_titles or manga_titles
-
-    about = (item.get("about") or "").strip()
-    first_line = about.split("\n")[0].strip() if about else ""
-    if first_line.lower().startswith((item.get("name") or "").lower()):
-        about = "\n".join(about.split("\n")[1:]).strip()
-
-    physical = _parse_physical(about)
-
-    return {
-        "mal_id":     item.get("mal_id"),
-        "name":       item.get("name", ""),
-        "name_kanji": item.get("name_kanji") or "",
-        "about":      about[:1000],
-        "image_url":  (item.get("images") or {}).get("jpg", {}).get("image_url"),
-        "series":     series_list,
-        "url":        item.get("url") or f"https://myanimelist.net/character/{mal_id}",
-        "favorites":  item.get("favorites", 0),
-        **physical,
-    }
-
-
 @router.get("/anilist-search")
 async def anilist_search(q: str, limit: int = 8):
     """Search AniList characters for the creator form (no auth required)."""
@@ -797,6 +793,42 @@ def get_creator(creator_id: int, db: Session = Depends(get_db)):
     if not c:
         raise HTTPException(404, "Creator not found")
     return _enrich(c, db)
+
+
+class CreatorBulkUpdate(BaseModel):
+    ids: List[int]
+    is_favorite: Optional[bool] = None
+    creator_type: Optional[CreatorType] = None
+    series: Optional[str] = None
+
+
+class CreatorBulkDelete(BaseModel):
+    ids: List[int]
+
+
+# Select-mode actions on the Creators list: one request (and one list
+# refresh) for the whole selection instead of one per creator.
+@router.post("/bulk-update")
+def bulk_update_creators(data: CreatorBulkUpdate, db: Session = Depends(get_db)):
+    patch = data.model_dump(exclude_unset=True, exclude={"ids"})
+    if not data.ids or not patch:
+        return {"updated": 0}
+    creators = db.query(Creator).filter(Creator.id.in_(data.ids)).all()
+    for c in creators:
+        for field, value in patch.items():
+            setattr(c, field, value)
+    db.commit()
+    return {"updated": len(creators)}
+
+
+@router.post("/bulk-delete")
+def bulk_delete_creators(data: CreatorBulkDelete, db: Session = Depends(get_db)):
+    from services.creator_deletion import delete_creator_record
+    creators = db.query(Creator).filter(Creator.id.in_(data.ids)).all()
+    for c in creators:
+        delete_creator_record(db, c)
+    db.commit()
+    return {"deleted": len(creators)}
 
 
 @router.patch("/{creator_id}", response_model=CreatorOut)
@@ -1190,11 +1222,26 @@ def serve_creator_avatar_thumb(creator_id: int, size: int = 480, db: Session = D
         raise HTTPException(404, "No avatar")
     if os.path.splitext(c.avatar_path)[1].lower() not in _AVATAR_SERVE_EXTS:
         raise HTTPException(404, "Not a valid image")
+    size = max(32, min(int(size), 1600))
+    # Resizing a full-size avatar took ~0.65s per request. Keep each size on
+    # disk; the name includes the source's path and mtime, so a new avatar
+    # (or an edited file) produces a new entry automatically.
+    from fastapi.responses import FileResponse
+    from services.scanner import THUMB_DIR
+    import hashlib as _hashlib
+    try:
+        mtime = os.path.getmtime(c.avatar_path)
+    except OSError:
+        raise HTTPException(404, "No avatar")
+    cache_name = _hashlib.md5(f"{c.avatar_path}|{mtime}|{size}".encode("utf-8")).hexdigest() + ".jpg"
+    cache_path = os.path.join(THUMB_DIR, "avatars", cache_name)
+    if os.path.exists(cache_path):
+        return FileResponse(cache_path, media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=3600"})
     img = PILImage.open(c.avatar_path)
     # Animated avatars (WebP clips, GIFs): Pillow resizing would flatten them to
     # frame 1 — serve the original file so the animation plays in list views.
     if getattr(img, "is_animated", False):
-        from fastapi.responses import FileResponse
         img.close()
         return FileResponse(c.avatar_path, headers={"Cache-Control": "public, max-age=3600"})
     if img.mode == "RGBA":
@@ -1204,8 +1251,16 @@ def serve_creator_avatar_thumb(creator_id: int, size: int = 480, db: Session = D
     img.thumbnail((size, size), PILImage.LANCZOS)
     buf = _io.BytesIO()
     img.save(buf, format="JPEG", quality=88)
-    buf.seek(0)
-    return Response(content=buf.read(), media_type="image/jpeg",
+    data = buf.getvalue()
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        temp_path = cache_path + ".tmp"
+        with open(temp_path, "wb") as handle:
+            handle.write(data)
+        os.replace(temp_path, cache_path)
+    except OSError:
+        pass  # caching is an optimisation; serving still works without it
+    return Response(content=data, media_type="image/jpeg",
                     headers={"Cache-Control": "public, max-age=3600"})
 
 

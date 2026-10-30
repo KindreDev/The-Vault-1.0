@@ -15,20 +15,121 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 ## [Unreleased]
 
 ### Added
-- Photos and Videos have an Unassigned filter that shows files with no creator, like the one on Galleries.
-- Missing folders in Settings offers to reconnect galleries that an earlier library move split in two, keeping each original gallery's creators, ratings, history, and cards.
+- Device Control → The Handy has a Debug log: copy or save a record of what The Vault sent the device and how it replied, to send in when scripts misbehave. Connection keys are never included.
+- The gallery creator filter has an Any / All switch when two or more people are picked. All shows only galleries with every picked person, such as one cosplayer as one character.
+- Collection Room lighting: Settings has Daylight, Golden hour, Evening, and Night moods, plus colored LED lights along the ceiling with a color picker, brightness, and a color-cycle effect. Settings also adds mouse sensitivity and a head-bob toggle. A Room light setting tints the whole room with a chosen color, or with the LED color (color cycle included), at an adjustable strength.
+- Collection Room wall displays in the furniture shop: a 9-pocket card frame, a trophy shadow box that shows one card larger under its own warm light, and a graded slab rack that holds 12 cards in clear slabs labelled with each card's name and grade. The trophy box's light color can be changed from its card menu.
+- Collection Room posters in the furniture shop: a tall banner, a landscape frame, a large walnut gallery frame with a cream mat, a backlit lightbox that glows onto the wall in a color you choose, and an anime wall scroll. Every poster can fill its frame or show the whole photo.
+- Collection Room card furniture in the furniture shop: a card shop counter that shows 12 cards face up under glass (stands can sit on its glass top), a rotating pedestal that slowly turns one showpiece card above a light ring in a color you choose, and a booster pack shelf that shows your unopened packs.
+- Collection Room media furniture in the furniture shop: a binder lectern that shows your binder open in the room and opens it on the page you left it at, a wall TV and a digital photo frame that play a photo slideshow or loop a video from your Vault, and a poster flip bin with up to 24 photos to flip through.
+- Collection Room photo pickers (posters, screens, poster flip bin) can take photos from a search, a gallery, a creator or a playlist and page through all of them. Screens play their source live, and a flip bin can follow a whole source so it updates by itself.
+- The Dashboard Loading Bay button shows how many files and folders are waiting, and Loading Bay settings can send sorted funscripts to the funscript library folder.
 
 ### Changed
-- Galleries, Photos, and Videos list their sort and filter buttons in the same order, and the sort menus share names and order. New sorts: Most viewed, Most edged, and Price for galleries; Most edged, Period, Recently viewed, Watch time, and Resolution for photos and videos.
+- Collection Room furniture placement works like The Sims: click an item to pick it up and click again to place it. Items snap to a floor grid (Alt for free placement, G to toggle), rotate in 45° steps, glide after the cursor with their real look, and show why a spot is blocked. Esc cancels and Delete returns the item to inventory.
+- Collection Room walking eases in and out, has Shift to sprint, and you can no longer walk through placed furniture. C now toggles crouch instead of needing to be held, and right-click while walking zooms in 2×, then 4×, then back. Sunlight through the windows now casts shadows on Medium quality too, and High quality uses antialiasing.
+- The Collection Room runs faster: window and cabinet glass no longer make the room render twice per frame, the tall glass cabinet draws in a handful of calls instead of 164, and furniture is no longer rebuilt when unrelated room data refreshes.
+- The trader screen gives the Trade tab most of the window: both card lists fill the height with smaller tiles, so several cards show at once, and the requests counter is a small badge next to the tabs. Open deals show the cards you give and get before you accept, and card details load in one request instead of one per card.
+- Selling or trading a Hall of Fame or Bond card to the trader now warns that these cards are earned and can't be pulled from Booster packs again. The warning has a "Don't tell me again" option.
+- Collection Room furniture mode no longer shows the round Place / Return / Rotate / Deselect wheel; clicks and keys do the same jobs. The furniture bar now spans the whole screen width with taller tiles and bigger previews.
+- Settings has a new Performance tab that gathers options that cost speed or graphics power: video hover previews, animation speed (moved from Appearance), and the session neon border (moved from Effects).
+- Video hover previews start almost instantly instead of after about two seconds. Each video gets a short saved preview clip with moments from its start, middle and end, made the first time you hover it. Previews loop for as long as you hover. Settings → Performance → Video hover previews can turn previews off entirely, or build every preview ahead of time in the background (shows the disk space and time it needs), and covers new videos after each scan.
+- Loading Bay deletes go to the Recycle Bin instead of being permanent. Sorting a few files no longer re-scans the whole creator folder, scans compare duplicates much faster, and reopening the window during an import shows its progress again.
 
 ### Fixed
+- Hall of Fame video cards play in the open card window on the desktop app. The video was playing behind a black box.
+- Refreshing the Foundation catalogue no longer skips its last two steps. The new Foundation had no SPR cards and far too few Ultra Rares, so Foundation packs pulled worse than their listed odds. Refresh the Foundation again to fix a catalogue that was refreshed before this fix.
+- Videos in the viewer start about 2 seconds sooner. With a custom Glass theme wallpaper, the page froze each time a video opened.
+- Zooming and dragging a zoomed video in the viewer no longer stutters; the picture now follows the mouse during the drag instead of jumping when you let go.
+- The Handy now follows a funscript as soon as the video plays, instead of needing a pause and resume first and then stopping after a stroke or two. Strokes are smoother and stay in time on slow Bluetooth or Wi-Fi links.
+- The Collection Room could slow almost to a stop while cards loaded or when walking up to displays. Cards now bake from resized photos instead of the full original files, prepare in the gaps between frames, and add their foil detail without redoing the whole card.
+- Cards on stands and in cabinets looked darker than their real artwork when viewed up close in the Collection Room.
+- The gallery list counted a gallery twice when it matched more than one picked creator, so totals and pages could be off.
+- Collection Room posters could show as blank white sheets when the photo finished loading after the room appeared.
+- Cards on Collection Room stands never showed their foil effect, even up close.
+- Collection Room interaction prompts no longer appear for items on the other side of a wall, and thin white seams where inner walls meet the ceiling are gone.
+- The trader room got stuck on "Meeting today's trader…" with a very large card catalogue. Pricing a card no longer breaks on sets with more than about 32,000 cards, and setting up each day's trader takes a few seconds instead of about 30.
+- Trader cards that are Variant, Collab, Gallery, or Creator cards showed as blank frames, because catalogue cards only got their card face when pulled from a pack.
+- The trader's daily interests could be raw image tags such as body parts; she now picks characters and creators.
+- The trader loading screen was split across three columns, and a failing trader took about two minutes to show an error.
+- Leaving the trader screen open past midnight made every action fail with "This trader visit has ended"; it now loads the new day's trader.
+- Switching trader tabs kept the old scroll position, and the active tab's label vanished while hovered.
+- More of the trader screen is translated, including tabs, confirmations, request statuses, and deal history.
+- Loading Bay: a re-downloaded file or folder with the same name as one sorted earlier now shows up again, and imports that failed (for example "file in use") come back on the next scan instead of disappearing.
+- Loading Bay: a Loading Bay folder inside another one is no longer offered as a gallery to import, and adding overlapping folders is refused.
+- Loading Bay: importing as unsorted no longer removes creators you already assigned to other galleries in the Unsorted folder.
+- Loading Bay: sorting to a creator who only appears in collabs no longer puts files in the partner's folder or links that creator to the partner's new galleries.
+- Loading Bay: folders that are still downloading are marked and can't be imported, a broken archive no longer leaves half a folder in the vault, and a sorted funscript never overwrites an existing one.
+- Loading Bay: removing a Loading Bay folder clears its waiting items, and settings errors (such as an overlapping folder) are now shown.
+
+### Removed
+- The Founder Standard Booster is gone from the Shop. It was the Founder Choice Booster without the type picker, and Founder Choice opens with any card type by default.
+
+## [2.0.4] - 2026-10-26
+
+### Added
+- Photos and Videos have an Unassigned filter that shows files with no creator, like the one on Galleries.
+- Missing folders in Settings offers to reconnect galleries that an earlier library move split in two, keeping each original gallery's creators, ratings, history, and cards.
+- Device Control has a Script Playback card: a soft start that eases the device into the script after a seek, play or loop instead of jumping; an optional speed limit; auto-home that eases the device back to centre after a pause (Stop still never moves it); a separate latency setting for Intiface, The Handy, and serial devices; a keyframe output mode for Intiface strokers; and per-axis invert, time offset, and travel range for T-Code devices such as the SR1.
+- A View menu next to Sort on Galleries, Photos, and Videos. Photos and Videos offer Squares, Masonry, Justified rows (full-width rows that keep each file's shape), Details (a table with name, creator, resolution, size, rating, views, and dates; click a column to sort), and Timeline (month sections by period, date modified, or date added). Galleries offer Gallery cards, Compact covers, Details, and Timeline. Each list remembers its view; Masonry now works for videos too, and the old Masonry toggle carries over.
+- Creators has the same View menu (Portrait cards, Compact, and a sortable Details table), new filters (Period, Country, Status, Unrated, and Incomplete for profiles missing an avatar, a character's franchise, or a person's country), new sorts (Most viewed, Most edged, Recently viewed, Most galleries, Most sessions, Bond level, Age, Origin, Date modified), and Select mode to favorite, set the type or franchise of, or delete several creators at once.
+- Completing a card set now earns 150 XP and 300 Vault Credits, and completing every printing in a set (master set) earns 300 XP and 600 Credits. Each set rewards once.
+- Pack opening marks every card you didn't own before with a NEW badge, gives Super Rare, Ultra Rare, and Signature Rare pulls their own moment (a short pause, a glow in the rarity's colour, and a chime for UR and SPR), and ends with a summary of new cards and your best pull.
+- Completed sets show Completed and Master set badges, and a toast celebrates each set you finish.
+- The card window has previous and next arrows (and arrow keys) to step through the grid, and its Ownership tab lists each physical copy with its grade and where it is.
+- Star cards as favorites from the card window; favorites show a star on their tile, and All Cards has a Favorites filter.
+
+### Changed
+- The sidebar is shorter: Stats, Recap, Quests, and Hall of Fame are tabs of a new Progress page, and Tag Manager, Duplicates, Console, and Scan Log are tabs of a new Tools page. Task Queue keeps its own entry and live progress bar. Old links open the matching tab.
+- The Dashboard, Photos, and Videos load much faster on large libraries: library-wide stats are cached and prepared at startup, list pages use new database indexes and fewer queries, creator avatars are resized once and kept, and browsing photos no longer reloads the gallery after every image.
+- The Dashboard's right column is tidier: daily and weekly quests share one card, trending, top, and often-together tags share one Tags card, and Recent Sessions and Vault Health were removed (sessions remain under Progress → Stats; the untagged and curation counts remain in the stats strip and Curating tile). The Dashboard also stopped loading four lists it never displayed.
+- Funscripts follow desktop videos more smoothly and accurately on every device: the device now follows a smoothed video clock instead of the player's coarse position updates, which removes stop-start stepping on Intiface and stroke jitter on The Handy. Buffering, speed changes and loop restarts resync the device, dragging the seek bar no longer queues seconds of stale Handy commands, Handy timing is calibrated more precisely and refreshed during long sessions, and a nearly full Handy buffer no longer drops a second and a half of motion.
+- Desktop video playback is smoother: looping clips no longer freeze for up to a second at each loop, turning loop on or off continues from the same spot, the page does far less work while a video plays, and large video galleries open without flooding the player bridge.
+- The app starts with less to load: the Chinese translation and the Intiface device library load only when used.
+- A creator's Photos and Videos tabs have the same search, sorts, and View menu as the main Photos and Videos lists, and their tiles no longer repeat the creator's name. The Galleries, Photos, and Videos tabs are easier to read and show their counts with thousands separators.
+- "Assign galleries by folder" moved from the creator page into its ⋯ menu, since it is a one-time setup.
+- The Creators toolbar matches the other lists: the same order and styling, Types as a dropdown instead of a row of pills, the shared sort names, a "shown of" count, and a Size and Per page row like the others. The toolbar fits on one line in a 1920px window: below 2000px wide, Reset, Select, and New (formerly "Add creator") show only their icons, with the name on hover. Creator search also matches titles, aliases, and real names.
+- Galleries, Photos, and Videos list their sort and filter buttons in the same order, and the sort menus share names and order. New sorts: Most viewed, Most edged, and Price for galleries; Most edged, Period, Recently viewed, Watch time, and Resolution for photos and videos.
+- Card catalogues have far more variety. A new catalogue (first-time setup, or Advanced settings → Restore catalogue) mixes about 43% Scenes with roughly 10,000+ Cosplay, 9,000 Gallery, and thousands of Creator, Character, and Collab cards (up to 15 per collab gallery). Each creator or character gets a card with their current profile picture plus cards from their best-loved photos. Monthly releases from now on follow a similar mix, with about 110 Cosplay and 65 Collab cards each.
+- Release sets have real names (no more repeated "Creator: Private Collection" or "Gallery: Selected Scenes"), hold at least 12 cards, and collabs get their own "Double Feature" sets. Missing cards are named after their creator instead of the gallery's folder name.
+- The Shop lists only packs you can buy or have reward tokens for, and the Founder pack that lets you choose a card type is now called the Founder Choice Booster.
+- Card Collection now looks like the rest of the Vault: the same tab bar as Progress and Tools, a compact title row with your progress on the newest release and your closest set (instead of a near-permanent 0% completion bar), pill-shaped filters, and colours that follow your theme. Text is in plain language, and the release economy panel and the Classification, Editor, and Audit tabs appear only in Advanced Mode.
+- Sets describe what they collect in plain words (for example "A collection of topless cards" or "Mik Allen and Alcololi together"), and Releases and Sets have an "Only show owned" switch.
+- Booster packs are bigger in the Shop, the Founder Choice card-type choice is a compact dropdown so pack cards line up, set covers load faster, and rarity counts on sets no longer cut off.
+- The card window is easier to read: rarity, type and content chips at the top, your views, minutes watched, cums, edges and rating on Overview, simpler tabs (Overview, Copies, Sets, Tags), and in Advanced Mode a Rarity tab that explains in words why a card got its rarity, with readable tag chips instead of raw data.
+- Set and release tiles lead with how many cards you own ("6 owned", "C 3 of 30.5k") instead of a 0% bar, and the Releases and Sets pages load much faster.
+- Card tiles and the card window show each card's printed code (for example SCN-012345) with the creator underneath.
+- The Shop and the room computer share one shop: booster packs can go in the cart with a quantity, the Shop tab still offers Open now, the room computer orders a delivery to your room, and furniture appears only in the room. All dropdowns in the collection and room are themed menus.
+- Sorting in All Cards covers the whole collection, not just the loaded page, and the Creators, Characters, Hall of Fame, and Bond tabs were folded into the Type filter.
+- Creator profiles and creator stats show cards with the current card designs.
+- Card Collection and the Collection Room are much faster on large collections: collection pages load only the cards they show, card tiles use small cached previews instead of full-size photos (one page went from about 486 MB to 12 MB), card mask layers are cached instead of rebuilt on every view, the room checks the server far less often and stops redrawing behind the trader and inventory, and card displays build their faces a couple at a time. Room Settings uses a themed quality picker and links to the room module page for update, repair, or uninstall.
+
+### Fixed
+- Hall of Fame video cards play in the desktop app's card window instead of staying black behind their poster image.
+- Correcting just one of a card's Exposure or Sexual intensity values now saves; keeping the other on the AI result used to make the whole save fail.
+- Folder names with a full date, such as "2022-06-29" or "07-29-2025", now get that month as the gallery period; the day was read as the year, giving periods like June 2029 or a believable wrong year. A short date with no year, such as "08-27", is no longer read as a future year. Existing galleries keep their stored period.
+- Shift-click range selection on Galleries could select only the clicked gallery instead of the whole range.
+- The stats on a creator page no longer run into each other ("123" and "13h 55m" used to merge into "12355m"); large numbers use thousands separators and the row wraps on narrow windows.
+- A creator's photo count no longer includes their videos, on the stats strip and the Photos tab.
+- The binder card picker can reach every owned card and no longer comes up empty or filtered after visiting the Missing, Duplicates, or type tabs.
+- Collection tabs no longer briefly show the previous tab's cards when switching views.
+- Cards on Collection Room stands past the 36th now appear, and a card whose face loads slowly no longer stays blank.
+- Deleting a creator from the right-click menu now asks for confirmation; one misclick used to delete the creator immediately.
+- Sorting creators by Collection size now puts the biggest collections first.
 - Sorting photos and videos by name now continues correctly from one page to the next.
+- Dialogs and viewers now stay fixed over the whole window and freeze the page behind them; previously scrolling moved the page and the dialog, leaving part of the page undimmed.
+- "Did you finish?" when ending a session no longer fails to appear.
+- The "Wiki Import" item in a creator's ⋯ menu, which did nothing, now opens the creator's wiki and lore fields.
 - Moving a library to another drive or directory keeps its galleries: scanning the new location reconnects each moved folder to its existing gallery instead of importing duplicates and awarding XP for them.
 - The funscript player bar no longer appears when no device is connected.
 - Deleting a creator works again and keeps their galleries, files, cards, and history; it previously failed or tried to remove the galleries along with the creator.
 - Handy scripts linked to a video start playing with the video again, instead of only working from the Funscripts tab.
 - Creator character search finds video-game characters again instead of showing "Character search is unavailable".
 - Assign and Clear in the Photos and Videos selection bar now change only the selected files, instead of every file in their galleries.
+
+### Removed
+- The retired card-upgrade actions (CXP evolve, prestige, catalyst crafting, fusing, forging) and their Profile tile and craft button, which only returned errors.
+- Unused code from the original card collection, the retired MyAnimeList search, and developer-only trader tools.
 
 ## [2.0.3] - 2026-10-13
 

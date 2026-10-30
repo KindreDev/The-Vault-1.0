@@ -20,11 +20,13 @@ import shutil
 import subprocess
 import zipfile
 import hashlib
+import tempfile
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
@@ -41,6 +43,8 @@ ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z"}
 # Files still being written by a browser / torrent client — never intake these.
 PARTIAL_EXTENSIONS = {".part", ".crdownload", ".tmp", ".!ut", ".download", ".opdownload"}
 _FRESH_FILE_SECONDS = 5   # skip files modified within the last N seconds (mid-download)
+_STILL_DOWNLOADING = "Still downloading — scan again once it finishes."
+_SCAN_COMMIT_EVERY = 25   # batch scan writes; one SQLite commit per file is slow
 
 
 # ── Progress state (shared by scan + commit, polled by the task queue) ─────────
@@ -160,6 +164,47 @@ def _sanitize(name: str) -> str:
     """Make a string safe to use as a single folder name on Windows."""
     cleaned = _INVALID_NAME.sub("", (name or "").strip()).rstrip(". ")
     return cleaned or "Untitled"
+
+
+def _norm(path: str) -> str:
+    return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
+
+
+def _paths_overlap(a: str, b: str) -> bool:
+    """True when a equals b or one contains the other."""
+    na, nb = _norm(a), _norm(b)
+    return na == nb or na.startswith(nb.rstrip(os.sep) + os.sep) or nb.startswith(na.rstrip(os.sep) + os.sep)
+
+
+def _send_to_trash(path: str):
+    """Move a file or folder to the Recycle Bin. Raises OSError on failure.
+    Drives without a Recycle Bin (some network/removable drives) are deleted
+    outright by Windows itself."""
+    if os.name != "nt":
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    class _SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [
+            ("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT),
+            ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+            ("fFlags", ctypes.c_uint16), ("fAnyOperationsAborted", wintypes.BOOL),
+            ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR),
+        ]
+
+    fo_delete = 3
+    flags = 0x0040 | 0x0010 | 0x0004 | 0x0400   # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
+    # pFrom must be double-NUL terminated; ctypes adds the second NUL.
+    op = _SHFILEOPSTRUCTW(None, fo_delete, os.path.abspath(path) + "\0", None,
+                          flags, False, None, None)
+    rc = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    if rc != 0 or op.fAnyOperationsAborted or os.path.exists(path):
+        raise OSError(f"Could not move to the Recycle Bin (code {rc})")
 
 
 def _same_volume(a: str, b: str) -> bool:
@@ -325,7 +370,7 @@ def _move_funscript(src_media: str, dest_media: str, mode: str = "beside") -> Op
             except OSError:
                 fs_dest = None   # unwritable library → fall back to beside
     if fs_dest is None:
-        fs_dest = os.path.join(os.path.dirname(dest_media), fs_name)
+        fs_dest = _unique_dest(os.path.dirname(dest_media), fs_name)
 
     _move_file(fs_src, fs_dest)
     return fs_dest
@@ -432,31 +477,41 @@ def _extract_archive(src: str, dest_dir: str) -> str:
     natively, 7z via py7zr (falling back to 7z.exe if that raises), rar via
     7z.exe (the only handler available — 7-Zip must be installed)."""
     stem = _sanitize(os.path.splitext(os.path.basename(src))[0])
-    out = _unique_dir(dest_dir, stem)
-    os.makedirs(out, exist_ok=True)
-    ext = os.path.splitext(src)[1].lower()
-    if ext == ".zip":
-        with zipfile.ZipFile(src) as z:
-            z.extractall(out)
-    elif ext == ".7z":
-        try:
-            import py7zr
-            with py7zr.SevenZipFile(src, "r") as z:
-                z.extractall(path=out)
-        except Exception:
+    os.makedirs(dest_dir, exist_ok=True)
+    # Extract into a hidden temp folder beside the destination, then rename it
+    # into place, so a failed extraction never leaves half a set in the vault.
+    tmp = tempfile.mkdtemp(prefix=".vault-extract-", dir=dest_dir)
+    try:
+        ext = os.path.splitext(src)[1].lower()
+        if ext == ".zip":
+            with zipfile.ZipFile(src) as z:
+                z.extractall(tmp)
+        elif ext == ".7z":
+            try:
+                import py7zr
+                with py7zr.SevenZipFile(src, "r") as z:
+                    z.extractall(path=tmp)
+            except Exception:
+                exe = _find_7z_exe()
+                if not exe:
+                    raise
+                shutil.rmtree(tmp, ignore_errors=True)
+                os.makedirs(tmp, exist_ok=True)
+                _7z_extract_all(exe, src, tmp)
+        elif ext == ".rar":
             exe = _find_7z_exe()
             if not exe:
-                raise
-            _7z_extract_all(exe, src, out)
-    elif ext == ".rar":
-        exe = _find_7z_exe()
-        if not exe:
-            raise RuntimeError(
-                "7-Zip is required to extract .rar archives — install 7-Zip.")
-        _7z_extract_all(exe, src, out)
-    else:
-        shutil.unpack_archive(src, out)
-    return out
+                raise RuntimeError(
+                    "7-Zip is required to extract .rar archives — install 7-Zip.")
+            _7z_extract_all(exe, src, tmp)
+        else:
+            shutil.unpack_archive(src, tmp)
+        out = _unique_dir(dest_dir, stem)
+        os.replace(tmp, out)
+        return out
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
 
 
 # ── Archive inspection (peek inside zip/rar/7z without extracting) ─────────────
@@ -630,28 +685,56 @@ def _classify(ext: str):
     return None
 
 
+def _tree_has_partial(path: str) -> bool:
+    """True if any file below path is still being downloaded or written."""
+    for dirpath, _dirs, files in os.walk(path):
+        for name in files:
+            full = os.path.join(dirpath, name)
+            if os.path.splitext(name)[1].lower() in PARTIAL_EXTENSIONS:
+                return True
+            try:
+                if time.time() - os.path.getmtime(full) < _FRESH_FILE_SECONDS:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 # ── Duplicate awareness ────────────────────────────────────────────────────────
 _DUP_HAMMING_THRESHOLD = 6   # pHash distance at or below which two images count as dupes
 
 
-def _load_vault_hashes(db: Session) -> list:
-    """[(image_id, hash_as_int)] for every hashed vault image, loaded once per scan."""
-    from models import Image
+def _load_vault_hashes(db: Session):
+    """(image_ids, hashes) numpy arrays for every 64-bit vault pHash, loaded once
+    per scan so each incoming image is compared in one vectorized pass."""
     rows = (db.query(Image.id, Image.perceptual_hash)
               .filter(Image.perceptual_hash.isnot(None),
                       Image.perceptual_hash != "failed",
                       Image.perceptual_hash != "").all())
-    out = []
+    ids, hashes = [], []
     for iid, h in rows:
+        if not h or len(h) != 16:
+            continue
         try:
-            out.append((iid, int(h, 16)))
+            hashes.append(int(h, 16))
+            ids.append(iid)
         except (ValueError, TypeError):
             pass
-    return out
+    return np.array(ids, dtype=np.int64), np.array(hashes, dtype=np.uint64)
+
+
+def _nearest_hash(vault_hashes, hv: int):
+    """Return (image_id, distance) of the closest vault pHash, or (None, 65)."""
+    if vault_hashes is None or len(vault_hashes[1]) == 0:
+        return None, 65
+    ids, hashes = vault_hashes
+    distances = np.bitwise_count(hashes ^ np.uint64(hv))
+    best = int(np.argmin(distances))
+    return int(ids[best]), int(distances[best])
 
 
 def _find_duplicate(db: Session, full_path: str, is_video: bool,
-                    size: Optional[int], vault_hashes: list):
+                    size: Optional[int], vault_hashes):
     """Return explainable duplicate evidence.
 
     Same-size vault files are content-hashed first, making unattended deletion
@@ -684,13 +767,12 @@ def _find_duplicate(db: Session, full_path: str, is_video: bool,
     if not h:
         return {"phash": "", "content_hash": content_hash, "duplicate_of": None,
                 "duplicate_kind": None, "duplicate_distance": None}
-    hv = int(h, 16)
-    best_id = None
-    best_distance = 65
-    for iid, other in vault_hashes:
-        distance = (hv ^ other).bit_count()
-        if distance < best_distance:
-            best_id, best_distance = iid, distance
+    try:
+        hv = int(h, 16)
+    except ValueError:
+        hv = None
+    best_id, best_distance = (_nearest_hash(vault_hashes, hv) if hv is not None and len(h) == 16
+                              else (None, 65))
     if best_id is not None and best_distance <= _DUP_HAMMING_THRESHOLD:
         return {"phash": h, "content_hash": content_hash, "duplicate_of": best_id,
                 "duplicate_kind": "perceptual_image", "duplicate_distance": best_distance}
@@ -701,6 +783,19 @@ def _find_duplicate(db: Session, full_path: str, is_video: bool,
 def _apply_duplicate(item: IntakeItem, evidence: dict):
     for key in ("phash", "content_hash", "duplicate_of", "duplicate_kind", "duplicate_distance"):
         setattr(item, key, evidence.get(key))
+
+
+def _drop_folder_row(db: Session, source_path: str):
+    """Forget a not-yet-imported package row (used when that folder turns out to
+    be another Loading Bay root). Its files become loose items of that root."""
+    folder = (db.query(IntakeFolder)
+                .filter(IntakeFolder.source_path == source_path,
+                        IntakeFolder.status != "committed").first())
+    if not folder:
+        return
+    db.query(IntakeItem).filter(IntakeItem.folder_id == folder.id).update(
+        {IntakeItem.folder_id: None}, synchronize_session=False)
+    db.delete(folder)
 
 
 def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str] = None):
@@ -728,6 +823,9 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
         # becomes one movable gallery package and owns every candidate below it.
         candidates = []  # (root, full_path, intake_folder_or_none)
         ignore_hidden = ignore_hidden_media_enabled()
+        # Every configured root (enabled or not). A root nested inside another
+        # is scanned on its own and must never become the outer root's package.
+        intake_root_paths = {_norm(r.path) for r in db.query(IntakeRoot).all()}
         for root in roots:
             if not os.path.isdir(root.path):
                 continue
@@ -745,19 +843,31 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                     continue
                 if not entry.is_dir():
                     continue
+                if _norm(entry.path) in intake_root_paths:
+                    _drop_folder_row(db, entry.path)
+                    continue
 
                 folder_files = []
                 videos = total_size = 0
                 newest = 0.0
+                has_partial = False
                 for dirpath, dirs, files in os.walk(entry.path):
                     files, _ = filter_hidden_walk_entries(
                         dirpath, dirs, files, enabled=ignore_hidden,
                     )
+                    dirs[:] = [d for d in dirs
+                               if _norm(os.path.join(dirpath, d)) not in intake_root_paths]
                     for filename in files:
-                        if _classify(os.path.splitext(filename)[1]) is None:
+                        ext = os.path.splitext(filename)[1].lower()
+                        if ext in PARTIAL_EXTENSIONS:
+                            has_partial = True
+                            continue
+                        kind = _classify(ext)
+                        if kind is None:
                             continue
                         full = os.path.join(dirpath, filename)
                         if _is_partial(filename, full):
+                            has_partial = True
                             continue
                         try:
                             stat = os.stat(full)
@@ -766,7 +876,7 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                         folder_files.append(full)
                         total_size += stat.st_size
                         newest = max(newest, stat.st_mtime)
-                        videos += int(_classify(os.path.splitext(filename)[1]) == "video")
+                        videos += int(kind == "video")
                 if not folder_files:
                     continue
 
@@ -776,6 +886,11 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                                           name=entry.name, status="pending")
                     db.add(folder)
                     db.flush()
+                elif folder.status in ("committed", "error"):
+                    # A committed folder that exists again is a new download
+                    # reusing the name; an errored one gets another try.
+                    folder.status = "pending"
+                    folder.thumb_path = None
                 elif folder.status == "ignored":
                     unchanged = (folder.file_count == len(folder_files)
                                  and folder.total_size == total_size
@@ -788,7 +903,10 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                 folder.video_count = videos
                 folder.total_size = total_size
                 folder.source_mtime = newest
-                folder.error = None if folder.status == "pending" else folder.error
+                if has_partial:
+                    folder.error = _STILL_DOWNLOADING
+                elif folder.status == "pending":
+                    folder.error = None
                 for full in folder_files:
                     candidates.append((root, full, folder))
             db.commit()
@@ -815,18 +933,20 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                 size, mtime = None, None
             if existing:
                 existing.folder_id = folder.id if folder else None
-                if folder and not folder.thumb_path and existing.thumb_path:
-                    folder.thumb_path = existing.thumb_path
-                if not is_archive and (existing.width is None or existing.height is None
-                                       or (is_video and existing.duration is None)):
-                    existing.width, existing.height, existing.duration = _media_metadata(full, is_video)
-                if existing.status == "ignored":
-                    if existing.file_size == size and existing.source_mtime == mtime:
-                        continue
+                existing.root_id = root.id
+                unchanged = existing.file_size == size and existing.source_mtime == mtime
+                if existing.status == "error" and unchanged:
+                    # The last import failed (often "file in use"); offer it again.
                     existing.status = "pending"
                     existing.error = None
-                else:
+                if unchanged and existing.status in ("pending", "ignored", "committed"):
+                    # committed + unchanged = an archive kept after extraction.
+                    if folder and not folder.thumb_path and existing.thumb_path:
+                        folder.thumb_path = existing.thumb_path
                     continue
+                # Otherwise the file is new at a known path (a re-download reusing
+                # a name we already sorted) or was replaced: process it from scratch.
+                existing.error = None
 
             thumb_path = None
             if not is_archive:
@@ -849,8 +969,12 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
             item.filename = fn
             item.file_size = size
             item.source_mtime = mtime
-            if not is_archive:
+            # Files inside gallery packages are probed lazily when the folder is
+            # opened; packages move as a whole, so most are never inspected.
+            if not is_archive and folder is None:
                 item.width, item.height, item.duration = _media_metadata(full, is_video)
+            else:
+                item.width = item.height = item.duration = None
             item.is_video = is_video
             item.is_archive = is_archive
             item.has_funscript = has_fs
@@ -863,13 +987,15 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
                 folder.thumb_path = thumb_path
             found += 1
             root.last_scan = datetime.utcnow()
-            db.commit()
+            if found % _SCAN_COMMIT_EVERY == 0:
+                db.commit()
+        db.commit()
 
         # Prune pending rows whose file vanished from disk (moved/deleted by hand).
         # Also backfill duplicate info for pending items scanned before the
         # duplicate-awareness columns existed (phash NULL = never attempted).
         removed = 0
-        for it in db.query(IntakeItem).filter(IntakeItem.status == "pending").all():
+        for it in db.query(IntakeItem).filter(IntakeItem.status.in_(("pending", "error"))).all():
             if os.path.exists(it.source_path):
                 needs_evidence = (
                     it.duplicate_kind is None
@@ -911,11 +1037,13 @@ def scan_intake(db: Session, root_id: Optional[int] = None, job_id: Optional[str
 
 # ── Destination resolution ─────────────────────────────────────────────────────
 def _detect_creator_folder(creator: Creator) -> Optional[str]:
-    """Guess a creator's root folder from where the majority of their existing
-    gallery folders live (the most common parent directory)."""
+    """Guess a creator's root folder from where the majority of their own
+    gallery folders live (the most common parent directory). Collab links
+    (linked_galleries) are deliberately ignored: they live in the partner's
+    folder, and adopting it would route files there and auto-link every new
+    gallery under it to this creator."""
     parents = []
-    galleries = list(creator.galleries or []) + list(creator.linked_galleries or [])
-    for g in galleries:
+    for g in creator.galleries or []:
         if g.folder_path:
             parents.append(os.path.dirname(g.folder_path))
     if not parents:
@@ -1004,16 +1132,54 @@ def _resolve_target(db: Session, target: dict) -> tuple[str, Optional[Gallery]]:
     return root, None
 
 
-def _clear_gallery_creators_under(db: Session, folder_path: str):
-    """Raw imports are intentionally unassigned, even if their destination
-    happens to sit beneath a creator source folder that scanner auto-matches."""
+def _gallery_ids_under(db: Session, folder_path: str) -> set:
+    """Ids of galleries at or below folder_path. SQL LIKE narrows the rows
+    (ASCII case-insensitive in SQLite); normcase confirms each match."""
     base = os.path.normcase(os.path.normpath(folder_path))
-    for gallery in db.query(Gallery).all():
-        candidate = os.path.normcase(os.path.normpath(gallery.folder_path or ""))
-        if candidate == base or candidate.startswith(base + os.sep):
-            gallery.creator_id = None
-            gallery.creators.clear()
+    raw = os.path.normpath(folder_path)
+    escaped = raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = (db.query(Gallery.id, Gallery.folder_path)
+              .filter(Gallery.folder_path.like(escaped + "%", escape="\\")).all())
+    out = set()
+    for gid, path in rows:
+        candidate = os.path.normcase(os.path.normpath(path or ""))
+        if candidate == base or candidate.startswith(base.rstrip(os.sep) + os.sep):
+            out.add(gid)
+    return out
+
+
+def _clear_new_gallery_creators(db: Session, folder_path: str, existed_before: set):
+    """Raw imports are intentionally unassigned, even if their destination
+    happens to sit beneath a creator source folder that scanner auto-matches.
+    Only galleries this import created are touched, so creators Ricardo has
+    already assigned inside the Unsorted folder are kept."""
+    new_ids = _gallery_ids_under(db, folder_path) - existed_before
+    if not new_ids:
+        return
+    for gallery in db.query(Gallery).filter(Gallery.id.in_(new_ids)).all():
+        gallery.creator_id = None
+        gallery.creators.clear()
     db.commit()
+
+
+def _register_folder(folder_path: str, *, recursive: bool, unsorted: bool) -> Optional[str]:
+    """Run the library folder scan for an import destination. Returns an error
+    message instead of raising, so one failure never skips the rest."""
+    from services.scanner import get_scan_state
+    if get_scan_state().get("running"):
+        return f"{folder_path}: a library scan was already running, so it was not registered. Run Scan Folders on it."
+    scan_db = SessionLocal()
+    try:
+        before = _gallery_ids_under(scan_db, folder_path) if unsorted else set()
+        scan_folder_path(scan_db, folder_path, recursive=recursive)
+        if unsorted:
+            _clear_new_gallery_creators(scan_db, folder_path, before)
+        return None
+    except Exception as exc:
+        scan_db.rollback()
+        return f"{folder_path}: registration failed: {exc}"
+    finally:
+        scan_db.close()
 
 
 def validate_unsorted_folder(db: Session, path: str) -> str:
@@ -1044,7 +1210,8 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                cancelled=False, message="Committing…",
                job_id=job_id, done_job_id=None)
     report = []
-    scan_dirs = set()
+    scan_dirs = {}   # folder -> scan its subfolders too?
+    warnings = []
     try:
         dest_dir, _gallery = _resolve_target(db, target)
         db.commit()  # persist creator/source_folder BEFORE the scan auto-links
@@ -1084,7 +1251,7 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                             os.remove(item.source_path)
                         except OSError:
                             pass
-                    scan_dirs.add(out)
+                    scan_dirs[out] = True
                     result, dest = "extracted", out
                 else:
                     dest = _unique_dest(dest_dir, item.filename)
@@ -1094,7 +1261,7 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                         fs_path = _move_funscript(item.source_path, dest, fs_dest_mode)
                         if fs_path and os.path.dirname(fs_path) != os.path.dirname(dest):
                             library_links.append((dest, fs_path))
-                    scan_dirs.add(dest_dir)
+                    scan_dirs.setdefault(dest_dir, False)
                     result = "renamed" if renamed else "moved"
 
                 if item.thumb_path and os.path.exists(item.thumb_path):
@@ -1118,15 +1285,14 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
         moved_ok = [r for r in report if r["result"] != "error"]
         if moved_ok:
             _set_state(message="Registering moved files…", current_path=None)
-            for d in scan_dirs:
+            # Loose files only need their destination folder itself scanned,
+            # not every gallery beneath a creator or Unsorted root.
+            for d, recursive in scan_dirs.items():
                 if os.path.isdir(d):
-                    scan_db = SessionLocal()
-                    try:
-                        scan_folder_path(scan_db, d)
-                        if target.get("mode") == "unsorted":
-                            _clear_gallery_creators_under(scan_db, d)
-                    finally:
-                        scan_db.close()
+                    problem = _register_folder(d, recursive=recursive,
+                                               unsorted=target.get("mode") == "unsorted")
+                    if problem:
+                        warnings.append(problem)
 
             # Re-link scripts that were routed to the central funscript library:
             # the folder rescan only detects sidecars sitting next to the video.
@@ -1147,7 +1313,8 @@ def commit_items(db: Session, item_ids: list, target: dict, job_id: Optional[str
                     link_db.close()
 
         _set_state(message=(f"Committed {len(moved_ok)} item(s)."
-                            + (f" {len(report) - len(moved_ok)} failed." if len(report) != len(moved_ok) else "")))
+                            + (f" {len(report) - len(moved_ok)} failed." if len(report) != len(moved_ok) else "")
+                            + (" " + " ".join(warnings) if warnings else "")))
     except Exception as e:
         db.rollback()
         _set_state(message=f"Commit error: {e}")
@@ -1164,7 +1331,7 @@ def commit_folders(db: Session, folder_ids: list, target: dict, job_id: Optional
     """Move complete gallery packages beneath a creator root and scan them."""
     _intake_state.pop("report", None)
     _set_state(running=True, progress=0, total=len(folder_ids), current_path=None,
-               cancelled=False, message="Importing galleriesâ€¦",
+               cancelled=False, message="Importing galleries…",
                job_id=job_id, done_job_id=None)
     report = []
     try:
@@ -1173,6 +1340,7 @@ def commit_folders(db: Session, folder_ids: list, target: dict, job_id: Optional
         dest_root, _gallery = _resolve_target(db, target)
         db.commit()
         conflict = target.get("folder_conflict", "rename")
+        intake_root_paths = {_norm(r.path) for r in db.query(IntakeRoot).all()}
         for idx, folder_id in enumerate(folder_ids):
             if _cancelled():
                 break
@@ -1183,6 +1351,10 @@ def commit_folders(db: Session, folder_ids: list, target: dict, job_id: Optional
             try:
                 if not os.path.isdir(folder.source_path):
                     raise FileNotFoundError("source folder no longer exists")
+                if _norm(folder.source_path) in intake_root_paths:
+                    raise ValueError("This folder is itself a Loading Bay folder, so it can't be imported as a gallery.")
+                if _tree_has_partial(folder.source_path):
+                    raise ValueError(_STILL_DOWNLOADING)
                 dest = _move_directory(
                     folder.source_path,
                     os.path.join(dest_root, _sanitize(folder.name)),
@@ -1199,15 +1371,13 @@ def commit_folders(db: Session, folder_ids: list, target: dict, job_id: Optional
                 folder.status = "committed"
                 folder.error = None
                 db.commit()
-                scan_db = SessionLocal()
-                try:
-                    scan_folder_path(scan_db, dest)
-                    if target.get("mode") == "unsorted":
-                        _clear_gallery_creators_under(scan_db, dest)
-                finally:
-                    scan_db.close()
-                report.append({"folder_id": folder.id, "filename": folder.name,
-                               "result": "moved", "dest": dest})
+                problem = _register_folder(dest, recursive=True,
+                                           unsorted=target.get("mode") == "unsorted")
+                row = {"folder_id": folder.id, "filename": folder.name,
+                       "result": "moved", "dest": dest}
+                if problem:
+                    row["warning"] = problem
+                report.append(row)
             except Exception as exc:
                 folder.status = "error"
                 folder.error = str(exc)
@@ -1237,7 +1407,7 @@ def _inside_root(db: Session, path: str, root_id: Optional[int]) -> bool:
 
 
 def discard_items(db: Session, item_ids: list, action: str = "hide") -> dict:
-    """Hide, persistently ignore, or reliably delete loose intake files."""
+    """Hide, persistently ignore, or move loose intake files to the Recycle Bin."""
     if action not in {"hide", "ignore", "delete"}:
         raise ValueError("Unknown Loading Bay action")
     affected = deleted = 0
@@ -1265,10 +1435,10 @@ def discard_items(db: Session, item_ids: list, action: str = "hide") -> dict:
             continue
         try:
             if item.source_path and os.path.exists(item.source_path):
-                os.remove(item.source_path)
+                _send_to_trash(item.source_path)
             sidecar = os.path.splitext(item.source_path)[0] + ".funscript"
             if item.has_funscript and os.path.exists(sidecar):
-                os.remove(sidecar)
+                _send_to_trash(sidecar)
             deleted += 1
         except OSError as exc:
             errors.append({"id": iid, "name": item.filename, "error": str(exc)})
@@ -1285,7 +1455,7 @@ def discard_items(db: Session, item_ids: list, action: str = "hide") -> dict:
 
 
 def discard_folders(db: Session, folder_ids: list, action: str = "hide") -> dict:
-    """Hide, persistently ignore, or delete complete gallery packages."""
+    """Hide, persistently ignore, or recycle complete gallery packages."""
     if action not in {"hide", "ignore", "delete"}:
         raise ValueError("Unknown Loading Bay action")
     affected = deleted = 0
@@ -1306,7 +1476,7 @@ def discard_folders(db: Session, folder_ids: list, action: str = "hide") -> dict
             continue
         try:
             if os.path.isdir(folder.source_path):
-                shutil.rmtree(folder.source_path)
+                _send_to_trash(folder.source_path)
             deleted += 1
         except OSError as exc:
             errors.append({"id": folder.id, "name": folder.name, "error": str(exc)})
@@ -1346,7 +1516,34 @@ def _item_query(db: Session, status: str = "pending", kind: str = "all",
     return q
 
 
-def _duplicate_payload(db: Session, item: IntakeItem) -> Optional[dict]:
+# (path, mtime) pairs whose metadata probe already failed this run. Without it,
+# every list request re-ran ffprobe (15 s timeout) on the same broken files.
+_PROBE_FAILED: set = set()
+
+
+def _fill_metadata(row, path: str, is_video: bool) -> bool:
+    """Probe width/height/duration once for a row missing them. Returns True if
+    the row changed. Works for IntakeItem and Image rows."""
+    if not (row.width is None or row.height is None or (is_video and row.duration is None)):
+        return False
+    try:
+        key = (path, os.path.getmtime(path))
+    except OSError:
+        return False
+    if key in _PROBE_FAILED:
+        return False
+    width, height, duration = _media_metadata(path, is_video)
+    if width is None or height is None or (is_video and duration is None):
+        _PROBE_FAILED.add(key)
+    changed = False
+    for attr, value in (("width", width), ("height", height), ("duration", duration)):
+        if getattr(row, attr) is None and value is not None:
+            setattr(row, attr, value)
+            changed = True
+    return changed
+
+
+def _duplicate_payload(db: Session, item: IntakeItem, cache: Optional[dict] = None) -> Optional[dict]:
     if not item.duplicate_of:
         return None
     match = db.query(Image).filter(Image.id == item.duplicate_of).first()
@@ -1370,9 +1567,14 @@ def _duplicate_payload(db: Session, item: IntakeItem) -> Optional[dict]:
             else:
                 item.duplicate_of = None
         elif os.path.isfile(item.source_path):
+            hashes = None
+            if not item.is_video:
+                cache = cache if cache is not None else {}
+                if "vault_hashes" not in cache:
+                    cache["vault_hashes"] = _load_vault_hashes(db)
+                hashes = cache["vault_hashes"]
             _apply_duplicate(item, _find_duplicate(
-                db, item.source_path, item.is_video, item.file_size,
-                [] if item.is_video else _load_vault_hashes(db)))
+                db, item.source_path, item.is_video, item.file_size, hashes))
         db.commit()
         if not item.duplicate_of:
             return None
@@ -1380,13 +1582,7 @@ def _duplicate_payload(db: Session, item: IntakeItem) -> Optional[dict]:
         if not match:
             return None
 
-    if os.path.isfile(match.file_path) and (
-            match.width is None or match.height is None
-            or (match.is_video and match.duration is None)):
-        width, height, duration = _media_metadata(match.file_path, bool(match.is_video))
-        match.width = match.width or width
-        match.height = match.height or height
-        match.duration = match.duration or duration
+    if os.path.isfile(match.file_path) and _fill_metadata(match, match.file_path, bool(match.is_video)):
         db.commit()
     gallery = match.gallery
     creator = gallery.creator if gallery else None
@@ -1416,11 +1612,9 @@ def _duplicate_payload(db: Session, item: IntakeItem) -> Optional[dict]:
     }
 
 
-def _item_payload(db: Session, item: IntakeItem) -> dict:
+def _item_payload(db: Session, item: IntakeItem, cache: Optional[dict] = None) -> dict:
     if (not item.is_archive and os.path.isfile(item.source_path)
-            and (item.width is None or item.height is None
-                 or (item.is_video and item.duration is None))):
-        item.width, item.height, item.duration = _media_metadata(item.source_path, bool(item.is_video))
+            and _fill_metadata(item, item.source_path, bool(item.is_video))):
         db.commit()
     return {
         "id": item.id, "filename": item.filename, "file_size": item.file_size,
@@ -1430,7 +1624,7 @@ def _item_payload(db: Session, item: IntakeItem) -> dict:
         "duplicate_of": item.duplicate_of,
         "duplicate_kind": item.duplicate_kind,
         "duplicate_distance": item.duplicate_distance,
-        "duplicate": _duplicate_payload(db, item),
+        "duplicate": _duplicate_payload(db, item, cache),
         "discovered_at": item.discovered_at.isoformat() if item.discovered_at else None,
         "thumb": f"/thumbs/{os.path.basename(item.thumb_path)}" if item.thumb_path else None,
         "status": item.status, "error": item.error,
@@ -1452,10 +1646,11 @@ def list_items(db: Session, *, status: str = "pending", page: int = 1, limit: in
     order = order_col.asc() if direction == "asc" else order_col.desc()
     limit = max(1, min(int(limit), 200))
     page = max(1, int(page))
+    cache: dict = {}
     rows = q.order_by(order, IntakeItem.id.desc()).offset((page - 1) * limit).limit(limit).all()
     return {"total": total, "duplicate_total": duplicate_total, "page": page,
             "limit": limit, "has_more": page * limit < total,
-            "items": [_item_payload(db, item) for item in rows]}
+            "items": [_item_payload(db, item, cache) for item in rows]}
 
 
 def list_folders(db: Session, *, status: str = "pending", page: int = 1,
@@ -1520,6 +1715,7 @@ def get_folder_contents(db: Session, folder_id: int, *, page: int = 1,
     total = query.count()
     page = max(1, int(page))
     limit = max(1, min(int(limit), 200))
+    cache: dict = {}
     children = (query.order_by(IntakeItem.filename.asc())
                      .offset((page - 1) * limit).limit(limit).all())
     preview_reason = None
@@ -1540,7 +1736,7 @@ def get_folder_contents(db: Session, folder_id: int, *, page: int = 1,
         "preview_reason": preview_reason,
         "page": page, "limit": limit, "total": total,
         "has_more": page * limit < total,
-        "items": [_item_payload(db, item) for item in children],
+        "items": [_item_payload(db, item, cache) for item in children],
     }
 
 
@@ -1553,6 +1749,80 @@ def bulk_duplicate_action(db: Session, action: str, *, include_visual: bool = Fa
 
 
 # ── Intake root management ─────────────────────────────────────────────────────
+def list_roots(db: Session) -> list:
+    """Roots plus a warning when one sits inside another (set up before the
+    add-root check existed)."""
+    roots = db.query(IntakeRoot).order_by(IntakeRoot.id).all()
+    out = []
+    for root in roots:
+        parent = next((other for other in roots if other.id != root.id
+                       and _norm(root.path).startswith(_norm(other.path).rstrip(os.sep) + os.sep)), None)
+        out.append({
+            "id": root.id, "path": root.path, "label": root.label,
+            "enabled": root.enabled, "last_scan": root.last_scan,
+            "warning": (f"Inside another Loading Bay folder ({parent.path}). It is scanned on its own; "
+                        "consider removing one of them." if parent else None),
+        })
+    return out
+
+
+def add_root(db: Session, path: str, label: Optional[str] = None) -> IntakeRoot:
+    """Validate and add a Loading Bay folder. Raises ValueError with a reason."""
+    path = os.path.normpath((path or "").strip()) if (path or "").strip() else ""
+    if not path:
+        raise ValueError("path required")
+    if not os.path.isdir(path):
+        raise ValueError(f"Path does not exist: {path}")
+    for other in db.query(IntakeRoot).all():
+        if _norm(other.path) == _norm(path):
+            raise ValueError("That Loading Bay folder is already added.")
+        if _paths_overlap(other.path, path):
+            raise ValueError(f"That folder overlaps the Loading Bay folder {other.path}. "
+                             "Pick a folder that is neither inside nor around it.")
+    if _overlaps_library(db, path):
+        raise ValueError("That folder overlaps a library root — pick a separate folder for intake.")
+    cfg = get_intake_config()
+    for key, label_text in (("unsorted_folder", "Unsorted folder"),
+                            ("new_creator_base", "new creator base folder")):
+        if cfg.get(key) and _paths_overlap(cfg[key], path):
+            raise ValueError(f"That folder overlaps your {label_text} ({cfg[key]}).")
+    root = IntakeRoot(path=path, label=(label or "").strip() or None)
+    db.add(root)
+    db.commit()
+    db.refresh(root)
+    return root
+
+
+def remove_root(db: Session, root_id: int) -> bool:
+    """Remove a Loading Bay folder and forget its un-imported rows, which could
+    otherwise no longer be previewed or deleted. Files on disk are untouched."""
+    root = db.query(IntakeRoot).filter(IntakeRoot.id == root_id).first()
+    if not root:
+        return False
+    items = (db.query(IntakeItem)
+               .filter(IntakeItem.root_id == root_id, IntakeItem.status != "committed").all())
+    for item in items:
+        if item.thumb_path and os.path.exists(item.thumb_path):
+            try:
+                os.remove(item.thumb_path)
+            except OSError:
+                pass
+        db.delete(item)
+    db.query(IntakeFolder).filter(IntakeFolder.root_id == root_id,
+                                  IntakeFolder.status != "committed").delete(synchronize_session=False)
+    db.delete(root)
+    db.commit()
+    return True
+
+
+def summary(db: Session) -> dict:
+    """Counts for the Dashboard badge."""
+    files = (db.query(IntakeItem)
+               .filter(IntakeItem.status == "pending", IntakeItem.folder_id.is_(None)).count())
+    folders = db.query(IntakeFolder).filter(IntakeFolder.status == "pending").count()
+    return {"pending_files": files, "pending_folders": folders, "pending": files + folders}
+
+
 def _overlaps_library(db: Session, path: str) -> bool:
     """True if `path` equals, contains, or sits inside any library root — we must
     never let the intake and library scanners fight over the same tree."""

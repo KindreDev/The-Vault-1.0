@@ -13,6 +13,7 @@ import VaultVideo from '../VaultVideo'
 import FileCurationEditor from './FileCurationEditor'
 import RelocateModal from '../RelocateModal'
 
+import ModalLayer from '../ModalLayer'
 const draftFrom = file => ({
   rating: file.rating || 0,
   is_favorite: !!file.is_favorite,
@@ -253,7 +254,7 @@ export default function FileCurationRun({ onClose }) {
   ) : null
 
   return createPortal(
-    <div className="fixed inset-0 flex flex-col" style={{ background: '#0e0e0e', zIndex: 80 }}>
+    <ModalLayer><div className="fixed inset-0 flex flex-col" style={{ background: '#0e0e0e', zIndex: 80 }}>
       <header className="flex items-center gap-3 px-5 py-3 flex-shrink-0"
               style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#161616' }}>
         <Sparkles size={18} style={{ color: 'var(--accent, var(--c-accent))' }} />
@@ -351,7 +352,7 @@ export default function FileCurationRun({ onClose }) {
           onDone={() => { setRelocating(false); load() }}
         />
       )}
-    </div>,
+    </div></ModalLayer>,
     document.body,
   )
 }

@@ -13,6 +13,7 @@ import CurationBrowser from './CurationBrowser'
 import CurationEditor from './CurationEditor'
 import RelocateModal from '../RelocateModal'
 
+import ModalLayer from '../ModalLayer'
 const LANE_LABEL = {
   beloved: { text: 'Beloved creator', color: 'var(--c-pink)', bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)' },
   focus:   { text: 'Focus',           color: 'var(--c-pink)', bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)' },
@@ -401,7 +402,7 @@ export default function CurationRun({ onClose }) {
   const beloved = gallery?.beloved?.[0]
 
   return createPortal(
-    <div className="fixed inset-0 flex flex-col" style={{ background: '#0e0e0e', zIndex: 80 }}>
+    <ModalLayer><div className="fixed inset-0 flex flex-col" style={{ background: '#0e0e0e', zIndex: 80 }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 px-5 py-3 flex-shrink-0"
@@ -754,7 +755,7 @@ export default function CurationRun({ onClose }) {
           onDone={() => { setMovingFiles(false); invalidate(); refreshGallery() }}
         />
       )}
-    </div>,
+    </div></ModalLayer>,
     document.body,
   )
 }

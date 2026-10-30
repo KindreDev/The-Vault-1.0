@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, Plus, Star, X, User, Loader, LayoutGrid, Filter } from 'lucide-react'
+import { Search, Plus, Star, StarOff, X, User, Loader, CheckSquare, Square, Trash2, AlertCircle, RotateCcw } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { creatorsApi } from '../lib/api'
+import { creatorsApi, galleriesApi, apiErrorMessage } from '../lib/api'
 import CreatorContextMenu from '../components/CreatorContextMenu'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
@@ -13,9 +13,16 @@ import { COUNTRIES, countryIso } from '../lib/countries'
 import { SortDropdown } from '../components/SortDropdown'
 import BondHearts from '../components/BondHearts'
 import FranchiseFilter from '../components/FranchiseFilter'
+import PeriodFilter from '../components/PeriodFilter'
+import ChipDropdown from '../components/filters/ChipDropdown'
+import ViewModeDropdown from '../components/listViews/ViewModeDropdown'
+import DetailsTable from '../components/listViews/DetailsTable'
+import { CREATOR_VIEW_MODES, useListViewMode } from '../components/listViews/viewModes'
 import GalleryPagination from '../components/GalleryPagination'
 import { useT } from '../i18n'
+import { creatorTypeColors, RARITY_COLORS } from '../lib/entityColors'
 
+import ModalLayer from '../components/ModalLayer'
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Select Country' },
   ...COUNTRIES.map(c => ({ value: c, label: c }))
@@ -49,22 +56,8 @@ const STATUS_OPTIONS = [
   { value: 'Retired', label: 'Retired' },
 ]
 
-const TYPE_COLORS = {
-  cosplayer: { bg: 'color-mix(in srgb, var(--c-green) 15%, transparent)',  text: '#9FE1CB', glow: 'color-mix(in srgb, var(--c-green) 25%, transparent)' },
-  ethot:     { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1', glow: 'color-mix(in srgb, var(--c-pink) 25%, transparent)' },
-  artist:    { bg: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', text: '#CECBF6', glow: 'color-mix(in srgb, var(--c-accent) 25%, transparent)' },
-  character: { bg: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',  text: '#FAC775', glow: 'color-mix(in srgb, var(--c-amber) 25%, transparent)' },
-  actress:   { bg: 'color-mix(in srgb, var(--c-pink) 15%, transparent)',  text: '#ED93B1', glow: 'color-mix(in srgb, var(--c-pink) 25%, transparent)' },
-  custom:    { bg: 'rgba(136,135,128,0.15)', text: '#D3D1C7', glow: 'rgba(136,135,128,0.25)' },
-}
+const TYPE_COLORS = creatorTypeColors(15, 25)
 
-const RARITY_COLORS = {
-  common:    '#888780',
-  uncommon:  '#1D9E75',
-  rare:      '#378ADD',
-  epic:      '#7F77DD',
-  legendary: '#BA7517',
-}
 
 const RARITY_LABELS = {
   common:    'Snapshot',
@@ -90,14 +83,25 @@ function calcAge(dob) {
   return age > 0 && age < 100 ? age : null
 }
 
+// Shared order with the Galleries, Photos and Videos sorts: common sorts
+// first, creator-specific ones next, Random last.
 const SORTS = [
-  { value: 'name',        label: 'Name A–Z' },
-  { value: 'date_added',  label: 'Date Added' },
-  { value: 'image_count', label: 'Most Photos' },
-  { value: 'cum_count',   label: 'Most Cummed' },
-  { value: 'rating',      label: 'Highest Rated' },
-  { value: 'rarity',      label: 'Collection Size' },
-  { value: 'random',      label: 'Random' },
+  { value: 'date_added',    label: 'Date added' },
+  { value: 'date_modified', label: 'Date modified' },
+  { value: 'name',          label: 'Name' },
+  { value: 'rating',        label: 'Rating' },
+  { value: 'view_count',    label: 'Most viewed' },
+  { value: 'cum_count',     label: 'Most cummed' },
+  { value: 'edge_count',    label: 'Most edged' },
+  { value: 'last_viewed',   label: 'Recently viewed' },
+  { value: 'image_count',   label: 'Most photos' },
+  { value: 'gallery_count', label: 'Most galleries' },
+  { value: 'session_count', label: 'Most sessions' },
+  { value: 'bond_level',    label: 'Bond level' },
+  { value: 'age',           label: 'Age' },
+  { value: 'origin',        label: 'Origin' },
+  { value: 'rarity',        label: 'Collection size' },
+  { value: 'random',        label: 'Random' },
 ]
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 250]
@@ -105,7 +109,7 @@ const PER_PAGE_OPTIONS = [25, 50, 100, 250]
 // ── Creator card — vertical portrait ─────────────────────────────────────────
 // React.memo: prevents grid from re-rendering all 50 cards when parent state
 // changes (search input, sort, modal open, etc.)
-const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContextMenu, avatarBust, cardSize = 345 }) {
+const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContextMenu, avatarBust, cardSize = 345, bulkMode = false, selected = false, onSelect }) {
   const [failed, setFailed]       = useState(false)
   const [ratingOpen, setRatingOpen] = useState(false)
   const [hoverStar, setHoverStar] = useState(0)
@@ -138,10 +142,15 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
   const iso = countryIso(creator.country)
 
   return (
-    <div onClick={onClick}
+    <div onClick={(e) => (bulkMode ? onSelect(creator.id, e) : onClick())}
          onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(creator, e) }}
          className="rounded-[12px] overflow-hidden cursor-pointer group relative"
          style={{ background: tc.bg, border: `0.5px solid ${rc}44`, aspectRatio: '2/3' }}>
+
+      {selected && (
+        <div className="media-selection-overlay absolute inset-0 pointer-events-none rounded-[12px]"
+             style={{ zIndex: 5, border: '2px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)' }} />
+      )}
 
       {/* Photo — fills the entire card */}
       <div className="absolute inset-0" style={{ background: hasAvatar ? '#111' : tc.bg }}>
@@ -172,7 +181,14 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
         </div>
       )}
       {/* Rating badge — click to rate inline; fades in on card hover when unrated */}
-      <div ref={ratingRef} className="absolute top-2.5 left-2.5" style={{ zIndex: 10 }}>
+      {bulkMode && (
+        <div className="absolute top-2.5 left-2.5" style={{ zIndex: 11 }}>
+          {selected
+            ? <CheckSquare size={18} style={{ color: 'var(--c-accent)' }} />
+            : <Square size={18} style={{ color: 'rgba(255,255,255,0.6)', fill: 'rgba(0,0,0,0.4)' }} />}
+        </div>
+      )}
+      {!bulkMode && <div ref={ratingRef} className="absolute top-2.5 left-2.5" style={{ zIndex: 10 }}>
         <button
           type="button"
           onClick={e => { e.stopPropagation(); setRatingOpen(o => !o) }}
@@ -216,7 +232,7 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Info overlay — pinned to bottom, sits inside the gradient */}
       <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 flex flex-col gap-2" style={{ zIndex: 2 }}>
@@ -273,7 +289,9 @@ const CreatorCard = React.memo(function CreatorCard({ creator, onClick, onContex
 }, (prev, next) =>
   prev.creator    === next.creator    &&
   prev.avatarBust === next.avatarBust &&
-  prev.cardSize   === next.cardSize
+  prev.cardSize   === next.cardSize   &&
+  prev.bulkMode   === next.bulkMode   &&
+  prev.selected   === next.selected
 )
 // ── Unified anime + game character search ────────────────────────────────────
 function CharacterSearch({ onSelect }) {
@@ -487,7 +505,7 @@ function AddCreatorModal({ onClose, onSuccess }) {
   }
 
   return (
-    <motion.div
+    <ModalLayer><motion.div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.7)' }}
       initial={{ opacity: 0 }}
@@ -686,13 +704,233 @@ function AddCreatorModal({ onClose, onSuccess }) {
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div></ModalLayer>
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-const TYPE_FILTER_LIST = ['all', ...TYPES]
 const CL_STATE_KEY = 'vault_creator_list_state'
+
+// Same labels as the Types filter on Galleries, Photos and Videos.
+const TYPE_FILTER_OPTIONS = [
+  { value: '',          label: 'All types' },
+  { value: 'cosplayer', label: 'Cosplayer' },
+  { value: 'ethot',     label: 'E-girl' },
+  { value: 'artist',    label: 'Artist' },
+  { value: 'character', label: 'Character' },
+  { value: 'actress',   label: 'Actress' },
+  { value: 'custom',    label: 'Model / Other' },
+].map(o => ({ ...o, dot: o.value ? TYPE_COLORS[o.value]?.text : undefined }))
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '',        label: 'Status' },
+  { value: 'Active',  label: 'Active' },
+  { value: 'Hiatus',  label: 'Hiatus' },
+  { value: 'Retired', label: 'Retired' },
+]
+
+const flag = (country) => {
+  const iso = countryIso(country)
+  return iso ? <span className={`fi fi-${iso} flex-shrink-0`} style={{ width: 16, height: 12, borderRadius: 2, display: 'inline-block' }} /> : null
+}
+
+function formatListDate(value, locale) {
+  if (!value) return '—'
+  const text = typeof value === 'string' && !/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? `${value}Z` : value
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Age shown in lists: a birth date gives years, a plain number (characters)
+// is the age itself.
+function listAge(dob) {
+  if (dob && /^\d{1,3}$/.test(String(dob).trim())) return parseInt(dob, 10)
+  return calcAge(dob)
+}
+
+function CreatorAvatar({ creator, avatarBust, size, round = false }) {
+  const [failed, setFailed] = useState(false)
+  const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
+  const bust = new Date(creator.updated_at || 0).getTime()
+  const url = creator.avatar_path && !failed ? `/api/creators/${creator.id}/avatar-thumb?size=256&v=${bust}_${avatarBust}` : null
+  const initials = creator.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <div className={`${round ? 'rounded-full' : 'rounded-[6px]'} overflow-hidden flex-shrink-0 flex items-center justify-center`}
+         style={{ width: size, height: size, background: tc.bg }}>
+      {url
+        ? <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => setFailed(true)} />
+        : <span className="font-semibold select-none" style={{ fontSize: Math.round(size * 0.36), color: tc.text, opacity: 0.6 }}>{initials}</span>}
+    </div>
+  )
+}
+
+// Compact view: small round avatar, name, type and a few numbers per row.
+const CreatorCompactItem = React.memo(function CreatorCompactItem({ creator, avatarBust, bulkMode, selected, onClick, onSelect, onContextMenu }) {
+  const t = useT()
+  const tc = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
+  return (
+    <div onClick={e => (bulkMode ? onSelect(creator.id, e) : onClick(creator))}
+         onContextMenu={e => { e.preventDefault(); onContextMenu?.(creator, e) }}
+         className="vault-card relative flex items-center gap-3 p-2.5 pr-3 cursor-pointer group animate-fade-in"
+         style={selected ? { outline: '1.5px solid var(--c-accent)', background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)' } : undefined}>
+      {bulkMode && (
+        <div className="flex-shrink-0">
+          {selected ? <CheckSquare size={15} style={{ color: 'var(--c-accent)' }} /> : <Square size={15} style={{ color: 'rgba(255,255,255,0.4)' }} />}
+        </div>
+      )}
+      <CreatorAvatar creator={creator} avatarBust={avatarBust} size={48} round />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[15px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.9)' }}>{creator.title || creator.name}</span>
+          {flag(creator.country)}
+          {creator.is_favorite && <Star size={11} style={{ color: '#EF9F27', flexShrink: 0 }} fill="#EF9F27" />}
+        </div>
+        <div className="flex items-center gap-2 text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <span className="px-1.5 rounded-full" style={{ background: tc.bg, color: tc.text }}>{t(TYPE_LABELS[creator.creator_type] || creator.creator_type)}</span>
+          <span>{(creator.image_count ?? 0).toLocaleString()} {t('photos')}</span>
+          {creator.rating > 0 && <span style={{ color: '#EF9F27' }}>★ {creator.rating % 1 === 0 ? creator.rating.toFixed(0) : creator.rating.toFixed(1)}</span>}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+function ConfirmDeleteCreators({ creators, busy, onConfirm, onCancel }) {
+  const t = useT()
+  const one = creators.length === 1
+  return (
+    <ModalLayer><div className="fixed inset-0 z-[80] flex items-center justify-center animate-fade-in" style={{ background: 'rgba(0,0,0,0.7)' }}
+         onMouseDown={e => { if (e.target === e.currentTarget && !busy) onCancel() }}>
+      <div className="rounded-[14px] p-5 w-[380px] animate-modal-pop shadow-2xl" style={{ background: '#1e1e1e', border: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <div className="flex items-center gap-2 text-[16px] font-medium mb-2" style={{ color: 'rgba(255,255,255,0.9)' }}>
+          <Trash2 size={15} style={{ color: '#F09595' }} />
+          {one ? t('Delete {name}?', { name: creators[0].name }) : t('Delete {count} creators?', { count: creators.length })}
+        </div>
+        <div className="text-[13px] leading-5 mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          {t('Their galleries, files, cards, and history stay in the vault, just without this creator. This cannot be undone.')}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button type="button" disabled={busy} onMouseDown={onCancel}
+                  className="px-4 py-2 rounded-[8px] text-[13px] cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            {t('Cancel')}
+          </button>
+          <button type="button" disabled={busy} onMouseDown={onConfirm}
+                  className="px-4 py-2 rounded-[8px] text-[13px] font-medium cursor-pointer flex items-center gap-1.5"
+                  style={{ background: 'color-mix(in srgb, var(--c-red, #E24B4A) 25%, transparent)', color: '#F7C1C1', border: '0.5px solid color-mix(in srgb, var(--c-red, #E24B4A) 45%, transparent)' }}>
+            {busy ? <Loader size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            {one ? t('Delete creator') : t('Delete {count} creators', { count: creators.length })}
+          </button>
+        </div>
+      </div>
+    </div></ModalLayer>
+  )
+}
+
+// Select-mode actions for the chosen creators.
+function CreatorBulkBar({ selectedCreators, onDelete, onDone }) {
+  const t = useT()
+  const [franchise, setFranchise] = useState('')
+  const [busy, setBusy] = useState(false)
+  const n = selectedCreators.length
+
+  // One request for the whole selection, so the list refreshes once.
+  const apply = async (patch, message) => {
+    setBusy(true)
+    try {
+      await creatorsApi.bulkUpdate(selectedCreators.map(c => c.id), patch)
+      toast.success(message)
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('Update failed')))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const chip = (onPress, children, tone) => (
+    <button type="button" disabled={busy || !n} onMouseDown={onPress}
+            className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
+            style={tone === 'danger'
+              ? { background: 'color-mix(in srgb, var(--c-red, #E24B4A) 15%, transparent)', color: '#F7C1C1', border: '0.5px solid color-mix(in srgb, var(--c-red, #E24B4A) 35%, transparent)' }
+              : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.65)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+      {children}
+    </button>
+  )
+
+  return (
+    <>
+      <span className="text-[13px]" style={{ color: 'var(--c-accent-text)' }}>{t('{count} selected', { count: n })}</span>
+      {chip(() => apply({ is_favorite: true }, t('Added to favorites')), <><Star size={12} /> {t('Favorite')}</>)}
+      {chip(() => apply({ is_favorite: false }, t('Removed from favorites')), <><StarOff size={12} /> {t('Unfavorite')}</>)}
+      <ChipDropdown value="" options={[{ value: '', label: 'Set type' }, ...TYPE_FILTER_OPTIONS.slice(1)]}
+                    onChange={v => v && apply({ creator_type: v }, t('Type updated'))} />
+      <div className="vault-row-control flex items-center gap-1 pl-3 pr-1 py-0.5 rounded-full"
+           style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+        <input value={franchise} onChange={e => setFranchise(e.target.value)} placeholder={t('Franchise')}
+               onKeyDown={e => { if (e.key === 'Enter' && franchise.trim()) apply({ series: franchise.trim() }, t('Franchise updated')) }}
+               className="bg-transparent border-none outline-none text-[13px] w-28" style={{ color: 'rgba(255,255,255,0.8)' }} />
+        <button type="button" disabled={busy || !franchise.trim()}
+                onMouseDown={() => apply({ series: franchise.trim() }, t('Franchise updated'))}
+                className="text-[12px] px-2.5 py-1 rounded-full cursor-pointer"
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 18%, transparent)', color: 'var(--c-accent-text)' }}>
+          {t('Set')}
+        </button>
+      </div>
+      {chip(onDelete, <><Trash2 size={12} /> {t('Delete')}</>, 'danger')}
+      {busy && <Loader size={13} className="animate-spin" style={{ color: 'rgba(255,255,255,0.4)' }} />}
+      <button type="button" onMouseDown={onDone} className="text-[13px] cursor-pointer" style={{ color: 'rgba(255,255,255,0.4)' }}>{t('Done')}</button>
+    </>
+  )
+}
+
+function CreatorListView({ mode, creators, cardSize, avatarBust, bulkMode, selected, onSelect, onOpen, onContextMenu, sortBy, sortDir, onSort, onSortDir }) {
+  const t = useT()
+  const locale = useVaultStore(s => s.locale)
+
+  if (mode === 'details') {
+    const columns = [
+      { key: 'name', label: 'Name', sort: 'name', primary: true, render: c => <span title={c.name}>{c.title || c.name}</span> },
+      { key: 'type', label: 'Type', render: c => t(TYPE_LABELS[c.creator_type] || c.creator_type) },
+      { key: 'franchise', label: 'Franchise', render: c => <span title={c.series || ''}>{c.series || '—'}</span> },
+      { key: 'country', label: 'Country', render: c => (c.country ? <span className="inline-flex items-center gap-1.5">{flag(c.country)}{c.country}</span> : '—') },
+      { key: 'age', label: 'Age', sort: 'age', align: 'right', render: c => listAge(c.date_of_birth) ?? '—' },
+      { key: 'photos', label: 'Photos', sort: 'image_count', align: 'right', render: c => (c.image_count ?? 0).toLocaleString() },
+      { key: 'sessions', label: 'Sessions', sort: 'session_count', align: 'right', render: c => c.session_count ?? 0 },
+      { key: 'views', label: 'Views', sort: 'view_count', align: 'right', render: c => (c.total_views ?? 0).toLocaleString() },
+      { key: 'rating', label: 'Rating', sort: 'rating', align: 'right', render: c => (c.rating > 0 ? <span style={{ color: '#EF9F27' }}>★ {c.rating}</span> : '—') },
+      { key: 'bond', label: 'Bond', sort: 'bond_level', align: 'right', render: c => (c.bond_excluded ? '—' : `${c.bond_level ?? 0}/5`) },
+      { key: 'seen', label: 'Last viewed', sort: 'last_viewed', align: 'right', render: c => formatListDate(c.last_viewed_at, locale) },
+      { key: 'added', label: 'Added', sort: 'date_added', align: 'right', render: c => formatListDate(c.created_at, locale) },
+    ]
+    return (
+      <DetailsTable rows={creators} columns={columns}
+                    thumb={c => <CreatorAvatar creator={c} avatarBust={avatarBust} size={40} />}
+                    thumbWidth={40}
+                    sortBy={sortBy} sortDir={sortDir} onSort={onSort} onSortDir={onSortDir}
+                    onRowClick={c => onOpen(c)} onContextMenu={onContextMenu}
+                    bulkMode={bulkMode} selected={selected} onSelect={onSelect} />
+    )
+  }
+  if (mode === 'avatars') {
+    return (
+      <div className="grid gap-2 grid-stagger" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+        {creators.map(c => (
+          <CreatorCompactItem key={c.id} creator={c} avatarBust={avatarBust} bulkMode={bulkMode} selected={selected.has(c.id)}
+                              onClick={onOpen} onSelect={onSelect} onContextMenu={onContextMenu} />
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
+      {creators.map(c => (
+        <CreatorCard key={c.id} creator={c} avatarBust={avatarBust} cardSize={cardSize}
+                     bulkMode={bulkMode} selected={selected.has(c.id)} onSelect={onSelect}
+                     onClick={() => onOpen(c)} onContextMenu={onContextMenu} />
+      ))}
+    </div>
+  )
+}
 
 export default function CreatorList() {
   const navigate   = useNavigate()
@@ -721,19 +959,32 @@ export default function CreatorList() {
   }, [searchParams])
 
   // ── Derive all filter state from URL search params ──────────────────────────
-  const search     = searchParams.get('q') || ''
-  const typeFilter = searchParams.get('ctype') || 'all'
-  const sortBy     = searchParams.get('sort') || 'name'
-  const sortDir    = searchParams.get('dir') || (sortBy === 'name' ? 'asc' : 'desc')
-  const franchise  = searchParams.get('franchise') || ''
-  const favOnly    = searchParams.get('fav') === '1'
-  const page       = parseInt(searchParams.get('page') || '1', 10) || 1
+  const search      = searchParams.get('q') || ''
+  const typeFilter  = searchParams.get('ctype') || ''
+  const sortBy      = searchParams.get('sort') || 'name'
+  const sortDir     = searchParams.get('dir') || (['name', 'age', 'origin'].includes(sortBy) ? 'asc' : 'desc')
+  const franchise   = searchParams.get('franchise') || ''
+  const favOnly     = searchParams.get('fav') === '1'
+  const country     = searchParams.get('country') || ''
+  const status      = searchParams.get('status') || ''
+  const period      = searchParams.get('period') || ''
+  const unratedOnly = searchParams.get('unrated') === '1'
+  const incompleteOnly = searchParams.get('incomplete') === '1'
+  const page        = parseInt(searchParams.get('page') || '1', 10) || 1
 
   // Page size: localStorage (not URL) so it can't get stuck via sessionStorage restore
-  const [perPage, setPerPageState] = useState(() => parseInt(localStorage.getItem('vault_creator_page_size') || '50', 10))
+  const [perPage, setPerPageState] = useState(() => {
+    try { return parseInt(localStorage.getItem('vault_creator_page_size') || '50', 10) } catch { return 50 }
+  })
+  const [viewMode, setViewMode] = useListViewMode('vault_view_creators', CREATOR_VIEW_MODES, 'portrait')
 
   const [showModal, setShowModal] = useState(false)
-  const [creatorCtxMenu, setCreatorCtxMenu] = useState(null) // { creator, x, y }
+  const [creatorCtxMenu, setCreatorCtxMenu] = useState(null) // { creator, x, y, bulk }
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selected, setSelected] = useState(new Set())
+  const [deleting, setDeleting] = useState(null) // creators awaiting delete confirmation
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const lastSelectedIdRef = useRef(null)
 
   const qc = useQueryClient()
   const t = useT()
@@ -759,10 +1010,7 @@ export default function CreatorList() {
     }, { replace: true })
   }, [setSearchParams])
 
-  const setSearch     = useCallback(v => setParams({ q: v || null, page: null }), [setParams])
-  const setTypeFilter = useCallback(v => setParams({ ctype: v !== 'all' ? v : null, page: null }), [setParams])
-  const setFranchise  = useCallback(v => setParams({ franchise: v || null, page: null }), [setParams])
-  const setFavOnly    = useCallback(v => setParams({ fav: v ? '1' : null, page: null }), [setParams])
+  const setFilter = useCallback((key, v) => setParams({ [key]: v || null, page: null }), [setParams])
   const setSortDir    = useCallback(v => setParam('dir', v), [setParam])
   const setPage = useCallback((v) => {
     const p = typeof v === 'function' ? v(page) : v
@@ -773,15 +1021,17 @@ export default function CreatorList() {
     try { localStorage.setItem('vault_creator_page_size', String(v)) } catch {}
     setParam('page', null)
   }, [setParam])
+  // Name, Age and Origin start ascending (A–Z, youngest first); everything else highest first.
   const handleSortChange = useCallback((val) => {
-    setParams({ sort: val !== 'name' ? val : null, dir: val === 'name' ? null : 'desc', page: null })
+    setParams({ sort: val !== 'name' ? val : null, dir: val === 'name' ? null : (val === 'age' || val === 'origin') ? 'asc' : 'desc', page: null })
   }, [setParams])
 
-  const hasActiveFilters = search || typeFilter !== 'all' || sortBy !== 'name' || franchise || favOnly
+  const filtersOn = search || typeFilter || franchise || favOnly || country || status || period || unratedOnly || incompleteOnly
+  const hasActiveFilters = filtersOn || sortBy !== 'name'
   const resetFilters = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams])
 
   const skip = (page - 1) * perPage
-  const filterKey = `${search}|${typeFilter}|${sortBy}|${sortDir}|${franchise}|${favOnly}`
+  const filterKey = `${search}|${typeFilter}|${sortBy}|${sortDir}|${franchise}|${favOnly}|${country}|${status}|${period}|${unratedOnly}|${incompleteOnly}`
 
   const { data: creatorPage, isLoading } = useQuery({
     queryKey: ['creators', filterKey, page, perPage],
@@ -790,9 +1040,14 @@ export default function CreatorList() {
     // creators list to re-fetch from the server whenever any avatar changed.
     queryFn: () => creatorsApi.list({
       search: search || undefined,
-      creator_type: typeFilter !== 'all' ? typeFilter : undefined,
+      creator_type: typeFilter || undefined,
       series: franchise || undefined,
       favorite: favOnly || undefined,
+      country: country || undefined,
+      status: status || undefined,
+      period: period || undefined,
+      unrated: unratedOnly || undefined,
+      incomplete: incompleteOnly || undefined,
       sort_by: sortBy,
       sort_dir: sortBy !== 'random' ? sortDir : undefined,
       skip,
@@ -801,144 +1056,216 @@ export default function CreatorList() {
       items: r.data,
       total: parseInt(r.headers['x-total-count'] ?? '0', 10),
     })),
+    placeholderData: keepPreviousData,
+  })
+  const { data: countries = [] } = useQuery({
+    queryKey: ['creator-countries'],
+    queryFn: () => creatorsApi.countries().then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: periods = [] } = useQuery({
+    queryKey: ['gallery-periods', 'creators'],
+    queryFn: () => galleriesApi.periods({}).then(r => r.data),
+    staleTime: 5 * 60 * 1000,
   })
 
   const creators   = creatorPage?.items ?? []
-  const totalPages = Math.max(1, Math.ceil((creatorPage?.total ?? 0) / perPage))
+  const totalCount = creatorPage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / perPage))
+  const selectedCreators = creators.filter(c => selected.has(c.id))
+
+  // If a filter shrank the list below the current page, go to the real last page.
+  useEffect(() => {
+    if (!isLoading && totalCount > 0 && page > totalPages) setPage(totalPages)
+  }, [isLoading, totalCount, totalPages, page, setPage])
+
+  const countryOptions = [
+    { value: '', label: 'Country' },
+    ...countries.map(c => ({ value: c.country, label: c.country, raw: true, count: c.count, icon: flag(c.country) })),
+  ]
+
+  // Shift-click selects the range from the last clicked creator. The anchor
+  // is read before the state update (see GalleryList's toggleSelect).
+  const creatorsRef = useRef(creators)
+  creatorsRef.current = creators
+  const toggleSelect = useCallback((id, event) => {
+    const anchor = lastSelectedIdRef.current
+    const shift = !!event?.shiftKey
+    setSelected(prev => {
+      const next = new Set(prev)
+      const ids = creatorsRef.current.map(c => c.id)
+      const a = ids.indexOf(anchor), b = ids.indexOf(id)
+      if (shift && anchor !== null && a !== -1 && b !== -1) {
+        const add = !prev.has(id)
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) add ? next.add(ids[i]) : next.delete(ids[i])
+      } else if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    lastSelectedIdRef.current = id
+  }, [])
+  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); lastSelectedIdRef.current = null }
+  // Actions apply to creators on screen, so a new filter or page starts a
+  // fresh selection instead of keeping hidden ones.
+  useEffect(() => { setSelected(new Set()); lastSelectedIdRef.current = null }, [filterKey, page, perPage])
+  const selectAll = () => {
+    setSelected(prev => {
+      const all = creators.every(c => prev.has(c.id))
+      const next = new Set(prev)
+      for (const c of creators) all ? next.delete(c.id) : next.add(c.id)
+      return next
+    })
+  }
+  const openCreator = useCallback(c => navigate(`/creators/${c.id}`), [navigate])
+  const openMenu = useCallback((creator, e) => setCreatorCtxMenu({ creator, x: e.clientX, y: e.clientY }), [])
+
+  const confirmDelete = async () => {
+    setDeleteBusy(true)
+    try {
+      if (deleting.length === 1) {
+        await creatorsApi.delete(deleting[0].id)
+        toast.success(t('{name} deleted', { name: deleting[0].name }))
+      } else {
+        const { data } = await creatorsApi.bulkDelete(deleting.map(c => c.id))
+        toast.success(t('{count} creators deleted', { count: data.deleted }))
+      }
+      setSelected(prev => { const next = new Set(prev); deleting.forEach(c => next.delete(c.id)); return next })
+      setDeleting(null)
+      qc.invalidateQueries({ queryKey: ['creator-countries'] })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('Delete failed')))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  const toggleChip = (active, onPress, children, tone = 'accent') => (
+    <button type="button" onMouseDown={onPress}
+            className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
+            style={{
+              background: active ? `color-mix(in srgb, var(--c-${tone}) 20%, transparent)` : 'rgba(255,255,255,0.05)',
+              color: active ? `var(--c-${tone}-text)` : 'rgba(255,255,255,0.45)',
+              border: `0.5px solid ${active ? `color-mix(in srgb, var(--c-${tone}) 40%, transparent)` : 'rgba(255,255,255,0.08)'}`,
+            }}>
+      {children}
+    </button>
+  )
 
   return (
-    <div className="vault-theme-creators-page p-5 pb-16">
-      {/* Header */}
-      <div className="vault-control-row vault-filter-toolbar flex items-center gap-3 mb-4 flex-wrap">
-        <div className="text-[16px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
+    <div className="vault-theme-creators-page p-5 pb-16 flex flex-col gap-4">
+      {/* Header + controls — same order as the Galleries, Photos and Videos toolbars */}
+      <div className="vault-control-row vault-filter-toolbar flex items-center gap-2 flex-wrap">
+        <div className="text-[19px] font-medium text-[rgba(255,255,255,0.9)] mr-1">{t('Creators')}</div>
 
-        {/* Search */}
-        <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full"
-             style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+        {/* Search takes what's left instead of a fixed share, so the whole
+            toolbar fits on one line at 1920px. */}
+        <div className="vault-row-control flex items-center gap-2 px-3 py-1.5 rounded-full min-w-[120px] max-w-[300px]"
+             style={{ flex: '1 1 130px', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
           <Search size={13} className="text-[rgba(255,255,255,0.3)] flex-shrink-0" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder={t('Search...')}
-                 className="bg-transparent border-none outline-none text-[12px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-32" />
-          {search && <button onClick={() => setSearch('')} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white"><X size={11} /></button>}
+          <input value={search} onChange={e => setFilter('q', e.target.value)}
+                 placeholder={t('Search names, titles, aliases…')}
+                 className="bg-transparent border-none outline-none text-[14px] text-[rgba(255,255,255,0.8)] placeholder-[rgba(255,255,255,0.25)] w-full" />
+          {search && (
+            <button type="button" onMouseDown={() => setFilter('q', '')} className="cursor-pointer text-[rgba(255,255,255,0.3)] hover:text-white">
+              <X size={12} />
+            </button>
+          )}
         </div>
 
-        {/* Sort */}
-        <SortDropdown
-          value={sortBy}
-          onChange={handleSortChange}
-          options={SORTS}
-          sortDir={sortDir}
-          onSortDirChange={setSortDir}
-        />
+        <SortDropdown value={sortBy} onChange={handleSortChange} options={SORTS} sortDir={sortDir} onSortDirChange={setSortDir} />
 
-        <FranchiseFilter value={franchise} onChange={v => setFranchise(v || '')} />
+        <ViewModeDropdown value={viewMode} onChange={setViewMode} modes={CREATOR_VIEW_MODES} />
 
-        {/* Favorites toggle */}
-        <button onClick={() => setFavOnly(!favOnly)}
-                className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full cursor-pointer"
-                style={{
-                  background: favOnly ? 'color-mix(in srgb, var(--c-amber) 20%, transparent)' : 'rgba(255,255,255,0.05)',
-                  color: favOnly ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.45)',
-                  border: `0.5px solid ${favOnly ? 'color-mix(in srgb, var(--c-amber) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
-                }}>
-          <Star size={12} fill={favOnly ? 'var(--c-amber-text)' : 'none'} /> {t('Favorites')}
-        </button>
+        <ChipDropdown value={typeFilter} onChange={v => setFilter('ctype', v)} options={TYPE_FILTER_OPTIONS} />
+
+        <FranchiseFilter value={franchise} onChange={v => setFilter('franchise', v)} />
+
+        <PeriodFilter value={period} periods={periods} onChange={v => setFilter('period', v)} />
+
+        <ChipDropdown value={country} onChange={v => setFilter('country', v)} options={countryOptions} searchable />
+
+        <ChipDropdown value={status} onChange={v => setFilter('status', v)} options={STATUS_FILTER_OPTIONS} />
+
+        {toggleChip(favOnly, () => setFilter('fav', favOnly ? null : '1'), <><Star size={11} /> {t('Favorites')}</>, 'amber')}
+        {toggleChip(unratedOnly, () => setFilter('unrated', unratedOnly ? null : '1'), <><StarOff size={11} /> {t('Unrated')}</>, 'amber')}
+        <span title={t('No avatar, a character without a franchise, or a person without a country')}>
+          {toggleChip(incompleteOnly, () => setFilter('incomplete', incompleteOnly ? null : '1'), <><AlertCircle size={11} /> {t('Incomplete')}</>, 'amber')}
+        </span>
 
         {hasActiveFilters && (
-          <button onClick={resetFilters}
-                  className="text-[12px] px-3 py-1.5 rounded-full cursor-pointer"
-                  style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-            {t('Reset')}
+          <button type="button" onMouseDown={resetFilters} title={t('Reset')} aria-label={t('Reset')}
+                  className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer transition-colors"
+                  style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
+            <RotateCcw size={13} /> <span className="hidden min-[2000px]:inline">{t('Reset')}</span>
           </button>
         )}
 
-        <button onClick={() => setShowModal(true)}
-                className="flex items-center gap-1.5 text-[12px] font-medium px-4 py-2 rounded-full ml-auto cursor-pointer"
-                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
-          <Plus size={13} /> {t('Add creator')}
+        <button type="button" onMouseDown={() => (bulkMode ? exitBulk() : setBulkMode(true))}
+                title={t('Select')} aria-label={t('Select')}
+                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer ml-auto"
+                style={{
+                  background: bulkMode ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.05)',
+                  color: bulkMode ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
+                  border: `0.5px solid ${bulkMode ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.08)'}`,
+                }}>
+          <CheckSquare size={13} /> <span className="hidden min-[2000px]:inline">{t('Select')}</span>
+        </button>
+        <button type="button" onMouseDown={() => setShowModal(true)} title={t('Add creator')} aria-label={t('Add creator')}
+                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
+                style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+          <Plus size={13} /> <span className="hidden min-[2000px]:inline">{t('New')}</span>
         </button>
       </div>
 
-      {/* Active filters summary */}
-      {(search || typeFilter !== 'all' || franchise || favOnly) && (
-        <div className="flex items-center gap-2 flex-wrap text-[12px] mb-3">
-          <Filter size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
-          {search && (
-            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)' }}>
-              "{search}" <button type="button" onClick={() => setSearch('')} className="cursor-pointer ml-0.5"><X size={10} /></button>
-            </span>
-          )}
-          {typeFilter !== 'all' && (
-            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
-              {t(TYPE_LABELS[typeFilter] || typeFilter)} <button type="button" onClick={() => setTypeFilter('all')} className="cursor-pointer ml-0.5"><X size={10} /></button>
-            </span>
-          )}
-          {franchise && (
-            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)' }}>
-              {franchise} <button type="button" onClick={() => setFranchise('')} className="cursor-pointer ml-0.5"><X size={10} /></button>
-            </span>
-          )}
-          {favOnly && (
-            <span className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                  style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)' }}>
-              {t('Favorites only')} <button type="button" onClick={() => setFavOnly(false)} className="cursor-pointer ml-0.5"><X size={10} /></button>
-            </span>
+      {/* Size controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {viewMode === 'portrait' && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-[rgba(255,255,255,0.3)]">{t('Size')}</span>
+            <input type="range" min={160} max={345} step={5} value={cardSize}
+                   onChange={e => setCardSize(Number(e.target.value))}
+                   className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]" />
+            <span className="text-[12px] text-[rgba(255,255,255,0.3)] w-8">{cardSize}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+          <span className="text-[12px] text-[rgba(255,255,255,0.3)] mr-1">{t('Per page')}</span>
+          {PER_PAGE_OPTIONS.map(n => (
+            <button key={n} type="button" onMouseDown={() => setPerPage(n)}
+                    className="text-[12px] px-2 py-0.5 rounded-full cursor-pointer"
+                    style={{
+                      background: perPage === n ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
+                      color: perPage === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
+                      border: `0.5px solid ${perPage === n ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.07)'}`,
+                    }}>
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bulk action bar */}
+      {bulkMode && (
+        <div className="flex items-center gap-2 flex-wrap relative" style={{ zIndex: 40 }}>
+          <button type="button" onMouseDown={selectAll}
+                  className="text-[13px] px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+            {(creators.length > 0 && creators.every(c => selected.has(c.id))) ? t('Deselect all') : t('Select all')}
+          </button>
+          {selected.size > 0 && (
+            <CreatorBulkBar selectedCreators={selectedCreators}
+                            onDelete={() => setDeleting(selectedCreators)} onDone={exitBulk} />
           )}
         </div>
       )}
 
-      {/* Controls row: type filter + per-page */}
-      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-        {TYPE_FILTER_LIST.map(ct => (
-          <button key={ct} onClick={() => setTypeFilter(ct)}
-                  className="text-[11px] px-3 py-1 rounded-full cursor-pointer capitalize"
-                  style={{
-                    background: typeFilter === ct ? 'color-mix(in srgb, var(--c-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)',
-                    color: typeFilter === ct ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.4)',
-                    border: `0.5px solid ${typeFilter === ct ? 'color-mix(in srgb, var(--c-accent) 35%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-                  }}>
-            {ct === 'all' ? t('All') : t(TYPE_LABELS[ct] || ct)}
-          </button>
-        ))}
-
-        <div className="ml-auto flex items-center gap-3">
-          {/* Card size slider */}
-          <div className="flex items-center gap-2">
-            <LayoutGrid size={12} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
-            <input
-              type="range" min={160} max={345} step={5} value={cardSize}
-              onChange={e => setCardSize(Number(e.target.value))}
-              className="w-24 h-1 cursor-pointer accent-[var(--c-accent)]"
-              title={t('Card size: {size}px', { size: cardSize })}
-            />
-          </div>
-
-          <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-[rgba(255,255,255,0.3)]">{t('Per page')}</span>
-            {PER_PAGE_OPTIONS.map(n => (
-              <button key={n} onClick={() => setPerPage(n)}
-                      className="text-[11px] px-2.5 py-1 rounded-[6px] cursor-pointer"
-                      style={{
-                        background: perPage === n ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.04)',
-                        color: perPage === n ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
-                        border: `0.5px solid ${perPage === n ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}`,
-                      }}>
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Pagination (top) */}
       {!isLoading && creators.length > 0 && totalPages > 1 && (
-        <div className="mb-5">
-          <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="creators-top" />
+        <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="creators-top" />
+      )}
+
+      {!isLoading && creators.length > 0 && (
+        <div className="text-[13px] text-[rgba(255,255,255,0.3)] -mb-2">
+          {t('{start}–{end} shown of {total} · page {page} of {pages}', { start: skip + 1, end: skip + creators.length, total: totalCount, page, pages: totalPages })}
         </div>
       )}
 
@@ -959,34 +1286,33 @@ export default function CreatorList() {
           ? <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div style={{ fontSize: 52, opacity: 0.12 }}>👤</div>
               <div className="text-[18px] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                {hasActiveFilters ? t('No creators match these filters') : t('No creators yet')}
+                {filtersOn ? t('No creators match these filters') : t('No creators yet')}
               </div>
-              {hasActiveFilters ? (
-                <button onClick={resetFilters}
+              {filtersOn ? (
+                <button type="button" onMouseDown={resetFilters}
                         className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
                         style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
                   {t('Reset filters')}
                 </button>
               ) : (
-                <button onClick={() => setShowModal(true)}
+                <button type="button" onMouseDown={() => setShowModal(true)}
                         className="flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-full cursor-pointer mt-1"
                         style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 35%, transparent)' }}>
                   <Plus size={15} /> {t('Add your first creator')}
                 </button>
               )}
             </div>
-          : <div className="grid gap-4 grid-stagger" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}>
-              {creators.map(c => (
-                <CreatorCard key={c.id} creator={c} avatarBust={avatarBust} cardSize={cardSize}
-                             onClick={() => navigate(`/creators/${c.id}`)}
-                             onContextMenu={(cr, e) => setCreatorCtxMenu({ creator: cr, x: e.clientX, y: e.clientY })} />
-              ))}
-            </div>
+          : <CreatorListView
+              mode={viewMode} creators={creators} cardSize={cardSize} avatarBust={avatarBust}
+              bulkMode={bulkMode} selected={selected} onSelect={toggleSelect}
+              onOpen={openCreator} onContextMenu={openMenu}
+              sortBy={sortBy} sortDir={sortDir} onSort={handleSortChange} onSortDir={setSortDir}
+            />
       }
 
       {/* Pagination (bottom) */}
       {!isLoading && creators.length > 0 && totalPages > 1 && (
-        <div className="mt-8">
+        <div className="mt-4">
           <GalleryPagination page={page} totalPages={totalPages} onChange={setPage} t={t} id="creators-bottom" />
         </div>
       )}
@@ -1000,26 +1326,27 @@ export default function CreatorList() {
         )}
       </AnimatePresence>
 
-      {/* Creator right-click context menu */}
+      {deleting && (
+        <ConfirmDeleteCreators creators={deleting} busy={deleteBusy}
+                               onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />
+      )}
+
+      {/* Creator right-click context menu. In Select mode, right-clicking a
+          selected creator acts on the whole selection for Delete. */}
       {creatorCtxMenu && (
         <CreatorContextMenu
           creator={creatorCtxMenu.creator}
           position={{ x: creatorCtxMenu.x, y: creatorCtxMenu.y }}
           onClose={() => setCreatorCtxMenu(null)}
-          onOpen={() => navigate(`/creators/${creatorCtxMenu.creator.id}`)}
+          onOpen={() => openCreator(creatorCtxMenu.creator)}
           onToggleFav={async () => {
             try {
               await creatorsApi.update(creatorCtxMenu.creator.id, { is_favorite: !creatorCtxMenu.creator.is_favorite })
               qc.invalidateQueries({ queryKey: ['creators'] })
             } catch { toast.error(t('Could not update favourite')) }
           }}
-          onDelete={async () => {
-            try {
-              await creatorsApi.delete(creatorCtxMenu.creator.id)
-              toast.success(t('{name} deleted', { name: creatorCtxMenu.creator.name }))
-              qc.invalidateQueries({ queryKey: ['creators'] })
-            } catch { toast.error(t('Delete failed')) }
-          }}
+          onDelete={() => setDeleting(
+            bulkMode && selected.has(creatorCtxMenu.creator.id) ? selectedCreators : [creatorCtxMenu.creator])}
         />
       )}
     </div>

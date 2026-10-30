@@ -6,6 +6,7 @@ import { X, Volume2, VolumeX } from 'lucide-react'
 import { feedApi } from '../../lib/api'
 import { restoreVideoVolume } from '../../lib/videoVolume'
 
+import ModalLayer from '../ModalLayer'
 const IMAGE_SECONDS = 6
 const VIDEO_MAX_SECONDS = 15
 
@@ -73,7 +74,7 @@ export default function StoryViewer({ groups, startGroup = 0, onClose, onSeen, o
   if (!group || !story) return null
 
   return createPortal(
-    <motion.div
+    <ModalLayer><motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[90] flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.94)', backdropFilter: 'blur(10px)' }}
@@ -171,7 +172,7 @@ export default function StoryViewer({ groups, startGroup = 0, onClose, onSeen, o
         <div className="absolute inset-y-0 left-0 cursor-pointer" style={{ width: '33%', zIndex: 10 }} onClick={prev} />
         <div className="absolute inset-y-0 right-0 cursor-pointer" style={{ width: '67%', zIndex: 10 }} onClick={next} />
       </motion.div>
-    </motion.div>,
+    </motion.div></ModalLayer>,
     document.body
   )
 }

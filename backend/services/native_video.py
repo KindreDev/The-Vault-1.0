@@ -129,14 +129,14 @@ class NativeVideoBridge:
         if self._host:
             return self._host.layout(session_id, layout)
 
-    def prepare(self, owner, src):
+    def prepare(self, owner, src, loop=False):
         if not isinstance(owner, str) or not owner or len(owner) > 128:
             raise ValueError('Invalid preparation owner')
         path = resolve_video_source(src)
         available = self.capabilities()
         if not available['available']:
             raise RuntimeError(available.get('reason', 'Native playback unavailable'))
-        return self._host.prepare(owner, path)
+        return self._host.prepare(owner, path, bool(loop))
 
     def clear_prepared(self, owner):
         if self._host:

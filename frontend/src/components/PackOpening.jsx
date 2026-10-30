@@ -26,6 +26,49 @@ function printedRarity(card) {
   return LEGACY_RARITY[String(raw || '').trim().toLowerCase()] || 'C'
 }
 
+// Rare pulls get their own moment: a short hold before the card can be
+// thrown, a glow and burst in the rarity's colour, and (UR/SPR) a chime.
+const RARE_MOMENTS = Object.freeze({
+  SR: { label: 'Super Rare!', hold: 650, chime: false },
+  UR: { label: 'Ultra Rare!', hold: 1300, chime: true },
+  SPR: { label: 'Signature Rare!', hold: 1600, chime: true },
+})
+const RARITY_NAMES = Object.freeze({ C: 'Common', R: 'Rare', SR: 'Super Rare', UR: 'Ultra Rare', SPR: 'Signature Rare' })
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+function isNewCard(card) {
+  return card?.was_owned === false
+}
+
+function playChime(rarity) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext
+    if (!AudioContext) return
+    const audio = new AudioContext()
+    const notes = rarity === 'SPR' ? [659.25, 830.61, 987.77, 1318.51] : [523.25, 659.25, 783.99]
+    notes.forEach((frequency, index) => {
+      const start = audio.currentTime + index * 0.11
+      const tone = audio.createOscillator()
+      const gain = audio.createGain()
+      tone.type = 'triangle'
+      tone.frequency.value = frequency
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(0.07, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55)
+      tone.connect(gain); gain.connect(audio.destination)
+      tone.start(start); tone.stop(start + 0.6)
+    })
+    window.setTimeout(() => audio.close?.(), 1400)
+  } catch { /* Audio can be blocked until the user interacts; the moment still shows. */ }
+}
+
+function NewBadge() {
+  return <span className="pack-opening__new-badge"><LocalizedText text={"NEW"} /></span>
+}
+
 function orderPack(pack) {
   return (Array.isArray(pack) ? pack : [])
     .map((card, index) => ({ card, index }))
@@ -176,7 +219,7 @@ function PackPile({ count, phase, firstCard, onTurn }) {
   </button>
 }
 
-function RevealStack({ cards, currentIndex, onAdvance }) {
+function RevealStack({ cards, currentIndex, onAdvance, holding }) {
   const t = useT()
   const gestureRef = useRef(null)
   const [dragX, setDragX] = useState(0)
@@ -235,7 +278,7 @@ function RevealStack({ cards, currentIndex, onAdvance }) {
         const className = `pack-opening__stack-card${isTop ? ' is-top' : ''}`
         if (!isTop) return <div className={className} key={`under-${currentIndex + offset}`} style={{ '--stack-offset': Math.min(offset, 4), '--stack-y': `${Math.min(offset, 4) * 8}px`, '--stack-scale': 1 - Math.min(offset, 4) * .018, zIndex: 100 - offset }}>{cardFace(card)}</div>
         return <div
-          className={className}
+          className={`${className}${holding ? ' is-holding' : ''}`}
           key={`top-${currentIndex}`}
           role="button"
           tabIndex={0}
@@ -251,14 +294,28 @@ function RevealStack({ cards, currentIndex, onAdvance }) {
             transform: `translate3d(${dragX}px, 0, 0) rotate(${dragX * 0.035}deg) scale(${isDragging ? 1.015 : 1})`,
             transition: isDragging ? 'none' : 'transform 160ms ease-out',
           }}
-        >{cardFace(card)}</div>
+        >{cardFace(card)}{isNewCard(card) && <NewBadge />}</div>
       })}
     </div>
   )
 }
 
-function GridCard({ card }) {
-  return <div className="pack-opening__grid-card">{cardFace(card)}</div>
+function GridCard({ card, best }) {
+  return <div className={`pack-opening__grid-card${best ? ' is-best' : ''}`} data-rarity={printedRarity(card)}>
+    {cardFace(card)}{isNewCard(card) && <NewBadge />}
+  </div>
+}
+
+function PackSummary({ cards }) {
+  const t = useT()
+  const newCount = cards.filter(isNewCard).length
+  const knowsOwnership = cards.some(card => typeof card?.was_owned === 'boolean')
+  const best = cards.reduce((top, card) => (!top || RARITY_ORDER[printedRarity(card)] > RARITY_ORDER[printedRarity(top)] ? card : top), null)
+  const bestRarity = best ? printedRarity(best) : null
+  return <div className="pack-opening__summary">
+    {knowsOwnership && <span className={newCount ? 'has-new' : ''}><strong>{newCount}</strong> {t(newCount === 1 ? 'new card' : 'new cards')}</span>}
+    {best && <span data-rarity={bestRarity}>{t('Best pull')}: <strong>{t(RARITY_NAMES[bestRarity] || bestRarity)}</strong>{best.card_code ? ` · ${best.card_code}` : ''}</span>}
+  </div>
 }
 
 export default function PackOpening({ packs, onCollect, onSkip }) {
@@ -315,6 +372,7 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
   // Keep the collection page fixed while the portaled opening is active.
   useScrollLock()
 
+  const holdingRef = useRef(false)
   const completeTear = useCallback(() => {
     if (phase !== 'entry') return
     setTearProgress(1)
@@ -323,13 +381,29 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
   const skipAnimation = useCallback(() => { setPhase('grid'); setCurrentIndex(currentPack.length ? currentPack.length - 1 : 0) }, [currentPack.length])
   const turnPile = useCallback(() => { if (phase === 'pile') setPhase('flip') }, [phase])
   const advanceReveal = useCallback(() => {
-    if (phase !== 'reveal') return
+    if (phase !== 'reveal' || holdingRef.current) return
     if (currentIndex >= currentPack.length - 1) setPhase('grid')
     else setCurrentIndex(index => index + 1)
   }, [currentIndex, currentPack.length, phase])
   const advanceToNext = () => { if (packsLeft) setPackIdx(index => index + 1) }
   const packComplete = phase === 'grid'
   const currentCard = currentPack[currentIndex]
+  const currentRarity = currentCard ? printedRarity(currentCard) : 'C'
+  const rareMoment = phase === 'reveal' ? RARE_MOMENTS[currentRarity] : null
+  const [holding, setHolding] = useState(false)
+  holdingRef.current = holding
+  // Give a rare card a beat before it can be thrown, and play its chime once.
+  useEffect(() => {
+    if (!rareMoment) { setHolding(false); return undefined }
+    if (rareMoment.chime) playChime(currentRarity)
+    if (prefersReducedMotion()) { setHolding(false); return undefined }
+    setHolding(true)
+    const timer = window.setTimeout(() => setHolding(false), rareMoment.hold)
+    return () => window.clearTimeout(timer)
+  }, [phase, currentIndex, packIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+  const bestIndex = useMemo(() => currentPack.reduce((top, card, index) => (
+    top < 0 || RARITY_ORDER[printedRarity(card)] > RARITY_ORDER[printedRarity(currentPack[top])] ? index : top
+  ), -1), [currentPack])
   const sceneClass = `pack-opening__pack-scene pack-opening__pack-scene--${phase}`
 
   return createPortal(<div className="pack-opening" role="dialog" aria-modal="true" aria-label={t("Booster pack opening")}>
@@ -345,8 +419,16 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
       </div>}
       {phase === 'pile' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={turnPile} />}
       {phase === 'flip' && <PackPile count={currentPack.length} firstCard={currentPack[0]} phase={phase} onTurn={() => {}} />}
-      {phase === 'reveal' && currentCard && <section className="pack-opening__reveal-stage" aria-label={t('Card {current} of {total}', { current: currentIndex + 1, total: currentPack.length })}><div className="pack-opening__reveal-hint"><LocalizedText text={"Throw the top card left or right to reveal what is underneath"} /></div><div className="pack-opening__reveal-frame"><RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} /></div></section>}
-      {packComplete && <section className="pack-opening__complete" aria-label={t("Pack cards")}><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></span><h1><LocalizedText text={"Cards from this pack"} /></h1></div><span>{currentPack.length}<LocalizedText text={"cards"} before={" "} /></span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} />)}</div></section>}
+      {phase === 'reveal' && currentCard && <section className={`pack-opening__reveal-stage${rareMoment ? ` is-rare-moment is-rare-${currentRarity.toLowerCase()}` : ''}`} data-rarity={currentRarity} aria-label={t('Card {current} of {total}', { current: currentIndex + 1, total: currentPack.length })}>
+        {rareMoment
+          ? <div className="pack-opening__rare-label" role="status" key={`rare-${packIdx}-${currentIndex}`}>{t(rareMoment.label)}</div>
+          : <div className="pack-opening__reveal-hint"><LocalizedText text={"Throw the top card left or right to reveal what is underneath"} /></div>}
+        <div className="pack-opening__reveal-frame">
+          {rareMoment && <div className="pack-opening__rare-burst" aria-hidden="true" key={`burst-${packIdx}-${currentIndex}`}><i /><i /><i /></div>}
+          <RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} holding={holding} />
+        </div>
+      </section>}
+      {packComplete && <section className="pack-opening__complete" aria-label={t("Pack cards")}><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></span><h1><LocalizedText text={"Cards from this pack"} /></h1><PackSummary cards={currentPack} /></div><span>{currentPack.length}<LocalizedText text={"cards"} before={" "} /></span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} best={index === bestIndex && RARITY_ORDER[printedRarity(card)] >= RARITY_ORDER.SR} />)}</div></section>}
     </main>
     <footer className="pack-opening__footer">
       {packComplete && packsLeft > 0 && <button type="button" className="pack-opening__primary" onClick={advanceToNext}><PackageOpen size={19} /><LocalizedText text={"Open next pack"} before={" "} after={" "} /><span>{t('({count} remaining)', { count: packsLeft })}</span></button>}

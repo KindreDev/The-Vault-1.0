@@ -50,10 +50,30 @@ class Vector3(BaseModel):
     z: float
 
 
+class MediaSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["search", "gallery", "creator", "playlist"]
+    id: int | None = Field(default=None, ge=1)
+    query: str | None = Field(default=None, max_length=120)
+    name: str | None = Field(default=None, max_length=80)
+
+
 class FurnitureContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     image_id: int | None = None
     landscape: bool | None = None
+    led_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    fit: Literal["cover", "contain"] | None = None
+    binder_id: int | None = Field(default=None, ge=0)
+    spread: int | None = Field(default=None, ge=0)
+    screen_mode: Literal["slideshow", "video"] | None = None
+    query: str | None = Field(default=None, max_length=120)
+    interval: int | None = Field(default=None, ge=3, le=600)
+    video_id: int | None = Field(default=None, ge=0)
+    image_ids: list[int] | None = Field(default=None, max_length=24)
+    front: int | None = Field(default=None, ge=0)
+    source: MediaSource | None = None
+    use_source: bool | None = None
 
 
 class FurnitureTransform(BaseModel):
@@ -252,6 +272,7 @@ def _copy(row: TCGPhysicalCardCopy) -> dict:
         "acquisition_id": row.acquisition_id, "acquired_at": row.acquired_at,
         "location_kind": row.location_kind, "location_ref": row.location_ref,
         "location_slot": row.location_slot, "trade_locked": row.trade_locked,
+        "grade": row.grade,
     }
 
 

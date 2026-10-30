@@ -49,6 +49,8 @@
   transition: opacity 180ms ease;
 }
 .hall-of-fame-card-v2__video.is-ready { opacity: 1; }
+/* Desktop: the video plays natively behind the page, so its own box must stay see-through. */
+.hall-of-fame-card-v2__video[data-vault-video="native-window"] { background: transparent; }
 .hall-of-fame-card-v2__video-status {
   z-index: 2;
   inset: auto 10% 9%;

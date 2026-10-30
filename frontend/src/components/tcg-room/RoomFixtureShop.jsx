@@ -13,7 +13,22 @@ export const ASSET_PRESENTATION = {
   glass_display_case: 'Cabinets',
   glass_display_cabinet: 'Cabinets',
   floating_glass_cabinet: 'Cabinets',
+  binder_lectern: 'Stands',
+  wall_tv: 'Wall decor',
+  digital_photo_frame: 'Wall decor',
+  poster_flip_bin: 'Cabinets',
+  shop_counter: 'Cabinets',
+  rotating_pedestal: 'Stands',
+  pack_shelf: 'Cabinets',
+  card_wall_frame: 'Wall displays',
+  trophy_shadow_box: 'Wall displays',
+  graded_slab_rack: 'Wall displays',
   poster_frame: 'Wall decor',
+  poster_banner: 'Wall decor',
+  poster_landscape: 'Wall decor',
+  poster_gallery: 'Wall decor',
+  poster_lightbox: 'Wall decor',
+  wall_scroll: 'Wall decor',
 }
 
 export function getFurnitureDefinitions(catalog = []) {
@@ -32,6 +47,21 @@ function furnitureDescription(definition) {
   if (assetId?.includes('card_display_stand')) return 'Holds 1 card. Sits on a table or shelf.'
   if (assetId === 'glass_display_case' || assetId === 'glass_display_cabinet') return 'Free-standing shelf. Card stands can sit inside its shelf levels.'
   if (assetId === 'floating_glass_cabinet') return 'Wall-mounted shelf. Card stands can sit inside its shelf levels.'
+  if (assetId === 'poster_banner') return 'Tall, narrow frame for full-length photos.'
+  if (assetId === 'poster_landscape') return 'Wide frame for landscape photos.'
+  if (assetId === 'poster_gallery') return 'Large walnut frame with a gold edge and cream mat, for a centrepiece photo.'
+  if (assetId === 'poster_lightbox') return 'Backlit frame with an LED edge that lights the wall around it. The light color can be changed.'
+  if (assetId === 'wall_scroll') return 'Hanging fabric scroll with lacquered rods and a silk cord.'
+  if (assetId === 'shop_counter') return 'Card shop counter with cards laid face up under glass, 12 in two rows. Stands can sit on its glass top.'
+  if (assetId === 'rotating_pedestal') return 'Black column that slowly turns one showpiece card above a light ring. The light color can be changed.'
+  if (assetId === 'pack_shelf') return 'Wall shelf that shows your unopened booster packs, 12 per shelf.'
+  if (assetId === 'binder_lectern') return 'Walnut lectern with an open binder showing your cards. It stays open at the page you leave it on.'
+  if (assetId === 'wall_tv') return 'Wall TV that plays a slideshow or a looping video from your Vault.'
+  if (assetId === 'digital_photo_frame') return 'Wooden digital frame that cycles photos or loops a video from your Vault.'
+  if (assetId === 'poster_flip_bin') return 'Crate of posters you flip through, record-store style. Choose up to 24 photos.'
+  if (assetId === 'card_wall_frame') return 'Wall frame for 9 cards in three rows, behind glass.'
+  if (assetId === 'trophy_shadow_box') return 'Wall showcase for your best card, shown larger under its own warm light.'
+  if (assetId === 'graded_slab_rack') return 'Wall rack for 12 cards in clear graded slabs, each labelled with its grade.'
   return definition.placement_kind === 'wall' ? 'Mounts on a room wall.' : 'Furniture for the Collection Room.'
 }
 

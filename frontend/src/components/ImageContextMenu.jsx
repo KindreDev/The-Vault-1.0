@@ -352,7 +352,7 @@ function CreatorRow({ creator, onMouseDown }) {
       {/* Avatar thumbnail — falls back to an accent-tinted circle if no avatar set */}
       {creator.avatar_path
         ? <img
-            src={`/api/creators/${creator.id}/avatar`}
+            src={`/api/creators/${creator.id}/avatar-thumb?size=64`}
             style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
             onError={e => { e.target.style.display = 'none' }}
           />

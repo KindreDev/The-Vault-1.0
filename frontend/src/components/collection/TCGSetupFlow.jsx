@@ -28,6 +28,8 @@ export default function TCGSetupFlow({ children }) {
     onSuccess: () => qc.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith('tcg-v2-') }),
   })
   if (setup.data?.enabled && setup.data?.foundation?.ready) return children
+  // Don't flash "Start your card collection" while the status is loading.
+  if (setup.isLoading) return <div className="tcgws-setup" role="status" aria-label={t('Loading card collection')}><LoaderCircle size={36} className="animate-spin" /></div>
   const busy = start.isPending || setup.data?.foundation?.status === 'building'
   const error = start.error || setup.error
   const waiting = setup.data?.owned_cards_waiting || 0

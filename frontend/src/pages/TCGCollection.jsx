@@ -1,5 +1,5 @@
 import { LocalizedText, useT } from '../i18n'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -19,8 +19,6 @@ import TCGSummaryBar from '../components/tcg-workspace/TCGSummaryBar'
 import Workshop from '../components/tcg-workspace/Workshop'
 import { useScrollLock } from '../hooks/useScrollLock'
 import '../components/tcg-workspace/tcg-workspace.css'
-import '../components/tcg-workspace/tcg-workspace-refinements.css'
-import '../components/tcg-workspace/tcg-workspace-premium.css'
 
 const COLLECTION_VIEWS = new Set(['cards', 'missing', 'duplicates', 'creators', 'characters', 'hof', 'bond'])
 
@@ -52,6 +50,7 @@ function TCGWorkspace() {
   const releaseId = Number(params.get('release')) || null
   const setId = Number(params.get('set')) || null
   const [selectedCard, setSelectedCard] = useState(null)
+  const [inspectList, setInspectList] = useState([])
   const [showSettings, setShowSettings] = useState(false)
   const [openedPacks, setOpenedPacks] = useState(null)
   const [shopBusy, setShopBusy] = useState(false)
@@ -67,6 +66,9 @@ function TCGWorkspace() {
     updated.delete('set')
     setParams(updated, { replace: true })
     setCatalogPage(0)
+    // The collection browser remounts with default filters, so drop the old
+    // ones too. Otherwise the first request would use stale scope filters.
+    setCatalogFilters({})
   }
   const setRelease = id => {
     const updated = new URLSearchParams(params)
@@ -114,19 +116,25 @@ function TCGWorkspace() {
     : queueState?.queued?.find(task => task.type === 'foundation_refresh')
       || queueState?.history?.find(task => task.type === 'foundation_refresh')
   const refreshActive = refreshTask && ['queued', 'running'].includes(refreshTask.status)
+  // Only refetch when a refresh finishes while this page is open. A finished
+  // task stays in history, so reacting to "done" alone refetched on every visit.
+  const lastRefreshState = useRef(null)
   useEffect(() => {
-    if (refreshTask?.type === 'foundation_refresh' && refreshTask.status === 'done') {
+    const previous = lastRefreshState.current
+    lastRefreshState.current = refreshTask ? { id: refreshTask.id, status: refreshTask.status } : null
+    if (refreshTask?.status === 'done' && previous?.id === refreshTask.id && previous.status !== 'done') {
       qc.invalidateQueries({ predicate: query => String(query.queryKey[0] || '').startsWith('tcg-v2-') })
     }
   }, [refreshTask?.id, refreshTask?.status, qc])
   const ownership = view === 'missing' ? 'missing' : view === 'duplicates' ? 'duplicates' : 'owned'
   const viewType = view === 'creators' ? 'creator' : view === 'characters' ? 'character' : view === 'hof' ? 'hall-of-fame' : view === 'bond' ? 'bond' : undefined
+  const catalogParams = useMemo(() => Object.fromEntries(Object.entries({ ownership, card_type: viewType, ...catalogFilters })
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')), [ownership, viewType, catalogFilters])
   const { data: catalog, isFetching: catalogLoading } = useQuery({
-    queryKey: ['tcg-v2-catalog', ownership, view, catalogPage, catalogFilters],
-    queryFn: () => tcgV2Api.catalog({ ownership, card_type: viewType, ...catalogFilters, skip: catalogPage * catalogPageSize, limit: catalogPageSize }).then(r => r.data),
-    enabled: COLLECTION_VIEWS.has(view) || view === 'binders',
+    queryKey: ['tcg-v2-catalog', catalogParams, catalogPage],
+    queryFn: () => tcgV2Api.catalog({ ...catalogParams, skip: catalogPage * catalogPageSize, limit: catalogPageSize }).then(r => r.data),
+    enabled: COLLECTION_VIEWS.has(view),
   })
-  const inventory = useMemo(() => (catalog?.items || []).filter(item => item.card).map(item => ({ ...item.card, quantity: item.quantity })), [catalog])
   const classifications = useMemo(() => Object.fromEntries((catalog?.items || []).filter(item => item.card && item.classification).map(item => [item.card.id, item.classification])), [catalog])
   const updateCatalogFilters = useCallback(filters => { setCatalogFilters(filters); setCatalogPage(0) }, [])
 
@@ -136,24 +144,55 @@ function TCGWorkspace() {
     onError: error => toast.error(error.response?.data?.detail || t("Could not update Advanced Mode")),
   })
 
-  useScrollLock(shopBusy || showSettings)
+  useScrollLock(shopBusy)
+
+  // The summary awards newly completed sets; celebrate each one once.
+  const celebrated = useRef(new Set())
+  useEffect(() => {
+    const awards = summary?.new_completion_awards || []
+    if (!awards.length) return
+    for (const award of awards) {
+      const key = `${award.set_id}:${award.kind}`
+      if (celebrated.current.has(key)) continue
+      celebrated.current.add(key)
+      toast.success(t(award.kind === 'master' ? 'Master set complete: {name} · +{xp} XP · +{credits} Credits' : 'Set complete: {name} · +{xp} XP · +{credits} Credits', {
+        name: award.set_name || t('Set'), xp: award.xp, credits: award.credits,
+      }), { duration: 6000, icon: '🏆' })
+    }
+    qc.invalidateQueries({ queryKey: ['profile'] })
+    qc.invalidateQueries({ queryKey: ['tcg-v2-sets'] })
+    qc.invalidateQueries({ queryKey: ['tcg-v2-release'] })
+  }, [summary?.new_completion_awards, qc, t])
 
   if (isLoading) return <div className="tcgws-loading"><i /><strong><LocalizedText text={"Opening the card vault"} /></strong><span><LocalizedText text={"Loading releases, sets, and your collection..."} /></span></div>
-  if (summaryError || !summary) return <div className="tcgws-loading tcgws-load-error"><strong><LocalizedText text={"TCG workspace unavailable"} /></strong><span>{summaryFailure?.response?.data?.detail || 'The collection service did not return a valid workspace summary.'}</span><button onClick={() => retrySummary()}><LocalizedText text={"Retry"} /></button></div>
+  if (summaryError || !summary) return <div className="tcgws-loading tcgws-load-error"><strong><LocalizedText text={"TCG workspace unavailable"} /></strong><span>{summaryFailure?.response?.data?.detail || t('The collection service did not return a valid workspace summary.')}</span><button onClick={() => retrySummary()}><LocalizedText text={"Retry"} /></button></div>
   const title = t(TCG_VIEWS.find(item => item.id === view)?.label || 'Card Collection')
-  return <div className="tcgws-root">
-    <main className="tcgws-main">
-      <header className="tcgws-topbar"><div><span><LocalizedText text={"THE VAULT / CARD COLLECTION"} /></span><h1>{title}</h1></div><TCGSummaryBar summary={summary} /></header>
-      <TCGNavigation view={view} onView={next => next === 'room' ? navigate('/collection/room') : setView(next)} advanced={summary?.settings.advanced_mode} onAdvanced={() => setShowSettings(true)} />
+  // Open a card with the list it came from, so the window can step through it.
+  const openCard = (card, list) => {
+    const source = list || (COLLECTION_VIEWS.has(view) ? (catalog?.items || []).map(item => item.card).filter(Boolean) : [])
+    setInspectList(source)
+    setSelectedCard(card)
+  }
+  const inspectIndex = selectedCard ? inspectList.findIndex(item => item.id === selectedCard.id) : -1
+  const stepCard = offset => { const next = inspectList[inspectIndex + offset]; if (next) setSelectedCard(next) }
+  return <div className="tcgws-shell flex flex-col">
+    <TCGNavigation view={view} onView={next => next === 'room' ? navigate('/collection/room') : setView(next)} advanced={summary?.settings.advanced_mode} onAdvanced={() => setShowSettings(true)} />
+    <div className="tcgws-root p-5 flex flex-col gap-4">
+      <header className="tcgws-page-header">
+        <h1 className="text-[19px] font-medium text-[rgba(255,255,255,0.9)]">{title}</h1>
+        <TCGSummaryBar summary={summary}
+                       onOpenRelease={id => { const updated = new URLSearchParams({ view: 'releases', release: String(id) }); setParams(updated, { replace: true }) }}
+                       onOpenSet={(id, releaseId) => { const updated = new URLSearchParams({ view: 'releases', release: String(releaseId), set: String(id) }); setParams(updated, { replace: true }) }} />
+      </header>
       <div className="tcgws-content">
-        {(view === 'releases' || view === 'sets') && <ReleaseBrowser releases={releases} sets={sets} releaseId={releaseId} setId={setId} onRelease={setRelease} onSet={setSelectedSet} onOpenCard={setSelectedCard} setsOnly={view === 'sets'} advanced={summary.settings.advanced_mode} generationMode={summary.settings.release_generation_mode} />}
-        {COLLECTION_VIEWS.has(view) && <CollectionBrowser entries={catalog?.items || []} view={view} hasLegacyCards={summary.has_legacy_cards} classifications={classifications} values={summary.classification_values} releases={releases} sets={sets} filterOptions={catalogFilterOptions} total={catalog?.total || 0} page={catalogPage} pageSize={catalogPageSize} onPage={setCatalogPage} onFilters={updateCatalogFilters} onOpen={setSelectedCard} serverFiltered loading={catalogLoading} />}
-        {view === 'binders' && <BinderWorkspace inventory={inventory} onOpenCard={setSelectedCard} />}
+        {(view === 'releases' || view === 'sets') && <ReleaseBrowser releases={releases} sets={sets} releaseId={releaseId} setId={setId} onRelease={setRelease} onSet={setSelectedSet} onOpenCard={openCard} setsOnly={view === 'sets'} advanced={summary.settings.advanced_mode} generationMode={summary.settings.release_generation_mode} />}
+        {COLLECTION_VIEWS.has(view) && <CollectionBrowser entries={catalog?.items || []} view={view} hasLegacyCards={summary.has_legacy_cards} classifications={classifications} values={summary.classification_values} releases={releases} sets={sets} filterOptions={catalogFilterOptions} total={catalog?.total || 0} page={catalogPage} pageSize={catalogPageSize} onPage={setCatalogPage} onFilters={updateCatalogFilters} onOpen={card => openCard(card)} serverFiltered loading={catalogLoading} />}
+        {view === 'binders' && <BinderWorkspace onOpenCard={openCard} />}
         {view === 'workshop' && <Workshop packs={packs} releases={releases} onOpenedPacks={setOpenedPacks} onBusyChange={setShopBusy} onProgress={setShopProgress} />}
       </div>
-    </main>
+    </div>
     <AnimatePresence initial={false} mode="wait">
-      {selectedCard && <CardInspector key={selectedCard.id} card={selectedCard} onClose={() => setSelectedCard(null)} advanced={summary.settings.advanced_mode} classificationValues={summary.classification_values} />}
+      {selectedCard && <CardInspector key="tcg-card-inspector" card={selectedCard} onClose={() => setSelectedCard(null)} onPrev={inspectIndex > 0 ? () => stepCard(-1) : null} onNext={inspectIndex >= 0 && inspectIndex < inspectList.length - 1 ? () => stepCard(1) : null} advanced={summary.settings.advanced_mode} classificationValues={summary.classification_values} />}
     </AnimatePresence>
     {showSettings && <AdvancedSettings
       settings={summary.settings}

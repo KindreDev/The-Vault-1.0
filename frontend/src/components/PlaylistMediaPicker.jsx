@@ -6,6 +6,7 @@ import { galleriesApi, imagesApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import toast from 'react-hot-toast'
 
+import ModalLayer from './ModalLayer'
 const PAGE_SIZE = 96
 
 export default function PlaylistMediaPicker({ onClose }) {
@@ -57,7 +58,7 @@ export default function PlaylistMediaPicker({ onClose }) {
     finally { setLoadingGalId(null) }
   }
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
+    <ModalLayer><div className="fixed inset-0 z-[10000] flex items-center justify-center animate-fade-in"
          style={{ background: 'rgba(0,0,0,0.8)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="flex flex-col rounded-[16px] overflow-hidden shadow-2xl animate-modal-pop"
@@ -165,7 +166,7 @@ export default function PlaylistMediaPicker({ onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   )
 }
 

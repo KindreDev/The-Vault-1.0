@@ -52,11 +52,12 @@ export class NativeSerial {
     void this.command('serial_update', { ...patch, generation: this.generation }).catch(() => {})
   }
 
-  stop() {
+  // park=true is a pause: the output thread may auto-home after its delay.
+  stop({ park = false } = {}) {
     const generation = ++this.generation
     // Stop bypasses queued loads/controls. The backend generation guard rejects
     // any older start that finishes parsing after this cancellation arrives.
-    const stopped = Promise.resolve(window.pywebview.api.serial_stop(generation))
+    const stopped = Promise.resolve(window.pywebview.api.serial_stop(generation, park))
     this.queue = Promise.all([this.queue, stopped]).then(() => {}).catch(error => this.onError(error))
     return stopped
   }

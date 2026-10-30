@@ -56,6 +56,34 @@ def should_ignore_scan_path(path: str) -> bool:
         return False
 
 
+def has_unstorable_name(name: str) -> bool:
+    """True when a disk name holds an unpaired UTF-16 surrogate character.
+
+    NTFS allows these broken names, but they cannot be encoded as UTF-8, so
+    SQLite and the thumbnail hash would crash the whole scan on them.
+    """
+    try:
+        name.encode("utf-8")
+        return False
+    except UnicodeEncodeError:
+        return True
+
+
+def _printable(path: str) -> str:
+    return path.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+def _drop_unstorable(dirpath: str, names: list[str]) -> list[str]:
+    kept = []
+    for name in names:
+        if has_unstorable_name(name):
+            _scan_state["unreadable_paths"] = _scan_state.get("unreadable_paths", 0) + 1
+            _log(f"Skipped unreadable name (rename it to include it): {_printable(os.path.join(dirpath, name))}")
+        else:
+            kept.append(name)
+    return kept
+
+
 def filter_hidden_walk_entries(
     dirpath: str,
     dirnames: list[str],
@@ -63,7 +91,12 @@ def filter_hidden_walk_entries(
     *,
     enabled: bool,
 ) -> tuple[list[str], int]:
-    """Prune ignored directories in-place and return visible files + skip count."""
+    """Prune ignored directories in-place and return visible files + skip count.
+
+    Names that can't be stored (broken surrogates) are always dropped.
+    """
+    dirnames[:] = _drop_unstorable(dirpath, dirnames)
+    filenames = _drop_unstorable(dirpath, filenames)
     if not enabled:
         return filenames, 0
     kept_dirs = [name for name in dirnames if not should_ignore_scan_path(os.path.join(dirpath, name))]
@@ -356,17 +389,33 @@ def _parse_period_name(name: str):
         if m:
             y = int(m.group(1)); y = y + 2000 if y < 100 else y
             if 2000 <= y <= 2100: return mv, y
-    # "02-26" / "02/26" (MM-YY)
-    m = re.search(r'\b(0?[1-9]|1[0-2])[-/](2\d)\b', s)
-    if m:
-        return int(m.group(1)), 2000 + int(m.group(2))
-    # "02-2026" / "2026-02"
-    m = re.search(r'\b(0?[1-9]|1[0-2])[-/](20\d{2})\b', s)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    m = re.search(r'\b(20\d{2})[-/](0?[1-9]|1[0-2])\b', s)
+    # Full dates first. Otherwise the MM-YY rule below reads the month and
+    # day of "2022-06-29" or "07-29-2025" as June/July 2029.
+    # "2022-06-29" / "2022.06.29" / "2022_06_29" (YYYY-MM-DD)
+    m = re.search(r'(?<!\d)(20\d{2})[-/._](0?[1-9]|1[0-2])[-/._](0?[1-9]|[12]\d|3[01])(?!\d)', s)
     if m:
         return int(m.group(2)), int(m.group(1))
+    # "07-29-2025" (MM-DD-YYYY) or "29-07-2025" (DD-MM-YYYY, when the first
+    # number can't be a month)
+    m = re.search(r'(?<!\d)(\d{1,2})[-/._](\d{1,2})[-/._](20\d{2})(?!\d)', s)
+    if m:
+        a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= a <= 12:
+            return a, y
+        if 1 <= b <= 12:
+            return b, y
+    # "02-2026" / "2026-02"
+    m = re.search(r'(?<![\d/-])(0?[1-9]|1[0-2])[-/](20\d{2})(?![\d])', s)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r'(?<![\d])(20\d{2})[-/](0?[1-9]|1[0-2])(?![\d])', s)
+    if m:
+        return int(m.group(2)), int(m.group(1))
+    # "02-26" / "02/26" (MM-YY), only when it isn't part of a longer date
+    m = re.search(r'(?<![\d/.-])(0?[1-9]|1[0-2])[-/](2\d)(?![\d]|[/.-]\d)', s)
+    # A future year means it was a month-day ("08-27" = Aug 27th), not MM-YY.
+    if m and 2000 + int(m.group(2)) <= datetime.now().year:
+        return int(m.group(1)), 2000 + int(m.group(2))
     return None
 
 
@@ -457,6 +506,9 @@ def match_funscript_library(db: Session, library_path: str):
         for dirpath, _dirs, files in os.walk(library_path):
             for fn in files:
                 if os.path.splitext(fn)[1].lower() != ".funscript":
+                    continue
+                if has_unstorable_name(dirpath) or has_unstorable_name(fn):
+                    _log(f"Skipped unreadable name: {_printable(os.path.join(dirpath, fn))}")
                     continue
                 key = os.path.splitext(fn)[0].lower()
                 full = os.path.join(dirpath, fn)
@@ -754,6 +806,15 @@ def _claim_renamed_gallery(db: Session, root, dirpath: str, media_files: list[st
     return gallery
 
 
+def _after_scan() -> None:
+    """Cover newly found videos when hover clip pre-generation is on."""
+    try:
+        from services.hover_clips import start_pregeneration
+        start_pregeneration()
+    except Exception as e:
+        _log(f"Hover clip pre-generation not started: {e}")
+
+
 def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bool = False):
     """
     Walk all enabled library roots (or a specific one), create Gallery records
@@ -773,6 +834,7 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
         "new_images": 0,
         "provenance_tagged": 0,
         "ignored_paths": 0,
+        "unreadable_paths": 0,
         "moved_images": 0,
         "removed_galleries": 0,
         "removed_images": 0,
@@ -859,6 +921,8 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
                 msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
             if _scan_state.get("ignored_paths"):
                 msg += f" {_scan_state['ignored_paths']} hidden/system paths ignored."
+            if _scan_state.get("unreadable_paths"):
+                msg += f" {_scan_state['unreadable_paths']} files/folders skipped (unreadable names, see scan log)."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             if removed_images:
@@ -880,10 +944,12 @@ def scan_library(db: Session, root_id: Optional[int] = None, resolve_missing: bo
     finally:
         _scan_state["running"] = False
         _scan_state["current_path"] = None
+        _after_scan()
 
 
-def scan_folder_path(db: Session, folder_path: str):
-    """Scan a specific folder path (without requiring a registered library root)."""
+def scan_folder_path(db: Session, folder_path: str, recursive: bool = True):
+    """Scan a specific folder path (without requiring a registered library root).
+    recursive=False scans only folder_path itself, not its subfolders."""
     global _scan_state
 
     if _scan_state["running"]:
@@ -897,6 +963,7 @@ def scan_folder_path(db: Session, folder_path: str):
         "new_images": 0,
         "provenance_tagged": 0,
         "ignored_paths": 0,
+        "unreadable_paths": 0,
         "moved_images": 0,
         "removed_images": 0,
         "message": f"Scanning {folder_path}...",
@@ -911,6 +978,8 @@ def scan_folder_path(db: Session, folder_path: str):
             filenames, ignored = filter_hidden_walk_entries(
                 dirpath, dirnames, filenames, enabled=ignore_hidden,
             )
+            if not recursive:
+                dirnames[:] = []
             _scan_state["ignored_paths"] += ignored
             has_media = any(
                 Path(f).suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
@@ -949,6 +1018,8 @@ def scan_folder_path(db: Session, folder_path: str):
                 msg += f" {_scan_state['provenance_tagged']} AI-generated files identified."
             if _scan_state.get("ignored_paths"):
                 msg += f" {_scan_state['ignored_paths']} hidden/system paths ignored."
+            if _scan_state.get("unreadable_paths"):
+                msg += f" {_scan_state['unreadable_paths']} files/folders skipped (unreadable names, see scan log)."
             if moved_images:
                 msg += f" {moved_images} files moved (metadata kept)."
             _scan_state["message"] = msg
@@ -960,6 +1031,7 @@ def scan_folder_path(db: Session, folder_path: str):
     finally:
         _scan_state["running"] = False
         _scan_state["current_path"] = None
+        _after_scan()
 
 
 def _prune_missing_galleries(db: Session, roots) -> int:

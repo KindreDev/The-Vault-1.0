@@ -31,10 +31,10 @@ class VaultDesktopApi:
     def native_video_command(self, session_id, command, value=None):
         return self._video.command(session_id, command, value)
 
-    def native_video_prepare(self, owner, src):
+    def native_video_prepare(self, owner, src, loop=False):
         if self._closing:
             return
-        return self._video.prepare(owner, src)
+        return self._video.prepare(owner, src, loop)
 
     def native_video_clear_prepared(self, owner):
         return self._video.clear_prepared(owner)
@@ -68,8 +68,8 @@ class VaultDesktopApi:
     def serial_move(self, axis, position, duration, generation):
         self._serial.move(axis, position, duration, generation)
 
-    def serial_stop(self, generation):
-        self._serial.stop(generation)
+    def serial_stop(self, generation, park=False):
+        self._serial.stop(generation, bool(park))
 
     def serial_status(self):
         return self._serial.status()

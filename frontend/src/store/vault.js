@@ -141,6 +141,16 @@ export const PALETTES = [
   },
 ]
 
+// The Glass backdrop is painted from a blob: URL, never the stored data: URL.
+// A 30+ MB data URL in body's inline style made every computed-style read of
+// body's background copy the whole image string (~2 s freeze per video open).
+let glassObjectUrl = null
+let glassPaintToken = 0
+function releaseGlassObjectUrl() {
+  if (glassObjectUrl) URL.revokeObjectURL(glassObjectUrl)
+  glassObjectUrl = null
+}
+
 function applyPalette(p) {
   const r = document.documentElement
   r.style.setProperty('--accent',   p.accent)
@@ -154,6 +164,8 @@ function applyPalette(p) {
     r.style.setProperty('--c-bg', 'transparent')
     document.body.style.background = '#1c1c1e'  // dark gray default; overridden async by loadGlassBackground()
   } else {
+    glassPaintToken++  // drop any Glass backdrop still being decoded
+    releaseGlassObjectUrl()
     r.style.setProperty('--c-bg', p.bg)
     document.body.style.background = p.bg
   }
@@ -225,12 +237,22 @@ const savedAnimSpeed   = localStorage.getItem('vault_anim_speed') || 'full'
 const savedVaultName   = localStorage.getItem('vault_name') || 'The Vault'
 const savedConfetti    = localStorage.getItem('vault_confetti') !== 'false'
 const savedSessionGlow   = localStorage.getItem('vault_session_glow') || 'var(--c-pink)'
-function applyGlassBackground(dataUrl) {
-  if (dataUrl) {
-    document.body.style.background = `url("${dataUrl}") center/cover no-repeat fixed`
-  } else {
-    document.body.style.background = '#1c1c1e'
+// Resolves to the URL now painted (blob: when possible), or null when cleared
+// or superseded by a newer paint/theme change.
+async function applyGlassBackground(dataUrl) {
+  const token = ++glassPaintToken
+  let url = dataUrl || ''
+  if (url.startsWith('data:')) {
+    try { url = URL.createObjectURL(await (await fetch(url)).blob()) } catch { /* paint the data URL */ }
   }
+  if (token !== glassPaintToken) {
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+    return null
+  }
+  releaseGlassObjectUrl()
+  if (url.startsWith('blob:')) glassObjectUrl = url
+  document.body.style.background = url ? `url("${url}") center/cover no-repeat fixed` : '#1c1c1e'
+  return url || null
 }
 
 // Called from Layout on mount — async IDB read, no size limit
@@ -247,8 +269,10 @@ export async function loadGlassBackground() {
     // custom backdrop if Glass is still the active theme when the read
     // completes; otherwise a stale async result can leak into another theme.
     if (dataUrl && document.body.getAttribute('data-theme') === 'glass') {
-      applyGlassBackground(dataUrl)
-      useVaultStore.setState({ glassBackground: true, glassBackgroundUrl: dataUrl })
+      const url = await applyGlassBackground(dataUrl)
+      if (url && document.body.getAttribute('data-theme') === 'glass') {
+        useVaultStore.setState({ glassBackground: true, glassBackgroundUrl: url })
+      }
     }
   } catch (e) {
     console.warn('Could not load glass background from IDB', e)
@@ -575,6 +599,13 @@ export const useVaultStore = create((set, get) => ({
   },
 
   // Confetti on level-up / achievement
+  // Video tiles play a short clip on hover (Settings → Performance)
+  hoverPreviewsEnabled: localStorage.getItem('vault_hover_previews') !== 'false',
+  setHoverPreviewsEnabled: (v) => {
+    localStorage.setItem('vault_hover_previews', String(v))
+    set({ hoverPreviewsEnabled: v })
+  },
+
   confettiEnabled: savedConfetti,
   setConfettiEnabled: (v) => {
     localStorage.setItem('vault_confetti', String(v))
@@ -596,8 +627,8 @@ export const useVaultStore = create((set, get) => ({
     if (dataUrl) {
       // Paint immediately so the selection is visible even if persistence is
       // slow or unavailable in the current browser/WebView profile.
-      applyGlassBackground(dataUrl)
-      set({ glassBackground: true, glassBackgroundUrl: dataUrl })
+      set({ glassBackground: true })
+      applyGlassBackground(dataUrl).then(url => { if (url) set({ glassBackgroundUrl: url }) })
       try {
         await idbPut('glass_bg', dataUrl)
         localStorage.setItem('vault_glass_bg', '1')

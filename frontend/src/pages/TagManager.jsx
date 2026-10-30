@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { tagsApi, imagesApi, tagVocabApi } from '../lib/api'
 
+import ModalLayer from '../components/ModalLayer'
 // ── Category config ───────────────────────────────────────────────────────────
 const CAT_ICONS = {
   sex_act: Flame, body_part: Zap, physical_feature: Sparkles,
@@ -80,7 +81,7 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
   const dirty = name.trim() !== tag.name || category !== tag.category
 
   return (
-    <motion.div {...backdropAnim} onClick={onClose}
+    <ModalLayer><motion.div {...backdropAnim} onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
       <motion.div {...panelAnim} onClick={e => e.stopPropagation()}
@@ -182,7 +183,7 @@ function EditModal({ tag, allTags, onClose, onSaved }) {
           </motion.div>
         )}
       </motion.div>
-    </motion.div>
+    </motion.div></ModalLayer>
   )
 }
 
@@ -303,7 +304,7 @@ function AiTaggingSettingsModal({ onClose }) {
   const clearSelection  = () => setSelected(new Set())
 
   return (
-    <motion.div {...backdropAnim} onClick={onClose}
+    <ModalLayer><motion.div {...backdropAnim} onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
       <motion.div {...panelAnim} onClick={e => e.stopPropagation()}
@@ -490,7 +491,7 @@ function AiTaggingSettingsModal({ onClose }) {
           )}
         </AnimatePresence>
       </motion.div>
-    </motion.div>
+    </motion.div></ModalLayer>
   )
 }
 

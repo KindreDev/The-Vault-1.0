@@ -135,7 +135,10 @@ export default function HallOfFameCard({ recipe: input, artUrl, mediaType = 'ima
          data-mask={packedMaskUrl ? 'layered' : 'flat'}>
        {playFullVideo && (
          <div className="hall-of-fame-card-v2__video-layer" aria-hidden="true">
-           {posterUrl && <img className="hall-of-fame-card-v2__video-poster" src={posterUrl} alt="" />}
+           {/* The poster covers the gap while the video loads. In the desktop
+               app the video can play natively behind the page and only shows
+               through see-through layers, so the poster must go once it plays. */}
+           {posterUrl && videoStatus !== 'ready' && <img className="hall-of-fame-card-v2__video-poster" src={posterUrl} alt="" />}
            <VaultVideo className={`hall-of-fame-card-v2__video${videoStatus === 'ready' ? ' is-ready' : ''}`} src={artUrl}
                   poster={posterUrl || undefined} autoPlay muted playsInline
                   preload="auto"

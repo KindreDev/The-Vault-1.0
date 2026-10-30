@@ -29,6 +29,7 @@ import { useT } from '../i18n'
 import toast from 'react-hot-toast'
 import FolderPicker from './FolderPicker'
 
+import ModalLayer from './ModalLayer'
 const CLASH_OPTIONS = [
   { key: 'rename', label: 'Keep both',  hint: 'Moves it alongside as “Name (2)”' },
   { key: 'merge',  label: 'Merge',      hint: 'Pours the files into the folder already there' },
@@ -158,7 +159,7 @@ export default function RelocateModal({
   const canMove   = isGalleries ? (dest && plan) : !!dest
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6"
+    <ModalLayer><div className="fixed inset-0 z-[10000] flex items-center justify-center p-6"
          style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)' }}
          onMouseDown={onClose}>
       <motion.div
@@ -385,7 +386,7 @@ export default function RelocateModal({
         </div>
       </motion.div>
       {browseOpen && <FolderPicker initialPath={dest || ''} onSelect={selectBrowsedFolder} onClose={() => setBrowseOpen(false)} />}
-    </div>,
+    </div></ModalLayer>,
     document.body
   )
 }

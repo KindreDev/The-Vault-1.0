@@ -11,6 +11,8 @@ import { deviceService } from '../services/device'
 import { hasNativeSerialBridge } from '../services/nativeSerial'
 import toast from 'react-hot-toast'
 import { LocalizedText, useT } from '../i18n'
+import { Card, Slider, Toggle, Segmented } from '../components/device/deviceUi'
+import MotionSettingsSection from '../components/device/MotionSettingsSection'
 
 // ── Dual-range slider CSS (injected once per component mount) ─────────────────
 const DUAL_RANGE_CSS = `
@@ -78,52 +80,6 @@ function getPresetLabel(presetId, savedPatterns, t = value => value) {
 }
 
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
-
-function Card({ title, children, className = '' }) {
-  return (
-    <div className={`vault-card p-5 ${className}`}>
-      {title && (
-        <div className="text-[16px] font-semibold text-[rgba(255,255,255,0.5)] mb-4 uppercase tracking-wider">
-          {title}
-        </div>
-      )}
-      {children}
-    </div>
-  )
-}
-
-function Slider({ label, value, min, max, step = 1, onChange, unit = '', hint }) {
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-[16px] text-[rgba(255,255,255,0.6)]">{label}</span>
-        <span className="text-[16px] font-mono text-[rgba(255,255,255,0.85)]">{value}{unit}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full accent-[var(--c-accent)] cursor-pointer" />
-      {hint && <div className="text-[16px] text-[rgba(255,255,255,0.3)] mt-0.5">{hint}</div>}
-    </div>
-  )
-}
-
-function Toggle({ label, checked, onChange, desc }) {
-  return (
-    <label className="flex items-center gap-3 cursor-pointer">
-      <div
-        className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
-          checked ? 'bg-[var(--c-accent)]' : 'bg-[rgba(255,255,255,0.1)]'
-        }`}
-        onClick={() => onChange(!checked)}>
-        <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : ''}`} />
-      </div>
-      <div>
-        <div className="text-[16px] text-[rgba(255,255,255,0.85)] font-medium">{label}</div>
-        {desc && <div className="text-[16px] text-[rgba(255,255,255,0.35)]">{desc}</div>}
-      </div>
-    </label>
-  )
-}
 
 // ── Custom pattern dropdown ───────────────────────────────────────────────────
 
@@ -500,12 +456,80 @@ function HandySection() {
 
       {isConnected && <DeviceList devices={devices} scanning={false} />}
 
+      <HandyDebugLog />
+
       <div className="p-3 rounded-lg bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] space-y-1">
         <div className="text-[16px] text-[rgba(255,255,255,0.5)] font-medium"><LocalizedText text="How it works" /></div>
         <div className="text-[16px] text-[rgba(255,255,255,0.3)] leading-relaxed">
           <LocalizedText text="Uses The Handy REST API v3 (HSP streaming protocol, cloud relay) — no Intiface needed. Requires firmware 4+; this is a firmware requirement, not a hardware one, so an original Handy 1 works fine once updated via the Handy Connect app. Devices still on firmware 3 or earlier can't connect until updated." />
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── The Handy debug log ───────────────────────────────────────────────────────
+// Lets a tester copy every Handy request and reply to send back for diagnosis.
+
+function HandyDebugLog() {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const refresh = () => setText(deviceService.getHandyDebugLog())
+
+  useEffect(() => {
+    if (!open) return
+    refresh()
+    const id = setInterval(refresh, 2000)
+    return () => clearInterval(id)
+  }, [open])
+
+  const copy = async () => {
+    const value = deviceService.getHandyDebugLog()
+    setText(value)
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(t('Debug log copied'))
+    } catch (_) {
+      toast.error(t('Copy failed — select the text below and press Ctrl+C'))
+    }
+  }
+
+  const save = () => {
+    const blob = new Blob([deviceService.getHandyDebugLog()], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `vault-handy-log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const button = 'px-3 py-1.5 rounded-lg text-[15px] border border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.6)] hover:text-white hover:border-[rgba(255,255,255,0.25)] transition-all'
+  return (
+    <div className="p-3 rounded-lg bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] space-y-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[16px] text-[rgba(255,255,255,0.5)] font-medium"><LocalizedText text="Debug log" /></div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={copy} className={button}><LocalizedText text="Copy log" /></button>
+          <button onClick={save} className={button}><LocalizedText text="Save as file" /></button>
+          <button onClick={() => { deviceService.clearHandyDebugLog(); refresh(); toast.success(t('Debug log cleared')) }} className={button}><LocalizedText text="Clear" /></button>
+          <button onClick={() => setOpen(v => !v)} className={button}>{t(open ? 'Hide' : 'Show')}</button>
+        </div>
+      </div>
+      <div className="text-[15px] text-[rgba(255,255,255,0.3)] leading-relaxed">
+        <LocalizedText text="If scripts don't play right: press Clear, play a funscripted video for about 30 seconds (pause and seek once), then Copy log and send it. Your keys are never included." />
+      </div>
+      {open && (
+        <textarea
+          readOnly
+          value={text}
+          onFocus={e => e.target.select()}
+          className="w-full h-64 bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.08)] rounded-lg p-2 text-[12px] font-mono text-[rgba(255,255,255,0.7)] whitespace-pre"
+        />
+      )}
     </div>
   )
 }
@@ -1147,25 +1171,6 @@ function SchedulerSection() {
 // ── Edge Mode section ─────────────────────────────────────────────────────────
 
 // Small segmented control for the fixed/random and stop/slow choices.
-function Segmented({ value, onChange, options }) {
-  return (
-    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '0.5px solid rgba(255,255,255,0.12)' }}>
-      {options.map(opt => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className="px-3 py-1.5 text-[16px] cursor-pointer transition-colors"
-          style={{
-            background: value === opt.value ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'transparent',
-            color: value === opt.value ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)',
-          }}>
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function EdgeSection() {
   const t = useT()
   const s   = useDeviceStore()
@@ -1282,7 +1287,7 @@ function EdgeSection() {
 
 const PROVIDER_SUBTITLES = {
   intiface: 'Intiface Central · Buttplug.io',
-  handy:    'The Handy · REST API v2',
+  handy:    'The Handy · REST API v3',
   serial:   'Serial Connection',
 }
 
@@ -1309,6 +1314,7 @@ export default function DeviceControl() {
         <>
           <AutoSyncSection />
           <StrokeLimiterSection />
+          <MotionSettingsSection />
           <FreestyleSection />
           <RampSection />
           <SchedulerSection />

@@ -11,13 +11,11 @@ import {
 import { creatorsApi } from '../lib/api'
 import { useT } from '../i18n'
 import BondHearts, { BOND_TIERS } from './BondHearts'
-import VaultCard from './VaultCard'
+import TCGCardButton from './tcg-v2/TCGCardButton'
+import { RARITY_COLORS } from '../lib/entityColors'
 
+import ModalLayer from './ModalLayer'
 // ── Rarity accent (mirrors HallOfFame) ────────────────────────────────────────
-const RARITY_COLORS = {
-  common: '#888780', uncommon: '#1D9E75', rare: '#378ADD',
-  epic: '#7F77DD', legendary: '#BA7517', celestial: '#E0B0FF',
-}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function fmtDuration(secs) {
@@ -260,7 +258,7 @@ function CrownsPanel({ crowns }) {
 function StatsBody({ d, onNavigate, onClose }) {
   const t = useT()
   const accent = RARITY_COLORS[d.card_rarity] || RARITY_COLORS.common
-  const avatarUrl = d.avatar_path ? `/api/creators/${d.id}/avatar` : null
+  const avatarUrl = d.avatar_path ? `/api/creators/${d.id}/avatar-thumb?size=640` : null
   const go = (path) => { onClose(); onNavigate(path) }
 
   const orientation = d.orientation || {}
@@ -539,13 +537,12 @@ function StatsBody({ d, onNavigate, onClose }) {
                  subtitle="What she's worth in your deck">
             {(d.cards?.owned_count ?? 0) > 0 || (d.cards?.showcase_slots_filled ?? 0) > 0 ? (
               <>
-                <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(5, minmax(0,1fr))' }}>
+                <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
                   <Stat label="Cards owned" value={num(d.cards.owned_count)} accent="#378ADD" />
                   <Stat label="Variants" value={num(d.cards.variant_count)} />
                   <Stat label="Showcase" value={`${d.cards.showcase_slots_filled}/5`}
                         sub={d.cards.showcase_mastery ? 'Mastered ✦' : 'slots filled'}
                         accent={d.cards.showcase_mastery ? 'var(--c-amber-text)' : undefined} />
-                  <Stat label="Total CXP" value={num(d.cards.total_cxp)} />
                   <Stat label="Rarest card"
                         value={d.cards.rarest ? `${d.cards.rarest.rarity}${d.cards.rarest.foil ? ' ✦' : ''}` : '—'}
                         sub={d.cards.rarest ? d.cards.rarest.type : undefined}
@@ -554,7 +551,7 @@ function StatsBody({ d, onNavigate, onClose }) {
                 {(d.cards.previews?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-4 justify-center">
                     {d.cards.previews.map(card => (
-                      <VaultCard key={card.inventory_id ?? card.id} card={card} width={168}
+                      <TCGCardButton key={card.inventory_id ?? card.id} card={card} width={168}
                                  onClick={() => go('/collection')} />
                     ))}
                   </div>
@@ -593,7 +590,7 @@ export default function CreatorStatsModal({ creatorId, onClose }) {
   return createPortal(
     <AnimatePresence>
       {creatorId && (
-        <motion.div
+        <ModalLayer><motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
           onClick={onClose}
@@ -632,7 +629,7 @@ export default function CreatorStatsModal({ creatorId, onClose }) {
               {data && <StatsBody d={data} onNavigate={navigate} onClose={onClose} />}
             </div>
           </motion.div>
-        </motion.div>
+        </motion.div></ModalLayer>
       )}
     </AnimatePresence>,
     document.body,

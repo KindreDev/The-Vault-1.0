@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Images, Users, Play, ListMusic,
-  Columns3, Gamepad2, Trophy, Star, Map, CreditCard,
-  ScanLine, Tag, Settings, Flame, Box, Film, Video, Cpu, ScrollText, Layers,
-  CheckCircle2, ChevronDown, BarChart2, GitCompare, ListTodo, Terminal, BookOpen,
-  Sparkles, Newspaper, Compass, Waves, LoaderCircle, X,
+  LayoutDashboard, Images, Users, Columns3, Tag, Settings, Flame, Box, Film, Video, Cpu, Layers, CheckCircle2, ChevronDown, BookOpen, Sparkles, Newspaper, Compass, Waves, LoaderCircle, X, Award, Wrench, ListTodo,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useVaultStore } from '../../store/vault'
 import { useDeviceStore } from '../../store/deviceStore'
-import { gamiApi, companionApi, recapApi, tasksApi } from '../../lib/api'
+import { gamiApi, companionApi, tasksApi } from '../../lib/api'
 import { useT } from '../../i18n'
 import { deviceService } from '../../services/device'
 import queryClient from '../../lib/queryClient'
@@ -38,20 +34,18 @@ const GOON_NAV = [
   { to: '/device-control', icon: Cpu,        label: 'Device Control' },
 ]
 
+// Stats, Recap, Quests and Hall of Fame are tabs of Progress; Tag Manager,
+// Duplicates, Console and Scan Log are tabs of Tools. Task Queue keeps its own
+// entry, next to the live progress widget.
 const COLLECT_NAV = [
-  { to: '/stats',         icon: BarChart2,  label: 'Stats' },
-  { to: '/recap',         icon: Sparkles,   label: 'Recap' },
-  { to: '/quests',        icon: Trophy,     label: 'Quests' },
-  { to: '/hall-of-fame',  icon: Star,       label: 'Hall of Fame' },
+  { to: '/progress',      icon: Award,      label: 'Progress' },
   { to: '/collection',    icon: Layers,     label: 'Card Collection' },
 ]
 
 const LIB_NAV = [
-  { to: '/tags',        icon: Tag,         label: 'Tag Manager' },
-  { to: '/duplicates',  icon: GitCompare,  label: 'Duplicates' },
+  { to: '/tools',       icon: Wrench,      label: 'Tools' },
   { to: '/task-queue',  icon: ListTodo,    label: 'Task Queue' },
-  { to: '/console',     icon: Terminal,    label: 'Console' },
-  { to: '/help',        icon: BookOpen,    label: 'Help' },
+  { to: '/help',       icon: BookOpen,    label: 'Help' },
   { to: '/settings',    icon: Settings,    label: 'Settings' },
 ]
 
@@ -213,17 +207,6 @@ export default function Sidebar() {
     staleTime: 30000,
   })
 
-  // Recap stays out of the nav entirely until enough usage has been tracked for
-  // it to read as anything but noise. Hidden, not disabled — a greyed-out item
-  // advertises the thing it's withholding.
-  const { data: recapAvail } = useQuery({
-    queryKey: ['recap-availability'],
-    queryFn:  () => recapApi.availability().then(r => r.data),
-    staleTime: 5 * 60 * 1000,
-  })
-  // Hidden until proven unlocked: flashing the item and then hiding it would
-  // announce the secret to exactly the user it's being kept from.
-  const recapUnlocked = recapAvail?.unlocked === true
 
   const { data: companionConfig } = useQuery({
     queryKey: ['companion-config'],
@@ -288,9 +271,7 @@ export default function Sidebar() {
         </CollapsibleSection>
 
         <CollapsibleSection label="Collect">
-          {COLLECT_NAV
-            .filter(n => n.to !== '/recap' || recapUnlocked)
-            .map(n => <NavItem key={n.to} {...n} />)}
+          {COLLECT_NAV.map(n => <NavItem key={n.to} {...n} />)}
         </CollapsibleSection>
 
         <CollapsibleSection label="Tools">

@@ -1,7 +1,7 @@
 import { LocalizedText, useT } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CalendarDays, Coins, HeartHandshake, LoaderCircle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarDays, Coins, HeartHandshake, LoaderCircle, RefreshCw } from 'lucide-react'
 import { economyApi, tcgTradersApi } from '../../lib/api'
 import { readableTraderError, TRADER_TABS } from './traderVNState'
 import { CardsView, ConversationPanel, HistoryView, OffersPanel, RequestsView, TradeView } from './TraderVNViews'
@@ -9,6 +9,16 @@ import TraderVNGrading from './TraderVNGrading'
 import { localCalendarDay, selectDailyTraderOutfit, traderVisualKey, TRADER_VISUALS } from './traderVisuals'
 
 const getError = readableTraderError
+
+// Hall of Fame and Bond cards are earned, never pulled, so giving one away is
+// permanent.  The warning can be switched off per device.
+const EARNED_WARNING_KEY = 'vault.trader.hide-earned-card-warning'
+const EARNED_CARD_WARNINGS = Object.freeze({
+  hof: 'Hall of Fame cards are earned through achievements and cannot be pulled from Booster packs. Are you sure you want to trade?',
+  bond: 'Bond cards are earned through your own activity and cannot be pulled from Booster packs. Are you sure you want to trade?',
+})
+const readEarnedWarningHidden = () => { try { return window.localStorage.getItem(EARNED_WARNING_KEY) === '1' } catch { return false } }
+const storeEarnedWarningHidden = () => { try { window.localStorage.setItem(EARNED_WARNING_KEY, '1') } catch { /* private mode: warn again next time */ } }
 
 export default function TraderVN({ onClose }) {
   const t = useT()
@@ -27,10 +37,13 @@ export default function TraderVN({ onClose }) {
   const refreshTimer = useRef(null)
   const [error, setError] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  const [earnedWarningHidden, setEarnedWarningHidden] = useState(readEarnedWarningHidden)
+  const [muteEarnedWarning, setMuteEarnedWarning] = useState(false)
   const [dayKey, setDayKey] = useState(() => localCalendarDay())
   const [portraitFailed, setPortraitFailed] = useState(false)
   const [previewProfile, setPreviewProfile] = useState(null)
   const [rosterOpen, setRosterOpen] = useState(false)
+  const contentRef = useRef(null)
   const introStarted = useRef(false)
   const balanceQuery = useQuery({
     queryKey: ['economy-balance'],
@@ -42,7 +55,7 @@ export default function TraderVN({ onClose }) {
   const creditsBalance = Number(balanceQuery.data?.vault_credits)
   const hasCreditsBalance = balanceQuery.isSuccess && Number.isFinite(creditsBalance)
   const balanceUnavailable = balanceQuery.isError || (balanceQuery.isSuccess && !Number.isFinite(creditsBalance))
-  const visitQuery = useQuery({ queryKey: ['tcg-trader-current'], queryFn: () => tcgTradersApi.current().then(r => r.data), staleTime: 0, refetchOnMount: 'always', retryOnMount: true, refetchOnReconnect: true })
+  const visitQuery = useQuery({ queryKey: ['tcg-trader-current'], queryFn: () => tcgTradersApi.current().then(r => r.data), staleTime: 0, refetchOnMount: 'always', retryOnMount: true, refetchOnReconnect: true, retry: 1, retryDelay: 1500 })
   const rosterQuery = useQuery({ queryKey: ['tcg-trader-roster'], queryFn: () => tcgTradersApi.roster().then(r => r.data), staleTime: 5 * 60_000 })
   const visit = visitQuery.data
   const visitId = visit?.visit_id
@@ -99,6 +112,14 @@ export default function TraderVN({ onClose }) {
     return () => window.clearTimeout(timer)
   }, [visitId, inventoryQuery.data, inventoryQuery.isError, inventoryQuery.isFetched, inventoryQuery.isPlaceholderData, candidatesQuery.data, candidatesQuery.isError, candidatesQuery.isFetched, candidatesQuery.isPlaceholderData, queryClient])
 
+  // The visit ends at local midnight.  When the day rolls over (or an action
+  // reports the visit ended), start over with today's trader.
+  const visitRefetch = visitQuery.refetch
+  const startNewDay = useCallback(() => {
+    setSelected([]); setTargets([]); setGradeSelected([]); setCredits('0'); setShards('0'); setConfirmation(null)
+    introStarted.current = false
+    void visitRefetch()
+  }, [visitRefetch])
   const refresh = useCallback(async () => {
     const results = await Promise.all([visitQuery.refetch(), ...allQueries.map(item => item.refetch())])
     const failed = results.find(result => result.isError)
@@ -130,8 +151,12 @@ export default function TraderVN({ onClose }) {
         void queryClient.invalidateQueries({ queryKey: ['tcg-trader-grade-quote'] })
         await refresh()
       }
-    } catch (caught) { setError(getError(caught)) } finally { busyRef.current = false; setBusy('') }
-  }, [queryClient, refresh, visitId])
+    } catch (caught) {
+      const message = getError(caught)
+      if (/visit has ended/i.test(message)) startNewDay()
+      setError(message)
+    } finally { busyRef.current = false; setBusy('') }
+  }, [queryClient, refresh, startNewDay, visitId])
 
   const sendDialogue = useCallback(async action => {
     if (!visitId) return
@@ -147,19 +172,33 @@ export default function TraderVN({ onClose }) {
     run('Starting conversation', () => sendDialogue('intro'), null, false)
   }, [dialogueQuery.data.length, dialogueQuery.isFetched, dialogueQuery.isFetching, previewProfile, run, sendDialogue, visitId])
 
-  const chooseTab = next => { setTab(next); setError('') }
+  const chooseTab = next => {
+    if (next !== tab && contentRef.current) contentRef.current.scrollTop = 0
+    setTab(next); setError('')
+  }
   const toggleCopy = copyId => setSelected(current => current.includes(copyId) ? current.filter(id => id !== copyId) : [...current, copyId])
   const toggleTarget = inventoryId => setTargets(current => {
     const next = current.includes(String(inventoryId)) ? current.filter(id => id !== String(inventoryId)) : [...current, String(inventoryId)]
     if (!next.length) { setCredits('0'); setShards('0') }
     return next
   })
-  const confirmAction = ({ title, message, confirmLabel = 'Confirm', details = [], action }) => {
+  const confirmAction = ({ title, message, params, confirmLabel = 'Confirm', details = [], warnings = [], action }) => {
     setError('')
-    setConfirmation({ title, message, confirmLabel, details, action })
+    setMuteEarnedWarning(false)
+    setConfirmation({ title, message, params, confirmLabel, details, warnings, action })
+  }
+  const earnedCardWarnings = copyIds => {
+    if (earnedWarningHidden || !copyIds.length) return []
+    const rows = Array.isArray(candidatesQuery.data?.items) ? candidatesQuery.data.items : []
+    const types = new Set(rows.filter(item => copyIds.includes(item.copy_id)).map(item => String(item.card_type || '').toLowerCase()))
+    return Object.entries(EARNED_CARD_WARNINGS).filter(([type]) => types.has(type)).map(([, text]) => text)
   }
   const performConfirmation = async () => {
     const pending = confirmation
+    if (pending?.warnings?.length && muteEarnedWarning) {
+      storeEarnedWarningHidden()
+      setEarnedWarningHidden(true)
+    }
     setConfirmation(null)
     if (pending?.action) await pending.action()
   }
@@ -194,6 +233,13 @@ export default function TraderVN({ onClose }) {
   }, [])
 
   useEffect(() => { setPortraitFailed(false) }, [dayKey, previewProfile?.id])
+
+  const lastDayKey = useRef(dayKey)
+  useEffect(() => {
+    if (lastDayKey.current === dayKey) return
+    lastDayKey.current = dayKey
+    startNewDay()
+  }, [dayKey, startNewDay])
 
   const roster = Array.isArray(rosterQuery.data) ? rosterQuery.data : rosterQuery.data?.traders || []
   const choosePreview = profile => { setPreviewProfile({ ...profile, preview_only: true }); setPortraitFailed(false); setRosterOpen(false) }
@@ -234,17 +280,17 @@ export default function TraderVN({ onClose }) {
       {outfit && <div className="trader-vn__outfit"><span>{activeDay || dayKey}</span></div>}
     </aside>
     <section className={`trader-vn__desk${isProfilePreview ? ' is-preview' : ''}`}>
-      {!isProfilePreview && <nav aria-label={t("Trader views")}>{TRADER_TABS.map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => chooseTab(id)}>{label}</button>)}</nav>}
-      <div className="trader-vn__status"><HeartHandshake /><span><strong>{isProfilePreview ? 'Profile preview' : 'Trading active'}</strong>{!isProfilePreview && <>{visit.requests_remaining}<LocalizedText text={"requests remaining"} before={" "} /></>}</span></div>
+      {!isProfilePreview && <nav aria-label={t("Trader views")}>{TRADER_TABS.map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => chooseTab(id)}><LocalizedText text={label} /></button>)}<span className="trader-vn__status-pill" title={t("Trading active")}><HeartHandshake aria-hidden="true" /><LocalizedText text="{count} requests left" params={{ count: visit.requests_remaining }} /></span></nav>}
+      {isProfilePreview && <div className="trader-vn__status"><HeartHandshake /><span><strong><LocalizedText text="Profile preview" /></strong></span></div>}
       {error && <div className="trader-vn__error" role="alert"><strong><LocalizedText text={"That did not go through."} /></strong><span>{error}</span><button onClick={() => setError('')}><LocalizedText text={"Dismiss"} /></button></div>}
       {!isProfilePreview && !error && stateError && <div className="trader-vn__error" role="alert"><strong><LocalizedText text={"Some trade details could not be loaded."} /></strong><span>{getError(stateError)}</span><button onClick={refresh}><LocalizedText text={"Retry"} /></button></div>}
-      {busy && <div className="trader-vn__busy"><LoaderCircle className="spin" /><span>{busy}…</span></div>}
-      <div className={`trader-vn__content${isProfilePreview ? ' is-profile-preview' : ''}`}>
+      {busy && <div className="trader-vn__busy"><LoaderCircle className="spin" /><span><LocalizedText text={busy} after="…" /></span></div>}
+      <div ref={contentRef} className={`trader-vn__content trader-vn__content--${isProfilePreview ? 'preview' : tab}${isProfilePreview ? ' is-profile-preview' : ''}`}>
         {isProfilePreview && <section className="trader-vn-preview-note"><header><HeartHandshake /><div><h2><LocalizedText text={"Trader profile"} /></h2><p><LocalizedText text={"Trading is available when she visits."} /></p></div></header></section>}
-        {!isProfilePreview && tab === 'cards' && <CardsView inventory={inventoryQuery.data} loading={inventoryQuery.isFetching && (inventoryQuery.isPlaceholderData || !inventoryQuery.data?.length)} onBuy={(id, currency, amount) => confirmAction({ title: 'Ask to buy this card?', message: `Ask her to sell this card for ${amount.toLocaleString()} ${currency === 'credits' ? 'Credits' : 'Shards'}?`, confirmLabel: 'Make offer', action: () => run('Making offer', () => tcgTradersApi.buyOffer(visitId, id, currency)) })} />}
-        {!isProfilePreview && tab === 'trade' && <TradeView visitId={visitId} inventory={inventoryQuery.data} candidates={candidatesQuery.data?.items || []} candidatesLoading={candidatesQuery.isFetching && (candidatesQuery.isPlaceholderData || !candidatesQuery.data?.items?.length)} inventoryLoading={inventoryQuery.isFetching && (inventoryQuery.isPlaceholderData || !inventoryQuery.data?.length)} selected={selected} gradedCopies={gradeResults} onToggle={toggleCopy} targets={targets} onToggleTarget={toggleTarget} credits={credits} shards={shards} onMoney={(kind, value) => kind === 'credits' ? setCredits(value) : setShards(value)} busy={Boolean(busy)} onSell={currency => confirmAction({ title: 'Sell your selected cards?', message: `Offer ${selected.length} ${selected.length === 1 ? 'card' : 'cards'} for ${currency === 'credits' ? 'Credits' : 'Shards'}? She may accept or counter.`, confirmLabel: 'Make offer', action: () => run('Selling cards', async () => { await tcgTradersApi.sellQuote(visitId, selected, currency); setSelected([]) }, 'counter') })} onBarter={() => confirmAction({ title: 'Send this trade offer?', message: 'She will review your offer and the cards you requested.', confirmLabel: 'Propose trade', action: () => run('Sending offer', async () => { await tcgTradersApi.barterOffer(visitId, targets.map(Number), selected, Number(credits || 0), Number(shards || 0)); setSelected([]); setTargets([]); setCredits('0'); setShards('0') }, 'counter') })} />}
-        {!isProfilePreview && tab === 'grading' && <TraderVNGrading visitId={visitId} candidates={candidatesQuery.data?.items || []} loading={candidatesQuery.isFetching && (candidatesQuery.isPlaceholderData || !candidatesQuery.data?.items?.length)} selected={gradeSelected} onToggle={copyId => setGradeSelected(current => current.includes(copyId) ? current.filter(id => id !== copyId) : [...current, copyId])} gradedCopies={gradeResults} busy={Boolean(busy)} onConfirmGrade={quote => confirmAction({ title: 'Grade these cards?', message: `This will save the previewed tiers for ${quote.items.length} ${quote.items.length === 1 ? 'card' : 'cards'} at a total cost of ${quote.total_fee_credits.toLocaleString()} Credits.`, confirmLabel: 'Confirm grading', details: quote.items, action: () => run('Grading cards', async () => { const response = await tcgTradersApi.grade(visitId, quote.items.map(item => Number(item.copy_id))); const items = Array.isArray(response.data?.items) ? response.data.items : []; setGradeResults(current => ({ ...current, ...Object.fromEntries(items.filter(item => item?.grade).map(item => [item.copy_id, item])) })); await queryClient.invalidateQueries({ queryKey: ['tcg-trader-grade-quote', visitId] }) }) })} />}
-        {!isProfilePreview && tab === 'requests' && <RequestsView visit={visit} requests={requestsQuery.data} cardId={requestCardId} onCardId={setRequestCardId} onRequest={() => confirmAction({ title: 'Request this card?', message: `Use one of your remaining requests for ${requestCardId}?`, confirmLabel: 'Request card', action: () => run('Requesting card', () => tcgTradersApi.requestCard(visitId, requestCardId), 'requests') })} />}
+        {!isProfilePreview && tab === 'cards' && <CardsView inventory={inventoryQuery.data} loading={inventoryQuery.isFetching && (inventoryQuery.isPlaceholderData || !inventoryQuery.data?.length)} onBuy={(id, currency, amount) => confirmAction({ title: 'Ask to buy this card?', message: currency === 'credits' ? 'Ask her to sell this card for {amount} Credits?' : 'Ask her to sell this card for {amount} Shards?', params: { amount: amount.toLocaleString() }, confirmLabel: 'Make offer', action: () => run('Making offer', () => tcgTradersApi.buyOffer(visitId, id, currency)) })} />}
+        {!isProfilePreview && tab === 'trade' && <TradeView visitId={visitId} inventory={inventoryQuery.data} candidates={candidatesQuery.data?.items || []} candidatesLoading={candidatesQuery.isFetching && (candidatesQuery.isPlaceholderData || !candidatesQuery.data?.items?.length)} inventoryLoading={inventoryQuery.isFetching && (inventoryQuery.isPlaceholderData || !inventoryQuery.data?.length)} selected={selected} gradedCopies={gradeResults} onToggle={toggleCopy} targets={targets} onToggleTarget={toggleTarget} credits={credits} shards={shards} onMoney={(kind, value) => kind === 'credits' ? setCredits(value) : setShards(value)} busy={Boolean(busy)} onSell={currency => confirmAction({ title: 'Sell your selected cards?', message: currency === 'credits' ? 'Offer {count} card(s) for Credits? She may accept or counter.' : 'Offer {count} card(s) for Shards? She may accept or counter.', params: { count: selected.length }, confirmLabel: 'Make offer', warnings: earnedCardWarnings(selected), action: () => run('Selling cards', async () => { await tcgTradersApi.sellQuote(visitId, selected, currency); setSelected([]) }, 'counter') })} onBarter={() => confirmAction({ title: 'Send this trade offer?', message: 'She will review your offer and the cards you requested.', confirmLabel: 'Propose trade', warnings: earnedCardWarnings(selected), action: () => run('Sending offer', async () => { await tcgTradersApi.barterOffer(visitId, targets.map(Number), selected, Number(credits || 0), Number(shards || 0)); setSelected([]); setTargets([]); setCredits('0'); setShards('0') }, 'counter') })} />}
+        {!isProfilePreview && tab === 'grading' && <TraderVNGrading visitId={visitId} candidates={candidatesQuery.data?.items || []} loading={candidatesQuery.isFetching && (candidatesQuery.isPlaceholderData || !candidatesQuery.data?.items?.length)} selected={gradeSelected} onToggle={copyId => setGradeSelected(current => current.includes(copyId) ? current.filter(id => id !== copyId) : [...current, copyId])} gradedCopies={gradeResults} busy={Boolean(busy)} onConfirmGrade={quote => confirmAction({ title: 'Grade these cards?', message: 'This will save the previewed tiers for {count} card(s) at a total cost of {cost} Credits.', params: { count: quote.items.length, cost: quote.total_fee_credits.toLocaleString() }, confirmLabel: 'Confirm grading', details: quote.items, action: () => run('Grading cards', async () => { const response = await tcgTradersApi.grade(visitId, quote.items.map(item => Number(item.copy_id))); const items = Array.isArray(response.data?.items) ? response.data.items : []; setGradeResults(current => ({ ...current, ...Object.fromEntries(items.filter(item => item?.grade).map(item => [item.copy_id, item])) })); await queryClient.invalidateQueries({ queryKey: ['tcg-trader-grade-quote', visitId] }) }) })} />}
+        {!isProfilePreview && tab === 'requests' && <RequestsView visit={visit} requests={requestsQuery.data} cardId={requestCardId} onCardId={setRequestCardId} onRequest={() => confirmAction({ title: 'Request this card?', message: 'Use one of your remaining requests for {card}?', params: { card: requestCardId }, confirmLabel: 'Request card', action: () => run('Requesting card', () => tcgTradersApi.requestCard(visitId, requestCardId), 'requests') })} />}
         {!isProfilePreview && tab === 'history' && <HistoryView history={historyQuery.data} />}
       </div>
       {!isProfilePreview && <OffersPanel offers={offersQuery.data} onAccept={accept} onRefuse={refuse} busy={Boolean(busy)} />}
@@ -253,10 +299,16 @@ export default function TraderVN({ onClose }) {
     {confirmation && <div className="trader-vn-confirm-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setConfirmation(null) }}>
       <section className="trader-vn-confirm" role="dialog" aria-modal="true" aria-labelledby="trader-vn-confirm-title" aria-describedby="trader-vn-confirm-message">
         <h2 id="trader-vn-confirm-title"><LocalizedText text={confirmation.title} /></h2>
-        <p id="trader-vn-confirm-message"><LocalizedText text={confirmation.message} /></p>
+        <p id="trader-vn-confirm-message"><LocalizedText text={confirmation.message} params={confirmation.params} /></p>
+        {confirmation.warnings?.length > 0 && <div className="trader-vn-confirm__warning" role="alert">
+          <AlertTriangle aria-hidden="true" />
+          <div>{confirmation.warnings.map(text => <p key={text}><LocalizedText text={text} /></p>)}
+            <label><input type="checkbox" checked={muteEarnedWarning} onChange={event => setMuteEarnedWarning(event.target.checked)} /><LocalizedText text="Don't tell me again" /></label>
+          </div>
+        </div>}
         {confirmation.details?.length > 0 && <ul>{confirmation.details.map(item => <li key={item.copy_id}>
           <span>{item.name || item.catalog_code || `Card #${item.card_id}`}</span>
-          <strong><LocalizedText text={item.grade} /><LocalizedText text={" tier · "} />{item.already_graded ? <LocalizedText text={"Already graded · 0 Credits"} /> : <><LocalizedText text={item.fee_credits.toLocaleString()} /><LocalizedText text={" Credits"} before={" "} /></>}</strong>
+          <strong><LocalizedText text={item.grade} /><LocalizedText text={" tier · "} />{item.already_graded ? <LocalizedText text={"Already graded · 0 Credits"} /> : <LocalizedText text="{amount} Credits" params={{ amount: item.fee_credits.toLocaleString() }} />}</strong>
         </li>)}</ul>}
         <footer><button type="button" onClick={() => setConfirmation(null)}><LocalizedText text={"Cancel"} /></button><button type="button" className="primary" disabled={Boolean(busy)} onClick={performConfirmation}><LocalizedText text={confirmation.confirmLabel} /></button></footer>
       </section>

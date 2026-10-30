@@ -12,6 +12,7 @@ import { useT } from '../i18n'
 import InlineVideoPlayer from './InlineVideoPlayer'
 import FolderPicker from './FolderPicker'
 
+import ModalLayer from './ModalLayer'
 const CREATOR_TYPES = ['cosplayer', 'ethot', 'artist', 'character', 'actress', 'custom']
 const text = { fontSize: 16 }
 
@@ -129,7 +130,19 @@ export default function IntakeModal({ onClose }) {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['intake-items'] })
     qc.invalidateQueries({ queryKey: ['intake-folders'] })
+    qc.invalidateQueries({ queryKey: ['intake-summary'] })
   }
+  // Reopening the Loading Bay mid-import picks the running job back up, so its
+  // progress and final report aren't lost when the window was closed.
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (resumed.current || !status) return
+    resumed.current = true
+    if (status.running && status.job_id && !job) { setBusy(true); setJob({ id: status.job_id }) }
+  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (tab === 'galleries' && (mode === 'new_folder' || mode === 'existing_gallery')) setMode('creator_root')
+  }, [tab, mode])
   useEffect(() => {
     if (!job || status?.done_job_id !== job.id) return
     setScanning(false)
@@ -137,8 +150,12 @@ export default function IntakeModal({ onClose }) {
     const results = status.report || []
     const failed = results.filter(row => row.result === 'error')
     const error = status.message?.match(/^(?:Commit error|Gallery import error):\s*(.*)$/)?.[1]
+    const warnings = [
+      ...results.filter(row => row.warning).map(row => row.warning),
+      ...(/was not registered|registration failed/.test(status.message || '') ? [status.message] : []),
+    ]
     setReport(results.length ? results : null)
-    setImportError(error || (failed.length ? failed.map(row => `${row.filename}: ${row.message}`).join('\n') : ''))
+    setImportError([error || failed.map(row => `${row.filename}: ${row.message}`).join('\n'), ...warnings].filter(Boolean).join('\n'))
     if (!error && !failed.length) setSelected(new Set())
     setJob(null)
     refresh()
@@ -208,20 +225,20 @@ export default function IntakeModal({ onClose }) {
   const act = async action => {
     if (!selected.size) return
     if (action === 'delete' && !window.confirm(
-      `${t('Permanently delete')} ${selected.size} ${tab === 'galleries' ? t('folder(s) and everything inside them') : t('file(s)')}?\n\n${t('This cannot be undone.')}`)) return
+      `${t('Move to the Recycle Bin:')} ${selected.size} ${tab === 'galleries' ? t('folder(s) and everything inside them') : t('file(s)')}?`)) return
     try {
       const { data } = tab === 'galleries'
         ? await intakeApi.discardFolders([...selected], action)
         : await intakeApi.discard([...selected], action)
       if (data.errors?.length) toast.error(`${data.errors.length} ${t('item(s) could not be changed')}`)
-      else toast.success(action === 'hide' ? t('Hidden until the next scan') : action === 'ignore' ? t('Ignored permanently') : t('Deleted permanently'))
+      else toast.success(action === 'hide' ? t('Hidden until the next scan') : action === 'ignore' ? t('Ignored permanently') : t('Moved to the Recycle Bin'))
       setSelected(new Set()); refresh()
     } catch (error) { toast.error(error?.response?.data?.detail || t('Action failed')) }
   }
 
   const bulkDuplicates = async (action, includeVisual) => {
     const label = includeVisual ? t('every exact and visual duplicate') : t('every exact duplicate')
-    if (action === 'delete' && !window.confirm(`${t('Permanently delete')} ${label} ${t('matching the current file filters')}?\n\n${includeVisual ? t('Visual matches may be resized or edited versions. Review them first if unsure.') : t('Only byte-for-byte SHA-256 matches will be deleted.')}\n\n${t('This cannot be undone.')}`)) return
+    if (action === 'delete' && !window.confirm(`${t('Move to the Recycle Bin:')} ${label} ${t('matching the current file filters')}?\n\n${includeVisual ? t('Visual matches may be resized or edited versions. Review them first if unsure.') : t('Only byte-for-byte SHA-256 matches will be deleted.')}`)) return
     try {
       const { data } = await intakeApi.bulkDuplicates(action, includeVisual, { kind: typeFilter, search: nameSearch })
       if (data.errors?.length) toast.error(`${data.errors.length} ${t('file(s) could not be changed')}`)
@@ -233,7 +250,7 @@ export default function IntakeModal({ onClose }) {
   const running = scanning || busy
   const pct = status?.total ? Math.round(status.progress / status.total * 100) : 0
   return createPortal(
-    <div className="loading-bay-backdrop fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.78)' }}>
+    <ModalLayer><div className="loading-bay-backdrop fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.78)' }}>
       <div className="loading-bay-shell flex flex-col overflow-hidden rounded-2xl" style={{ width: 'min(1720px, 94vw)', height: '92vh', background: 'var(--c-surface)', border: '1px solid rgba(255,255,255,.12)' }}>
         <header className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,.08)' }}>
           <Inbox size={22} color="var(--accent)" />
@@ -291,7 +308,7 @@ export default function IntakeModal({ onClose }) {
       {duplicate && <DuplicateDetails item={duplicate} onClose={() => setDuplicate(null)} t={t} />}
       {archive && <ArchivePreview item={archive} onClose={() => setArchive(null)} t={t} />}
       {folderPreview && <FolderPreview folder={folderPreview} onClose={() => setFolderPreview(null)} t={t} />}
-    </div>, document.body)
+    </div></ModalLayer>, document.body)
 }
 
 function LoadingBayFilters({ tab, typeFilter, setTypeFilter, duplicateFilter, setDuplicateFilter, nameSearch, setNameSearch, sortField, setSortField, sortDir, setSortDir, t }) {
@@ -336,7 +353,7 @@ function FolderCard({ item, selected, onToggle, onPreview, t }) {
       <button onMouseDown={event => { event.stopPropagation(); onPreview() }} className="absolute top-2 right-2 p-2 rounded-lg flex items-center gap-2" style={{ ...text, background: 'rgba(0,0,0,.78)' }} title={t('Open gallery contents')}><Eye size={18} /><span>{t('Open')}</span></button>
       {selected && <span className="absolute bottom-2 right-2 rounded-full p-1" style={{ background: 'var(--accent)' }}><Check size={18} /></span>}
     </div>
-    <div className="p-3"><div className="truncate font-semibold" style={text}>{item.name}</div><div style={{ ...text, opacity: .6 }}>{item.file_count} {t('files')} · {item.video_count} {t('videos')} · {fmtSize(item.total_size)}</div>{item.preview_reason && <div className="mt-1 line-clamp-2" title={item.preview_reason} style={{ ...text, color: 'var(--c-amber)' }}>{item.preview_reason}</div>}{item.duplicate_count > 0 && <div style={{ ...text, color: 'var(--c-amber)' }}>{item.exact_duplicate_count} {t('exact')} · {item.visual_duplicate_count} {t('visual matches')}</div>}</div>
+    <div className="p-3"><div className="truncate font-semibold" style={text}>{item.name}</div><div style={{ ...text, opacity: .6 }}>{item.file_count} {t('files')} · {item.video_count} {t('videos')} · {fmtSize(item.total_size)}</div>{item.error && <div className="mt-1" style={{ ...text, color: 'var(--c-pink)' }}>{t(item.error)}</div>}{item.preview_reason && <div className="mt-1 line-clamp-2" title={item.preview_reason} style={{ ...text, color: 'var(--c-amber)' }}>{item.preview_reason}</div>}{item.duplicate_count > 0 && <div style={{ ...text, color: 'var(--c-amber)' }}>{item.exact_duplicate_count} {t('exact')} · {item.visual_duplicate_count} {t('visual matches')}</div>}</div>
   </div>
 }
 
@@ -366,7 +383,7 @@ function DestinationPanel(props) {
     {tab === 'galleries' && <div><div className="mb-2" style={text}>{t('If a folder with the same name exists')}</div><select value={folderConflict} onChange={e => setFolderConflict(e.target.value)} className="w-full px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}><option value="rename">{t('Keep both — rename incoming')}</option><option value="merge">{t('Merge folders safely')}</option><option value="cancel">{t('Stop that gallery import')}</option></select></div>}
   </div><div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
     <button onClick={onCommit} disabled={!selectedCount || busy || choosingBase || (mode === 'unsorted' && !intakeConfig?.unsorted_folder) || (mode === 'new_creator' && !intakeConfig?.new_creator_base)} className="w-full py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-40" style={{ ...text, background: 'var(--accent)' }}>{busy ? <Loader2 className="animate-spin" /> : <ArrowRight />}{mode === 'unsorted' ? t('Import as unsorted') : tab === 'galleries' ? t('Import galleries') : t('Sort files')} {selectedCount ? `(${selectedCount})` : ''}</button>
-    {!!selectedCount && <><button onClick={() => onAction('hide')} className="w-full py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }}>{t('Hide until next scan')}</button><button onClick={() => onAction('ignore')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, background: 'rgba(255,255,255,.05)' }}><ShieldCheck size={20} />{t('Ignore permanently')}</button><button onClick={() => onAction('delete')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, color: 'var(--c-pink)', background: 'color-mix(in srgb,var(--c-pink) 12%,transparent)' }}><Trash2 size={20} />{t('Delete permanently')}</button></>}
+    {!!selectedCount && <><button onClick={() => onAction('hide')} className="w-full py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }}>{t('Hide until next scan')}</button><button onClick={() => onAction('ignore')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, background: 'rgba(255,255,255,.05)' }}><ShieldCheck size={20} />{t('Ignore permanently')}</button><button onClick={() => onAction('delete')} className="w-full py-2 rounded-lg flex justify-center gap-2" style={{ ...text, color: 'var(--c-pink)', background: 'color-mix(in srgb,var(--c-pink) 12%,transparent)' }}><Trash2 size={20} />{t('Move to Recycle Bin')}</button></>}
   </div>{choosingBase && <FolderPicker initialPath={intakeConfig?.new_creator_base || ''} onSelect={saveCreatorBase} onClose={() => setChoosingBase(false)} />}</aside>
 }
 
@@ -468,7 +485,7 @@ function Modal({ title, onClose, closeLabel, children, width = 'fit-content' }) 
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
-  return <div className="loading-bay-modal-backdrop fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.82)' }} onMouseDown={e => e.target === e.currentTarget && onClose()}>
+  return <ModalLayer><div className="loading-bay-modal-backdrop fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.82)' }} onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="loading-bay-modal-shell rounded-2xl max-h-[94vh] overflow-hidden flex flex-col shadow-2xl" style={{ width, maxWidth: '96vw', background: 'var(--c-card)', border: '1px solid rgba(255,255,255,.12)' }}>
       <header className="flex gap-4 items-center px-5 py-4 flex-shrink-0" style={{ background: 'var(--c-card)', borderBottom: '1px solid rgba(255,255,255,.09)' }}>
         <div className="flex-1 font-semibold truncate" style={{ fontSize: 18 }}>{title}</div>
@@ -476,7 +493,7 @@ function Modal({ title, onClose, closeLabel, children, width = 'fit-content' }) 
       </header>
       <div className="p-5 overflow-y-auto">{children}</div>
     </div>
-  </div>
+  </div></ModalLayer>
 }
 
 function Empty({ roots, t }) { return <div className="h-full flex flex-col items-center justify-center gap-3" style={text}><Inbox size={48} /><div>{roots.length ? t('Nothing matches this view. Scan again to refresh the Loading Bay.') : t('Add a Loading Bay folder in Settings, then scan it.')}</div></div> }
@@ -488,17 +505,29 @@ function LoadingBaySettings({ roots, refreshRoots, t }) {
   const [unsorted, setUnsorted] = useState('')
   const [pickerTarget, setPickerTarget] = useState(null)
   useEffect(() => { if (config) { setBase(config.new_creator_base || ''); setUnsorted(config.unsorted_folder || '') } }, [config])
+  const failed = (error, fallback) => toast.error(error?.response?.data?.detail || t(fallback))
   const chooseFolder = async path => {
-    if (pickerTarget === 'root') { await intakeApi.addRoot(path); refreshRoots() }
+    if (pickerTarget === 'root') {
+      try { await intakeApi.addRoot(path); refreshRoots() } catch (error) { failed(error, 'Could not add that folder') }
+    }
     else if (pickerTarget === 'unsorted') setUnsorted(path)
     else if (pickerTarget === 'base') setBase(path)
   }
-  const save = async patch => { await intakeApi.setConfig(patch); qc.invalidateQueries({ queryKey: ['intake-config'] }); toast.success(t('Settings saved')) }
+  const save = async patch => {
+    try { await intakeApi.setConfig(patch); qc.invalidateQueries({ queryKey: ['intake-config'] }); toast.success(t('Settings saved')) }
+    catch (error) { failed(error, 'Could not save settings') }
+  }
+  const removeRoot = async root => {
+    if (!window.confirm(`${t('Stop watching this Loading Bay folder?')}\n\n${root.path}\n\n${t('Files on disk are not touched; waiting items from it leave the Loading Bay.')}`)) return
+    try { await intakeApi.delRoot(root.id); refreshRoots(); qc.invalidateQueries({ queryKey: ['intake-items'] }); qc.invalidateQueries({ queryKey: ['intake-folders'] }); qc.invalidateQueries({ queryKey: ['intake-summary'] }) }
+    catch (error) { failed(error, 'Could not remove that folder') }
+  }
   return <div className="p-6 overflow-y-auto space-y-7" style={text}>
-    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Loading Bay folders')}</h2>{roots.map(root => <div key={root.id} className="flex items-center gap-3 py-2"><FolderOpen /><span className="flex-1">{root.label || root.path}</span><button onClick={async () => { await intakeApi.delRoot(root.id); refreshRoots() }}><Trash2 /></button></div>)}<button onClick={() => setPickerTarget('root')} className="px-3 py-2 rounded-lg flex gap-2" style={{ ...text, background: 'rgba(255,255,255,.06)' }}><FolderPlus />{t('Add folder')}</button></section>
+    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Loading Bay folders')}</h2>{roots.map(root => <div key={root.id} className="py-2"><div className="flex items-center gap-3"><FolderOpen /><span className="flex-1">{root.label || root.path}</span><button onClick={() => removeRoot(root)} title={t('Remove')}><Trash2 /></button></div>{root.warning && <div className="flex items-start gap-2 mt-1 ml-9" style={{ ...text, color: 'var(--c-amber)' }}><AlertTriangle size={18} className="flex-shrink-0 mt-0.5" /><span>{t(root.warning)}</span></div>}</div>)}<button onClick={() => setPickerTarget('root')} className="px-3 py-2 rounded-lg flex gap-2" style={{ ...text, background: 'rgba(255,255,255,.06)' }}><FolderPlus />{t('Add folder')}</button></section>
     <section className="p-4 rounded-xl" style={{ background: 'color-mix(in srgb,var(--accent) 8%,transparent)', border: '1px solid color-mix(in srgb,var(--accent) 28%,transparent)' }}><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Unsorted import folder')}</h2><p className="my-2" style={{ opacity: .68 }}>{t('Raw imports move here without assigning a creator. Loose files become one Unsorted gallery; complete folders remain separate galleries beneath it.')}</p><div className="flex gap-2"><input value={unsorted} onChange={e => setUnsorted(e.target.value)} placeholder={t('Choose a folder outside the Loading Bay…')} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => setPickerTarget('unsorted')} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ unsorted_folder: unsorted })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
     <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('New creator base folder')}</h2><div className="flex gap-2"><input value={base} onChange={e => setBase(e.target.value)} className="flex-1 px-3 py-2 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.05)' }} /><button onClick={() => setPickerTarget('base')} className="px-4 rounded-lg" style={{ ...text, background: 'rgba(255,255,255,.08)' }}>{t('Browse')}</button><button onClick={() => save({ new_creator_base: base })} className="px-4 rounded-lg" style={{ ...text, background: 'var(--accent)' }}>{t('Save')}</button></div></section>
     <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Archives')}</h2><label className="flex gap-3"><input type="checkbox" checked={config?.extract_archives ?? true} onChange={e => save({ extract_archives: e.target.checked })} />{t('Extract loose archives when sorted')}</label><select value={config?.archive_after || 'delete'} onChange={e => save({ archive_after: e.target.value })} className="mt-3 px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}><option value="delete">{t('Delete original after extraction')}</option><option value="move">{t('Move original into destination')}</option><option value="keep">{t('Leave original in Loading Bay')}</option></select></section>
+    <section><h2 style={{ fontSize: 20, fontWeight: 700 }}>{t('Funscripts')}</h2><p className="my-2" style={{ opacity: .68 }}>{t('Where a sorted video\'s .funscript goes.')}</p><select value={config?.funscript_dest || 'beside'} onChange={e => save({ funscript_dest: e.target.value })} className="px-3 py-2 rounded-lg" style={{ ...text, background: 'var(--c-card)' }}><option value="beside">{t('Next to the video')}</option><option value="library">{t('Into the funscript library folder')}</option></select>{config?.funscript_dest === 'library' && !config?.funscript_library_path && <div className="mt-2" style={{ color: 'var(--c-amber)' }}>{t('No funscript library folder is set, so scripts stay next to their video.')}</div>}</section>
     {pickerTarget && <FolderPicker onSelect={chooseFolder} onClose={() => setPickerTarget(null)} />}
   </div>
 }

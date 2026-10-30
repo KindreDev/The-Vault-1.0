@@ -3,7 +3,7 @@ import os
 import random
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func, nullslast, or_
+from sqlalchemy import case, func, nullslast, or_, select
 from typing import List, Optional, Literal
 
 from database import get_db
@@ -50,6 +50,7 @@ def _apply_gallery_filters(
     db: Session,
     *,
     creator_id: Optional[str] = None,
+    creator_mode: Literal["all", "any"] = "any",
     creator_type: Optional[str] = None,
     series: Optional[str] = None,
     search: Optional[str] = None,
@@ -71,21 +72,26 @@ def _apply_gallery_filters(
     `period` itself is optional — the periods endpoint omits it so it can show
     every period available under the *other* active filters.
     """
-    # Filter by creator via M2M — supports comma-separated IDs, creator_type, and series/franchise
-    if creator_id or creator_type or series:
-        q = q.join(gallery_creators, gallery_creators.c.gallery_id == Gallery.id)
-        if creator_id:
-            cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
-            if len(cid_list) == 1:
-                q = q.filter(gallery_creators.c.creator_id == cid_list[0])
-            elif len(cid_list) > 1:
-                q = q.filter(gallery_creators.c.creator_id.in_(cid_list))
-        if creator_type or series:
-            q = q.join(Creator, Creator.id == gallery_creators.c.creator_id)
-            if creator_type:
-                q = q.filter(Creator.creator_type == creator_type)
-            if series:
-                q = q.filter(Creator.series.ilike(f"%{series}%"))
+    # Filter by creator via M2M — supports comma-separated IDs, creator_type, and series/franchise.
+    # Subqueries (not a join) so a gallery with several matching people is listed and counted once.
+    def _galleries_with(*conditions):
+        return Gallery.id.in_(select(gallery_creators.c.gallery_id).where(*conditions))
+
+    if creator_id:
+        cid_list = [int(x.strip()) for x in str(creator_id).split(',') if x.strip().isdigit()]
+        if creator_mode == "all":
+            # Every picked person must be on the gallery (e.g. a cosplayer + her character).
+            for cid in cid_list:
+                q = q.filter(_galleries_with(gallery_creators.c.creator_id == cid))
+        elif cid_list:
+            q = q.filter(_galleries_with(gallery_creators.c.creator_id.in_(cid_list)))
+    if creator_type or series:
+        people = select(Creator.id)
+        if creator_type:
+            people = people.where(Creator.creator_type == creator_type)
+        if series:
+            people = people.where(Creator.series.ilike(f"%{series}%"))
+        q = q.filter(_galleries_with(gallery_creators.c.creator_id.in_(people)))
 
     # Unassigned: galleries with no entries in gallery_creators
     if unassigned:
@@ -277,6 +283,7 @@ def list_galleries(
     response: Response,
     db: Session = Depends(get_db),
     creator_id: Optional[str] = None,  # single id or comma-separated ids
+    creator_mode: Literal["all", "any"] = "any",  # any = either person, all = every picked person
     creator_type: Optional[str] = None,  # cosplayer | ethot | artist | character | actress | custom
     series: Optional[str] = None,  # franchise / series filter (partial match)
     search: Optional[str] = None,
@@ -309,7 +316,7 @@ def list_galleries(
 
     q = _apply_gallery_filters(
         q, db,
-        creator_id=creator_id, creator_type=creator_type, series=series,
+        creator_id=creator_id, creator_mode=creator_mode, creator_type=creator_type, series=series,
         search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
         exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
         exclude_mode=exclude_mode, favorite=favorite,
@@ -376,6 +383,7 @@ def list_galleries(
 def list_periods(
     db: Session = Depends(get_db),
     creator_id: Optional[str] = None,
+    creator_mode: Literal["all", "any"] = "any",
     creator_type: Optional[str] = None,
     series: Optional[str] = None,
     search: Optional[str] = None,
@@ -401,7 +409,7 @@ def list_periods(
     q = q.filter((Gallery.is_missing == False) | (Gallery.is_missing.is_(None)))  # noqa: E712
     q = _apply_gallery_filters(
         q, db,
-        creator_id=creator_id, creator_type=creator_type, series=series,
+        creator_id=creator_id, creator_mode=creator_mode, creator_type=creator_type, series=series,
         search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
         exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
         exclude_mode=exclude_mode, favorite=favorite,
@@ -425,15 +433,68 @@ def list_periods(
     return out
 
 
+# The dashboard stats scan the whole library (~5s on a large one), so the result
+# is cached and reused until the library changes or it is a few minutes old.
+_STATS_CACHE: dict = {"key": None, "at": 0.0, "data": None}
+_STATS_MAX_AGE = 300
+
+
+def _stats_cache_key(db: Session) -> tuple:
+    """Cheap fingerprint of everything that changes the totals."""
+    images = db.query(func.count(Image.id), func.max(Image.id)).one()
+    galleries = db.query(func.count(Gallery.id), func.max(Gallery.updated_at)).one()
+    creators = db.query(func.count(Creator.id), func.max(Creator.updated_at)).one()
+    sessions = db.query(func.count(SessionLog.id)).scalar()
+    profile = db.query(UserProfile.total_cum_count).first()
+    tag_links = db.query(func.max(Tag.use_count), func.sum(Tag.use_count)).one()
+    return (tuple(images), tuple(galleries), tuple(creators), sessions,
+            profile[0] if profile else None, tuple(tag_links))
+
+
+_STATS_LOCK = __import__("threading").Lock()
+
+
 @router.get("/stats")
 def vault_stats(db: Session = Depends(get_db)):
+    import time as _time
+
+    def fresh(key):
+        cached = _STATS_CACHE
+        return (cached["data"] is not None and cached["key"] == key
+                and _time.monotonic() - cached["at"] < _STATS_MAX_AGE)
+
+    key = _stats_cache_key(db)
+    if fresh(key):
+        return _STATS_CACHE["data"]
+    # Concurrent callers (startup warm-up + Dashboard) share one computation.
+    with _STATS_LOCK:
+        if fresh(key):
+            return _STATS_CACHE["data"]
+        data = _compute_vault_stats(db)
+        _STATS_CACHE.update(key=key, at=_time.monotonic(), data=data)
+        return data
+
+
+def _compute_vault_stats(db: Session) -> dict:
     assigned_count = db.query(gallery_creators.c.gallery_id).distinct().count()
     total_galleries = db.query(Gallery).count()
-    total_images = db.query(Image).filter(Image.is_video == False).count()
-    total_videos = db.query(Image).filter(Image.is_video == True).count()
-    total_size = db.query(func.sum(Image.file_size)).scalar() or 0
+    # One pass over the file table instead of a separate scan per figure.
+    (total_images, total_videos, total_size, total_cum_count, total_video_duration,
+     last_added, highest_file_size, avg_rating) = db.query(
+        func.sum(case((Image.is_video == False, 1), else_=0)),  # noqa: E712
+        func.sum(case((Image.is_video == True, 1), else_=0)),  # noqa: E712
+        func.sum(Image.file_size),
+        func.sum(Image.cum_count),
+        func.sum(case((Image.is_video == True, Image.duration), else_=0)),  # noqa: E712
+        func.max(Image.created_at),
+        func.max(Image.file_size),
+        func.avg(case((Image.rating > 0, Image.rating), else_=None)),
+    ).one()
+    total_images, total_videos = int(total_images or 0), int(total_videos or 0)
+    total_size, total_cum_count = total_size or 0, total_cum_count or 0
+    total_video_duration, highest_file_size = total_video_duration or 0, highest_file_size or 0
+    avg_rating = float(avg_rating or 0)
     total_creators = db.query(Creator).count()
-    total_cum_count = db.query(func.sum(Image.cum_count)).scalar() or 0
 
     # User profile & sessions
     profile = db.query(UserProfile).first()
@@ -456,9 +517,7 @@ def vault_stats(db: Session = Depends(get_db)):
 
     # More stats
     avg_files_per_gallery = (total_images + total_videos) / total_galleries if total_galleries > 0 else 0
-    total_video_duration = db.query(func.sum(Image.duration)).filter(Image.is_video == True).scalar() or 0
     avg_video_length = total_video_duration / total_videos if total_videos > 0 else 0
-    last_added = db.query(func.max(Image.created_at)).scalar()
 
     # Activity
     import datetime
@@ -474,9 +533,6 @@ def vault_stats(db: Session = Depends(get_db)):
     most_common_tag = db.query(Tag.name).order_by(Tag.use_count.desc()).first()
     
     # Rating & size
-    rated_images = db.query(Image).filter(Image.rating > 0).all()
-    avg_rating = sum(i.rating for i in rated_images) / len(rated_images) if rated_images else 0
-    highest_file_size = db.query(func.max(Image.file_size)).scalar() or 0
 
     # New creators this month
     now = datetime.datetime.now()

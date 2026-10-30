@@ -8,6 +8,7 @@ import { X, Play, Pause, ChevronLeft, ChevronRight, Sparkles } from 'lucide-reac
 import { recapApi } from '../lib/api'
 import RecapCard from '../components/recap/RecapCards'
 
+import ModalLayer from '../components/ModalLayer'
 const PERIODS = [
   { id: 'day',   label: 'Today',      blurb: 'The last few hours, counted' },
   { id: 'week',  label: 'This Week',  blurb: 'Since Monday' },
@@ -77,7 +78,7 @@ function Player({ deck, onClose }) {
   const atEnd = idx === cards.length - 1
 
   return createPortal(
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+    <ModalLayer><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#0a0a0a',
                          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* Ambient wash so the panel doesn't sit on flat black */}
@@ -155,7 +156,7 @@ function Player({ deck, onClose }) {
           )}
         </div>
       </div>
-    </motion.div>,
+    </motion.div></ModalLayer>,
     document.body,
   )
 }

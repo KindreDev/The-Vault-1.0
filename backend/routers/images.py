@@ -27,19 +27,53 @@ from services.video_playback import VideoPlaybackError, ensure_browser_playback
 from services.video_stream import read_video_chunk
 from services.video_metadata import video_metadata
 
-router = APIRouter()
 _VIDEO_PREVIEW_LOCK = threading.Lock()
 
+router = APIRouter()
 
-def _enrich_image(img: Image, db: Session) -> dict:
+
+def _enrich_images(images: list, db: Session) -> list[dict]:
+    """Enrich a page of images with a fixed number of queries.
+
+    Tag confidence and file-level creators are loaded for the whole page at
+    once instead of two or three queries per image.
+    """
+    ids = [img.id for img in images]
+    if not ids:
+        return []
+    conf: dict = {}
+    for image_id, tag_id, confidence, model in db.execute(
+        select(image_tags.c.image_id, image_tags.c.tag_id, image_tags.c.confidence, image_tags.c.tagger_model)
+        .where(image_tags.c.image_id.in_(ids))
+    ):
+        conf.setdefault(image_id, {})[tag_id] = (confidence, model)
+    files: dict = {}
+    for image_id, creator_id in db.execute(
+        select(image_creators.c.image_id, image_creators.c.creator_id)
+        .where(image_creators.c.image_id.in_(ids))
+    ):
+        files.setdefault(image_id, []).append(creator_id)
+    wanted = {cid for cids in files.values() for cid in cids}
+    creators = {
+        c.id: {"id": c.id, "name": c.name, "creator_type": c.creator_type}
+        for c in db.query(Creator).filter(Creator.id.in_(wanted)).all()
+    } if wanted else {}
+    prefetch = {"conf": conf, "files": files, "creators": creators}
+    return [_enrich_image(img, db, prefetch) for img in images]
+
+
+def _enrich_image(img: Image, db: Session, prefetch: Optional[dict] = None) -> dict:
     d = {c.name: getattr(img, c.name) for c in img.__table__.columns}
 
     # Fetch confidence + tagger_model from the junction table in one query
-    conf_rows = db.execute(
-        select(image_tags.c.tag_id, image_tags.c.confidence, image_tags.c.tagger_model)
-        .where(image_tags.c.image_id == img.id)
-    ).fetchall()
-    conf_map = {row.tag_id: (row.confidence, row.tagger_model) for row in conf_rows}
+    if prefetch is not None:
+        conf_map = prefetch["conf"].get(img.id, {})
+    else:
+        conf_rows = db.execute(
+            select(image_tags.c.tag_id, image_tags.c.confidence, image_tags.c.tagger_model)
+            .where(image_tags.c.image_id == img.id)
+        ).fetchall()
+        conf_map = {row.tag_id: (row.confidence, row.tagger_model) for row in conf_rows}
 
     d["tags"] = [
         {
@@ -53,10 +87,12 @@ def _enrich_image(img: Image, db: Session) -> dict:
 
     # Creator resolution: file-level assignments are ADDITIVE on top of gallery-level.
     # Gallery creators always show; file-level creators are merged in on top (deduped by ID).
-    file_creator_rows = db.execute(
-        select(image_creators.c.creator_id).where(image_creators.c.image_id == img.id)
-    ).fetchall()
-    file_creator_ids = [r.creator_id for r in file_creator_rows]
+    if prefetch is not None:
+        file_creator_ids = list(prefetch["files"].get(img.id, []))
+    else:
+        file_creator_ids = [r.creator_id for r in db.execute(
+            select(image_creators.c.creator_id).where(image_creators.c.image_id == img.id)
+        ).fetchall()]
 
     gallery_creators_list = [
         {"id": c.id, "name": c.name, "creator_type": c.creator_type}
@@ -64,8 +100,11 @@ def _enrich_image(img: Image, db: Session) -> dict:
     ]
 
     if file_creator_ids:
-        file_creator_objs = db.query(Creator).filter(Creator.id.in_(file_creator_ids)).all()
-        file_creator_map = {c.id: {"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in file_creator_objs}
+        if prefetch is not None:
+            file_creator_map = {cid: prefetch["creators"][cid] for cid in file_creator_ids if cid in prefetch["creators"]}
+        else:
+            file_creator_objs = db.query(Creator).filter(Creator.id.in_(file_creator_ids)).all()
+            file_creator_map = {c.id: {"id": c.id, "name": c.name, "creator_type": c.creator_type} for c in file_creator_objs}
         gallery_ids = {c["id"] for c in gallery_creators_list}
         # Gallery creators first, then any file-only creators not already in the list
         merged = gallery_creators_list + [file_creator_map[fid] for fid in file_creator_ids if fid not in gallery_ids and fid in file_creator_map]
@@ -78,6 +117,9 @@ def _enrich_image(img: Image, db: Session) -> dict:
         d["file_creator_ids"] = []
 
     d["gallery_name"] = img.gallery.name if img.gallery else None
+    # Period lives on the gallery; the list's Timeline view groups by it.
+    d["period_year"] = img.gallery.period_year if img.gallery else None
+    d["period_month"] = img.gallery.period_month if img.gallery else None
     return d
 
 
@@ -299,11 +341,11 @@ def list_images(
         name = func.lower(Image.filename)
         images = q.order_by(name.asc() if asc else name.desc(), Image.id).offset(skip).limit(limit).all()
         images.sort(key=lambda img: _natural_key(img.filename), reverse=not asc)
-        return [_enrich_image(img, db) for img in images]
+        return _enrich_images(images, db)
     else:  # date_added
         q = q.order_by(Image.created_at.asc() if (use_asc if use_asc is not None else False) else Image.created_at.desc())
     images = q.order_by(Image.id.desc()).offset(skip).limit(limit).all()
-    return [_enrich_image(img, db) for img in images]
+    return _enrich_images(images, db)
 
 
 @router.get("/periods")
@@ -332,19 +374,21 @@ def list_image_periods(
     filtered set. `period` is deliberately not a parameter — we always show every
     period available under the *other* filters."""
     from datetime import datetime
-    filtered_ids = _apply_image_filters(
-        db.query(Image.id), db,
+    # Count matching images per gallery first, then add those counts up per
+    # period: every image belongs to exactly one gallery, so the totals equal a
+    # distinct count, without materialising hundreds of thousands of ids.
+    per_gallery = _apply_image_filters(
+        db.query(Image.gallery_id.label("gallery_id"), func.count(Image.id.distinct()).label("n")), db,
         search=search, tag=tag, tags=tags, tag_ids=tag_ids, tag_mode=tag_mode,
         exclude_tags=exclude_tags, exclude_tag_ids=exclude_tag_ids,
         exclude_mode=exclude_mode, creator_id=creator_id,
         creator_type=creator_type, series=series, gallery_id=gallery_id,
         is_video=is_video, favorite=favorite, has_funscript=has_funscript,
         unassigned=unassigned,
-    ).scalar_subquery()
+    ).group_by(Image.gallery_id).subquery()
     rows = (
-        db.query(Gallery.period_year, Gallery.period_month, func.count(Image.id.distinct()))
-        .join(Image, Image.gallery_id == Gallery.id)
-        .filter(Image.id.in_(filtered_ids))
+        db.query(Gallery.period_year, Gallery.period_month, func.sum(per_gallery.c.n))
+        .join(per_gallery, per_gallery.c.gallery_id == Gallery.id)
         .filter(Gallery.period_year.isnot(None))
         .group_by(Gallery.period_year, Gallery.period_month)
         .order_by(Gallery.period_year.desc(), Gallery.period_month.desc())
@@ -1112,6 +1156,10 @@ def serve_preview(image_id: int, w: int = 1080, db: Session = Depends(get_db)):
         try:
             os.makedirs(thumbs_dir, exist_ok=True)
             with PILImage.open(img.file_path) as im:
+                # Let JPEG decode at a reduced scale when the source is much
+                # larger than the target. Both sides stay at least w, so the
+                # result is the same after EXIF rotation.
+                im.draft("RGB", (w, w))
                 im = ImageOps.exif_transpose(im)
                 if im.mode not in ("RGB", "L"):
                     im = im.convert("RGB")
@@ -1121,6 +1169,8 @@ def serve_preview(image_id: int, w: int = 1080, db: Session = Depends(get_db)):
         except Exception:
             return FileResponse(img.file_path)
     return FileResponse(cache, headers={"Cache-Control": "public, max-age=86400"})
+
+
 
 
 @router.get("/{image_id}/video-preview")
@@ -1158,6 +1208,28 @@ def serve_video_preview(image_id: int, db: Session = Depends(get_db)):
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
+
+
+@router.get("/{image_id}/hover-clip")
+def serve_hover_clip(image_id: int, request: Request, db: Session = Depends(get_db)):
+    """Small cached MP4 that video tiles play on hover. 503 means the clip is
+    still being built (the tile retries while hovered); 404 means it can't be."""
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img or not img.is_video:
+        raise HTTPException(404, "Hover clips are only available for videos")
+    if not img.file_path or not os.path.isfile(img.file_path):
+        raise HTTPException(404, "Video file not found on disk")
+    file_path, duration = img.file_path, img.duration
+    db.close()   # don't hold a DB connection while waiting for a build
+    from services import hover_clips
+    path, state = hover_clips.get_clip(file_path, duration)
+    if state == "failed":
+        raise HTTPException(404, "Could not build a hover clip for this video")
+    if not path:
+        raise HTTPException(503, "Hover clip is still being built", headers={"Retry-After": "1"})
+    response = _video_response(path, request.headers.get("range"), request)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @router.get("/{image_id}/thumb")

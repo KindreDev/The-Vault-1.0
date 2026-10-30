@@ -56,6 +56,32 @@ function cutout(bounds, holes) {
   return `path('${pieces.map(p => `M${p.x},${p.y}h${p.width}v${p.height}h-${p.width}Z`).join(' ') || 'M0,0h0v0Z'}')`
 }
 
+const inlineBackground = node => `${node.style.background}|${node.style.backdropFilter}`
+
+// A style change on a hole's ancestor only matters if it touches the background.
+// The viewer stage's cursor (grab/grabbing on every drag) and our own
+// position: relative must not trigger a full background rebuild.
+function backgroundChanged(record) {
+  if (record.target === document.documentElement) return true
+  const entry = backgrounds.get(record.target)
+  if (!entry) return false
+  if (record.attributeName !== 'style') return true
+  return inlineBackground(record.target) !== entry.inline
+}
+
+const isContents = node => getComputedStyle(node).display === 'contents'
+function boxParent(node) {
+  let parent = node.parentElement
+  while (parent && isContents(parent)) parent = parent.parentElement
+  return parent
+}
+function* boxChildren(node) {
+  for (const child of node.children) {
+    if (isContents(child)) yield* boxChildren(child)
+    else yield child
+  }
+}
+
 function updateBackgrounds(layouts) {
   const needed = new Map()
   for (const [player, layout] of layouts) {
@@ -72,45 +98,62 @@ function updateBackgrounds(layouts) {
     if (entry.relative) node.style.position = entry.position
     backgrounds.delete(node)
   }
+  // Every style read after a DOM write recalculates the whole page (the library
+  // grid behind a viewer included), so read everything first, then write.
+  // Interleaving cost ~0.5–1.5 s per pass on big libraries.
+  const fresh = [...needed.keys()].filter(node => !backgrounds.has(node))
+  const refresh = themeDirty ? [...needed.keys()].filter(node => backgrounds.has(node)) : []
+  for (const node of refresh) node.removeAttribute('data-native-video-background')
+  const styles = new Map([...fresh, ...refresh].map(node => {
+    const css = getComputedStyle(node)
+    return [node, { background: css.background, backdropFilter: css.backdropFilter,
+      borderRadius: css.borderRadius, position: css.position }]
+  }))
+  const measured = new Map([...needed.keys()].map(node => [node,
+    { bounds: node.getBoundingClientRect(), scrollLeft: node.scrollLeft, scrollTop: node.scrollTop }]))
+  for (const node of refresh) {
+    const entry = backgrounds.get(node), css = styles.get(node)
+    entry.layer.style.setProperty('background', css.background, 'important')
+    entry.layer.style.backdropFilter = css.backdropFilter
+    entry.inline = inlineBackground(node)
+    node.setAttribute('data-native-video-background', '')
+  }
+  for (const node of fresh) {
+    const css = styles.get(node)
+    const layer = document.createElement('div')
+    layer.className = 'vault-native-background'
+    layer.setAttribute('aria-hidden', 'true')
+    layer.style.setProperty('background', css.background, 'important')
+    layer.style.borderRadius = css.borderRadius
+    layer.style.backdropFilter = css.backdropFilter
+    const entry = { layer, relative: css.position === 'static', position: node.style.position,
+      inline: inlineBackground(node) }
+    if (entry.relative) node.style.position = 'relative'
+    node.setAttribute('data-native-video-background', '')
+    node.prepend(layer)
+    backgrounds.set(node, entry)
+  }
   for (const [node, holes] of needed) {
-    let entry = backgrounds.get(node)
-    if (!entry) {
-      const css = getComputedStyle(node)
-      const layer = document.createElement('div')
-      layer.className = 'vault-native-background'
-      layer.setAttribute('aria-hidden', 'true')
-      layer.style.setProperty('background', css.background, 'important')
-      layer.style.borderRadius = css.borderRadius
-      layer.style.backdropFilter = css.backdropFilter
-      entry = { layer, relative: css.position === 'static', position: node.style.position }
-      if (entry.relative) node.style.position = 'relative'
-      node.setAttribute('data-native-video-background', '')
-      node.prepend(layer)
-      backgrounds.set(node, entry)
-    }
-    const bounds = node.getBoundingClientRect()
-    const transform = `translate(${node.scrollLeft}px, ${node.scrollTop}px)`
+    const entry = backgrounds.get(node)
+    const { bounds, scrollLeft, scrollTop } = measured.get(node)
+    const transform = `translate(${scrollLeft}px, ${scrollTop}px)`
     if (entry.layer.style.transform !== transform) entry.layer.style.transform = transform
-    if (themeDirty) {
-      node.removeAttribute('data-native-video-background')
-      const css = getComputedStyle(node)
-      entry.layer.style.setProperty('background', css.background, 'important')
-      entry.layer.style.backdropFilter = css.backdropFilter
-      node.setAttribute('data-native-video-background', '')
-    }
     const path = cutout(bounds, holes)
     if (entry.layer.style.clipPath !== path) entry.layer.style.clipPath = path
   }
   // Native output is beneath the entire WebView. A portal viewer must also
   // cut through the sibling library page, not just its thumbnail images.
   // Walk sibling branches below the player; higher controls/dialogs stay intact.
+  // `display: contents` wrappers (every ModalLayer portal) have no box, so a
+  // clip-path on them does nothing. Look through them to the real boxes, or a
+  // modal stacked under a viewer modal keeps covering the video.
   const neededMedia = new Map()
   for (const [player, layout] of layouts) {
     if (!layout.visible || !player.readyState) continue
-    for (let branch = player.element; branch.parentElement; branch = branch.parentElement) {
+    for (let branch = player.element, parent = boxParent(branch); parent; branch = parent, parent = boxParent(parent)) {
       const branchZ = Number.parseInt(getComputedStyle(branch).zIndex) || 0
-      for (const sibling of branch.parentElement.children) {
-        if (sibling === branch || sibling.classList.contains('vault-native-background') ||
+      for (const sibling of boxChildren(parent)) {
+        if (sibling === branch || sibling.contains(branch) || sibling.classList.contains('vault-native-background') ||
             /^(SCRIPT|STYLE|LINK|HEAD)$/.test(sibling.tagName)) continue
         const siblingZ = Number.parseInt(getComputedStyle(sibling).zIndex) || 0
         const preceding = !!(branch.compareDocumentPosition(sibling) & Node.DOCUMENT_POSITION_PRECEDING)
@@ -139,6 +182,53 @@ function updateBackgrounds(layouts) {
 
 }
 
+// Measuring every player and its ancestors on every animation frame kept the
+// page busy (~13% main thread, ~165 style recalcs/s) for the whole video, and
+// the transparent page is re-blended over each video frame. Instead, measure
+// only when something can move a video, frame by frame for a short burst so
+// transitions and drags still track exactly, plus a slow safety heartbeat.
+const BURST_MS = 450
+const HEARTBEAT_MS = 500
+let burstUntil = 0
+let heartbeat = 0
+let resizeObserver = null
+const listeners = []
+
+function schedule(ms = BURST_MS) {
+  burstUntil = Math.max(burstUntil, performance.now() + ms)
+  if (!frame && active.size) frame = requestAnimationFrame(tick)
+}
+
+function touchesPlayer(node) {
+  if (!(node instanceof Element)) return false
+  for (const player of active) if (node === player.element || node.contains(player.element)) return true
+  return false
+}
+
+function watch() {
+  const on = (target, type, handler, options) => { target.addEventListener(type, handler, options); listeners.push([target, type, handler, options]) }
+  const burst = () => schedule()
+  const longBurst = () => schedule(900)
+  on(window, 'resize', burst)
+  on(document, 'scroll', burst, { capture: true, passive: true })
+  on(document, 'fullscreenchange', longBurst)
+  on(document, 'visibilitychange', burst)
+  on(document, 'transitionrun', longBurst, true)
+  on(document, 'animationstart', longBurst, true)
+  on(document, 'transitionend', burst, true)
+  on(document, 'animationend', burst, true)
+  resizeObserver = new ResizeObserver(burst)
+  resizeObserver.observe(document.documentElement)
+  for (const player of active) resizeObserver.observe(player.element)
+  heartbeat = setInterval(() => schedule(0), HEARTBEAT_MS)
+}
+
+function unwatch() {
+  for (const [target, type, handler, options] of listeners.splice(0)) target.removeEventListener(type, handler, options)
+  resizeObserver?.disconnect(); resizeObserver = null
+  clearInterval(heartbeat); heartbeat = 0
+}
+
 function tick() {
   frame = 0
   const layouts = new Map()
@@ -157,26 +247,39 @@ function tick() {
     updateBackgrounds(layouts)
     themeDirty = false
   }
-  if (active.size) frame = requestAnimationFrame(tick)
+  if (active.size && performance.now() < burstUntil) frame = requestAnimationFrame(tick)
 }
 
 export function startNativeLayout(player) {
   active.add(player)
   if (!observer) {
     observer = new MutationObserver(records => {
-      if (records.some(record => backgrounds.has(record.target) || record.target === document.documentElement)) themeDirty = true
+      if (records.some(backgroundChanged)) themeDirty = true
+      // Zoom/pan (the player's transform) and any class/style change on a
+      // container can move or hide a video. Unrelated updates, such as the
+      // seek bar's width, do not touch a player and are ignored.
+      if (themeDirty || records.some(record => touchesPlayer(record.target))) schedule()
     })
     observer.observe(document.documentElement, { subtree: true, attributes: true,
       attributeFilter: ['style', 'class', 'data-theme', 'data-theme-pack-ui', 'data-theme-pack-panel', 'data-theme-pack-button', 'data-theme-pack-sidebar'] })
+    watch()
+  } else {
+    resizeObserver?.observe(player.element)
   }
-  if (!frame) frame = requestAnimationFrame(tick)
+  schedule()
   return () => {
     active.delete(player)
+    resizeObserver?.unobserve(player.element)
     player.layoutKey = null
     if (!active.size) {
-      cancelAnimationFrame(frame); frame = 0; previousLayout = ''
+      cancelAnimationFrame(frame); frame = 0; previousLayout = ''; burstUntil = 0
       observer?.disconnect(); observer = null
+      unwatch()
       updateBackgrounds(new Map())
     }
   }
 }
+
+// For callers that move a player programmatically (e.g. NativeMedia when the
+// video's size becomes known).
+export function scheduleNativeLayout() { schedule() }

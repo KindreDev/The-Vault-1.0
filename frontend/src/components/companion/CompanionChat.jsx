@@ -8,6 +8,7 @@ import { usePersonalMode } from '../../hooks/usePersonalMode'
 import { useDeviceStore } from '../../store/deviceStore'
 import { deviceService } from '../../services/device'
 
+import ModalLayer from '../ModalLayer'
 const BOND_HEARTS = ['♥', '♥♥', '♥♥♥', '♥♥♥♥', '♥♥♥♥♥']
 
 function stripAndFireDeviceTags(text, deviceStore) {
@@ -839,7 +840,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
 
       {/* ── /secrets password prompt ────────────────────────────────────────── */}
       {showUnlockPrompt && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6"
+        <ModalLayer><div className="fixed inset-0 z-[9999] flex items-center justify-center p-6"
              style={{ background: 'rgba(0,0,0,0.75)' }}
              onClick={() => { setShowUnlockPrompt(false); setUnlockPassword(''); setUnlockError(false) }}>
           <div className="rounded-[16px] p-7 max-w-sm w-full"
@@ -866,7 +867,7 @@ export default function CompanionChat({ config, creators = [], onPersonaChange, 
                       style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}><LocalizedText text={"Cancel"} before={"\n                "} after={"\n              "} /></button>
             </div>
           </div>
-        </div>
+        </div></ModalLayer>
       )}
     </div>
   )

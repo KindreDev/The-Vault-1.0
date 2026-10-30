@@ -530,3 +530,101 @@
     transition-duration: .01ms !important;
   }
 }
+
+/* ── New cards and rare pulls ─────────────────────────────────────────── */
+.pack-opening { --rare-sr: #5fd2ff; --rare-ur: #ffcf5c; --rare-spr: #ff7ac8; }
+.pack-opening__new-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #3ee8a5, #1fb37c);
+  color: #04130d;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  box-shadow: 0 6px 18px rgba(31, 179, 124, .45);
+  pointer-events: none;
+  animation: pack-new-pop .42s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+@keyframes pack-new-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.pack-opening__reveal-stage.is-rare-sr { --rare-color: var(--rare-sr); }
+.pack-opening__reveal-stage.is-rare-ur { --rare-color: var(--rare-ur); }
+.pack-opening__reveal-stage.is-rare-spr { --rare-color: var(--rare-spr); }
+.pack-opening__reveal-frame { position: relative; }
+.pack-opening__rare-label {
+  color: var(--rare-color, #fff);
+  font-size: clamp(26px, 3.4vw, 40px);
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--rare-color, #fff) 70%, transparent);
+  animation: pack-rare-label .7s cubic-bezier(.2, 1.3, .4, 1) both;
+}
+.is-rare-sr .pack-opening__rare-label { font-size: clamp(22px, 2.6vw, 30px); }
+@keyframes pack-rare-label { from { transform: translateY(14px) scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+.pack-opening__rare-burst {
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.pack-opening__rare-burst i {
+  position: absolute;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--rare-color) 55%, transparent) 0%, transparent 62%);
+  animation: pack-rare-burst 1.6s ease-out both;
+}
+.pack-opening__rare-burst i:nth-child(2) {
+  background: conic-gradient(from 0deg, transparent 0 8%, color-mix(in srgb, var(--rare-color) 38%, transparent) 10%, transparent 13% 33%,
+    color-mix(in srgb, var(--rare-color) 38%, transparent) 35%, transparent 38% 58%, color-mix(in srgb, var(--rare-color) 38%, transparent) 60%,
+    transparent 63% 83%, color-mix(in srgb, var(--rare-color) 38%, transparent) 85%, transparent 88%);
+  mask: radial-gradient(circle, #000 25%, transparent 68%);
+  animation: pack-rare-rays 6s linear infinite, pack-rare-fade-in .8s ease-out both;
+}
+.pack-opening__rare-burst i:nth-child(3) {
+  width: 70%;
+  border: 2px solid color-mix(in srgb, var(--rare-color) 70%, transparent);
+  background: none;
+  animation: pack-rare-ring 1.1s ease-out both;
+}
+.is-rare-sr .pack-opening__rare-burst i:nth-child(2),
+.is-rare-sr .pack-opening__rare-burst i:nth-child(3) { display: none; }
+@keyframes pack-rare-burst { 0% { transform: scale(.3); opacity: 0; } 35% { opacity: 1; } 100% { transform: scale(1); opacity: .75; } }
+@keyframes pack-rare-rays { to { transform: rotate(360deg); } }
+@keyframes pack-rare-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pack-rare-ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+.pack-opening__reveal-stage.is-rare-moment .pack-opening__reveal-stack { z-index: 1; }
+.pack-opening__reveal-stage.is-rare-moment .pack-opening__stack-card.is-top {
+  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--rare-color) 75%, transparent));
+}
+.pack-opening__stack-card.is-top.is-holding {
+  cursor: progress;
+  animation: pack-rare-rise 1.1s cubic-bezier(.2, 1, .3, 1) both;
+}
+@keyframes pack-rare-rise { from { transform: translateY(26px) scale(.94); } to { transform: none; } }
+
+.pack-opening__summary { display: flex; flex-wrap: wrap; gap: 10px; }
+.pack-opening__summary span {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .78);
+  font-size: 16px;
+}
+.pack-opening__summary span.has-new { border-color: rgba(62, 232, 165, .5); color: #8ff3c9; }
+.pack-opening__summary span[data-rarity="SR"] { border-color: color-mix(in srgb, var(--rare-sr) 55%, transparent); color: var(--rare-sr); }
+.pack-opening__summary span[data-rarity="UR"] { border-color: color-mix(in srgb, var(--rare-ur) 55%, transparent); color: var(--rare-ur); }
+.pack-opening__summary span[data-rarity="SPR"] { border-color: color-mix(in srgb, var(--rare-spr) 55%, transparent); color: var(--rare-spr); }
+.pack-opening__grid-card { position: relative; }
+.pack-opening__grid-card.is-best[data-rarity="SR"] { filter: drop-shadow(0 0 16px color-mix(in srgb, var(--rare-sr) 60%, transparent)); }
+.pack-opening__grid-card.is-best[data-rarity="UR"] { filter: drop-shadow(0 0 20px color-mix(in srgb, var(--rare-ur) 65%, transparent)); }
+.pack-opening__grid-card.is-best[data-rarity="SPR"] { filter: drop-shadow(0 0 22px color-mix(in srgb, var(--rare-spr) 65%, transparent)); }

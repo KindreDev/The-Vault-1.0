@@ -279,10 +279,10 @@ function NavContent() {
 
       <Section title="Collect" icon={Trophy} defaultOpen={false} accentColor="var(--c-amber)">
         <SectionBody>
-          <NavRow icon={BarChart2} label="Stats"          path="/stats"        color="var(--c-amber)" desc="Overview, Analytics, and Collection History: inspect sessions, viewing time, activity, orgasms, creators, XP, long-term phases, and curation health." />
-          <NavRow icon={Trophy}    label="Quests"         path="/quests"       color="var(--c-amber)" desc="Active daily and weekly quests with progress bars. Boss quests show your lifetime milestone progress." />
-          <NavRow icon={Star}      label="Hall of Fame"   path="/hall-of-fame" color="var(--c-amber)" desc="Expanded leaderboards for creators, galleries, and media, with period and all-time boards, rank movement, and detailed stats." />
-          <NavRow icon={Activity}  label="Recap"          path="/recap"       color="var(--c-pink)" desc="A visual recap of your collection and session history, with highlights from the selected period." />
+          <NavRow icon={BarChart2} label="Stats"          path="/progress/stats" color="var(--c-amber)" desc="Overview, Analytics, and Collection History: inspect sessions, viewing time, activity, orgasms, creators, XP, long-term phases, and curation health." />
+          <NavRow icon={Trophy}    label="Quests"         path="/progress/quests" color="var(--c-amber)" desc="Active daily and weekly quests with progress bars. Boss quests show your lifetime milestone progress." />
+          <NavRow icon={Star}      label="Hall of Fame"   path="/progress/hall-of-fame" color="var(--c-amber)" desc="Expanded leaderboards for creators, galleries, and media, with period and all-time boards, rank movement, and detailed stats." />
+          <NavRow icon={Activity}  label="Recap"          path="/progress/recap" color="var(--c-pink)" desc="A visual recap of your collection and session history, with highlights from the selected period." />
           <NavRow icon={WalletCards} label="Card Collection" path="/collection" color="var(--c-amber)" desc="Browse the published trading-card catalogue, releases, sets, boosters, binders, Workshop cosmetics, physical copies, and C / R / SR / UR / SPR rarities." />
           <NavRow icon={Box}         label="Collection Room" path="/collection/room" color="var(--c-amber)" desc="Optional first-person collector room for furniture, parcels, physical card copies, binders, cabinets, posters, and display layouts." />
         </SectionBody>
@@ -290,10 +290,11 @@ function NavContent() {
 
       <Section title="Tools" icon={Settings} defaultOpen={false} accentColor="rgba(255,255,255,0.4)">
         <SectionBody>
-          <NavRow icon={Tag}       label="Tag Manager"  path="/tags"       color="rgba(255,255,255,0.45)" desc="Browse all tags, see usage counts, merge duplicates, and delete orphaned tags." />
-          <NavRow icon={GitCompare}label="Duplicates"   path="/duplicates" color="rgba(255,255,255,0.45)" desc="Find near-duplicate images using visual hash comparison. Delete duplicates safely — originals are kept." />
+          <NavRow icon={Tag}       label="Tag Manager"  path="/tools/tags" color="rgba(255,255,255,0.45)" desc="Browse all tags, see usage counts, merge duplicates, and delete orphaned tags." />
+          <NavRow icon={GitCompare}label="Duplicates"   path="/tools/duplicates" color="rgba(255,255,255,0.45)" desc="Find near-duplicate images using visual hash comparison. Delete duplicates safely — originals are kept." />
           <NavRow icon={ListTodo}  label="Task Queue"   path="/task-queue" color="rgba(255,255,255,0.45)" desc="Background task monitor. Shows active scans, AI tagging jobs, and thumbnail generation progress." />
-          <NavRow icon={Terminal}  label="Console"      path="/console"    color="rgba(255,255,255,0.45)" desc="Live server log output. Useful for debugging scan issues or checking AI tagging progress." />
+          <NavRow icon={Terminal}  label="Console"      path="/tools/console" color="rgba(255,255,255,0.45)" desc="Live server log output. Useful for debugging scan issues or checking AI tagging progress." />
+          <NavRow icon={ScrollText} label="Scan Log"   path="/tools/scan-log" color="rgba(255,255,255,0.45)" desc="Output of the most recent library scan, with live progress while a scan runs." />
           <NavRow icon={Settings}  label="Settings"     path="/settings"   color="rgba(255,255,255,0.45)" desc="Library and scanner controls, AI tagging, themes, typography, session behavior, hotkeys, backup/restore, storage, updates, and system maintenance." />
         </SectionBody>
       </Section>
@@ -1110,10 +1111,11 @@ function CollectionRoomContent() {
       <Section title="Placement rules" icon={Layers3} defaultOpen={false} accentColor="var(--c-green)">
         <SectionBody>
           <div className="space-y-2.5 text-[16px] text-white/55">
-            <p><strong className="text-white/75"><LocalizedText text="Floor furniture"/></strong>{" "}<LocalizedText text="can be placed freely on the authored walkable floor and moved or rotated later."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Floor furniture"/></strong>{" "}<LocalizedText text="snaps to a build grid like The Sims: click an item to pick it up, click again to place it. Q and E rotate in 45° steps; hold Alt for free placement or 15° turns, and press G to switch the grid off. The preview turns red and says why when a spot is blocked."/></p>
             <p><strong className="text-white/75"><LocalizedText text="Wall shelves and posters"/></strong>{" "}<LocalizedText text="are wall-only. The placement preview uses the actual authored wall faces rather than treating the whole room as a loose rectangle."/></p>
             <p><strong className="text-white/75"><LocalizedText text="Card stands"/></strong>{" "}<LocalizedText text="belong inside authored shelf levels. Cards displayed in cabinets follow their parent shelf when it moves or rotates."/></p>
-            <p><strong className="text-white/75"><LocalizedText text="Context actions"/></strong>{" "}<LocalizedText text="stay attached to the live preview: Place, Return, Rotate, and Deselect. Right-click is reserved for deselecting rather than accidentally selecting another object."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Carried items"/></strong>{" "}<LocalizedText text="show their name beside them, plus why a spot is blocked. Click to place, Q / E to rotate. Esc or right-click puts the item back where it was; Delete returns it to your inventory."/></p>
+            <p><strong className="text-white/75"><LocalizedText text="Lighting"/></strong>{" "}<LocalizedText text="Settings has lighting moods (Daylight, Golden hour, Evening, Night) and accent LED lights along the ceiling with any color, a brightness slider, and a color-cycle effect."/></p>
           </div>
         </SectionBody>
       </Section>

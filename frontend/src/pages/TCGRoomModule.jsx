@@ -1,8 +1,8 @@
 import { LocalizedText, useT } from '../i18n'
 import { lazy, Suspense } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Download, LoaderCircle, RefreshCw, Trash2, Wrench } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { ArrowLeft, CheckCircle2, DoorOpen, Download, LoaderCircle, RefreshCw, Trash2, Wrench } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
 import { tcgRoomModuleApi } from '../lib/api'
@@ -14,6 +14,10 @@ const TCGRoomRuntime = lazy(() => import('../components/tcg-room/TCGRoomRuntime'
 export default function TCGRoomModule() {
   const t = useT()
   const queryClient = useQueryClient()
+  // ?manage=1 opens this page even when the room is installed, so update,
+  // repair and uninstall stay reachable (the room itself replaces this page).
+  const [params] = useSearchParams()
+  const manage = params.get('manage') === '1'
   const statusQuery = useQuery({
     queryKey: ['tcg-room-module'],
     queryFn: () => tcgRoomModuleApi.status().then(response => response.data),
@@ -33,7 +37,7 @@ export default function TCGRoomModule() {
   const progress = data?.bytes_total ? Math.min(100, Math.round(data.bytes_done / data.bytes_total * 100)) : 0
   const ready = installed.find(item => item.verified)
 
-  if (ready) return <Suspense fallback={<main className="tcg-room tcg-room--booting" style={{ background: '#12111a' }}><div className="tcg-room__boot" style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center' }}><i className="tcg-room__boot-mark" /></div></main>}><TCGRoomRuntime version={ready.version} /></Suspense>
+  if (ready && !manage) return <Suspense fallback={<main className="tcg-room tcg-room--booting" style={{ background: '#12111a' }}><div className="tcg-room__boot" style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center' }}><i className="tcg-room__boot-mark" /></div></main>}><TCGRoomRuntime version={ready.version} /></Suspense>
 
   return <main className="tcg-room-module">
     <header>
@@ -53,7 +57,7 @@ export default function TCGRoomModule() {
       </div>
 
       {running && <div className="tcg-room-module__progress" role="status" aria-live="polite">
-        <div><strong>{data.phase === 'downloading' ? 'Downloading room data' : `${data.phase[0].toUpperCase()}${data.phase.slice(1)}`}</strong><span>{progress}%</span></div>
+        <div><strong>{data.phase === 'downloading' ? t('Downloading room data') : t(`${data.phase[0].toUpperCase()}${data.phase.slice(1)}`)}</strong><span>{progress}%</span></div>
         <div className="tcg-room-module__bar"><i style={{ width: `${progress}%` }} /></div>
         <p>{data.current_file || t('{done} of {total} files', { done: data.files_done, total: data.files_total })}</p>
         <button onClick={() => action.mutate({ name: 'cancel' })}><LocalizedText text={"Cancel"} /></button>
@@ -66,13 +70,14 @@ export default function TCGRoomModule() {
       {data.error && <p className="tcg-room-module__error">{data.error}</p>}
 
       <div className="tcg-room-module__actions">
+        {ready && <Link className="tcg-room-module__enter" to="/collection/room"><DoorOpen size={19} /><LocalizedText text={"Enter room"} before={" "} /></Link>}
         {!installed.length && <button disabled={!data.available || running || action.isPending} onClick={() => action.mutate({ name: 'download' })}><Download size={19} /><LocalizedText text={"Download module"} before={" "} /></button>}
         {installed.length > 0 && <button disabled={running || action.isPending} onClick={() => action.mutate({ name: 'update' })}><RefreshCw size={19} /><LocalizedText text={"Check and update"} before={" "} /></button>}
         {installed.length > 0 && <button disabled={running || action.isPending} onClick={() => action.mutate({ name: 'repair', version: installed[0].version })}><Wrench size={19} /><LocalizedText text={"Repair"} before={" "} /></button>}
       </div>
 
       {installed.map(item => <article key={item.version} className="tcg-room-module__installed">
-        <div>{item.verified ? <CheckCircle2 size={22} /> : <Wrench size={22} />}<span><strong><LocalizedText text={"Version"} after={" "} />{item.version}</strong><small>{item.verified ? 'Verified and ready' : 'Needs repair'}</small></span></div>
+        <div>{item.verified ? <CheckCircle2 size={22} /> : <Wrench size={22} />}<span><strong><LocalizedText text={"Version"} after={" "} />{item.version}</strong><small>{item.verified ? t('Verified and ready') : t('Needs repair')}</small></span></div>
         <button disabled={running || action.isPending} onClick={() => action.mutate({ name: 'uninstall', version: item.version })}><Trash2 size={18} /><LocalizedText text={"Uninstall"} before={" "} /></button>
       </article>)}
     </section>}

@@ -1,4 +1,4 @@
-import { LocalizedText } from '../../i18n'
+import { LocalizedText, useT } from '../../i18n'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeftRight, Check, History, MessageCircle, Search, Sparkles, X } from 'lucide-react'
@@ -104,9 +104,11 @@ export function CardsView({ inventory, onBuy, loading = false }) {
   </section>
 }
 
+const TRADE_FACE_WIDTH = 104
+
 export function TradeCardOption({ cardId, selected, disabled = false, onClick, children }) {
   return <button type="button" className={`trader-vn-card-option${selected ? ' selected' : ''}`} aria-pressed={selected} disabled={disabled} onClick={onClick}>
-    <TraderCardPreview cardId={cardId} />
+    <TraderCardPreview cardId={cardId} width={TRADE_FACE_WIDTH} />
     <div className="trader-vn-card-option__details">{children}</div>
     {selected && <Check className="trader-vn-card-option__check" size={20} />}
   </button>
@@ -126,6 +128,7 @@ const quoteNumber = value => {
 }
 
 export function TradeView({ visitId, inventory, candidates, candidatesLoading = false, inventoryLoading = false, selected, gradedCopies = {}, onToggle, targets, onToggleTarget, credits, shards, onMoney, busy = false, onBarter, onSell }) {
+  const t = useT()
   const [search, setSearch] = useState('')
   const allInventory = Array.isArray(inventory) ? inventory : []
   const allCandidates = Array.isArray(candidates) ? candidates : []
@@ -198,7 +201,7 @@ export function TradeView({ visitId, inventory, candidates, candidatesLoading = 
     : null
   return <section className="trader-vn-view trader-vn-trade">
     <header><ArrowLeftRight /><div><h2><LocalizedText text={"Trade cards"} /></h2><p><LocalizedText text={"Offer cards or currency for any cards you want."} /></p></div></header>
-      <label className="trader-vn-trade-search"><span><LocalizedText text={"Search cards"} /></span><div><Search aria-hidden="true" /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Card code, title, creator, type, or tag" /></div></label>
+      <label className="trader-vn-trade-search"><span><LocalizedText text={"Search cards"} /></span><div><Search aria-hidden="true" /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t("Card code, title, creator, type, or tag")} /></div></label>
       <div className="trader-vn-value-summary" aria-live="polite">
         <div><span><LocalizedText text={"Value"} /></span><strong>{visibleOfferValue === null ? '—' : visibleOfferValue.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong></div>
         <ArrowLeftRight aria-hidden="true" />
@@ -208,7 +211,7 @@ export function TradeView({ visitId, inventory, candidates, candidatesLoading = 
       </div>
       <div className="trader-vn-offer-pair">
         <section className="trader-vn-offer-side"><header><div><h3><LocalizedText text={"Your Offer"} /></h3><span>{selectedCopyIds.length}<LocalizedText text={selectedCopyIds.length === 1 ? " card selected" : " cards selected"} before={" "} /></span></div></header>
-          <div className="trader-vn-card-options" aria-label="Your cards">
+          <div className="trader-vn-card-options" aria-label={t("Your cards")}>
             {filteredCandidates.length ? candidatePage.items.map(item => {
               const isSelected = selected.includes(item.copy_id)
               const individualValue = quoteNumber(item.barter_value_units)
@@ -224,7 +227,7 @@ export function TradeView({ visitId, inventory, candidates, candidatesLoading = 
         </section>
         <div className="trader-vn-offer-swap" aria-hidden="true"><ArrowLeftRight size={30} /></div>
         <section className="trader-vn-offer-side"><header><div><h3><LocalizedText text={"Her Cards"} /></h3><span>{selectedTargets.length}<LocalizedText text={selectedTargets.length === 1 ? " card selected" : " cards selected"} before={" "} /></span></div></header>
-          <div className="trader-vn-card-options" aria-label="Her available cards">
+          <div className="trader-vn-card-options" aria-label={t("Her available cards")}>
             {filteredInventory.length ? inventoryPage.items.map(row => <TradeCardOption key={row.id} cardId={row.card_id} selected={targets.includes(String(row.id))} onClick={() => onToggleTarget(row.id)}><span>{row.credits.toLocaleString()}<LocalizedText text={" Credits"} before={" "} /><span aria-hidden="true"> · </span>{row.shards.toLocaleString()}<LocalizedText text={" Shards"} before={" "} /></span></TradeCardOption>) : inventoryLoading ? <Empty><LocalizedText text={"Loading her cards…"} /></Empty> : searchTerm ? <Empty><LocalizedText text={"No cards match this search."} /></Empty> : <Empty><LocalizedText text={"She has no available cards to trade."} /></Empty>}
           </div>
           <TraderCardPages pagination={inventoryPage} />
@@ -234,18 +237,33 @@ export function TradeView({ visitId, inventory, candidates, candidatesLoading = 
   </section>
 }
 
+const REQUEST_STATUS = Object.freeze({ pending: 'Waiting for her next visit', fulfilled: 'She brought your card', offered: 'Offer found' })
+
 export function RequestsView({ visit, requests, cardId, onCardId, onRequest }) {
-  return <section className="trader-vn-view"><header><Search /><div><h2><LocalizedText text={"Request a card"} /></h2><p>{visit.requests_remaining}<LocalizedText text={"requests remaining"} before={" "} /> · <LocalizedText text={"72% chance she brings it on her next visit."} /></p></div></header>
-    <div className="trader-vn-request"><label><LocalizedText text={"Card catalog code"} /><input type="text" value={cardId} onChange={event => onCardId(event.target.value)} placeholder="REL-2026-10-435" /></label><button disabled={!cardId.trim() || !visit.requests_remaining} onClick={onRequest}><LocalizedText text={"Request card"} /></button></div>
-    <div className="trader-vn-request-log">{requests.map(item => <article key={item.id}><TraderCardPreview cardId={item.card_id} compact /><div><strong>{item.catalog_code || item.result?.catalog_code || <LocalizedText text={"Catalog code unavailable"} />}</strong><span>{item.status === 'pending' ? 'Waiting for her next visit' : item.status === 'fulfilled' ? 'She brought your card' : item.status === 'offered' ? 'Offer found' : 'She could not find it'}</span><p>{item.result?.reason || (item.status === 'pending' ? 'Waiting for her next visit.' : item.result?.credits ? `${item.result.credits.toLocaleString()} Credits` : '')}</p></div></article>)}</div>
+  return <section className="trader-vn-view"><header><Search /><div><h2><LocalizedText text={"Request a card"} /></h2><p><LocalizedText text="{count} requests left" params={{ count: visit.requests_remaining }} /> · <LocalizedText text="{chance}% chance she brings it on her next visit." params={{ chance: visit.trader?.request_chance_pct ?? 72 }} /></p></div></header>
+    <div className="trader-vn-request"><label><LocalizedText text={"Card catalog code"} /><input type="text" value={cardId} onChange={event => onCardId(event.target.value)} placeholder="FND-CORE-R0002-073" /></label><button disabled={!cardId.trim() || !visit.requests_remaining} onClick={onRequest}><LocalizedText text={"Request card"} /></button></div>
+    <div className="trader-vn-request-log">{(Array.isArray(requests) ? requests : []).map(item => <article key={item.id}><TraderCardPreview cardId={item.card_id} compact /><div><strong>{item.catalog_code || item.result?.catalog_code || <LocalizedText text={"Catalog code unavailable"} />}</strong><span><LocalizedText text={REQUEST_STATUS[item.status] || 'She could not find it'} /></span><p>{item.result?.reason || (item.result?.credits ? <LocalizedText text="{amount} Credits" params={{ amount: item.result.credits.toLocaleString() }} /> : '')}</p></div></article>)}</div>
   </section>
 }
+const OFFER_KIND = Object.freeze({ sell: 'Sell', buy: 'Buy', barter: 'Trade', request: 'Request' })
+
+function OfferCards({ label, cardIds }) {
+  if (!cardIds?.length) return null
+  return <div className="trader-vn-offers__side"><span><LocalizedText text={label} /></span><div>{cardIds.map((cardId, index) => <TraderCardPreview key={`${cardId}-${index}`} cardId={cardId} width={58} showMeta={false} />)}</div></div>
+}
+
 export function OffersPanel({ offers, onAccept, onRefuse, busy = false }) {
-  const open = offers.filter(offer => offer.status === 'open')
+  const t = useT()
+  const open = (Array.isArray(offers) ? offers : []).filter(offer => offer.status === 'open')
   if (!open.length) return null
-  return <aside className="trader-vn-offers"><header><AlertTriangle /><strong><LocalizedText text={"Open deal"} />{open.length === 1 ? '' : 's'}</strong></header>{open.map(offer => <article key={offer.id}><div><strong>{offer.kind.toUpperCase()}<LocalizedText text={"· Offer #"} before={" "} />{offer.id}</strong><span>{offerSummary(offer)}</span></div><button disabled={busy} onClick={() => onAccept(offer)}><Check /><LocalizedText text={"Accept"} before={" "} /></button><button disabled={busy} onClick={() => onRefuse(offer)}><X /><LocalizedText text={"Refuse"} before={" "} /></button></article>)}</aside>
+  return <aside className="trader-vn-offers"><header><AlertTriangle /><strong><LocalizedText text={open.length === 1 ? 'Open deal' : 'Open deals'} /></strong></header>{open.map(offer => <article key={offer.id}>
+    <div className="trader-vn-offers__summary"><strong><LocalizedText text={OFFER_KIND[offer.kind] || offer.kind} /> · <LocalizedText text="Offer #{id}" params={{ id: offer.id }} /></strong><span>{offerSummary(offer, t)}</span></div>
+    <div className="trader-vn-offers__cards"><OfferCards label="You give" cardIds={offer.user_card_ids} /><OfferCards label="You get" cardIds={offer.target_card_ids} /></div>
+    <div className="trader-vn-offers__actions"><button disabled={busy} onClick={() => onAccept(offer)}><Check /><LocalizedText text={"Accept"} before={" "} /></button><button disabled={busy} onClick={() => onRefuse(offer)}><X /><LocalizedText text={"Refuse"} before={" "} /></button></div>
+  </article>)}</aside>
 }
 
 export function HistoryView({ history }) {
-  return <section className="trader-vn-view"><header><History /><div><h2><LocalizedText text={"Deal History"} /></h2><p><LocalizedText text={"Your completed trades with past visitors."} /></p></div></header>{history.length ? <div className="trader-vn-history">{history.map(item => <article key={item.id}><div><strong>{item.kind.toUpperCase()}<LocalizedText text={"· Deal #"} before={" "} />{item.id}</strong><span>{new Date(item.completed_at).toLocaleString()}</span></div><p>{offerSummary(item)} · {item.lines.length}<LocalizedText text={"card line"} before={" "} />{item.lines.length === 1 ? '' : 's'}</p></article>)}</div> : <Empty><LocalizedText text={"Completed trades will appear here."} /></Empty>}</section>
+  const t = useT()
+  return <section className="trader-vn-view"><header><History /><div><h2><LocalizedText text={"Deal History"} /></h2><p><LocalizedText text={"Your completed trades with past visitors."} /></p></div></header>{history?.length ? <div className="trader-vn-history">{history.map(item => <article key={item.id}><div><strong><LocalizedText text={OFFER_KIND[item.kind] || item.kind} /> · <LocalizedText text="Deal #{id}" params={{ id: item.id }} /></strong><span>{new Date(item.completed_at).toLocaleString()}</span></div><p>{offerSummary(item, t)} · <LocalizedText text={item.lines.length === 1 ? '{count} card' : '{count} cards'} params={{ count: item.lines.length }} /></p></article>)}</div> : <Empty><LocalizedText text={"Completed trades will appear here."} /></Empty>}</section>
 }

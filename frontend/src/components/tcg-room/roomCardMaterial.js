@@ -1,4 +1,6 @@
-export const ROOM_CARD_LIMITS = Object.freeze({ pile: 8, display: 36, carried: 4 })
+// Keep these in step with VISIBLE_*_LIMIT in backend/services/tcg_room.py.
+// A lower display cap here silently hid cards on stands past the 36th.
+export const ROOM_CARD_LIMITS = Object.freeze({ pile: 8, display: 64, carried: 4 })
 
 export function isPremiumRoomCardReady(item) {
   if (!item?.material_ready || !item.card) return false
@@ -118,5 +120,8 @@ export const ROOM_CARD_FRAGMENT_SHADER = /* glsl */`
     color = mix(color, 1.0 - (1.0 - color) * (1.0 - mix(vec3(1.0), foilColor, .35)), rarityEnergy);
     color += vec3(pow(incidence, 40.0) * .025);
     gl_FragColor = vec4(color, face.a);
+    // The face texture is sRGB, so it is decoded to linear when sampled.
+    // Encode back for the screen, or every close-up card renders too dark.
+    #include <colorspace_fragment>
   }
 `

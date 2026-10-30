@@ -1,10 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useGLTF, useTexture } from '@react-three/drei'
-import { AUTHORED_FURNITURE, BLUE_BOXES, FURNITURE_FILE, SURFACE_HOST_ASSETS, furnitureModelYawOffset, standMeshScale } from './roomLayout'
-import { textureFromImage } from './RoomPosterDisplays'
+import { AUTHORED_FURNITURE, BLUE_BOXES, FURNITURE_FILE, PACK_SHELF_SIZE, PACK_SHELF_SLOTS, SURFACE_HOST_ASSETS, furnitureModelYawOffset, standMeshScale } from './roomLayout'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { roomQualityProfile } from './roomQuality'
+import { registerFloorTriangles } from './roomPlacementRules'
+import { GLASS_PATTERN, cheapGlass } from './roomMaterials'
+
+function floorTrianglesFrom(node) {
+  const geometry = node.geometry
+  const position = geometry?.attributes?.position
+  if (!position) return []
+  node.updateWorldMatrix(true, false)
+  const a = new THREE.Vector3(); const b = new THREE.Vector3(); const c = new THREE.Vector3()
+  const edgeA = new THREE.Vector3(); const edgeB = new THREE.Vector3()
+  const index = geometry.index
+  const count = index ? index.count : position.count
+  const triangles = []
+  for (let offset = 0; offset + 2 < count; offset += 3) {
+    const ia = index ? index.getX(offset) : offset
+    const ib = index ? index.getX(offset + 1) : offset + 1
+    const ic = index ? index.getX(offset + 2) : offset + 2
+    a.fromBufferAttribute(position, ia).applyMatrix4(node.matrixWorld)
+    b.fromBufferAttribute(position, ib).applyMatrix4(node.matrixWorld)
+    c.fromBufferAttribute(position, ic).applyMatrix4(node.matrixWorld)
+    const normalY = edgeA.subVectors(b, a).cross(edgeB.subVectors(c, a)).normalize().y
+    if (normalY > .5) triangles.push([a.x, a.z, b.x, b.z, c.x, c.z])
+  }
+  return triangles
+}
 
 const PALETTE = Object.freeze({
   wall_paint: { color: '#f2eee6', roughness: .88 },
@@ -88,6 +112,8 @@ function isCollideMesh(name) {
   return /room|floor/i.test(n) || /desk|door|defaultmaterial/i.test(n)
 }
 
+const WINDOW_GLASS = new THREE.MeshBasicMaterial({ color: '#d6e8f2', transparent: true, opacity: .12, depthWrite: false, side: THREE.DoubleSide })
+
 /** Live apartment shell. Native glTF materials, no PALETTE remap, no shop furniture. */
 export function AuthoredBaseRoom({ quality = 'medium', onLoaded }) {
   const { scene } = useGLTF(BASE_ROOM_URL)
@@ -99,7 +125,20 @@ export function AuthoredBaseRoom({ quality = 'medium', onLoaded }) {
       if (!node.isMesh) return
       const glass = /glass/i.test(node.material?.name || '') || /window/i.test(node.name)
       node.castShadow = profile.shadows && !glass && !/floor/i.test(node.name)
-      node.receiveShadow = true
+      node.receiveShadow = !glass
+      // Window panes: a faint unlit tint.  The authored transmission glass
+      // re-rendered the whole room every frame, and lit glass reflects the
+      // studio environment, which reads as a bright pane at night.
+      if (glass && /glass/i.test(node.material?.name || '')) node.material = WINDOW_GLASS
+      // BAKE_Roof2 is a white emissive slab above the ceiling.  It is only seen
+      // through hairline cracks where inner walls meet the ceiling, where it
+      // glowed as bright white seams.  Give it a plain ceiling finish instead.
+      if (node.name === 'BAKE_Roof2' && node.material && !node.material.userData.vaultMatte) {
+        node.material.emissive?.set('#000000')
+        node.material.emissiveIntensity = 0
+        node.material.color?.set('#bdb7ad')
+        node.material.userData.vaultMatte = true
+      }
       node.userData.collide = isCollideMesh(node.name)
       node.userData.placeSurface = /desk|defaultmaterial/i.test(node.name)
       if (/BAKE_(Room|Floor|Roof)/.test(node.name) && node.material && !node.material.userData.vaultSided) {
@@ -109,6 +148,10 @@ export function AuthoredBaseRoom({ quality = 'medium', onLoaded }) {
     })
     return value
   }, [profile.shadows, scene])
+  useEffect(() => {
+    const floor = root.getObjectByName('BAKE_Floor')
+    if (floor) registerFloorTriangles(floorTrianglesFrom(floor))
+  }, [root])
   useEffect(() => { onLoaded?.(1) }, [onLoaded])
   return <primitive object={root} />
 }
@@ -283,7 +326,7 @@ export function MergedRoomAssets({ version, items, quality = 'medium', onLoaded 
 
 export function furnitureUrl(version, assetId) {
   const file = FURNITURE_FILE[assetId] || assetId
-  if (AUTHORED_FURNITURE.has(assetId) || AUTHORED_FURNITURE.has(file)) return `/tcg-room/furniture/${file}.glb?v=3`
+  if (AUTHORED_FURNITURE.has(assetId) || AUTHORED_FURNITURE.has(file)) return `/tcg-room/furniture/${file}.glb?v=4`
   return `/api/tcg-room/module/assets/${encodeURIComponent(version)}/assets/${assetId}.glb`
 }
 
@@ -293,58 +336,95 @@ export function AuthoredFurnitureItems({ version, items, quality = 'medium' }) {
   </group>
 }
 
+const mergedFurnitureCache = new WeakMap()
+
+function furnitureGlassMaterial(source, translucent) {
+  const material = cheapGlass(source.clone(), translucent ? .22 : .16)
+  material.roughness = Math.max(.08, material.roughness ?? .1)
+  material.metalness = Math.min(.12, material.metalness ?? 0)
+  material.color?.set('#d7eef1')
+  return material
+}
+
+/**
+ * Authored furniture GLBs arrive as many small meshes (the tall glass cabinet
+ * alone has 164).  Merge them once per asset into one mesh per material so
+ * each placed copy costs a handful of draw calls instead of hundreds.
+ * The result is shared by every copy of the asset and lives for the session.
+ */
+function mergedFurniture(scene) {
+  const cached = mergedFurnitureCache.get(scene)
+  if (cached) return cached
+  scene.updateMatrixWorld(true)
+  const inverseRoot = new THREE.Matrix4().copy(scene.matrixWorld).invert()
+  const groups = new Map()
+  scene.traverse(node => {
+    if (!node.isMesh || node.name.startsWith('UCX_') || Array.isArray(node.material) || !node.material) return
+    const geometry = node.geometry.clone()
+    for (const key of Object.keys(geometry.attributes)) {
+      if (!['position', 'normal', 'uv'].includes(key)) geometry.deleteAttribute(key)
+    }
+    if (!geometry.attributes.normal) geometry.computeVertexNormals()
+    if (!geometry.attributes.uv) geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geometry.attributes.position.count * 2), 2))
+    geometry.morphAttributes = {}
+    geometry.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverseRoot, node.matrixWorld))
+    const key = `${node.material.uuid}:${geometry.index ? 'i' : 'n'}`
+    const glass = GLASS_PATTERN.test(`${node.name || ''} ${node.material.name || ''}`)
+    if (!groups.has(key)) groups.set(key, { material: node.material, glass, translucent: /translucent/i.test(`${node.name || ''} ${node.material.name || ''}`), geometries: [] })
+    groups.get(key).geometries.push(geometry)
+  })
+  const parts = [...groups.values()].map(group => {
+    const geometry = group.geometries.length === 1 ? group.geometries[0] : mergeGeometries(group.geometries, false)
+    if (group.geometries.length > 1) group.geometries.forEach(item => item.dispose())
+    geometry.computeBoundingSphere()
+    geometry.computeBoundingBox()
+    return { geometry, glass: group.glass, material: group.glass ? furnitureGlassMaterial(group.material, group.translucent) : group.material }
+  })
+  // Opaque parts first, then glass, so transparent panes draw over the frame.
+  parts.sort((left, right) => Number(left.glass) - Number(right.glass))
+  mergedFurnitureCache.set(scene, parts)
+  return parts
+}
+
+// Lit parts of the trophy box, lightbox and pedestal take the player's LED colour.  One
+// recoloured material per colour is shared by every box using it.
+const tintedMaterials = new Map()
+
+function tintedPart(part, color) {
+  const name = part.material?.name || ''
+  const led = /warm LED|lightbox LED|pedestal LED/i.test(name)
+  if (!color || !(led || /spotlight glow/i.test(name))) return part
+  const key = `${part.material.uuid}:${color}`
+  if (!tintedMaterials.has(key)) {
+    const material = part.material.clone()
+    material.emissive.set(color)
+    if (led) material.color.set(color)
+    // The authored warm bar is bright enough to clip to white; a coloured
+    // bar needs less, or the colour never shows.  The glow pool's texture is
+    // warm, so it needs a little more to carry other colours.
+    material.emissiveIntensity = led ? Math.min(material.emissiveIntensity, 1.8) : material.emissiveIntensity * 1.8
+    tintedMaterials.set(key, material)
+  }
+  return { ...part, material: tintedMaterials.get(key) }
+}
+
 function AuthoredFurniturePiece({ version, item, quality }) {
   const { scene } = useGLTF(furnitureUrl(version, item.assetId))
   const profile = roomQualityProfile(quality)
-  const clone = useMemo(() => {
-    const value = scene.clone(true)
-    value.traverse(node => {
-      if (!node.isMesh) return
-      const materialName = Array.isArray(node.material)
-        ? node.material.map(material => material?.name || '').join(' ')
-        : node.material?.name || ''
-      const glass = /glass|acrylic|translucent/i.test(`${node.name || ''} ${materialName}`)
-      node.castShadow = profile.shadows && !glass
-      // Transparent panes must not receive the room's shadow map.  Doing so
-      // makes the pane render as a dark duplicate of the frame and produces
-      // the shelf-shaped shadow bands visible through the cabinet.
-      node.receiveShadow = !glass
-      node.userData.placeSurface = SURFACE_HOST_ASSETS.has(item.assetId)
-      if (glass) {
-        const sourceMaterials = Array.isArray(node.material) ? node.material : [node.material]
-        const materials = sourceMaterials.map(source => {
-          if (!source) return source
-          const material = source.clone()
-          material.transparent = true
-          material.depthTest = true
-          material.depthWrite = false
-          material.side = THREE.DoubleSide
-          material.opacity = /translucent/i.test(`${node.name || ''} ${source.name || ''}`) ? .22 : .16
-          material.roughness = Math.max(.16, material.roughness ?? .16)
-          material.metalness = Math.min(.12, material.metalness ?? 0)
-          material.color?.set('#d7eef1')
-          material.needsUpdate = true
-          return material
-        })
-        node.material = Array.isArray(node.material) ? materials : materials[0]
-        node.renderOrder = 4
-        node.userData.vaultOwnsMaterial = true
-      }
-    })
-    return value
-  }, [item.assetId, profile.shadows, scene])
-  useEffect(() => () => {
-    clone.traverse(node => {
-      if (!node.isMesh || !node.userData.vaultOwnsMaterial) return
-      const materials = Array.isArray(node.material) ? node.material : [node.material]
-      materials.forEach(material => material?.dispose?.())
-    })
-  }, [clone])
+  const merged = useMemo(() => mergedFurniture(scene), [scene])
+  const parts = useMemo(() => merged.map(part => tintedPart(part, item.ledColor)), [merged, item.ledColor])
+  const surface = SURFACE_HOST_ASSETS.has(item.assetId)
   const p = item.position
   const r = item.rotation
   const scale = item.scale || standMeshScale(item.assetId)
   return <group position={p} rotation={[r[0], (r[1] || 0) + furnitureModelYawOffset(item.assetId), r[2]]} scale={scale}>
-    <primitive object={clone} />
+    {parts.map((part, index) => <mesh key={index} geometry={part.geometry} material={part.material}
+      castShadow={profile.shadows && !part.glass}
+      // Transparent panes must not receive the room's shadow map: it renders
+      // them as dark duplicates of the frame with shelf-shaped bands.
+      receiveShadow={!part.glass}
+      renderOrder={part.glass ? 4 : 0}
+      userData={{ placeSurface: surface }} />)}
   </group>
 }
 
@@ -438,79 +518,46 @@ export function DeliveredPacks({ parcel }) {
   </group>
 }
 
-export function PlacementGhost({ version, preview }) {
-  const url = furnitureUrl(version, preview.assetId)
-  const { scene } = useGLTF(url, true)
-  const ghost = useMemo(() => {
-    const value = scene.clone(true)
-    value.traverse(node => {
-      if (!node.isMesh || node.name.startsWith('UCX_')) { if (node.name?.startsWith('UCX_')) node.visible = false; return }
-      // The preview is an overlay, not a physical render. Keep its whole
-      // silhouette visible when the candidate intersects a wall or another
-      // mesh; the room depth buffer otherwise makes the ghost look sliced up.
-      node.frustumCulled = false
-      node.material = new THREE.MeshBasicMaterial({
-        color: preview.valid ? '#38dc75' : '#ff4d62', transparent: true, opacity: .48,
-        depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-      })
-      node.renderOrder = 20
-    })
-    return value
-  }, [preview.valid, scene])
-  useEffect(() => () => ghost.traverse(node => node.isMesh && node.material?.dispose()), [ghost])
-  const p = preview.transform.position
-  const r = preview.transform.rotation
-  const color = preview.valid ? '#38dc75' : '#ff4d62'
-  const footprint = preview.definition?.footprint || { width: .5, depth: .5 }
-  const width = Math.max(.35, footprint.width || .5)
-  const depth = Math.max(.35, footprint.depth || .5)
-  const scale = standMeshScale(preview.assetId)
-  return <group position={[p.x, p.y, p.z]} rotation={[r.x, r.y + furnitureModelYawOffset(preview.assetId), r.z]} scale={scale}>
-    <primitive object={ghost} frustumCulled={false} />
-    {preview.assetId === 'poster_frame' && preview.transform?.content?.image_id && <PlacementPosterPrint imageId={preview.transform.content.image_id} />}
-    {preview.definition?.placement_kind === 'floor' && <>
-      <mesh position={[0, .018, 0]} renderOrder={21}>
-        <boxGeometry args={[width, .028, depth]} />
-        <meshBasicMaterial color={color} transparent opacity={.22} depthWrite={false} depthTest={false} />
-      </mesh>
-      <mesh position={[0, .038, 0]} renderOrder={22}>
-        <boxGeometry args={[width, .035, depth]} />
-        <meshBasicMaterial color={color} wireframe depthTest={false} />
-      </mesh>
-      <mesh position={[0, .055, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={23}>
-        <ringGeometry args={[Math.max(.16, Math.min(width, depth) * .3), Math.max(.22, Math.min(width, depth) * .3 + .07), 32]} />
-        <meshBasicMaterial color={color} transparent opacity={.95} side={THREE.DoubleSide} depthTest={false} />
-      </mesh>
-    </>}
-  </group>
-}
-
-function PlacementPosterPrint({ imageId }) {
-  const [texture, setTexture] = useState(null)
-  useEffect(() => {
-    let disposed = false
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => {
-      if (disposed) return
-      try {
-        const next = textureFromImage(image)
-        setTexture(previous => { previous?.dispose(); return next })
-      } catch {
-        setTexture(previous => { previous?.dispose(); return null })
-      }
-    }
-    image.onerror = () => { if (!disposed) setTexture(previous => { previous?.dispose(); return null }) }
-    image.src = `/api/images/${encodeURIComponent(imageId)}/preview?w=720`
-    return () => { disposed = true; setTexture(previous => { previous?.dispose(); return null }) }
-  }, [imageId])
-  if (!texture) return null
-  return <mesh position={[0, 0, .018]} renderOrder={24}>
-    <planeGeometry args={[.66, .96]} />
-    <meshBasicMaterial map={texture} transparent opacity={.86} toneMapped={false} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
-  </mesh>
-}
-
 // Compatibility exports for older focused tests. Runtime uses MergedRoomAssets.
 export default function RoomAsset() { return null }
 export function InstancedRoomAsset() { return null }
+
+/**
+ * Sealed packs standing on booster pack shelves: the player's unopened packs
+ * (collected deliveries and pack tokens) fill the shelves in order, twelve
+ * per shelf.  Same wrapper and frozen snapshot art as the delivery inbox.
+ */
+export function ShelvedPacks({ shelves, packs }) {
+  const placed = useMemo(() => shelves.flatMap((shelf, shelfIndex) => PACK_SHELF_SLOTS.map((slot, slotIndex) => {
+    const index = shelfIndex * PACK_SHELF_SLOTS.length + slotIndex
+    const product = packs[index]
+    if (!product) return null
+    // Packs without frozen snapshot art (pack tokens) use the product's
+    // preview art, a different picture per pack, like the inventory does.
+    const previews = Array.isArray(product.preview_art_urls) ? product.preview_art_urls.filter(Boolean) : []
+    const art = boosterSnapshotArt(product, index) || (previews.length ? previews[index % previews.length] : null)
+    return { shelf, slot, key: `${shelf.key}-${slotIndex}`, wrapper: boosterWrapper(product), art }
+  }).filter(Boolean)), [packs, shelves])
+  const textureUrls = useMemo(() => [...new Set([
+    ...Object.values(BOOSTER_WRAPPERS),
+    ...placed.map(pack => pack.art).filter(Boolean),
+  ])], [placed])
+  const textures = useTexture(textureUrls)
+  const textureMap = useMemo(() => new Map(textureUrls.map((url, index) => [url, textures[index]])), [textureUrls, textures])
+  if (!placed.length) return null
+  const { width, height } = PACK_SHELF_SIZE
+  return <group name="shelved-booster-packs">
+    {placed.map(pack => <group key={pack.key} position={pack.shelf.position} rotation={pack.shelf.rotation}>
+      <group position={[pack.slot.x, pack.slot.y, pack.slot.z]} rotation={[pack.slot.tilt, 0, 0]}>
+        <mesh>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial map={textureMap.get(pack.wrapper) || textures[0]} transparent alphaTest={.08} side={THREE.DoubleSide} toneMapped={false} />
+        </mesh>
+        {pack.art && <mesh position={[0, 0, .001]}>
+          <planeGeometry args={[width * .58, height * .64]} />
+          <meshBasicMaterial map={textureMap.get(pack.art)} transparent alphaTest={.02} side={THREE.DoubleSide} toneMapped={false} />
+        </mesh>}
+      </group>
+    </group>)}
+  </group>
+}

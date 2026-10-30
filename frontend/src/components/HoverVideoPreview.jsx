@@ -1,59 +1,77 @@
 import React, { useRef, useEffect, useState } from 'react'
-import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
-import VaultVideo from './VaultVideo'
+import { canPlayVideoPreview, registerVideoPreview, stopVideoPreview } from '../lib/videoPreview'
+import { useVaultStore } from '../store/vault'
+
+const RETRY_MS = 1000
+const MAX_TRIES = 5   // each try waits up to ~6s server-side for the clip build
 
 /**
- * Lightweight hover-to-play video overlay for thumbnail cards.
- * Mount inside a relatively-positioned card; the parent owns the `hovered` state.
- * Streams the real video muted, seeks to the middle, and stops after 15s to
- * avoid holding file handles open on the HDD.
+ * Hover-to-play overlay for video tiles. Mount inside a relatively-positioned
+ * tile; the parent owns the `hovered` state.
  *
- * Props
- *   imageId – image record id (video)
- *   hovered – whether the parent card is hovered
+ * Plays a short cached clip (/hover-clip) in a plain <video>, not the full
+ * player on the original file, so it starts almost at once. The first hover
+ * of a video builds its clip; the thumbnail stays visible until it plays.
  */
-export default function HoverVideoPreview({ imageId, hovered }) {
+export default function HoverVideoPreview(props) {
+  // Settings → Performance can turn hover previews off entirely.
+  const enabled = useVaultStore(s => s.hoverPreviewsEnabled)
+  return enabled ? <HoverClip {...props} /> : null
+}
+
+function HoverClip({ imageId, hovered, className = '', style }) {
   const videoRef = useRef(null)
-  const [active, setActive] = useState(false)
+  const [playing, setPlaying] = useState(false)
 
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
+    return registerVideoPreview(vid)
+  }, [])
+
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid) return
+    setPlaying(false)
     if (!hovered || !canPlayVideoPreview()) {
       stopVideoPreview(vid)
-      setActive(false)
       return
     }
-
-    setActive(true)
-    vid.src = `/api/images/${imageId}/file`
-    const seekAndPlay = () => {
-      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
-      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
+    let tries = 0
+    let retryTimer = null
+    const start = () => {
+      if (!canPlayVideoPreview()) return
+      tries++
+      vid.src = `/api/images/${imageId}/hover-clip`
       vid.play().catch(() => {})
     }
-    if (vid.readyState >= 1) seekAndPlay()
-    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-    const timer = setTimeout(() => {
-      vid.removeEventListener('loadedmetadata', seekAndPlay)
-      stopVideoPreview(vid)
-      setActive(false)
-    }, 15000)
+    // 503 while the clip is still being built; try again while hovered.
+    const onError = () => {
+      if (!vid.getAttribute('src') || tries >= MAX_TRIES) return
+      retryTimer = setTimeout(start, RETRY_MS)
+    }
+    const onPlaying = () => setPlaying(true)
+    vid.addEventListener('error', onError)
+    vid.addEventListener('playing', onPlaying)
+    start()
     return () => {
-      clearTimeout(timer)
-      vid.removeEventListener('loadedmetadata', seekAndPlay)
+      clearTimeout(retryTimer)
+      vid.removeEventListener('error', onError)
+      vid.removeEventListener('playing', onPlaying)
       stopVideoPreview(vid)
     }
   }, [hovered, imageId])
 
   return (
-    <VaultVideo preview
+    <video
       ref={videoRef}
       muted
+      loop
       playsInline
       preload="none"
-      className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-      style={{ opacity: hovered && active ? 1 : 0, zIndex: 2, pointerEvents: 'none' }}
+      disablePictureInPicture
+      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${className}`}
+      style={{ opacity: hovered && playing ? 1 : 0, zIndex: 2, pointerEvents: 'none', ...style }}
     />
   )
 }

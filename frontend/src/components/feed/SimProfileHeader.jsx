@@ -9,15 +9,10 @@ import { creatorsApi, companionApi } from '../../lib/api'
 import { useVaultStore } from '../../store/vault'
 import VerifiedBadge from './VerifiedBadge'
 import { useT } from '../../i18n'
+import { RARITY_COLORS } from '../../lib/entityColors'
 
-const RARITY_COLORS = {
-  common:    '#888780',
-  uncommon:  '#1D9E75',
-  rare:      '#378ADD',
-  epic:      '#7F77DD',
-  legendary: '#BA7517',
-}
 
+import ModalLayer from '../ModalLayer'
 function fmtCount(n) {
   if (n == null) return '0'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
@@ -209,7 +204,7 @@ export default function SimProfileHeader({ profile, onBack }) {
 
       {/* PFP maximize lightbox */}
       {pfpZoom && createPortal(
-        <div className="fixed inset-0 z-[95] flex items-center justify-center cursor-zoom-out"
+        <ModalLayer><div className="fixed inset-0 z-[95] flex items-center justify-center cursor-zoom-out"
              style={{ background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(12px)', animation: 'fadeIn 0.18s ease' }}
              onClick={() => setPfpZoom(false)}>
           <div style={{ animation: 'zoomIn 0.22s cubic-bezier(0.34,1.56,0.64,1)' }}>
@@ -227,7 +222,7 @@ export default function SimProfileHeader({ profile, onBack }) {
             @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
             @keyframes zoomIn { from { transform: scale(0.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
           `}</style>
-        </div>,
+        </div></ModalLayer>,
         document.body
       )}
     </motion.div>

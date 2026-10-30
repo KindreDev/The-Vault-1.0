@@ -4,6 +4,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import queryClient from './lib/queryClient'
+import { ensureLocale } from './i18n'
+import { useVaultStore } from './store/vault'
 import './index.css'
 import './theme-packs.css'
 import 'flag-icons/css/flag-icons.min.css'
@@ -20,7 +22,8 @@ window.addEventListener('vite:preloadError', () => {
 })
 window.addEventListener('load', () => sessionStorage.removeItem('vault_chunk_reloaded'))
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// Load a non-English dictionary before the first paint so the UI never flashes English.
+const renderApp = () => ReactDOM.createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>
     <App />
     <Toaster
@@ -37,3 +40,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     />
   </QueryClientProvider>
 )
+ensureLocale(useVaultStore.getState().locale).finally(renderApp)

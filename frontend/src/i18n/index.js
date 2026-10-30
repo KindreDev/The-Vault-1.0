@@ -9,9 +9,9 @@
 // more JSON file below and register it in LANGUAGES + DICTS. Nothing else.
 
 import { createElement, Fragment } from 'react'
+import { create } from 'zustand'
 import { useVaultStore } from '../store/vault'
 import en from './en.json'
-import zhCN from './zh-CN.json'
 
 // Languages shown in the Settings selector (order preserved). English is the
 // default and its dictionary is empty — t() falls back to the key itself.
@@ -20,10 +20,29 @@ export const LANGUAGES = [
   { id: 'zh-CN', label: 'Chinese (Simplified)', native: '简体中文' },
 ]
 
-const DICTS = {
-  'en':    en,
-  'zh-CN': zhCN,
+// Other languages load on demand so English users never download them (the
+// Chinese dictionary alone is ~270 KB of the startup bundle otherwise).
+const DICTS = { 'en': en }
+const LOADERS = {
+  'zh-CN': () => import('./zh-CN.json'),
 }
+const loading = {}
+// Bumped when a dictionary arrives so components re-render with it.
+const useDictionaryRevision = create(() => ({ revision: 0 }))
+
+export function ensureLocale(locale) {
+  if (DICTS[locale] || !LOADERS[locale]) return Promise.resolve()
+  loading[locale] ||= LOADERS[locale]()
+    .then(module => {
+      DICTS[locale] = module.default || module
+      useDictionaryRevision.setState(state => ({ revision: state.revision + 1 }))
+    })
+    .catch(() => { delete loading[locale] })
+  return loading[locale]
+}
+
+// Switching language in Settings loads the new dictionary.
+useVaultStore.subscribe(state => { void ensureLocale(state.locale) })
 
 export const DEFAULT_LOCALE = 'en'
 
@@ -43,6 +62,7 @@ export function translate(locale, key, params = {}) {
 // language, with no page reload needed.
 export function useT() {
   const locale = useVaultStore(s => s.locale)
+  useDictionaryRevision(s => s.revision)
   return (key, params) => translate(locale, key, params)
 }
 

@@ -22,16 +22,6 @@ class AddCreditsRequest(BaseModel):
 class WipeOwnedCardsRequest(BaseModel):
     confirmation: str
 
-class DismantleBatchRequest(BaseModel):
-    inventory_ids: List[int]
-
-class FeedCardsRequest(BaseModel):
-    source_ids: List[int]
-
-class ForgeVariantRequest(BaseModel):
-    creator_id: int
-    character_id: int
-
 router = APIRouter(prefix="/api/cards", tags=["cards"])
 economy_router = APIRouter(prefix="/api/economy", tags=["economy"])
 
@@ -43,13 +33,6 @@ def _inv_to_dict(db: Session, inv: CardInventory) -> dict:
     d["inventory_id"] = inv.id
     d["quantity"] = inv.quantity
     return d
-
-
-def _retired_v1_progression() -> None:
-    raise HTTPException(
-        status_code=410,
-        detail="This TCG V1 progression action was retired. Published V2 rarity is immutable; use the Workshop and Shards instead.",
-    )
 
 
 # ── Inventory ─────────────────────────────────────────────────────────────────
@@ -231,110 +214,6 @@ def open_pack_from_inventory(req: OpenPackRequest, db: Session = Depends(get_db)
     return result
 
 
-# ── Dismantle ─────────────────────────────────────────────────────────────────
-
-@router.post("/{inventory_id}/dismantle")
-def dismantle_card(inventory_id: int, db: Session = Depends(get_db)):
-    try:
-        result = card_svc.dismantle_card(db, inventory_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return result
-
-
-# ── Apply catalyst token ──────────────────────────────────────────────────────
-
-@router.post("/{inventory_id}/apply-catalyst")
-def apply_catalyst(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-@router.post("/{inventory_id}/craft-prestige")
-def craft_prestige(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-# ── CXP: feed duplicate ───────────────────────────────────────────────────────
-
-@router.post("/{inventory_id}/feed-duplicate")
-def feed_duplicate(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-# ── CXP: evolve via threshold + shards ────────────────────────────────────────
-
-@router.post("/{inventory_id}/feed-cards")
-def feed_cards(inventory_id: int, req: FeedCardsRequest, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-@router.post("/{inventory_id}/evolve-cxp")
-def evolve_via_cxp(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-# ── Batch dismantle ───────────────────────────────────────────────────────────
-
-@router.post("/forge/dismantle-batch")
-def dismantle_batch(req: DismantleBatchRequest, db: Session = Depends(get_db)):
-    return card_svc.dismantle_batch(db, req.inventory_ids)
-
-
-# ── Dismantle all duplicates ──────────────────────────────────────────────────
-
-@router.post("/forge/dismantle-duplicates")
-def dismantle_duplicates(db: Session = Depends(get_db)):
-    return card_svc.dismantle_duplicates(db)
-
-
-# ── Consolidate Bond stack orphans ────────────────────────────────────────────
-# One-time fix: Bond cards that were created before the stacking fix each got
-# their own CardInventory row (quantity=1). This merges them by source_image_id.
-
-@router.post("/forge/consolidate-bond-stacks")
-def consolidate_bond_stacks(db: Session = Depends(get_db)):
-    from sqlalchemy import func
-    from models import Card, CardInventory, CardType as CT
-    invs = (
-        db.query(CardInventory)
-        .join(Card, CardInventory.card_id == Card.id)
-        .filter(Card.card_type == CT.bond, Card.source_image_id.isnot(None))
-        .all()
-    )
-    # Group by source_image_id
-    groups: dict = {}
-    for inv in invs:
-        img_id = inv.card.source_image_id
-        groups.setdefault(img_id, []).append(inv)
-
-    from services.physical_cards import merge_printing_copies
-    merged = 0
-    for img_id, group in groups.items():
-        if len(group) < 2:
-            continue
-        # Keep the first, merge the rest into it
-        canonical = group[0]
-        for dup in group[1:]:
-            merge_printing_copies(db, dup.card_id, canonical.card_id)
-            db.delete(dup.card)   # cascade deletes inventory row
-            merged += 1
-
-    db.commit()
-    return {"merged_rows": merged}
-
-
-# ── Fuse: get fuseable + fuse all ────────────────────────────────────────────
-
-@router.get("/{inventory_id}/fuseable")
-def get_fuseable(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-@router.post("/{inventory_id}/fuse-all")
-def fuse_all(inventory_id: int, db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
 # ── Forge: materials & crafting ───────────────────────────────────────────────
 
 @router.get("/forge/materials")
@@ -345,36 +224,6 @@ def get_materials(db: Session = Depends(get_db)):
         db.add(m)
         db.commit()
     return {"shards": m.shards}
-
-
-@router.post("/forge/craft-catalyst")
-def craft_catalyst(db: Session = Depends(get_db)):
-    _retired_v1_progression()
-
-
-@router.get("/forge/variant-pairs")
-def get_variant_pairs(db: Session = Depends(get_db)):
-    """Return all real creator×character pairs available for variant forging."""
-    _retired_v1_progression()
-
-
-@router.post("/forge/craft-variant")
-def craft_variant(req: ForgeVariantRequest, db: Session = Depends(get_db)):
-    """Forge a new variant card from a creator×character pair."""
-    try:
-        _retired_v1_progression()
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-@router.post("/forge/shards-to-credits")
-def shards_to_credits(amount: int, db: Session = Depends(get_db)):
-    """Exchange shards for Vault Credits at 3 credits per shard (min 25, step 25)."""
-    try:
-        _retired_v1_progression()
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return result
 
 
 # ── Debug: add credits ────────────────────────────────────────────────────────

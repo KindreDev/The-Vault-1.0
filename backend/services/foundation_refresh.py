@@ -126,6 +126,29 @@ def enqueue_refresh(db) -> dict:
 
 
 def _enqueue_refresh(db) -> dict:
+    job, existing = reserve_refresh_job(db)
+    if existing:
+        return {"queued": True, "job_id": job.id, "status": job.status, "existing": True}
+    task_queue.submit(
+        "foundation_refresh", "Restore card catalogue",
+        start_fn=_descriptor(job.id)["start_fn"], poll_fn=_descriptor(job.id)["poll_fn"],
+        cancel_fn=_descriptor(job.id)["cancel_fn"], task_id=job.id,
+    )
+    return {"queued": True, "job_id": job.id, "status": "queued", "catalog_code": job.catalog_code,
+            "release_code": job.release_code}
+
+
+def run_refresh_now(db) -> str:
+    """Reserve and run a catalogue refresh in this process (maintenance scripts)."""
+    job, existing = reserve_refresh_job(db)
+    if existing:
+        raise RuntimeError(f"A catalogue refresh is already {job.status}")
+    _run(job.id)
+    return job.id
+
+
+def reserve_refresh_job(db):
+    """Create the durable refresh job record. Returns (job, already_existing)."""
     state = db.query(TCGSetupState).filter(TCGSetupState.id == 1).first()
     if not state or not state.v2_enabled:
         raise ValueError("Start the card collection and publish its first Foundation catalogue before refreshing it")
@@ -146,7 +169,7 @@ def _enqueue_refresh(db) -> dict:
         TCGFoundationRefreshJob.status.in_(("queued", "running", "cancel_requested")),
     ).order_by(TCGFoundationRefreshJob.created_at.desc()).first()
     if existing:
-        return {"queued": True, "job_id": existing.id, "status": existing.status, "existing": True}
+        return existing, True
 
     catalog_numbers = [int(match.group(1)) for row in db.query(TCGRelease.generation_seed).filter(
         TCGRelease.release_kind == "foundation",
@@ -169,13 +192,7 @@ def _enqueue_refresh(db) -> dict:
     )
     db.add(job)
     db.commit()
-    task_queue.submit(
-        "foundation_refresh", "Restore card catalogue",
-        start_fn=_descriptor(job_id)["start_fn"], poll_fn=_descriptor(job_id)["poll_fn"],
-        cancel_fn=_descriptor(job_id)["cancel_fn"], task_id=job_id,
-    )
-    return {"queued": True, "job_id": job_id, "status": "queued", "catalog_code": job.catalog_code,
-            "release_code": job.release_code}
+    return job, False
 
 
 def recoverable_tasks() -> list[dict]:

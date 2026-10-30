@@ -1,5 +1,5 @@
 import ViewerInfo from '../components/ViewerInfo'
-import VaultVideo from '../components/VaultVideo'
+import HoverVideoPreview from '../components/HoverVideoPreview'
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
@@ -15,7 +15,6 @@ import {
 import { galleriesApi, imagesApi, sessionsApi, creatorsApi, taggerApi, apiErrorMessage } from '../lib/api'
 import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
-import { stopVideoPreview, canPlayVideoPreview } from '../lib/videoPreview'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
@@ -48,7 +47,9 @@ import InlineVideoPlayer from '../components/InlineVideoPlayer'
 import useVideoPreparation from '../hooks/useVideoPreparation'
 import { SortDropdown } from '../components/SortDropdown'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { CREATOR_TYPE_TEXT } from '../lib/entityColors'
 
+import ModalLayer from '../components/ModalLayer'
 const SORTS = [
   { value: 'filename',   label: 'Filename' },
   { value: 'sort_order', label: 'Default Order' },
@@ -71,10 +72,7 @@ function readSavedGallerySort() {
   }
 }
 
-const TYPE_COLORS = {
-  cosplayer: '#9FE1CB', ethot: '#ED93B1', artist: '#CECBF6',
-  character: '#FAC775', actress: '#ED93B1', custom: '#D3D1C7',
-}
+const TYPE_COLORS = CREATOR_TYPE_TEXT
 
 function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], totalItems = 0, gallery }) {
   const t = useT()
@@ -305,9 +303,8 @@ function CreatorAssignPanel({ galleryId, assignedCreators, galleryImages = [], t
 const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDeleted, galleryId, bulkMode, selected, onSelect, onContextMenu }) {
   const [failed, setFailed] = useState(false)
   const [hoverVideo, setHoverVideo] = useState(false)
+  const hoverPreviews = useVaultStore(s => s.hoverPreviewsEnabled)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const videoRef = useRef(null)
-  const hoverTimerRef = useRef(null)
   const qc = useQueryClient()
   const t = useT()
 
@@ -332,42 +329,15 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
   })
 
   const handleMouseEnter = useCallback(() => {
-    if (!image.is_video) return
+    if (!image.is_video || !hoverPreviews) return
     setHoverVideo(true)
-    hoverTimerRef.current = setTimeout(() => setHoverVideo(false), 15000)
-  }, [image.is_video])
+  }, [image.is_video, hoverPreviews])
 
   const handleMouseLeave = useCallback(() => {
     if (!image.is_video) return
-    clearTimeout(hoverTimerRef.current)
     setHoverVideo(false)
     setConfirmDelete(false)
   }, [image.is_video])
-
-  useEffect(() => {
-    const vid = videoRef.current
-    if (!vid) return
-    if (!hoverVideo || !canPlayVideoPreview()) {
-      stopVideoPreview(vid)
-      return
-    }
-
-    // Attach only while hovered, then release the captured element even if
-    // React has detached it and cleared videoRef during unmount.
-    vid.src = `/api/images/${image.id}/file`
-    const seekAndPlay = () => {
-      if (!canPlayVideoPreview() || !vid.getAttribute('src')) return
-      if (vid.duration && !isNaN(vid.duration)) vid.currentTime = vid.duration * 0.5
-      vid.play().catch(() => {})
-    }
-    if (vid.readyState >= 1) seekAndPlay()
-    else { vid.load(); vid.addEventListener('loadedmetadata', seekAndPlay, { once: true }) }
-    return () => {
-      clearTimeout(hoverTimerRef.current)
-      vid.removeEventListener('loadedmetadata', seekAndPlay)
-      stopVideoPreview(vid)
-    }
-  }, [hoverVideo, image.id])
 
   return (
     <div onMouseEnter={handleMouseEnter}
@@ -411,12 +381,7 @@ const ImageThumb = React.memo(function ImageThumb({ image, idx, onClick, onDelet
               <div className="text-[8px] text-[rgba(255,255,255,0.2)] text-center truncate w-full">{image.filename}</div>
             </div>
         }
-        {image.is_video && (
-          <VaultVideo preview ref={videoRef}
-                 muted playsInline preload="none"
-                 className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
-                 style={{ opacity: hoverVideo ? 1 : 0, zIndex: 2, pointerEvents: 'none' }} />
-        )}
+        {image.is_video && <HoverVideoPreview imageId={image.id} hovered={hoverVideo} />}
         {image.is_video && !hoverVideo && (
           <div className="absolute top-1 right-1 z-[3] text-white opacity-80" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
             <Play size={12} fill="currentColor" />
@@ -876,7 +841,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
   const filmstripVisible = !image.is_video && showFilmstrip && (!isFullscreen || showViewerChrome)
 
   return createPortal((
-    <div
+    <ModalLayer><div
       ref={viewerRef}
       className="vault-image-viewer fixed inset-0 z-50 flex"
       style={{
@@ -1335,7 +1300,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
         {/* Device controls — only shown when a device is connected */}
         <DeviceControls className="mx-2 mb-3" />
       </div>}
-    </div>
+    </div></ModalLayer>
   ), document.body)
 }
 
@@ -1463,7 +1428,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
   )
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    <ModalLayer><div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
          onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] w-full max-w-md flex flex-col gap-0 overflow-hidden"
@@ -1653,7 +1618,7 @@ function MergeModal({ gallery, onClose, onMerged }) {
           )}
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   , document.body)
 }
 
@@ -1706,7 +1671,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
   const canSubmit = folderName.trim().length > 0 && !extractMutation.isPending
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    <ModalLayer><div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
          onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rounded-[14px] w-full max-w-md flex flex-col overflow-hidden"
@@ -1797,7 +1762,7 @@ function ExtractFromGalleryModal({ gallery, selectedImages, onClose, onExtracted
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalLayer>
   , document.body)
 }
 

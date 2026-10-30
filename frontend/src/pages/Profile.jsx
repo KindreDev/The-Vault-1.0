@@ -197,15 +197,6 @@ export default function Profile() {
     onError: () => toast.error(t('Upload failed')),
   })
 
-  const craftMutation = useMutation({
-    mutationFn: () => cardsApi.craftCatalyst().then(r => r.data),
-    onSuccess: () => {
-      toast.success(t("⚗️ Catalyst Token crafted!"))
-      qc.invalidateQueries({ queryKey: ['forge-materials'] })
-    },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Need 150 shards'),
-  })
-
   useEffect(() => {
     if (profile) setNameVal(profile.username || '')
   }, [profile?.username])
@@ -229,7 +220,6 @@ export default function Profile() {
   const xpToNext      = isMaxLevel ? 0 : (xpForLevel(profile.level + 1) - profile.total_xp)
   const credits       = balance?.vault_credits ?? 0
   const shards        = materials?.shards ?? 0
-  const tokens        = materials?.catalyst_tokens ?? 0
   const hearts        = profile?.hearts ?? 0
   const recentXP      = xpHistory?.slice(0, 20) ?? []
   const recentCredit  = balance?.recent_events ?? []
@@ -537,7 +527,6 @@ export default function Profile() {
         {[
           { icon: '💰', label: 'Vault Credits', value: credits.toLocaleString(), color: 'var(--c-amber-text)' },
           { icon: '🔷', label: 'Shards', value: shards.toLocaleString(), color: 'var(--c-accent-text)' },
-          { icon: '⚗️', label: 'Catalyst Tokens', value: tokens, color: 'var(--c-green)' },
           { icon: '❤️', label: 'Hearts', value: hearts.toLocaleString(), color: '#FF2D75' },
           { icon: '⚡', label: 'Total XP', value: profile.total_xp.toLocaleString(), color: 'var(--c-accent)' },
         ].map(s => (
@@ -552,31 +541,6 @@ export default function Profile() {
           </div>
         ))}
 
-        {/* Craft token button */}
-        <div style={{
-          borderRadius: 12, padding: '14px 16px',
-          background: 'color-mix(in srgb, var(--c-amber) 6%, transparent)',
-          border: '0.5px solid color-mix(in srgb, var(--c-amber) 20%, transparent)',
-          display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        }}>
-          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}><LocalizedText text={"Craft Token"} before={"\n            "} after={"\n          "} /></div>
-          <button
-            onClick={() => craftMutation.mutate()}
-            disabled={craftMutation.isPending || shards < 150}
-            style={{
-              padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
-              cursor: shards >= 150 ? 'pointer' : 'not-allowed',
-              background: shards >= 150 ? 'color-mix(in srgb, var(--c-amber) 30%, transparent)' : 'rgba(255,255,255,0.04)',
-              color: shards >= 150 ? 'var(--c-amber-text)' : 'rgba(255,255,255,0.2)',
-              border: shards >= 150 ? '0.5px solid color-mix(in srgb, var(--c-amber) 50%, transparent)' : '0.5px solid rgba(255,255,255,0.06)',
-            }}
-          >
-            {craftMutation.isPending ? '…' : '⚗️ 150 shards'}
-          </button>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>
-            {shards < 150 ? `Need ${150 - shards} more shards` : 'Ready to craft'}
-          </div>
-        </div>
       </div>
 
       {/* ── Last session summary ────────────────────────────────────────────── */}

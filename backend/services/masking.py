@@ -155,8 +155,37 @@ def mask_channel_png(packed_path: str, channel: str) -> bytes:
         output = PILImage.new("RGBA", packed.size, (255, 255, 255, 0))
         output.putalpha(alpha)
         buffer = io.BytesIO()
-        output.save(buffer, "PNG", optimize=True)
+        output.save(buffer, "PNG")
     return buffer.getvalue()
+
+
+def mask_channel_path(packed_path: str, channel: str) -> str:
+    """Return a cached file for one mask channel, building it on first use.
+
+    Card grids ask for three channels per card, so rebuilding them on every
+    request tied up the server. The file name carries the packed mask's
+    modification time, so a regenerated mask gets fresh channel files.
+    """
+    stem = os.path.splitext(os.path.basename(packed_path))[0]
+    version = int(os.path.getmtime(packed_path))
+    cache_dir = os.path.join(masks_dir(), "channels")
+    target = os.path.join(cache_dir, f"{stem}_{channel}_{version}.png")
+    if os.path.isfile(target):
+        return target
+    content = mask_channel_png(packed_path, channel)
+    os.makedirs(cache_dir, exist_ok=True)
+    temporary = f"{target}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(temporary, "wb") as handle:
+        handle.write(content)
+    os.replace(temporary, target)
+    prefix = f"{stem}_{channel}_"
+    for name in os.listdir(cache_dir):
+        if name.startswith(prefix) and name.endswith(".png") and os.path.join(cache_dir, name) != target:
+            try:
+                os.remove(os.path.join(cache_dir, name))
+            except OSError:
+                pass
+    return target
 
 
 # ── inference ────────────────────────────────────────────────────────────────

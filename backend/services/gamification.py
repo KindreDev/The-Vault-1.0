@@ -64,6 +64,8 @@ XP_REWARDS = {
     "gallery_curated":     10,
     "image_curated":       8,
     "pack_opened":          5,
+    "tcg_set_completed":  150,
+    "tcg_master_set_completed": 300,
     "card_dismantled":     15,
     "gallery_assigned":     0,   # override_amount = image count; base unused
 }

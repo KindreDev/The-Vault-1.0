@@ -10,7 +10,7 @@ import { BoosterEnvelope } from '../tcg-workspace/PackBrowser'
 import CardFocusViewer from './CardFocusViewer'
 import { furnitureDisplayName, furniturePreviewAssetId, furniturePreviewMirrorX } from './roomLayout'
 import '../tcg-workspace/tcg-workspace.css'
-import '../tcg-workspace/tcg-workspace-refinements.css'
+import TCGSelect from '../tcg-workspace/TCGSelect'
 
 const PAGE = 48
 const RARITIES = ['C', 'R', 'SR', 'SPR', 'UR']
@@ -19,7 +19,11 @@ const FURNITURE_GROUPS = {
   card_display_stand_white: 'Display', card_display_stand_black: 'Display', card_display_stand: 'Display',
   graded_card_stand_white: 'Display', graded_card_stand_black: 'Display', graded_card_stand: 'Display',
   glass_display_case: 'Display', glass_display_cabinet: 'Display', floating_glass_cabinet: 'Display',
-  poster_frame: 'Decor',
+  card_wall_frame: 'Display', trophy_shadow_box: 'Display', graded_slab_rack: 'Display',
+  shop_counter: 'Display', rotating_pedestal: 'Display', pack_shelf: 'Storage',
+  binder_lectern: 'Display', wall_tv: 'Decor', digital_photo_frame: 'Decor', poster_flip_bin: 'Decor',
+  poster_frame: 'Decor', poster_banner: 'Decor', poster_landscape: 'Decor', poster_gallery: 'Decor',
+  poster_lightbox: 'Decor', wall_scroll: 'Decor',
 }
 const FURNITURE_BLURB = {
   glass_display_cabinet: 'A free-standing glass cabinet. Card stands can sit inside its shelf levels.',
@@ -30,6 +34,21 @@ const FURNITURE_BLURB = {
   graded_card_stand_white: 'Holds 9 cards, 3 per row. Sits on a table or shelf.',
   graded_card_stand_black: 'Holds 9 cards, 3 per row. Sits on a table or shelf.',
   poster_frame: 'A framed print of a photo from your Vault.',
+  card_wall_frame: 'Wall frame for 9 cards in three rows, behind glass.',
+  trophy_shadow_box: 'Wall showcase for your best card, shown larger under its own warm light.',
+  poster_banner: 'Tall, narrow frame for full-length photos.',
+  poster_landscape: 'Wide frame for landscape photos.',
+  poster_gallery: 'Large walnut frame with a gold edge and cream mat, for a centrepiece photo.',
+  poster_lightbox: 'Backlit frame with an LED edge that lights the wall around it. The light color can be changed.',
+  wall_scroll: 'Hanging fabric scroll with lacquered rods and a silk cord.',
+  shop_counter: 'Card shop counter with cards laid face up under glass, 12 in two rows. Stands can sit on its glass top.',
+  rotating_pedestal: 'Black column that slowly turns one showpiece card above a light ring. The light color can be changed.',
+  pack_shelf: 'Wall shelf that shows your unopened booster packs, 12 per shelf.',
+  binder_lectern: 'Walnut lectern with an open binder showing your cards. It stays open at the page you leave it on.',
+  wall_tv: 'Wall TV that plays a slideshow or a looping video from your Vault.',
+  digital_photo_frame: 'Wooden digital frame that cycles photos or loops a video from your Vault.',
+  poster_flip_bin: 'Crate of posters you flip through, record-store style. Choose up to 24 photos.',
+  graded_slab_rack: 'Wall rack for 12 cards in clear graded slabs, each labelled with its grade.',
 }
 
 function apiError(error, fallback) {
@@ -264,6 +283,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
     qc.invalidateQueries({ queryKey: ['tcg-room-bootstrap'] }),
     qc.invalidateQueries({ queryKey: ['tcg-room-furniture'] }),
     qc.invalidateQueries({ queryKey: ['tcg-room-copies'] }),
+    qc.invalidateQueries({ queryKey: ['tcg-room-visible-cards'] }),
     qc.invalidateQueries({ queryKey: ['tcg-v2-catalog'] }),
     qc.invalidateQueries({ queryKey: ['profile'] }),
   ])
@@ -364,10 +384,8 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
         <header className="vault-inv__toolbar">
           <h2><LocalizedText text={"Cards ("} />{cardsLoading ? '…' : cardTotal.toLocaleString()})</h2>
           <label className="vault-inv__search"><Search size={16} /><input value={cardSearch} onChange={event => setCardSearch(event.target.value)} placeholder={t("Search cards…")} /></label>
-          <select className="vault-inv__select" value={rarity} onChange={event => setRarity(event.target.value)} aria-label={t("Rarity")}>
-            <option value=""><LocalizedText text={"All rarities"} /></option>
-            {RARITIES.map(value => <option key={value} value={value}>{value} — {RARITY_LABEL[value]}</option>)}
-          </select>
+          <TCGSelect label={t('Rarity')} hideLabel value={rarity} onChange={setRarity}
+                     options={[{ value: '', label: t('All rarities') }, ...RARITIES.map(value => ({ value, label: `${value} — ${t(RARITY_LABEL[value])}` }))]} />
         </header>
         {cardsLoading ? <InventoryLoading label={t("Loading cards…")} /> : <>
           <div className="vault-inv__card-grid">
@@ -397,17 +415,12 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
                 <strong><LocalizedText text={"x"} />{token.token_count}</strong>
               </div>
               {token.product?.product_kind === 'weekly_protection' && (
-                <label className="vault-inv__release-picker">
-                  <span><LocalizedText text={"Choose release"} /></span>
-                  <select
-                    value={selectedWeeklyReleases[token.product_id] || ''}
-                    onChange={event => setSelectedWeeklyReleases(current => ({ ...current, [token.product_id]: Number(event.target.value) }))}
-                    disabled={busy || releasesQuery.isLoading}
-                  >
-                    <option value=""><LocalizedText text={"Select a published release"} /></option>
-                    {publishedReleases.map(release => <option key={release.id} value={release.id}>{release.name}</option>)}
-                  </select>
-                </label>
+                <div className="vault-inv__release-picker">
+                  <TCGSelect label={t('Choose release')} value={selectedWeeklyReleases[token.product_id] || ''}
+                             onChange={value => setSelectedWeeklyReleases(current => ({ ...current, [token.product_id]: Number(value) || '' }))}
+                             disabled={busy || releasesQuery.isLoading}
+                             options={[{ value: '', label: t('Select a published release') }, ...publishedReleases.map(release => ({ value: release.id, label: release.name }))]} />
+                </div>
               )}
               <button
                 type="button"

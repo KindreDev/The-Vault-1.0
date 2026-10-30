@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/tcg-traders", tags=["TCG traders"])
 
 
 class DialogueRequest(BaseModel): action: str
+class CardFacesRequest(BaseModel): card_ids: list[int] = Field(default_factory=list, max_length=120)
 class SellQuoteRequest(BaseModel):
     visit_id: int; copy_ids: list[int] = Field(min_length=1); currency: str
 class BuyRequest(BaseModel): visit_id: int; inventory_id: int; currency: str = "credits"
@@ -23,10 +24,6 @@ class BarterRequest(BaseModel):
     inventory_id: int | None = None
     copy_ids: list[int] = Field(default_factory=list)
     credits: int = Field(default=0, ge=0); shards: int = Field(default=0, ge=0)
-class SimulationRequest(BaseModel):
-    version: str; weeks_simulated: int = Field(ge=0); seed: str; report: dict
-
-
 def _call(fn, db, *args, **kwargs):
     try: return fn(db, *args, **kwargs)
     except ValueError as exc:
@@ -86,6 +83,11 @@ def roster():
     """Manifest-only profiles for previewing traders without opening a visit."""
     try: return tcg_traders.public_trader_roster()
     except (ValueError, KeyError, TypeError) as exc: raise HTTPException(500, str(exc))
+
+@router.post("/cards")
+def card_faces(req: CardFacesRequest, db: Session = Depends(get_db)):
+    """Batch card payloads so the trader grid makes one request, not one per card."""
+    return _call(tcg_traders.trader_card_faces, db, req.card_ids)
 
 @router.get("/{visit_id}/dialogue")
 def get_dialogue(visit_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.dialogue, db, visit_id)
@@ -161,11 +163,5 @@ def history(limit: int = 100, db: Session = Depends(get_db)): return _call(tcg_t
 @router.get("/{visit_id}/valuation/{card_id}")
 def audit(visit_id: int, card_id: int, purpose: str = "audit", db: Session = Depends(get_db)): return _call(tcg_traders.valuation_audit, db, visit_id, card_id, purpose)
 
-@router.get("/developer/simulations")
-def simulations(db: Session = Depends(get_db)): return _call(tcg_traders.list_simulation_reports, db)
 
-@router.post("/developer/simulations")
-def save_simulation(req: SimulationRequest, db: Session = Depends(get_db)): return _call(tcg_traders.save_simulation_report, db, req.model_dump())
 
-@router.post("/developer/simulations/{report_id}/approve")
-def approve_simulation(report_id: int, db: Session = Depends(get_db)): return _call(tcg_traders.approve_simulation_report, db, report_id)

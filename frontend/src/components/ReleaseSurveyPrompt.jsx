@@ -6,6 +6,7 @@ import { useVaultStore } from '../store/vault'
 import { useDeviceStore } from '../store/deviceStore'
 import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore'
 import { readSurveyState, writeSurveyState, surveyIsDue } from '../lib/releaseSurvey'
+import ModalLayer from './ModalLayer'
 import './release-survey.css'
 
 function busy() {
@@ -98,7 +99,7 @@ export default function ReleaseSurveyPrompt() {
 
   if (!config) return null
   return createPortal(
-    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.78)', padding: 24 }} onClick={() => dismiss(false)}>
+    <ModalLayer><div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.78)', padding: 24 }} onClick={() => dismiss(false)}>
       <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="release-survey-title" onClick={event => event.stopPropagation()}
         style={{ background: 'var(--c-surface)', color: 'var(--c-text, rgba(255,255,255,0.9))', border: '1px solid var(--c-border, rgba(255,255,255,0.12))', borderRadius: 16, maxWidth: 520, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 24, boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
         <h2 id="release-survey-title" style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>{t('Help shape the next version of Vault')}</h2>
@@ -109,6 +110,6 @@ export default function ReleaseSurveyPrompt() {
           <a className="release-survey-button release-survey-primary" href={config.url} target="_blank" rel="noopener noreferrer" onClick={() => dismiss(true)}>{t('Open survey')}</a>
         </div>
       </div>
-    </div>, document.body,
+    </div></ModalLayer>, document.body,
   )
 }

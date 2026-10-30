@@ -7,15 +7,17 @@
  *  - client.devices is a Map<index, ButtplugClientDevice>
  *  - OutputType.HwPositionWithDuration for linear/stroker devices
  */
-import {
-  ButtplugClient,
-  ButtplugBrowserWebsocketClientConnector,
-  DeviceOutput,
-  OutputType,
-} from 'buttplug'
+// The Buttplug client is only needed for Intiface, so it loads on first
+// connect instead of being part of every app start.
+let Buttplug = null
+const loadButtplug = async () => (Buttplug ||= await import('buttplug'))
 import { useDeviceStore, PRESETS } from '../store/deviceStore.js'
 import { useFunscriptPlayerStore } from '../store/funscriptPlayerStore.js'
 import { NativeSerial, hasNativeSerialBridge, chooseNativeSerialPort } from './nativeSerial.js'
+import {
+  clamp, nowMs, FunscriptCurve, MediaClock, MotionShaper, mediaObservation, applyAxisSettings,
+  normalizeFunscriptActions, sampleFunscriptPosition, SYNC_JUMP_S, HOME_POSITION,
+} from './funscriptMotion.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const store = () => useDeviceStore.getState()
@@ -63,104 +65,32 @@ function rememberLastSerialPort(info) {
 // Not a per-user credential; baked into the app so users never need to enter it.
 const HANDY_APP_KEY = '1sWGa-ThX~iSFzdMTz9pUXPE18P9tfZB'
 
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
-
 // MFP keeps a small, regular update loop and samples a shape-preserving curve
-// between authored points. Keeping the sampler here makes video-linked and
-// independent playback use exactly the same motion model.
+// between authored points. The curve, smoothed media clock and output shaper
+// live in funscriptMotion.js so every page-side engine shares one motion model.
 const FUNSCRIPT_SERIAL_INTERVAL_MS = 10
 const FUNSCRIPT_INTIFACE_INTERVAL_MS = 50
+// A Handy resync waits until a seek burst (seek-bar drag, offset clicks) has
+// been quiet this long, so the cloud queue never fills with stale requests.
+const SEEK_SETTLE_MS = 150
+// The independent player's progress UI does not need the device's tick rate.
+const UI_TIME_INTERVAL_MS = 125
+const HANDY_CLOCK_REFRESH_MS = 5 * 60 * 1000
+const textEncoder = new TextEncoder()
 
-export function normalizeFunscriptActions(actions) {
-  const normalized = (Array.isArray(actions) ? actions : [])
-    .map(action => ({
-      at: Number(action?.at),
-      pos: Number(action?.pos ?? action?.position),
-    }))
-    .filter(action => Number.isFinite(action.at) && Number.isFinite(action.pos))
-    .map(action => ({ at: action.at, pos: clamp(action.pos, 0, 100) }))
-    .sort((a, b) => a.at - b.at)
+export { normalizeFunscriptActions, sampleFunscriptPosition }
 
-  // Duplicate timestamps have no duration. The last authored value is the
-  // useful one and avoids zero-length divisions in the interpolator.
-  const deduped = []
-  for (const action of normalized) {
-    if (deduped.at(-1)?.at === action.at) deduped[deduped.length - 1] = action
-    else deduped.push(action)
-  }
-  return deduped
+// Only a payload-shape rejection means the Intiface bridge needs the legacy
+// raw command. A device that drops mid-stream rejects too, and must not switch
+// the whole session to unacknowledged output.
+function isIntifaceSchemaError(error) {
+  return /unknown variant|unknown field|missing field|invalid type|deserializ|schema/i
+    .test(String(error?.message || error || ''))
 }
 
-function mfpPchipSlopes(actions, index) {
-  const p0 = actions[index]
-  const p1 = actions[index + 1]
-  // MultiFunPlayer extrapolates a same-valued ghost point at each end of the
-  // script. That gives the first and last segment the same eased boundary
-  // behaviour as its KeyframeCollection implementation.
-  const previous = actions[index - 1] || { at: 3 * p0.at - 2 * p1.at, pos: p0.pos }
-  const next = actions[index + 2] || { at: 3 * p1.at - 2 * p0.at, pos: p1.pos }
-
-  const hPrevious = p0.at - previous.at
-  const hCurrent = p1.at - p0.at
-  const hNext = next.at - p1.at
-  const dPrevious = (p0.pos - previous.pos) / hPrevious
-  const dCurrent = (p1.pos - p0.pos) / hCurrent
-  const dNext = (next.pos - p1.pos) / hNext
-
-  const weight11 = 2 * hCurrent + hPrevious
-  const weight12 = hCurrent + 2 * hPrevious
-  let slope0 = (weight11 + weight12) / (weight11 / dPrevious + weight12 / dCurrent)
-  if (!Number.isFinite(slope0) || dCurrent * dPrevious < 0) slope0 = 0
-
-  const weight21 = 2 * hNext + hCurrent
-  const weight22 = hNext + 2 * hCurrent
-  let slope1 = (weight21 + weight22) / (weight21 / dCurrent + weight22 / dNext)
-  if (!Number.isFinite(slope1) || dNext * dCurrent < 0) slope1 = 0
-
-  return [slope0, slope1]
-}
-
-// Sample a normalized 0..100 funscript at any millisecond position. PCHIP is
-// monotonic between points, so fast authored sections stay responsive without
-// the overshoot that a regular cubic spline can introduce.
-export function sampleFunscriptPosition(actions, timeMs) {
-  if (!actions?.length) return null
-  if (actions.length === 1) return actions[0].pos
-
-  const time = Number(timeMs)
-  if (!Number.isFinite(time) || time <= actions[0].at) return actions[0].pos
-  if (time >= actions.at(-1).at) return actions.at(-1).pos
-
-  let lo = 0
-  let hi = actions.length - 1
-  while (lo + 1 < hi) {
-    const middle = (lo + hi) >> 1
-    if (actions[middle].at <= time) lo = middle
-    else hi = middle
-  }
-
-  const left = actions[lo]
-  const right = actions[lo + 1]
-  const h = right.at - left.at
-  if (h <= 0) return right.pos
-
-  const u = clamp((time - left.at) / h, 0, 1)
-  const [m0, m1] = mfpPchipSlopes(actions, lo)
-  const u2 = u * u
-  const u3 = u2 * u
-  const h00 = 2 * u3 - 3 * u2 + 1
-  const h10 = u3 - 2 * u2 + u
-  const h01 = -2 * u3 + 3 * u2
-  const h11 = u3 - u2
-  return clamp(h00 * left.pos + h10 * h * m0 + h01 * right.pos + h11 * h * m1, 0, 100)
-}
-
-// Seek/start semantics: never replay the action immediately before the
-// requested point. If the point is beyond the authored track, the cursor sits
-// at actions.length and the scheduler emits nothing until a loop is requested.
-export function firstActionAtOrAfter(actions, timeMs) {
-  const index = (actions || []).findIndex(action => Number(action?.at || 0) >= Number(timeMs || 0))
-  return index < 0 ? (actions || []).length : index
+function smoothstep(t) {
+  const x = clamp(t, 0, 1)
+  return x * x * (3 - 2 * x)
 }
 
 function lerpPattern(a, b, t) {
@@ -221,6 +151,16 @@ export class DeviceService {
     this._funscriptSamplerLastWallAt = null
     this._funscriptSamplerLastPositions = {}
     this._funscriptAxesCache = null
+    this._funscriptCurvesCache = null
+    // MFP-style smoothed video clock + soft sync/speed limit, shared by the
+    // page-side engines (Intiface, browser serial, Handy feed, independent).
+    this._fsClock         = new MediaClock()
+    this._fsClockRevision = undefined
+    this._fsShaper        = new MotionShaper()
+    this._fsLastKeyframe  = {}
+    this._seekSettleTimer = null
+    this._autoHomeTimer   = null
+    this._videoEventCleanup = null
     this._videoEl         = null
     // Independent player clock. It never receives or owns an HTMLVideoElement.
     this._independentFs   = null
@@ -239,6 +179,7 @@ export class DeviceService {
     this._handyFlushInFlight = false
     this._handyTailIndex   = 0   // tailPointStreamIndex — total points sent this stream
     this._handyStreamId    = 0
+    this._handyGen         = 0   // bumps on every resync; stale hsp requests are skipped
     this._handyPlaying     = false
     this._handyServerOffset = 0  // client-server clock skew, ms
     this._handyTickTimer   = null
@@ -247,6 +188,9 @@ export class DeviceService {
     this._handyFsTimer     = null
     this._handyFsNextSampleMs = 0
     this._handyFsFinished  = false
+    this._handyFsMap       = null  // { wall, videoMs, rate }: video time → device time
+    this._handyLastT       = -Infinity  // last queued point time; points must only go forward
+    this._handyPriming     = false
 
     // Direct serial (Web Serial API)
     this._serialPort   = null
@@ -271,7 +215,8 @@ export class DeviceService {
     const { wsUrl } = store()
     useDeviceStore.setState({ status: 'connecting', errorMsg: null, provider: 'intiface' })
     try {
-      this._client = new ButtplugClient('The Vault')
+      await loadButtplug()
+      this._client = new Buttplug.ButtplugClient('The Vault')
       this._intifaceUseRawPositionFallback = false
 
       this._client.addListener('deviceadded',   (dev) => this._onDeviceAdded(dev))
@@ -281,7 +226,7 @@ export class DeviceService {
         useDeviceStore.setState({ status: 'disconnected', devices: [], mode: 'off', provider: null })
       })
 
-      const connector = new ButtplugBrowserWebsocketClientConnector(wsUrl)
+      const connector = new Buttplug.ButtplugBrowserWebsocketClientConnector(wsUrl)
       await this._client.connect(connector)
       useDeviceStore.setState({ status: 'connected' })
       rememberLastDeviceProvider('intiface')
@@ -377,11 +322,11 @@ export class DeviceService {
   }
 
   _onDeviceAdded(dev) {
-    const isLinear    = dev.hasOutput(OutputType.HwPositionWithDuration) ||
-                        dev.hasOutput(OutputType.Position)
-    const isVibrate   = dev.hasOutput(OutputType.Vibrate)
-    const isRotate    = dev.hasOutput(OutputType.Rotate)
-    const isOscillate = dev.hasOutput(OutputType.Oscillate)
+    const isLinear    = dev.hasOutput(Buttplug.OutputType.HwPositionWithDuration) ||
+                        dev.hasOutput(Buttplug.OutputType.Position)
+    const isVibrate   = dev.hasOutput(Buttplug.OutputType.Vibrate)
+    const isRotate    = dev.hasOutput(Buttplug.OutputType.Rotate)
+    const isOscillate = dev.hasOutput(Buttplug.OutputType.Oscillate)
 
     // Rebuild this device's feature maps from scratch. 'deviceadded' can fire
     // again for a device that's already known (rescan / reconnect), and the old
@@ -454,7 +399,7 @@ export class DeviceService {
   _getLinearDevices() {
     if (!this._client) return []
     return [...this._client.devices.values()].filter(d =>
-      d.hasOutput(OutputType.HwPositionWithDuration) || d.hasOutput(OutputType.Position)
+      d.hasOutput(Buttplug.OutputType.HwPositionWithDuration) || d.hasOutput(Buttplug.OutputType.Position)
     )
   }
 
@@ -484,6 +429,8 @@ export class DeviceService {
       // rhythm, smaller movement.
       posPercent = 50 + (posPercent - 50) * gate
     }
+    // Soft sync and auto-home start from what the device was last told.
+    this._fsShaper.record('L0', posPercent)
 
     // ── Provider routing ──────────────────────────────────────────────────────
     const { provider } = store()
@@ -553,25 +500,27 @@ export class DeviceService {
         const command = pump.pending
         pump.pending = null
         const feature = dev.features?.get(command.featureIndex)
-        if (!feature || !feature.hasOutput(OutputType.HwPositionWithDuration)) break
+        if (!feature || !feature.hasOutput(Buttplug.OutputType.HwPositionWithDuration)) break
         try {
           await feature.runOutput(
-            DeviceOutput.HwPositionWithDuration.steps(command.steps, command.duration),
+            Buttplug.DeviceOutput.HwPositionWithDuration.steps(command.steps, command.duration),
           )
         } catch (err) {
-          // A disconnected device can reject while the sampler is still alive.
-          // Keep the player running. Some older Intiface bridges only accept
-          // the legacy scalar Value shape, so retain a one-shot raw fallback
-          // instead of turning a compatibility mismatch into silence.
-          this._intifaceUseRawPositionFallback = true
-          this._rawSend({
-            OutputCmd: {
-              Id: this._msgId++,
-              DeviceIndex: dev.index,
-              FeatureIndex: command.featureIndex,
-              Command: { HwPositionWithDuration: { Value: command.steps, Duration: command.duration } },
-            },
-          })
+          // A disconnected device can reject while the sampler is still alive;
+          // keep the player running. Only a payload-shape rejection means an
+          // older Intiface bridge that needs the legacy raw command — anything
+          // else must not disable acknowledged output for the whole session.
+          if (isIntifaceSchemaError(err)) {
+            this._intifaceUseRawPositionFallback = true
+            this._rawSend({
+              OutputCmd: {
+                Id: this._msgId++,
+                DeviceIndex: dev.index,
+                FeatureIndex: command.featureIndex,
+                Command: { HwPositionWithDuration: { Value: command.steps, Duration: command.duration } },
+              },
+            })
+          }
           // Avoid flooding the console every tick.
           const now = Date.now()
           if (now - this._intifaceOutputErrorAt > 1000) {
@@ -703,7 +652,8 @@ export class DeviceService {
 
   async testStroke() {
     if (store().status !== 'connected') return
-    this.pauseIndependentFunscript()
+    this.pauseIndependentFunscript({ home: false })
+    this._cancelAutoHome()
     this._stopFunscriptPlayer()
     this._funscriptOwner = null
     if (store().mode === 'funscript') useDeviceStore.setState({ mode: 'off' })
@@ -755,7 +705,8 @@ export class DeviceService {
 
   startFreestyle() {
     if (store().status !== 'connected') return
-    this.pauseIndependentFunscript()
+    this.pauseIndependentFunscript({ home: false })
+    this._cancelAutoHome()
     this._stopFunscriptPlayer()
     this._funscriptOwner = null
     useDeviceStore.setState({ mode: 'freestyle' })
@@ -983,7 +934,11 @@ export class DeviceService {
     const s = store()
     const isHandyScript = s.provider === 'handy' && s.mode === 'funscript'
 
-    const rampSec = s.edgeRampBackSec
+    // A script resumes mid-stroke; never release faster than the soft-sync
+    // window, or a strong stroker jolts back to full amplitude.
+    const rampSec = s.mode === 'funscript' && !isHandyScript
+      ? Math.max(s.edgeRampBackSec, s.motion?.syncSeconds || 0)
+      : s.edgeRampBackSec
     if (rampSec <= 0) {
       this._setEdgeGate(1)
       if (isHandyScript) this._handyEdgeHold()
@@ -1031,15 +986,48 @@ export class DeviceService {
   // ── Funscript mode ──────────────────────────────────────────────────────────
 
   loadFunscript(funscriptData, videoEl) {
+    this._detachVideoEvents()
     this._funscript = funscriptData
     this._funscriptAxesCache = null
+    this._funscriptCurvesCache = null
     this._videoEl   = videoEl
+    this._attachVideoEvents(videoEl)
     if (store().mode === 'funscript') { this._startFunscriptPlayer(); return }
     // Auto-sync: hand control straight to the device so a funscripted video
     // just works without reaching for the Sync button every time.
     if (store().autoSyncFunscript && store().status === 'connected') {
       this.takeFunscriptControl()
     }
+  }
+
+  // The service listens to the media itself, so seeks, native loop wraps,
+  // buffering and speed changes resync every engine without each video
+  // surface having to remember to call in. Both HTMLVideoElement and the
+  // desktop VLC facade are EventTargets with the same event names.
+  _attachVideoEvents(video) {
+    if (!video?.addEventListener) return
+    const handlers = {
+      seeked: () => this.onVideoSeek(),
+      ratechange: () => {
+        this._fsClock.invalidate()
+        // Points already queued on a Handy were timed at the old speed.
+        if (store().provider === 'handy') this.onVideoSeek()
+        else if (this._nativeSerialPlaying && this._funscriptOwner === 'video' && !video.session) {
+          this._nativeSerial?.update({ speed: video.playbackRate || 1 })
+        }
+      },
+      waiting: () => this._fsClock.hold(true),
+      playing: () => this._fsClock.hold(false),
+    }
+    for (const [type, handler] of Object.entries(handlers)) video.addEventListener(type, handler)
+    this._videoEventCleanup = () => {
+      for (const [type, handler] of Object.entries(handlers)) video.removeEventListener(type, handler)
+    }
+  }
+
+  _detachVideoEvents() {
+    this._videoEventCleanup?.()
+    this._videoEventCleanup = null
   }
 
   // Lets the video player reflect auto-sync in its Sync button state.
@@ -1051,7 +1039,7 @@ export class DeviceService {
     if (!this._funscript || !this._videoEl) return
     // A video sync explicitly wins device ownership. Keep the independent
     // player's script loaded/paused, but never let two clocks send output.
-    this.pauseIndependentFunscript()
+    this.pauseIndependentFunscript({ home: false })
     this._funscriptOwner = 'video'
     const prev = store().mode
     useDeviceStore.setState({ mode: 'funscript', previousMode: prev })
@@ -1068,11 +1056,15 @@ export class DeviceService {
   }
 
   unloadFunscript() {
+    this._detachVideoEvents()
+    clearTimeout(this._seekSettleTimer)
+    this._seekSettleTimer = null
     if (this._funscriptOwner === 'independent') {
       // The video component may unmount while the independent script keeps
       // playing; clear only its stale references, never the independent clock.
       this._funscript = null
       this._funscriptAxesCache = null
+      this._funscriptCurvesCache = null
       this._videoEl = null
       return
     }
@@ -1080,15 +1072,19 @@ export class DeviceService {
     this._stopFunscriptPlayer()
     this._funscript = null
     this._funscriptAxesCache = null
+    this._funscriptCurvesCache = null
     this._videoEl   = null
     this._funscriptOwner = null
   }
 
   _startFunscriptPlayer() {
     this._stopFunscriptPlayer()
+    this._cancelAutoHome()
     if (!this._funscript || !this._videoEl || this._funscriptOwner === 'independent') return
-    // The Handy streams authored points itself; other providers use the regular
-    // interpolated sampler below.
+    this._fsClock.reset()
+    this._fsClockRevision = undefined
+    // The Handy streams timestamped points itself; other providers use the
+    // regular interpolated sampler below.
     if (store().provider === 'handy') { this._startHandyFsFeed(); return }
     if (this._nativeSerial && store().provider === 'serial') {
       const video = this._videoEl
@@ -1102,7 +1098,7 @@ export class DeviceService {
       // Native VLC is read directly by the output thread. Only HTML video
       // needs occasional clock observations; no per-position bridge traffic.
       if (!video.session) this._funscriptSamplerTimer = setInterval(() => {
-        if (!this._videoEl || video.paused || video.ended) { this._stopFunscriptPlayer(); return }
+        if (!this._videoEl || video.paused || video.ended) { this._stopFunscriptPlayer({ park: true }); return }
         this._nativeSerial.update({ startTime: video.currentTime, speed: video.playbackRate || 1, playing: true })
       }, 100)
       return
@@ -1110,15 +1106,12 @@ export class DeviceService {
     this._startFunscriptSampler()
   }
 
-  _stopFunscriptPlayer() {
-    if (this._nativeSerial && this._funscriptOwner !== 'independent') {
+  // park=true is a pause: auto-home may ease the device to centre afterwards.
+  _stopFunscriptPlayer({ park = false } = {}) {
+    if (this._nativeSerial && this._funscriptOwner !== 'independent' && this._nativeSerialPlaying) {
       this._nativeSerialPlaying = false
-      void this._nativeSerial.stop().catch(() => {})
+      void this._nativeSerial.stop({ park }).catch(() => {})
     }
-    clearTimeout(this._funscriptTimer)
-    this._funscriptTimer = null
-    for (const t of Object.values(this._funscriptTimers || {})) clearTimeout(t)
-    this._funscriptTimers = {}
     clearTimeout(this._funscriptSamplerTimer)
     clearInterval(this._funscriptSamplerTimer)
     this._funscriptSamplerTimer = null
@@ -1158,6 +1151,15 @@ export class DeviceService {
     return {}
   }
 
+  // The same axes as precomputed curves for the page-side engines.
+  _getFunscriptCurves() {
+    if (!this._funscriptCurvesCache) {
+      this._funscriptCurvesCache = Object.fromEntries(
+        Object.entries(this._getFunscriptAxes()).map(([axis, actions]) => [axis, new FunscriptCurve(actions)]))
+    }
+    return this._funscriptCurvesCache
+  }
+
   _funscriptOutputInterval() {
     return store().provider === 'serial'
       ? FUNSCRIPT_SERIAL_INTERVAL_MS
@@ -1171,17 +1173,45 @@ export class DeviceService {
     return store().provider === 'serial' ? 0.01 : 0.5
   }
 
+  // Per-video offset plus the active provider's latency compensation. Positive
+  // values make the device move earlier.
+  _scriptOffsetMs() {
+    const s = store()
+    return (s.funscriptOffsetMs || 0) + (s.motion?.latencyMs?.[s.provider] || 0)
+  }
+
+  // One smoothed clock (MFP two-stage) for whichever engine follows the video.
+  // In the desktop app the VLC position only moves every ~100 ms through the
+  // bridge; reading it raw made Intiface stair-step and Handy batches jitter.
+  _readVideoClock(now = nowMs()) {
+    const video = this._videoEl
+    if (!video) return null
+    const observation = mediaObservation(video, now)
+    const rate = observation.rate || video.playbackRate || 1
+    if (observation.revision != null && observation.revision !== this._fsClockRevision) {
+      // Seek, rate change or loop wrap reported by the VLC side.
+      if (this._fsClockRevision !== undefined) this._fsClock.invalidate()
+      this._fsClockRevision = observation.revision
+    }
+    // MFP order: advance to now, then correct toward the observation.
+    this._fsClock.advance(now, rate)
+    const jump = this._fsClock.observe(observation.time, observation.observedAt, rate, now)
+    if (jump) this._fsClock.lastAdvanceAt = now
+    return { seconds: this._fsClock.output, jump, rate, stalled: this._fsClock.stalled(now) }
+  }
+
   _startFunscriptSampler() {
     if (store().mode !== 'funscript' || this._funscriptOwner === 'independent' || !this._funscript || !this._videoEl) return
     if (this._videoEl.paused || this._videoEl.ended) return
     const interval = this._funscriptOutputInterval()
     this._funscriptSamplerLastWallAt = null
     this._funscriptSamplerLastPositions = {}
-    this._funscriptSamplerNextAt = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+    this._fsLastKeyframe = {}
+    this._funscriptSamplerNextAt = nowMs()
     const tick = () => {
       if (this._funscriptSamplerTimer == null) return
       this._tickFunscriptSampler()
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const now = nowMs()
       this._funscriptSamplerNextAt += interval
       // If a tab was suspended or a command callback took too long, resume
       // from the current clock instead of emitting a burst of catch-up ticks.
@@ -1196,37 +1226,96 @@ export class DeviceService {
     if (store().mode !== 'funscript' || this._funscriptOwner === 'independent' || !this._funscript || !this._videoEl) return
     if (this._videoEl.paused || this._videoEl.ended) return
 
-    const wallNow = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const now = nowMs()
     const interval = this._funscriptOutputInterval()
     const elapsed = this._funscriptSamplerLastWallAt == null
       ? interval
-      : clamp(wallNow - this._funscriptSamplerLastWallAt, 1, 250)
-    this._funscriptSamplerLastWallAt = wallNow
+      : clamp(now - this._funscriptSamplerLastWallAt, 1, 250)
+    this._funscriptSamplerLastWallAt = now
 
-    // Positive offset delays the script relative to the video. Sampling the
-    // shifted clock preserves that convention without changing segment widths.
-    const timeMs = this._videoEl.currentTime * 1000 + (store().funscriptOffsetMs || 0)
-    const axes = this._getFunscriptAxes()
-    const enabled = store().funscriptAxes || {}
-    for (const [axisId, actions] of Object.entries(axes)) {
+    const clock = this._readVideoClock(now)
+    if (!clock || clock.seconds == null) return
+    const s = store()
+    const motion = s.motion
+    if (clock.jump > SYNC_JUMP_S) {
+      // A seek, start or loop wrap: ease in instead of slamming to the new spot.
+      this._fsShaper.beginSync(now, motion.syncSeconds)
+      this._fsLastKeyframe = {}
+    }
+    if (clock.stalled) return  // buffering: hold position
+
+    const timeMs = clock.seconds * 1000 + this._scriptOffsetMs()
+    const curves = this._getFunscriptCurves()
+    const enabled = s.funscriptAxes || {}
+    const threshold = this._funscriptDirtyThreshold()
+    const keyframeMode = s.provider === 'intiface' && motion.intifaceMode === 'keyframe'
+    for (const axisId in curves) {
       if (enabled[axisId] === false) continue
-      const position = sampleFunscriptPosition(actions, timeMs)
-      if (position == null) continue
+      const settings = motion.axisSettings[axisId]
+      const axisMs = timeMs + (settings?.offsetMs || 0)
+      if (keyframeMode && axisId === 'L0') { this._sendKeyframe(curves[axisId], axisMs, clock.rate, settings, motion); continue }
+      const raw = curves[axisId].sample(axisMs)
+      if (raw == null) continue
+      const position = this._fsShaper.shape(axisId, applyAxisSettings(axisId, raw, settings), now, elapsed, motion)
 
       // Avoid flooding an output with indistinguishable values while still
       // sending the first sample after every seek.
       const previous = this._funscriptSamplerLastPositions[axisId]
-      if (previous != null && Math.abs(position - previous) < this._funscriptDirtyThreshold()) continue
+      if (previous != null && Math.abs(position - previous) < threshold) continue
       this._sendAxis(axisId, position, elapsed)
       this._funscriptSamplerLastPositions[axisId] = position
     }
+  }
+
+  // MFP's "polled" output: send the next authored point once, with the time
+  // left until it. Devices that interpolate on their own (and slow links)
+  // move more smoothly than with a 20 Hz stream of samples.
+  _sendKeyframe(curve, ms, rate, settings, motion) {
+    if (curve.length < 2 || ms >= curve.end) return
+    const target = ms < curve.start ? 0 : curve.indexAt(ms) + 1
+    if (this._fsLastKeyframe.L0 === target) return
+    this._fsLastKeyframe.L0 = target
+    const position = clamp(applyAxisSettings('L0', curve.values[target], settings), 0, 100)
+    let duration = Math.max(1, (curve.times[target] - ms) / (rate || 1))
+    const previous = this._fsShaper.sent.L0
+    if (motion.speedLimit > 0 && previous != null) {
+      duration = Math.max(duration, Math.abs(position - previous) / motion.speedLimit * 1000)
+    }
+    if (this._fsShaper.syncing && previous != null) {
+      // First move after a seek: never faster than the soft-sync window.
+      duration = Math.max(duration, motion.syncSeconds * 1000)
+      this._fsShaper.sync = null
+    }
+    this._sendAxis('L0', position, duration)
   }
 
   // Seek / play / pause all route through _startFunscriptPlayer so the right
   // engine runs for the active provider (Handy streams, everything else samples
   // a regular interpolated clock). _startFunscriptPlayer stops the previous one first.
   onVideoSeek() {
+    if (store().provider === 'handy') this._handyLog('video:seek', { time: this._videoEl?.currentTime })
     if (this._funscriptOwner === 'independent') return
+    this._fsClock.invalidate()
+    const provider = store().provider
+    if (provider === 'serial' && this._nativeSerial && this._nativeSerialPlaying && this._funscriptOwner === 'video') {
+      // The output thread follows VLC's clock revision on its own; an HTML
+      // video only needs the new position. Re-sending the whole script on
+      // every seek-bar mousemove was the expensive part.
+      const video = this._videoEl
+      if (video && !video.session) this._nativeSerial.update({ startTime: video.currentTime, seek: true })
+      return
+    }
+    if (provider === 'handy' && store().mode === 'funscript' && this._funscriptOwner === 'video') {
+      // Collapse a seek burst into one resync once it settles. The first seek
+      // stops the feed and flushes once; later ones only push the timer back.
+      if (!this._seekSettleTimer) this._stopFunscriptPlayer()
+      clearTimeout(this._seekSettleTimer)
+      this._seekSettleTimer = setTimeout(() => {
+        this._seekSettleTimer = null
+        if (store().mode === 'funscript' && this._funscriptOwner === 'video') this._startFunscriptPlayer()
+      }, SEEK_SETTLE_MS)
+      return
+    }
     this._stopFunscriptPlayer()
     if (store().mode === 'funscript') this._startFunscriptPlayer()
   }
@@ -1235,21 +1324,62 @@ export class DeviceService {
   // change takes effect without a seek.
   setFunscriptOffset(ms) {
     useDeviceStore.getState().setFunscriptOffset(ms)
+    // Native serial picks the new offset up through its store subscription.
+    if (this._nativeSerialPlaying && this._funscriptOwner === 'video') return
     this.onVideoSeek()
   }
 
   onVideoPause() {
+    if (store().provider === 'handy') this._handyLog('video:pause', { time: this._videoEl?.currentTime })
     // Stop scheduling future commands. A stroker holds its last position, which
     // is the right behaviour on pause — but a vibrator would hold its last
     // intensity and keep buzzing through the pause, so scalar actuators are
     // zeroed. onVideoPlay() re-arms the scheduler and they pick straight back up.
-    if (this._funscriptOwner === 'video' && store().mode === 'funscript') this._stopFunscriptPlayer()
+    if (this._funscriptOwner === 'video' && store().mode === 'funscript') {
+      clearTimeout(this._seekSettleTimer)
+      this._seekSettleTimer = null
+      this._stopFunscriptPlayer({ park: true })
+      this._scheduleAutoHome()
+    }
     this._stopScalarActuators()
   }
 
   onVideoPlay() {
+    if (store().provider === 'handy') this._handyLog('video:play', { time: this._videoEl?.currentTime, mode: store().mode, owner: this._funscriptOwner })
     // Resume scheduling from the new current time
     if (this._funscriptOwner === 'video' && store().mode === 'funscript') this._startFunscriptPlayer()
+  }
+
+  // ── Auto-home (MFP) ─────────────────────────────────────────────────────────
+  // After a pause, wait, then ease every axis that moved back to centre. The
+  // desktop serial thread does this itself; this covers Intiface strokers and
+  // the browser serial fallback. The Handy is left alone. Stop never homes.
+  _scheduleAutoHome() {
+    this._cancelAutoHome()
+    const { provider, motion } = store()
+    if (!motion.autoHome.enabled || provider === 'handy' || !provider) return
+    if (provider === 'serial' && this._nativeSerial) return
+    const from = { ...this._fsShaper.sent }
+    if (!Object.keys(from).length) return
+    const interval = this._funscriptOutputInterval()
+    const duration = motion.autoHome.duration * 1000
+    this._autoHomeTimer = setTimeout(() => {
+      const start = nowMs()
+      const step = () => {
+        const progress = duration > 0 ? clamp((nowMs() - start) / duration, 0, 1) : 1
+        const eased = smoothstep(progress)
+        for (const [axis, value] of Object.entries(from)) {
+          this._sendAxis(axis, value + (HOME_POSITION - value) * eased, interval)
+        }
+        this._autoHomeTimer = progress < 1 ? setTimeout(step, interval) : null
+      }
+      step()
+    }, motion.autoHome.delay * 1000)
+  }
+
+  _cancelAutoHome() {
+    clearTimeout(this._autoHomeTimer)
+    this._autoHomeTimer = null
   }
 
   // ── Independent funscript player ─────────────────────────────────────────
@@ -1301,6 +1431,7 @@ export class DeviceService {
     }
     this._stopIndependentFunscriptClock()
     this._stopPatternEngine()
+    this._cancelAutoHome()
     this._funscriptOwner = 'independent'
     useDeviceStore.setState({ mode: 'funscript', previousMode: 'off' })
 
@@ -1309,6 +1440,7 @@ export class DeviceService {
       || this.getIndependentFunscriptDuration(payload)
     const state = {
       axes,
+      curves: Object.fromEntries(Object.entries(axes).map(([axis, actions]) => [axis, new FunscriptCurve(actions)])),
       duration,
       // Player/store time is seconds. Funscript action timestamps are ms and
       // are converted only when comparing against this clock.
@@ -1319,10 +1451,10 @@ export class DeviceService {
       axisEnabled: options.axisEnabled || {},
       loop: !!options.loop,
       loopRegion: options.loopRegion || null,
-      startedAt: Date.now(),
+      startedAt: nowMs(),
       lastWallAt: null,
+      lastUiAt: 0,
       lastPositions: {},
-      indexes: {},
       onTime: options.onTime,
       onPause: options.onPause,
       onEnd: options.onEnd,
@@ -1339,48 +1471,74 @@ export class DeviceService {
     this._independentFs = state
     if (this._nativeSerial && store().provider === 'serial') {
       this._nativeSerialPlaying = true
+      const params = this._nativeSerialParams()
       this._nativeSerial.start({ ...state, curves: undefined, owner: 'independent',
         onTime: undefined, onPause: undefined, onEnd: undefined, onError: undefined,
-        ...this._nativeSerialParams(), axes, range: state.range, intensity: state.intensity,
+        ...params, axes, range: state.range, intensity: state.intensity,
         axisEnabled: state.axisEnabled, offsetMs: 0 })
       return true
     }
-    this._independentFsTimer = setInterval(
-      () => this._tickIndependentFunscript(),
-      this._funscriptOutputInterval(),
-    )
-    this._tickIndependentFunscript()
+    this._fsShaper.beginSync(nowMs(), store().motion.syncSeconds)
+    this._runIndependentClock()
     return true
   }
 
+  // Drift-corrected fixed update, same as the video sampler: a late tick never
+  // produces a burst of catch-up commands.
+  _runIndependentClock() {
+    clearTimeout(this._independentFsTimer)
+    const interval = this._funscriptOutputInterval()
+    let next = nowMs()
+    const tick = () => {
+      if (this._independentFsTimer == null) return
+      this._tickIndependentFunscript()
+      if (this._independentFsTimer == null) return
+      const now = nowMs()
+      next += interval
+      if (next < now - interval) next = now + interval
+      this._independentFsTimer = setTimeout(tick, Math.max(0, next - now))
+    }
+    this._independentFsTimer = setTimeout(tick, 0)
+    this._tickIndependentFunscript()
+  }
+
+  _independentTime(s, now = nowMs()) {
+    return s.startTime + ((now - s.startedAt) / 1000) * s.speed
+  }
+
   setIndependentFunscriptParams(patch = {}) {
-    if (!this._independentFs) return
-    const now = this._independentFs.startTime + ((Date.now() - this._independentFs.startedAt) / 1000) * this._independentFs.speed
-    Object.assign(this._independentFs, patch)
+    const s = this._independentFs
+    if (!s) return
+    const running = !!this._independentFsTimer || (this._nativeSerialPlaying && this._funscriptOwner === 'independent')
+    // While paused, startTime already holds the frozen position.
+    const now = running ? this._independentTime(s) : s.startTime
+    Object.assign(s, patch)
     if (this._nativeSerial && this._funscriptOwner === 'independent') this._nativeSerial.update(patch)
     if ('speed' in patch) {
-      this._independentFs.startTime = now
-      this._independentFs.startedAt = Date.now()
+      s.startTime = now
+      s.startedAt = nowMs()
     }
     if ('speed' in patch || 'range' in patch || 'intensity' in patch) {
-      this._independentFs.lastWallAt = null
-      this._independentFs.lastPositions = {}
+      s.lastWallAt = null
+      s.lastPositions = {}
     }
   }
 
   _tickIndependentFunscript() {
     const s = this._independentFs
     if (!s || this._funscriptOwner !== 'independent') return
-    const wallNow = Date.now()
-    const now = s.startTime + ((wallNow - s.startedAt) / 1000) * s.speed
+    const wallNow = nowMs()
+    let timeSeconds = this._independentTime(s, wallNow)
     const region = s.loopRegion
     const end = region?.end > region?.start ? region.end : s.duration
-    if (now >= end) {
+    if (timeSeconds >= end) {
       if (s.loop) {
         s.startTime = region?.start >= 0 ? region.start : 0
         s.startedAt = wallNow
         s.lastWallAt = null
         s.lastPositions = {}
+        timeSeconds = s.startTime
+        this._fsShaper.beginSync(wallNow, store().motion.syncSeconds)
       } else {
         this._stopIndependentFunscriptClock()
         s.onTime?.(s.duration, s.duration)
@@ -1388,34 +1546,48 @@ export class DeviceService {
         return
       }
     }
-    const timeSeconds = s.startTime + ((Date.now() - s.startedAt) / 1000) * s.speed
     const interval = this._funscriptOutputInterval()
     const elapsed = s.lastWallAt == null ? interval : clamp(wallNow - s.lastWallAt, 1, 250)
     s.lastWallAt = wallNow
-    for (const [axis, actions] of Object.entries(s.axes)) {
+    const motion = store().motion
+    const threshold = this._funscriptDirtyThreshold()
+    const min = Number(s.range?.min ?? 0), max = Number(s.range?.max ?? 100)
+    for (const axis in s.curves) {
       if (s.axisEnabled[axis] === false) continue
-      const raw = sampleFunscriptPosition(actions, timeSeconds * 1000)
+      const settings = motion.axisSettings[axis]
+      const raw = s.curves[axis].sample(timeSeconds * 1000 + (settings?.offsetMs || 0))
       if (raw == null) continue
-      const min = Number(s.range?.min ?? 0), max = Number(s.range?.max ?? 100)
-      const scaled = min + (max - min) * (raw / 100)
-      const pos = axis === 'L0' ? 50 + (scaled - 50) * s.intensity : scaled
+      // Same order as the desktop thread: invert, player range, then L0
+      // intensity or the axis's own travel window.
+      const inverted = settings?.invert ? 100 - raw : raw
+      const scaled = min + (max - min) * (inverted / 100)
+      const mapped = axis === 'L0'
+        ? 50 + (scaled - 50) * s.intensity
+        : applyAxisSettings(axis, scaled, settings && { ...settings, invert: false })
+      const pos = this._fsShaper.shape(axis, mapped, wallNow, elapsed, motion)
       const previous = s.lastPositions[axis]
-      if (previous != null && Math.abs(pos - previous) < this._funscriptDirtyThreshold()) continue
+      if (previous != null && Math.abs(pos - previous) < threshold) continue
       this._sendAxis(axis, pos, elapsed)
       s.lastPositions[axis] = pos
     }
-    s.onTime?.(Math.min(timeSeconds, s.duration), s.duration)
+    if (wallNow - s.lastUiAt >= UI_TIME_INTERVAL_MS) {
+      s.lastUiAt = wallNow
+      s.onTime?.(Math.min(timeSeconds, s.duration), s.duration)
+    }
   }
 
-  pauseIndependentFunscript() {
+  // home=false when another mode is taking the device over right away.
+  pauseIndependentFunscript({ home = true } = {}) {
     const s = this._independentFs
     if (!s) return
     if (this._funscriptOwner === 'independent') {
-      s.startTime = Math.min(s.duration, s.startTime + ((Date.now() - s.startedAt) / 1000) * s.speed)
-      this._stopIndependentFunscriptClock()
+      if (this._independentFsTimer || this._nativeSerialPlaying) s.startTime = Math.min(s.duration, this._independentTime(s))
+      this._stopIndependentFunscriptClock({ park: home })
       s.lastWallAt = null
       s.paused = true
       this._stopScalarActuators()
+      if (home) this._scheduleAutoHome()
+      s.onTime?.(s.startTime, s.duration)
       s.onPause?.()
     }
   }
@@ -1427,28 +1599,25 @@ export class DeviceService {
     if (!this._independentFs) return
     const wasPlaying = !!this._independentFsTimer || this._nativeSerialPlaying
     this._independentFs.startTime = Math.max(0, Math.min(this._independentFs.duration, Number(timeSeconds) || 0))
-    this._independentFs.startedAt = Date.now()
+    this._independentFs.startedAt = nowMs()
     this._independentFs.lastWallAt = null
     this._independentFs.lastPositions = {}
     if (this._nativeSerial) {
       if (wasPlaying) this._nativeSerial.update({ startTime: this._independentFs.startTime })
       return
     }
+    if (wasPlaying) this._fsShaper.beginSync(nowMs(), store().motion.syncSeconds)
     if (wasPlaying && !this._independentFsTimer && this._funscriptOwner === 'independent') {
-      this._independentFsTimer = setInterval(
-        () => this._tickIndependentFunscript(),
-        this._funscriptOutputInterval(),
-      )
-      this._tickIndependentFunscript()
+      this._runIndependentClock()
     }
   }
 
-  _stopIndependentFunscriptClock() {
-    if (this._nativeSerial && this._funscriptOwner === 'independent') {
+  _stopIndependentFunscriptClock({ park = false } = {}) {
+    if (this._nativeSerial && this._funscriptOwner === 'independent' && this._nativeSerialPlaying) {
       this._nativeSerialPlaying = false
-      void this._nativeSerial.stop().catch(() => {})
+      void this._nativeSerial.stop({ park }).catch(() => {})
     }
-    clearInterval(this._independentFsTimer)
+    clearTimeout(this._independentFsTimer)
     this._independentFsTimer = null
     if (this._independentFs) this._independentFs.lastWallAt = null
   }
@@ -1491,7 +1660,8 @@ export class DeviceService {
     // 'freestyle' also neutralises the funscript re-arm paths (they all guard
     // on mode === 'funscript'), so a still-playing video won't tug back control.
     this._stopFunscriptPlayer()
-    this.pauseIndependentFunscript()
+    this.pauseIndependentFunscript({ home: false })
+    this._cancelAutoHome()
     this._stopRamp()
     this._stopScheduler()
     clearTimeout(this._cumTimer)
@@ -1541,6 +1711,9 @@ export class DeviceService {
   // ── Internal: stop everything ───────────────────────────────────────────────
 
   _stopAll() {
+    this._cancelAutoHome()
+    clearTimeout(this._seekSettleTimer)
+    this._seekSettleTimer = null
     this._stopPatternEngine()
     this._stopFunscriptPlayer()
     this._stopIndependentFunscriptClock()
@@ -1574,11 +1747,85 @@ export class DeviceService {
   // Stream commands (hsp/*) go out strictly one at a time, in call order.
   // Sent in parallel, a flush could overtake the add that follows it and wipe
   // freshly queued strokes, so a video-linked script never started playing.
-  _handyRequest(method, path, body) {
-    if (!path.startsWith('hsp/')) return this._handySend(method, path, body)
-    const run = (this._handyQueue || Promise.resolve()).then(() => this._handySend(method, path, body))
+  //
+  // `body` may be a function, evaluated when the request actually goes out, so
+  // timestamps and stream indexes are current. Requests tagged with a stream
+  // generation are skipped once a resync has superseded them — a seek burst
+  // therefore never leaves a backlog of stale adds/plays in the queue.
+  _handyRequest(method, path, body, { gen } = {}) {
+    const resolveBody = () => (typeof body === 'function' ? body() : body)
+    if (!path.startsWith('hsp/')) return this._handySend(method, path, resolveBody())
+    const run = (this._handyQueue || Promise.resolve()).then(() => {
+      if (gen != null && gen !== this._handyGen) return { skipped: true }
+      return this._handySend(method, path, resolveBody())
+    })
     this._handyQueue = run.catch(() => {})
     return run
+  }
+
+  // ── Handy debug log ─────────────────────────────────────────────────────────
+  // A rolling record of every Handy request, the device's replies and the video
+  // events around them, so a tester can copy it from Device Control and send it
+  // back. Keys are never recorded.
+  _handyLog(kind, data = {}) {
+    const now = this._handyNow()
+    this._handyLogStart ??= now
+    const log = this._handyDebug ||= []
+    log.push({ ms: Math.round(now - this._handyLogStart), kind, ...data })
+    if (log.length > 4000) log.splice(0, log.length - 4000)
+  }
+
+  // Device stream time the page expects right now (what hsp/state current_time should be near).
+  _handyStreamNow() {
+    return Math.round(this._handyNow() - this._handyStreamStartAt)
+  }
+
+  clearHandyDebugLog() {
+    this._handyDebug = []
+    this._handyLogStart = this._handyNow()
+  }
+
+  getHandyDebugLog() {
+    const s = store()
+    const v = this._videoEl
+    const header = {
+      created: new Date().toISOString(),
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      provider: s.provider, status: s.status, mode: s.mode, owner: this._funscriptOwner,
+      stroke: [s.strokeFloor, s.strokeCeiling], offsetMs: s.funscriptOffsetMs,
+      latencyMs: s.motion?.latencyMs, autoSync: s.autoSyncFunscript,
+      serverOffsetMs: Math.round(this._handyServerOffset), streamNow: this._handyStreamNow(),
+      gen: this._handyGen, playing: this._handyPlaying, maxPoints: this._handyMaxPoints ?? null,
+      tailIndex: this._handyTailIndex, feedRunning: !!this._handyFsTimer, priming: this._handyPriming,
+      script: this._funscript ? { points: this._getFunscriptAxes().L0?.length || 0 } : null,
+      video: v ? { native: !!v.session, paused: v.paused, time: v.currentTime, rate: v.playbackRate, clock: v.clock || null } : null,
+      lastError: s.errorMsg,
+    }
+    const lines = (this._handyDebug || []).map(e => {
+      const { ms, kind, ...rest } = e
+      return `${String(ms).padStart(8)} ${kind.padEnd(14)} ${JSON.stringify(rest)}`
+    })
+    return `The Vault — Handy debug log\n${JSON.stringify(header, null, 2)}\n\n${lines.join('\n')}\n`
+  }
+
+  _handyLogRequest(path, body, ms, result, error) {
+    if (path === 'servertime') return
+    const entry = { rtt: Math.round(ms), sentStreamNow: this._handyStreamNow() - Math.round(ms) }
+    if (body?.points) {
+      const p = body.points
+      Object.assign(entry, { n: p.length, firstT: p[0]?.t, lastT: p.at(-1)?.t, flush: !!body.flush, tail: body.tail_point_stream_index })
+    } else if (body) Object.assign(entry, body)
+    if (path === 'hsp/play' && body?.server_time != null) {
+      entry.serverTimeVsEstimate = Math.round(body.server_time - (this._handyNow() - ms + this._handyServerOffset))
+    }
+    const r = result?.result
+    if (r && typeof r === 'object') {
+      Object.assign(entry, { state: r.play_state, points: r.points, max: r.max_points, devTime: r.current_time,
+        devFirst: r.first_point_time, devLast: r.last_point_time, devTail: r.tail_point_stream_index, stream: r.stream_id })
+      entry.pageStreamNow = this._handyStreamNow()
+    }
+    if (error) entry.error = error
+    this._handyLog(path, entry)
   }
 
   async _handySend(method, path, body) {
@@ -1588,6 +1835,7 @@ export class DeviceService {
       : Math.max(1, this._quickConnectionDeadline - Date.now())
     const controller = new AbortController()
     const abortTimer = setTimeout(() => controller.abort(), remaining)
+    const sentAt = this._handyNow()
     try {
       const resp = await fetch(`${this._HANDY_BASE}${path}`, {
         method,
@@ -1599,9 +1847,13 @@ export class DeviceService {
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
+      }).catch(error => {
+        this._handyLogRequest(path, body, this._handyNow() - sentAt, null, `network: ${error?.name === 'AbortError' ? 'timeout' : error?.message}`)
+        throw error
       })
       const data = await resp.json().catch(() => ({}))
       const err  = data.error
+      this._handyLogRequest(path, body, this._handyNow() - sentAt, data, (!resp.ok || err) ? `HTTP ${resp.status} ${err?.code ?? ''} ${err?.name ?? ''} ${err?.message ?? ''}`.trim() : null)
       if (!resp.ok || err) {
         if (err?.code === 1001 || err?.name === 'DeviceNotConnected') throw new Error('Device not connected — open The Handy app and pair via Bluetooth or WiFi first')
         if (resp.status === 401) throw new Error('Unauthorized — check your Connection Key')
@@ -1613,19 +1865,42 @@ export class DeviceService {
     }
   }
 
-  // Estimates client-server clock skew so buffered point timestamps line up
-  // with the device's playback clock. Fewer samples than reference impls
-  // (which use 30) — a handful is enough and keeps connect() snappy.
-  async _handyServerTimeOffset() {
-    const SAMPLES = 6
-    let sum = 0
-    for (let i = 0; i < SAMPLES; i++) {
-      const t0 = Date.now()
-      const { server_time } = await this._handyRequest('GET', 'servertime')
-      const t1 = Date.now()
-      sum += (server_time + (t1 - t0) / 2) - t1
+  // Monotonic epoch-like milliseconds. Date.now() steps whenever Windows
+  // syncs its clock, which would shift every queued point at once.
+  _handyNow() {
+    return (typeof performance !== 'undefined' && performance.timeOrigin)
+      ? performance.timeOrigin + performance.now()
+      : Date.now()
+  }
+
+  // Client-server clock skew, NTP style: the samples with the shortest round
+  // trip have the least asymmetric delay, so only those are averaged.
+  // MultiFunPlayer takes 30 samples and trims the extremes; connect stays
+  // quick with fewer, and a background refresh refines it.
+  async _handyServerTimeOffset(samples = 8) {
+    const results = []
+    for (let i = 0; i < samples; i++) {
+      const t0 = this._handyNow()
+      const { server_time } = await this._handySend('GET', 'servertime')
+      const t1 = this._handyNow()
+      if (Number.isFinite(Number(server_time))) results.push({ rtt: t1 - t0, offset: Number(server_time) - (t0 + t1) / 2 })
     }
-    return Math.round(sum / SAMPLES)
+    if (!results.length) throw new Error('The Handy server did not report its time')
+    results.sort((a, b) => a.rtt - b.rtt)
+    const best = results.slice(0, Math.max(1, Math.ceil(results.length / 3)))
+    const offset = best.reduce((sum, r) => sum + r.offset, 0) / best.length
+    this._handyLog('clock', { samples: results.length, offsetMs: Math.round(offset),
+      bestRtt: Math.round(results[0].rtt), worstRtt: Math.round(results.at(-1).rtt) })
+    return offset
+  }
+
+  // Applies to the next hsp/play (every start, seek and resync issues one).
+  async _refreshHandyClock(samples = 24) {
+    if (store().provider !== 'handy' || this._handyClockRefreshing) return
+    this._handyClockRefreshing = true
+    try { this._handyServerOffset = await this._handyServerTimeOffset(samples) }
+    catch (_) { /* keep the previous estimate */ }
+    finally { this._handyClockRefreshing = false }
   }
 
   async connectHandy() {
@@ -1642,6 +1917,7 @@ export class DeviceService {
     try {
       await this._handyRequest('PUT', 'hsp/stop').catch(() => {})
       await this._handyRequest('PUT', 'hsp/flush').catch(() => {})
+      this._handyLog('connect', {})
       this._handyServerOffset = await this._handyServerTimeOffset()
       this._handyStreamId += 1
       await this._handyRequest('PUT', 'hsp/setup', { stream_id: this._handyStreamId })
@@ -1652,7 +1928,7 @@ export class DeviceService {
       this._handyBuffer        = []
       this._handyTailIndex     = 0
       this._handyPlaying       = false
-      this._handyStreamStartAt = Date.now()
+      this._handyStreamStartAt = this._handyNow()
 
       this._handyTickTimer = setInterval(() => this._handyStreamTick(), 100)
 
@@ -1662,6 +1938,16 @@ export class DeviceService {
       })
       rememberLastDeviceProvider('handy')
       this.startEdgeMode()   // no-op unless Edge Mode was left armed
+
+      // Refine the skew in the background, then keep it fresh: clocks drift
+      // over a long session and a sleeping PC can pause the monotonic clock.
+      void this._refreshHandyClock()
+      clearInterval(this._handyClockTimer)
+      this._handyClockTimer = setInterval(() => this._refreshHandyClock(), HANDY_CLOCK_REFRESH_MS)
+      if (typeof document !== 'undefined') {
+        this._handyVisibility ||= () => { if (document.visibilityState === 'visible') void this._refreshHandyClock(12) }
+        document.addEventListener('visibilitychange', this._handyVisibility)
+      }
     } catch (err) {
       useDeviceStore.setState({ status: 'error', errorMsg: err.message, provider: null })
     }
@@ -1671,6 +1957,12 @@ export class DeviceService {
     this._stopAll()
     clearInterval(this._handyTickTimer)
     this._handyTickTimer = null
+    clearInterval(this._handyClockTimer)
+    this._handyClockTimer = null
+    if (this._handyVisibility && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this._handyVisibility)
+    }
+    this._handyGen += 1
     try { await this._handyRequest('PUT', 'hsp/stop') } catch (_) {}
     try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
     useDeviceStore.setState({ status: 'disconnected', devices: [], mode: 'off', provider: null })
@@ -1691,15 +1983,21 @@ export class DeviceService {
     // While a funscript is streaming, its own feeder owns the buffer. Letting
     // the interpolator push here too would interleave two different timelines
     // into one point stream.
-    if (this._handyFsTimer) return
+    // A video-linked script owns the device even while paused or priming. Idle
+    // points dated ahead of the script's first stroke would leave the device
+    // with an out-of-order timeline, and the script would never start.
+    if (this._handyFsTimer || this._handyPriming) return
+    if (this._funscriptOwner === 'video' && store().mode === 'funscript') return
 
     const dt    = 0.1   // seconds, matches the 100ms tick interval
     const delta = this._handySpeed * dt
     if (this._handySpeed > 0)      this._handyCurrentPos = Math.min(this._handyTargetPos, this._handyCurrentPos + delta)
     else if (this._handySpeed < 0) this._handyCurrentPos = Math.max(this._handyTargetPos, this._handyCurrentPos + delta)
 
-    const t = Math.round(Date.now() - this._handyStreamStartAt) + this._HANDY_LOOKAHEAD_MS
+    const t = Math.round(this._handyNow() - this._handyStreamStartAt) + this._HANDY_LOOKAHEAD_MS
     const x = clamp(Math.round(this._handyCurrentPos), 0, 100)
+    if (t <= this._handyLastT) return
+    this._handyLastT = t
     this._handyBuffer.push({ t, x })
 
     if (this._handyBuffer.length >= this._HANDY_BATCH_POINTS) this._handyFlushBuffer()
@@ -1713,12 +2011,19 @@ export class DeviceService {
   // The 250ms HTTP refill cadence only controls network batching; the device
   // receives 50ms points and interpolates between them on its own clock.
   _startHandyFsFeed() {
-    this._stopHandyFsFeed()
     if (store().provider !== 'handy') return
-    this._handyFsNextSampleMs = (this._videoEl?.currentTime || 0) * 1000
+    // primedPlay() starts its own feed once the video rolls; the play event it
+    // triggers must not start a second one over the primed points. A feed that
+    // is already running is left alone for the same reason.
+    if (this._handyPriming || this._handyFsTimer) return
+    this._handyLog('feed:start', { paused: this._videoEl?.paused, time: this._videoEl?.currentTime })
+    this._handyFsNextSampleMs = null   // start at the live video position
     this._handyFsFinished = false
-    // Drop anything the interpolator already queued so the two timelines can't mix
-    this._handyBuffer = []
+    this._handyStalled = false
+    this._handyFsMap = null
+    // Replace whatever the device is playing (idle points, an old script run)
+    // with a fresh timeline. The flush is queued ahead of the first add.
+    void this._handyFsResync()
     this._handyFsTimer = setInterval(() => this._handyFsFeed(), 250)
     this._handyFsFeed()
   }
@@ -1726,7 +2031,7 @@ export class DeviceService {
   _stopHandyFsFeed() {
     clearInterval(this._handyFsTimer)
     this._handyFsTimer = null
-    this._handyFsAnchor = null
+    this._handyFsMap = null
   }
 
   // ── Primed start ────────────────────────────────────────────────────────────
@@ -1744,78 +2049,47 @@ export class DeviceService {
     if (!canPrime) { try { await videoEl.play() } catch (_) {} return false }
 
     const LEAD = this._HANDY_FS_PRIME_MS
+    this._handyLog('prime:start', { time: videoEl.currentTime })
+    this._handyPriming = true
     useDeviceStore.setState({ priming: true })
     try {
       // Fresh device timeline so nothing queued earlier can bleed into this run
-      this._handyBuffer  = []
-      this._handyPlaying = false
-      try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
+      clearTimeout(this._seekSettleTimer)
+      this._seekSettleTimer = null
+      this._stopHandyFsFeed()
+      await this._handyFsResync()
 
-      // Anchor the script to a moment LEAD ms from now, then fill the buffer
+      // Map the script to a moment LEAD ms from now, then fill the buffer
       // while the video is still paused.
-      this._stopHandyFsFeed()   // clears the anchor, so set it after
-      this._handyFsAnchor = { wall: Date.now() + LEAD, videoMs: videoEl.currentTime * 1000 }
-      this._handyFsNextSampleMs = this._handyFsAnchor.videoMs
+      const rate = videoEl.playbackRate || 1
+      this._handyFsMap = { wall: this._handyNow() + LEAD, videoMs: videoEl.currentTime * 1000, rate }
+      this._handyFsNextSampleMs = this._handyFsMap.videoMs
       this._handyFsFinished = false
-      this._handyFsPrimeFeed(videoEl)
+      this._handyStalled = false
+      this._handyFsFill(this._handyFsMap.videoMs, this._handyFsMap)
 
       await new Promise(r => setTimeout(r, LEAD))
-      try { await videoEl.play() } catch (_) {}
-      // Hand back to the normal live feed, now anchored to real playback
-      this._handyFsAnchor = null
-      this._handyFsTimer  = setInterval(() => this._handyFsFeed(), 250)
+      try { await videoEl.play() } catch (err) { this._handyLog('prime:playError', { error: err?.message }) }
+      this._handyLog('prime:played', { paused: videoEl.paused, time: videoEl.currentTime })
+      // Keep the same map: the live feed carries on from the primed points and
+      // only re-maps if the real video clock drifts away from it.
+      this._fsClock.reset()
+      this._fsClockRevision = undefined
+      clearInterval(this._handyFsTimer)
+      if (store().provider === 'handy' && store().mode === 'funscript') {
+        this._handyFsTimer = setInterval(() => this._handyFsFeed(), 250)
+      }
     } finally {
+      this._handyPriming = false
       useDeviceStore.setState({ priming: false })
     }
     return true
   }
 
-  // One-shot fill used while the video is still paused, so _handyFsFeed's
-  // "is it playing?" guard doesn't reject it.
-  _handyFsPrimeFeed(v) {
-    const actions = this._getFunscriptAxes().L0
-    if (!actions || !actions.length) return
-    const offsetMs = store().funscriptOffsetMs || 0
-    const rate    = v.playbackRate || 1
-    const anchor  = this._handyFsAnchor
-    const HORIZON = 1500
-    const step    = FUNSCRIPT_INTIFACE_INTERVAL_MS * rate
-    const streamNow = anchor.wall - this._handyStreamStartAt
-    let queued = 0
-    const horizonEnd = anchor.videoMs + HORIZON * rate
-    const scriptEnd = actions.at(-1).at + offsetMs
-    while (this._handyFsNextSampleMs <= horizonEnd) {
-      const at = this._handyFsNextSampleMs
-      if (scriptEnd >= anchor.videoMs && scriptEnd <= horizonEnd && at > scriptEnd) {
-        const raw = sampleFunscriptPosition(actions, scriptEnd)
-        this._handyBuffer.push({
-          t: Math.round(streamNow + (scriptEnd - anchor.videoMs) / rate),
-          x: this._handyScriptPos(raw),
-        })
-        this._handyFsNextSampleMs = scriptEnd + step
-        this._handyFsFinished = true
-        queued++
-        break
-      }
-      const raw = sampleFunscriptPosition(actions, at + offsetMs)
-      if (raw == null) break
-      this._handyBuffer.push({
-        t: Math.round(streamNow + (at - anchor.videoMs) / rate),
-        x: this._handyScriptPos(raw),
-      })
-      this._handyFsNextSampleMs += step
-      queued++
-      if (scriptEnd >= anchor.videoMs && at >= scriptEnd) {
-        this._handyFsFinished = true
-        break
-      }
-    }
-    if (queued > 0) this._handyFlushBuffer()
-  }
-
-  // Maps a raw script position through the stroke limiter and the Edge Mode
-  // gate. Damping is toward the centre of the limited window, so a closed gate
-  // parks the device mid-stroke rather than at an arbitrary end of it.
+  // Maps a raw script position through the per-axis settings, the stroke
+  // limiter and the Edge Mode gate. Damping is toward the centre of the limited
+  // window, so a closed gate parks the device mid-stroke rather than at an
+  // arbitrary end of it.
   //
   // Gating amplitude — rather than pausing the stream — is what makes Edge Mode
   // work on a Handy without desyncing: the script keeps streaming in lockstep
@@ -1824,8 +2098,9 @@ export class DeviceService {
   // still, and release resumes in perfect sync because the timeline was never
   // interrupted.
   _handyScriptPos(rawPos) {
-    const { strokeFloor, strokeCeiling } = store()
-    const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(rawPos, 0, 100) / 100)
+    const { strokeFloor, strokeCeiling, motion } = store()
+    const mapped = applyAxisSettings('L0', clamp(rawPos, 0, 100), motion?.axisSettings?.L0)
+    const limited = strokeFloor + (strokeCeiling - strokeFloor) * (clamp(mapped, 0, 100) / 100)
     const gate = this._edgeGate
     if (gate >= 1) return clamp(Math.round(limited), 0, 100)
     const mid = (strokeFloor + strokeCeiling) / 2
@@ -1841,114 +2116,186 @@ export class DeviceService {
     if (!this._handyFsTimer) return
     await this._handyFsResync()
     // Restart the sampled queue at the live video position with the new gate.
-    this._handyFsNextSampleMs = (this._videoEl?.currentTime || 0) * 1000
+    this._handyFsNextSampleMs = null
     this._handyFsFinished = false
     this._handyFsFeed()
   }
 
   // Discards queued points on the device and restarts the stream — used on seek,
   // pause and offset changes, where everything already buffered is now wrong.
+  // Bumping the generation drops any add/play still waiting in the queue.
   async _handyFsResync() {
     if (store().provider !== 'handy') return
+    this._handyLog('resync', { gen: this._handyGen + 1, from: (new Error().stack || '').split(String.fromCharCode(10))[2]?.trim().split(' ')[1] })
+    this._handyGen += 1
     this._handyBuffer = []
     this._handyPlaying = false
-    try { await this._handyRequest('PUT', 'hsp/flush') } catch (_) {}
+    this._handyLastT = -Infinity
+    // One queued flush covers any number of resyncs before it goes out. A start
+    // can resync several times in a row, and on a slow link each extra flush
+    // delayed the first strokes by a full round trip.
+    const pending = this._handyFlushQueued ||= this._handyRequest('PUT', 'hsp/flush', () => {
+      this._handyFlushQueued = null
+    }).catch(() => {})
+    await pending
+  }
+
+  // Queue sampled points from the next unsent video time up to the horizon.
+  // `map` ties a video position to a device-stream instant.
+  _handyFsFill(videoNow, map) {
+    const curve = this._getFunscriptCurves().L0
+    if (!curve || !curve.length) return
+    const offsetMs = this._scriptOffsetMs() + (store().motion?.axisSettings?.L0?.offsetMs || 0)
+    const HORIZON = 2500   // ms of script to stay ahead by; covers slow Bluetooth/cloud round trips
+    const rate = map.rate || 1
+    // Space points so the unplayed lookahead fills at most half the device
+    // buffer; otherwise new points would push out ones not yet played.
+    const maxPoints = this._handyMaxPoints || 100
+    const step = Math.max(FUNSCRIPT_INTIFACE_INTERVAL_MS, Math.ceil(HORIZON / (maxPoints * 0.5))) * rate
+    const streamAt = map.wall - this._handyStreamStartAt
+    if (this._handyFsNextSampleMs == null || this._handyFsNextSampleMs < videoNow) this._handyFsNextSampleMs = videoNow
+    const horizonEnd = videoNow + HORIZON * rate
+    // Video time of the last authored point, so the stream ends exactly on it.
+    const scriptEnd = curve.end - offsetMs
+    if (scriptEnd < videoNow) { this._handyFsFinished = true; return }
+    let queued = 0
+    while (this._handyFsNextSampleMs <= horizonEnd) {
+      let at = this._handyFsNextSampleMs
+      const last = at >= scriptEnd
+      if (last) at = scriptEnd
+      this._handyFsNextSampleMs = at + step
+      // Video time → stream time. Dividing by playbackRate keeps the script
+      // aligned at non-1x speeds.
+      const t = Math.round(streamAt + (at - map.videoMs) / rate)
+      // After a small re-map the first new points can land on or before ones
+      // already sent; the device needs strictly increasing times.
+      if (t > this._handyLastT) {
+        this._handyBuffer.push({ t, x: this._handyScriptPos(curve.sample(at + offsetMs)) })
+        this._handyLastT = t
+        queued++
+      }
+      if (last) { this._handyFsFinished = true; break }
+    }
+    if (queued > 0) this._handyFlushBuffer()
+  }
+
+  // Logs one feed tick outcome at most once a second per kind.
+  _handyFeedLog(kind, data) {
+    const now = this._handyNow()
+    const seen = this._handyFeedLogAt ||= {}
+    if (seen[kind] && now - seen[kind] < 1000) return
+    seen[kind] = now
+    this._handyLog(kind, data)
   }
 
   _handyFsFeed() {
     const v = this._videoEl
-    if (!v || v.paused || v.ended) return
-    const actions = this._getFunscriptAxes().L0
-    if (!actions || !actions.length) return
+    if (!v || v.paused || v.ended) {
+      this._handyFeedLog('feed:skip', { reason: !v ? 'no video' : v.ended ? 'ended' : 'paused' })
+      return
+    }
+    const clock = this._readVideoClock()
+    if (!clock || clock.seconds == null) { this._handyFeedLog('feed:skip', { reason: 'no clock', clock: v.clock || null }); return }
+    if (clock.stalled) {
+      // Buffering: drop what is queued so the device stops with the picture.
+      this._handyFeedLog('feed:stalled', { seconds: clock.seconds, clock: v.clock || null })
+      if (!this._handyStalled) { this._handyStalled = true; void this._handyFsResync() }
+      return
+    }
+    // The first reading after a clock reset reports an infinite jump; that is
+    // not a seek, so it must not throw away the primed points.
+    const jumped = Number.isFinite(clock.jump) && clock.jump > SYNC_JUMP_S
+    if (this._handyStalled || jumped) {
+      this._handyLog('feed:restart', { stalled: !!this._handyStalled, jump: clock.jump })
+      // Back from a stall, or a jump nobody announced (loop wrap): everything
+      // queued is on the wrong timeline, so restart from the live position.
+      if (!this._handyStalled) void this._handyFsResync()
+      this._handyStalled = false
+      this._handyFsMap = null
+      this._handyFsNextSampleMs = null
+      this._handyFsFinished = false
+    }
     if (this._handyFsFinished) return
 
-    const offsetMs = store().funscriptOffsetMs || 0
-    const videoNow  = v.currentTime * 1000
-    const rate      = v.playbackRate || 1
-    const HORIZON   = 1500   // ms of script to stay ahead by
-    const step      = FUNSCRIPT_INTIFACE_INTERVAL_MS * rate
-
-    // Anchor ties a video position to a wall-clock instant. Normally that's
-    // "now", but priming sets it slightly in the future so the opening strokes
-    // are already sitting on the device before the video starts — a point whose
-    // timestamp arrives after its due time is simply dropped, which is what
-    // makes the first moment of playback unreliable otherwise.
-    const anchor = this._handyFsAnchor || { wall: Date.now(), videoMs: videoNow }
-    const streamNow = anchor.wall - this._handyStreamStartAt
-    let queued = 0
-    if (this._handyFsNextSampleMs < videoNow) this._handyFsNextSampleMs = videoNow
-    const horizonEnd = videoNow + HORIZON * rate
-    const scriptEnd = actions.at(-1).at + offsetMs
-    while (this._handyFsNextSampleMs <= horizonEnd) {
-      const at = this._handyFsNextSampleMs
-      if (scriptEnd >= videoNow && scriptEnd <= horizonEnd && at > scriptEnd) {
-        const raw = sampleFunscriptPosition(actions, scriptEnd)
-        this._handyBuffer.push({
-          t: Math.round(streamNow + (scriptEnd - anchor.videoMs) / rate),
-          x: this._handyScriptPos(raw),
-        })
-        this._handyFsNextSampleMs = scriptEnd + step
-        this._handyFsFinished = true
-        queued++
-        break
-      }
-      const raw = sampleFunscriptPosition(actions, at + offsetMs)
-      if (raw == null) break
-      // Video time → stream time, relative to the anchor. Dividing by
-      // playbackRate keeps the script aligned at non-1x speeds.
-      const t = Math.round(streamNow + (at - anchor.videoMs) / rate)
-      this._handyBuffer.push({ t, x: this._handyScriptPos(raw) })
-      this._handyFsNextSampleMs += step
-      queued++
-      if (scriptEnd >= videoNow && at >= scriptEnd) {
-        this._handyFsFinished = true
-        break
+    // Keep one steady video → device mapping. Rebuilding it from the player's
+    // coarse clock on every tick made point spacing wobble (choppy strokes).
+    // Re-map softly on small drift; restart the stream on large drift.
+    const now = this._handyNow()
+    const clockMs = clock.seconds * 1000
+    const rate = clock.rate || 1
+    let map = this._handyFsMap
+    if (map) {
+      const predicted = map.videoMs + (now - map.wall) * map.rate
+      const drift = Math.abs(predicted - clockMs)
+      if (drift > 120 || map.rate !== rate) this._handyLog('feed:remap', { drift: Math.round(drift), rate, mapRate: map.rate })
+      if (map.rate !== rate || drift > 600) {
+        void this._handyFsResync()
+        this._handyFsNextSampleMs = null
+        map = null
+      } else if (drift > 120) {
+        map = null
       }
     }
-
-    if (queued > 0) this._handyFlushBuffer()
+    if (!map) map = this._handyFsMap = { wall: now, videoMs: clockMs, rate }
+    const videoNow = map.videoMs + (now - map.wall) * map.rate
+    this._handyFeedLog('feed:tick', { videoMs: Math.round(videoNow), clockMs: Math.round(clockMs), rawTime: v.currentTime,
+      streamNow: this._handyStreamNow(), lastT: this._handyLastT, finished: this._handyFsFinished })
+    this._handyFsFill(videoNow, map)
   }
 
   async _handyFlushBuffer() {
     if (this._handyBuffer.length === 0 || this._handyFlushInFlight) return
     this._handyFlushInFlight = true
-    const points = this._handyBuffer
-    this._handyBuffer = []
+    // hsp/add takes at most 100 points, and never more than the device holds.
+    const limit = Math.max(1, Math.min(100, this._handyMaxPoints || 100))
+    const points = this._handyBuffer.slice(0, limit)
+    this._handyBuffer = this._handyBuffer.slice(limit)
     const isFirstBatch = !this._handyPlaying
+    const gen = this._handyGen
 
     try {
-      this._handyTailIndex += points.length
-      const data = await this._handyRequest('PUT', 'hsp/add', {
-        points,
-        flush: isFirstBatch,
-        tail_point_stream_index: this._handyTailIndex,
-      })
+      const data = await this._handyRequest('PUT', 'hsp/add', () => {
+        this._handyTailIndex += points.length
+        return { points, flush: isFirstBatch, tail_point_stream_index: this._handyTailIndex }
+      }, { gen })
+      if (data?.skipped) return
 
       if (isFirstBatch) {
-        const now = Date.now()
-        await this._handyRequest('PUT', 'hsp/play', {
-          start_time:    now - this._handyStreamStartAt,
-          server_time:   now + this._handyServerOffset,
-          playback_rate: 1.0,
-          loop: false,
-        })
+        const played = await this._handyRequest('PUT', 'hsp/play', () => {
+          const now = this._handyNow()
+          return {
+            start_time:    Math.round(now - this._handyStreamStartAt),
+            server_time:   Math.round(now + this._handyServerOffset),
+            playback_rate: 1.0,
+            loop: false,
+          }
+        }, { gen })
+        if (played?.skipped) return
+        // A resync while this play was in flight already flushed the device;
+        // marking the stream as playing then would mean no new play is sent
+        // and the device stays stopped.
+        if (gen !== this._handyGen) return
         this._handyPlaying = true
       }
 
-      // The device-side buffer misbehaves near capacity — flush it before that
-      // happens. tail_point_stream_index and _handyStreamStartAt are absolute
-      // across the session and must NOT be reset; only _handyPlaying resets so
-      // the next batch issues a fresh hsp/play call to resume.
-      const result = data.result
-      if (result && (result.max_points - result.points) < 100) {
-        await this._handyRequest('PUT', 'hsp/flush').catch(() => {})
-        this._handyPlaying = false
-      }
+      // A full buffer is normal: the API drops the oldest (already played)
+      // points to make room for new ones. The buffer is small (~100 points),
+      // so flushing whenever it looked full restarted the stream after every
+      // batch and the device stopped after a stroke or two. Only remember the
+      // size, so the script feed can space its points to fit.
+      const max = Number(data.result?.max_points)
+      if (max > 0) this._handyMaxPoints = max
 
       if (store().errorMsg) useDeviceStore.setState({ errorMsg: null })
     } catch (err) {
       const msg = `Handy stroke failed: ${err.message}`
       console.error(msg, err)
+      // A lost batch leaves a hole in the device's stream; start a fresh one
+      // rather than let later points pile up behind the gap.
+      if (gen === this._handyGen && this._handyFsTimer) {
+        void this._handyFsResync()
+        this._handyFsNextSampleMs = null
+      }
       // Surface the error without tearing down the connection (status stays 'connected')
       if (store().errorMsg !== msg) useDeviceStore.setState({ errorMsg: msg })
     } finally {
@@ -2055,6 +2402,7 @@ export class DeviceService {
     if (!this._serialWriter && !this._nativeSerial) return
     if (!['L0', 'L1', 'L2', 'R0', 'R1', 'R2'].includes(axisId)) return
     let p = clamp(posPercent, 0, 100)
+    this._fsShaper.record(axisId, p)
     // The stroke limiter is a stroke-window constraint — it must apply ONLY to
     // L0. Clamping rotation/secondary axes to the stroke floor/ceiling would
     // distort the authored choreography, so those pass through unmodified.
@@ -2081,7 +2429,7 @@ export class DeviceService {
       while (writer && writer === this._serialWriter && this._serialPending.size) {
         const commands = [...this._serialPending.values()].join(' ') + '\n'
         this._serialPending.clear()
-        await writer.write(new TextEncoder().encode(commands))
+        await writer.write(textEncoder.encode(commands))
       }
     } catch (error) {
       this._serialOutputFailed(error)
@@ -2093,7 +2441,10 @@ export class DeviceService {
   _nativeSerialParams() {
     const s = store()
     return { strokeFloor: s.strokeFloor, strokeCeiling: s.strokeCeiling,
-      axisEnabled: s.funscriptAxes || {}, offsetMs: s.funscriptOffsetMs || 0, gate: this._edgeGate }
+      axisEnabled: s.funscriptAxes || {},
+      // Per-video offset plus the serial device's own latency compensation.
+      offsetMs: (s.funscriptOffsetMs || 0) + (s.motion?.latencyMs?.serial || 0),
+      gate: this._edgeGate, axisSettings: s.motion?.axisSettings || {}, motion: s.motion }
   }
 
   _serialOutputFailed(error) {
@@ -2129,7 +2480,7 @@ export class DeviceService {
         const state = this._independentFs
         if (!state) return
         state.startTime = status.time
-        state.startedAt = Date.now()
+        state.startedAt = nowMs()
         state.onTime?.(status.time, state.duration)
         if (status.ended) {
           this._nativeSerialPlaying = false
@@ -2147,7 +2498,7 @@ export class DeviceService {
       this._serialSettingsUnsubscribe = useDeviceStore.subscribe((state, previous) => {
         if (this._nativeSerialPlaying && (state.strokeFloor !== previous.strokeFloor ||
           state.strokeCeiling !== previous.strokeCeiling || state.funscriptAxes !== previous.funscriptAxes ||
-          state.funscriptOffsetMs !== previous.funscriptOffsetMs)) {
+          state.funscriptOffsetMs !== previous.funscriptOffsetMs || state.motion !== previous.motion)) {
           const params = this._nativeSerialParams()
           if (this._funscriptOwner === 'independent') { delete params.axisEnabled; delete params.offsetMs }
           native.update(params)

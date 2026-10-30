@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Coins, Minus, PackageOpen, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { Armchair, BookOpen, Coins, Minus, PackageOpen, Plus, ShoppingCart, Trash2, Truck } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { tcgV2Api } from '../../lib/api'
+import { apiErrorMessage, tcgRoomApi, tcgV2Api } from '../../lib/api'
 import { pendingPackPurchase } from '../../lib/packPurchase'
 import { useT } from '../../i18n'
 import { BINDER_PRODUCTS, PACK_WRAPPERS, priceCart } from './shopCatalog'
@@ -10,6 +10,7 @@ import { checkoutCart } from './shopCheckout'
 import { sampleBoosterArt } from './boosterArt'
 import TargetCardTypePicker from './TargetCardTypePicker'
 import './collection-shop.css'
+import TCGSelect from './TCGSelect'
 
 function ProductArt({ product }) {
   const candidates = product.preview_art_urls || []
@@ -26,7 +27,11 @@ function ProductArt({ product }) {
   </div>
 }
 
-export default function Workshop({ packs = [], releases = [], onOpenedPacks, onBusyChange, onProgress }) {
+// The one shop for the card collection. On the Shop tab packs open right
+// away (mode "instant"); on the room computer the same shop orders packs as a
+// parcel delivered to the room (mode "parcel") and adds a Furniture tab.
+export default function Workshop({ packs = [], releases = [], onOpenedPacks, onBusyChange, onProgress, mode = 'instant', furniture = null }) {
+  const parcelMode = mode === 'parcel'
   const t = useT()
   const qc = useQueryClient()
   const [category, setCategory] = useState('all')
@@ -41,7 +46,7 @@ export default function Workshop({ packs = [], releases = [], onOpenedPacks, onB
   const { data: shop, isLoading, isError, refetch } = useQuery({ queryKey: ['tcg-v2-workshop'], queryFn: () => tcgV2Api.workshop().then(r => r.data) })
   const { data: binders, isLoading: bindersLoading, isError: bindersError, refetch: retryBinders } = useQuery({ queryKey: ['tcg-v2-binders'], queryFn: () => tcgV2Api.binders().then(r => r.data) })
   const products = [...packs.map(pack => ({ ...pack, key: `pack-${pack.id}`, kind: 'packs' })), ...BINDER_PRODUCTS]
-  const visible = products.filter(product => category === 'all' || product.kind === category)
+  const visible = category === 'furniture' ? [] : products.filter(product => category === 'all' || product.kind === category)
   if (sort === 'price-low') visible.sort((a, b) => a.price - b.price)
   if (sort === 'price-high') visible.sort((a, b) => b.price - a.price)
   if (sort === 'name') visible.sort((a, b) => a.name.localeCompare(b.name))
@@ -91,8 +96,38 @@ export default function Workshop({ packs = [], releases = [], onOpenedPacks, onB
       checkoutLock.current = false
     }
   }
+  async function orderParcel() {
+    checkoutLock.current = true
+    setPending(true)
+    try {
+      for (const line of lines.filter(item => item.product.kind === 'binders')) {
+        for (let index = 0; index < line.quantity; index++) {
+          await tcgV2Api.createBinder({ name: line.product.name, cover_style: line.product.id, page_style: 'nine-pocket' })
+        }
+      }
+      const packLines = lines.filter(item => item.product.kind === 'packs').flatMap(line => {
+        // The room order API takes up to 10 of one product per line.
+        const parts = []
+        for (let left = line.quantity; left > 0; left -= 10) {
+          parts.push({ product_id: line.product.id, quantity: Math.min(10, left), selected_release_id: line.releaseId || undefined, target_card_type: line.targetCardType || undefined })
+        }
+        return parts
+      })
+      for (let start = 0; start < packLines.length; start += 10) await tcgRoomApi.order(packLines.slice(start, start + 10))
+      setCart([])
+      toast.success(packLines.length ? t('Order placed. Booster packs are on their way.') : t('Purchase complete'))
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t('Could not place the online order')))
+    } finally {
+      await Promise.all(['tcg-room-bootstrap', 'tcg-room-inventory', 'tcg-v2-binders', 'tcg-v2-workshop', 'tcg-v2-summary', 'tcg-v2-packs', 'profile'].map(key => qc.invalidateQueries({ queryKey: [key] })))
+      setPending(false)
+      checkoutLock.current = false
+    }
+  }
+
   async function checkout() {
     if (checkoutLock.current || unfinished || !ready || !count || total > credits) return
+    if (parcelMode) return orderParcel()
     checkoutLock.current = true
     setPending(true)
     onBusyChange?.(true)
@@ -145,8 +180,8 @@ export default function Workshop({ packs = [], releases = [], onOpenedPacks, onB
     <div className="collection-shop-catalog">
       {unfinished && <p role="status">{t('A booster purchase needs recovery. Resume it to retrieve the same cards without paying twice.')} <button disabled={pending} onClick={resumePurchase}>{t('Resume purchase')}</button></p>}
       <div className="collection-shop-toolbar">
-        <nav aria-label={t('Shop categories')}>{[['all', 'All', ShoppingCart], ['packs', 'Booster Packs', PackageOpen], ['binders', 'Binders', BookOpen]].map(([id, label, Icon]) => <button key={id} aria-pressed={category === id} className={category === id ? 'active' : ''} onClick={() => setCategory(id)}><Icon size={18} />{t(label)}</button>)}</nav>
-        <select aria-label={t('Sort products')} value={sort} onChange={event => setSort(event.target.value)}><option value="featured">{t('Featured')}</option><option value="price-low">{t('Price: low to high')}</option><option value="price-high">{t('Price: high to low')}</option><option value="name">{t('Name')}</option></select>
+        <nav aria-label={t('Shop categories')}>{[['all', 'All', ShoppingCart], ['packs', 'Booster Packs', PackageOpen], ['binders', 'Binders', BookOpen], ...(furniture ? [['furniture', 'Furniture', Armchair]] : [])].map(([id, label, Icon]) => <button key={id} aria-pressed={category === id} className={category === id ? 'active' : ''} onClick={() => setCategory(id)}><Icon size={18} />{t(label)}</button>)}</nav>
+        <TCGSelect label={t('Sort products')} hideLabel value={sort} onChange={setSort} options={[{ value: 'featured', label: t('Featured') }, { value: 'price-low', label: t('Price: low to high') }, { value: 'price-high', label: t('Price: high to low') }, { value: 'name', label: t('Name') }]} />
       </div>
       {(isError || bindersError) && <p role="alert">{t('Could not load shop balances.')} <button onClick={() => { refetch(); retryBinders() }}>{t('Retry')}</button></p>}
       <div className="collection-shop-grid">{visible.map(product => {
@@ -160,26 +195,34 @@ export default function Workshop({ packs = [], releases = [], onOpenedPacks, onB
             <p>{binder ? t(product.description) : `${product.card_count} ${t('cards')} · ${product.pool_summary || t('Published Vault pool')}`}</p>
             {!binder && <details><summary>{t('Pack details & odds')}</summary><p>{(product.guaranteed_slots || []).join(', ').replaceAll('_', ' ') || t('Published odds')}</p><div>{Object.entries(product.odds?.weighted_slots || product.odds || {}).filter(([, value]) => typeof value === 'number').map(([rarity, value], _, odds) => <span key={rarity}>{rarity}: {(value / (odds.reduce((sum, [, weight]) => sum + weight, 0) || 1) * 100).toFixed(1)}% </span>)}</div></details>}
             {product.targetable_card_type && <TargetCardTypePicker value={targetTypes[product.id] || ''} onChange={value => setTargetTypes(current => ({ ...current, [product.id]: value }))} id={`shop-target-${product.id}`} />}
-            {weekly && product.tokens > 0 && <select aria-label={t('Choose release')} value={releaseIds[product.id] || ''} onChange={event => setReleaseIds(current => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="">{t('Choose release')}</option>{releases.filter(release => release.status === 'published').map(release => <option value={release.id} key={release.id}>{release.name}</option>)}</select>}
+            {weekly && product.tokens > 0 && <TCGSelect label={t('Choose release')} hideLabel value={releaseIds[product.id] || ''} onChange={value => setReleaseIds(current => ({ ...current, [product.id]: Number(value) || '' }))} options={[{ value: '', label: t('Choose release') }, ...releases.filter(release => release.status === 'published').map(release => ({ value: release.id, label: release.name }))]} />}
             <div className="collection-shop-price"><Coins size={19} /><strong>{weekly ? t('Quest reward') : Number(product.price || 0).toLocaleString()}</strong>{!weekly && <span>{t('Vault Credits')}</span>}</div>
             {binder && binders?.length === 0 && <span className="collection-shop-note">{t('Your first binder is free')}</span>}
             {!binder && product.tokens > 0 && <span className="collection-shop-note">{t('{count} reward tokens available', { count: product.tokens })}</span>}
-            <button className="collection-shop-buy" disabled={pending || Boolean(unfinished) || !ready || !canAdd(product)} onClick={() => binder ? add(product) : buyPack(product)}>{binder ? <ShoppingCart size={18} /> : <PackageOpen size={18} />}{t(available ? binder ? 'Add to Cart' : 'Buy' : weekly ? 'Weekly quest reward' : 'Unavailable')}</button>
+            <div className="collection-shop-actions">
+              {available
+                ? <>
+                  <button className={`collection-shop-buy${binder || parcelMode ? '' : ' is-secondary'}`} disabled={pending || Boolean(unfinished) || !ready || !canAdd(product)} onClick={() => add(product)}><ShoppingCart size={18} />{t('Add to Cart')}</button>
+                  {!binder && !parcelMode && <button className="collection-shop-buy" disabled={pending || Boolean(unfinished) || !ready || !canAdd(product)} onClick={() => buyPack(product)}><PackageOpen size={18} />{t('Open now')}</button>}
+                </>
+                : <button className="collection-shop-buy" disabled>{t(weekly ? 'Weekly quest reward' : 'Unavailable')}</button>}
+            </div>
           </div>
         </article>
       })}</div>
-      {!visible.length && <p>{t('No products available in this category.')}</p>}
+      {category === 'furniture' && furniture}
+      {category !== 'furniture' && !visible.length && <p>{t('No products available in this category.')}</p>}
     </div>
     <aside className="collection-shop-cart" aria-label={t('Your Cart')}>
       <header><ShoppingCart size={22} /><h2>{t('Your Cart')}</h2><span>{count}</span><button disabled={pending || Boolean(unfinished) || !count} onClick={() => setCart([])}>{t('Clear')}</button></header>
       <div className="collection-shop-cart-lines">{lines.map(line => <article key={line.key}>
         <ProductArt product={line.product} />
-        <div><h3>{t(line.product.name)}</h3>{line.releaseId && <p>{releases.find(release => release.id === line.releaseId)?.name}</p>}{line.targetCardType && <p>{t('Target')}: {t(({ image: 'Photo', variant: 'Cosplay' })[line.targetCardType] || line.targetCardType)}</p>}<strong>{line.total.toLocaleString()} {t('Credits')}</strong>
+        <div><h3>{t(line.product.name)}</h3>{line.releaseId && <p>{releases.find(release => release.id === line.releaseId)?.name}</p>}{line.targetCardType && <p>{t('Target')}: {t(({ image: 'Scene', variant: 'Cosplay' })[line.targetCardType] || line.targetCardType)}</p>}<strong>{line.total.toLocaleString()} {t('Credits')}</strong>
           <div className="collection-shop-quantity"><button disabled={pending} aria-label={t('Decrease {name} quantity', { name: line.product.name })} onClick={() => changeQuantity(line.key, -1)}><Minus size={16} /></button><span>{line.quantity}</span><button disabled={pending || Boolean(unfinished) || (line.product.kind === 'packs' && !line.product.purchasable && cart.filter(item => item.product.key === line.product.key).reduce((sum, item) => sum + item.quantity, 0) >= Number(line.product.tokens || 0))} aria-label={t('Increase {name} quantity', { name: line.product.name })} onClick={() => changeQuantity(line.key, 1)}><Plus size={16} /></button><button disabled={pending} aria-label={t('Remove {name}', { name: line.product.name })} onClick={() => setCart(current => current.filter(item => item.key !== line.key))}><Trash2 size={17} /></button></div>
         </div>
       </article>)}</div>
-      {!count && <p className="collection-shop-empty">{t('A new favorite belongs here. Add binders to get started.')}</p>}
-      <footer><div><span>{t('Total')}</span><strong>{total.toLocaleString()} {t('Credits')}</strong></div><p>{ready ? `${credits.toLocaleString()} ${t('Credits available')}` : t('Loading balance...')}</p>{lines.some(line => line.free > 0 && line.product.kind === 'binders') && <p>{t('First binder discount applied.')}</p>}{lines.some(line => line.free > 0 && line.product.kind === 'packs') && <p>{t('Reward tokens applied.')}</p>}<button className="collection-shop-buy" disabled={pending || Boolean(unfinished) || !ready || !count || total > credits} onClick={checkout}><ShoppingCart size={20} />{t(pending ? 'Preparing your purchase...' : total > credits ? 'Not enough Credits' : 'Checkout')}</button><p aria-live="polite">{progress}</p></footer>
+      {!count && <p className="collection-shop-empty">{t('Your cart is empty. Add packs or binders to get started.')}</p>}
+      <footer><div><span>{t('Total')}</span><strong>{total.toLocaleString()} {t('Credits')}</strong></div><p>{ready ? `${credits.toLocaleString()} ${t('Credits available')}` : t('Loading balance...')}</p>{lines.some(line => line.free > 0 && line.product.kind === 'binders') && <p>{t('First binder discount applied.')}</p>}{lines.some(line => line.free > 0 && line.product.kind === 'packs') && <p>{t('Reward tokens applied.')}</p>}<button className="collection-shop-buy" disabled={pending || Boolean(unfinished) || !ready || !count || total > credits} onClick={checkout}>{parcelMode ? <Truck size={20} /> : <ShoppingCart size={20} />}{t(pending ? 'Preparing your purchase...' : total > credits ? 'Not enough Credits' : parcelMode ? 'Order for delivery' : 'Checkout')}</button><p aria-live="polite">{progress}</p></footer>
     </aside>
   </section>
 }

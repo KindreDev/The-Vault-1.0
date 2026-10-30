@@ -7,6 +7,7 @@ import { creatorsApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import { useT } from '../i18n'
 
+import ModalLayer from './ModalLayer'
 const CLIP_SECONDS = 3
 const FRAME = 1 / 30
 
@@ -123,7 +124,7 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
   )
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center"
+    <ModalLayer><div className="fixed inset-0 z-[70] flex items-center justify-center"
          style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)' }}
          onClick={e => e.target === e.currentTarget && !busy && onClose()}>
       <div className="rounded-[16px] w-[760px] max-w-[94vw] overflow-hidden"
@@ -252,7 +253,7 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
           )}
         </div>
       </div>
-    </div>,
+    </div></ModalLayer>,
     document.body
   )
 }
