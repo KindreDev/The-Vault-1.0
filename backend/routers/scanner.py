@@ -315,20 +315,22 @@ def ai_tag_model_status():
         joytag_downloaded=ai_tagger.joytag_is_ready(),
         wd14_size_mb=ai_tagger._dir_size_mb(ai_tagger._wd14_dir()) if ai_tagger.wd14_is_ready() else None,
         joytag_size_mb=ai_tagger._dir_size_mb(ai_tagger._joytag_dir()) if ai_tagger.joytag_is_ready() else None,
+        models=ai_tagger.model_statuses(),
     )
 
 
 @router.post("/ai-tag-download")
 def ai_tag_download(body: dict):
-    """Download WD14, JoyTag, or both."""
-    dl_wd14   = bool(body.get("wd14", False))
-    dl_joytag = bool(body.get("joytag", False))
-    if not dl_wd14 and not dl_joytag:
-        raise HTTPException(400, "Specify at least one of: wd14, joytag")
-    models = " + ".join(filter(None, ["WD14" if dl_wd14 else None, "JoyTag" if dl_joytag else None]))
+    """Download tagger models: {"models": ["wd14-eva02", "nudenet"]}.
+    The older {"wd14": true, "joytag": true} form still works."""
+    keys = [k for k in (body.get("models") or []) if k in ai_tagger.TAGGER_MODELS]
+    keys += [k for k in ("wd14", "joytag") if body.get(k) and k not in keys]
+    if not keys:
+        raise HTTPException(400, "Specify at least one model: " + ", ".join(ai_tagger.TAGGER_MODELS))
+    models = " + ".join(ai_tagger.TAGGER_MODELS[k]["label"] for k in keys)
     task_queue.submit(
         'model_download', f'Download AI models ({models})',
-        start_fn=lambda: _launch_in_thread(ai_tagger.download_models_task, dl_wd14, dl_joytag),
+        start_fn=lambda: _launch_in_thread(ai_tagger.download_models_task, keys),
         poll_fn=ai_tagger.get_tagger_state,
         cancel_fn=ai_tagger.cancel_tagger,
     )
@@ -338,8 +340,15 @@ def ai_tag_download(body: dict):
 @router.post("/ai-tag", response_model=TaggerStatus)
 def start_ai_tag(req: TaggerStartRequest):
     """Start a bulk AI tagging run."""
-    if not ai_tagger.wd14_is_ready() and not ai_tagger.joytag_is_ready():
+    if not ai_tagger.any_tagger_ready():
         raise HTTPException(400, "No tagger models downloaded. Download WD14 or JoyTag first.")
+    if req.model_override and req.model_override not in ai_tagger.TAGGER_KEYS:
+        raise HTTPException(400, f"Unknown tagger model: {req.model_override}")
+    if req.media not in ai_tagger.MEDIA_KINDS:
+        raise HTTPException(400, "media must be all, photos or videos")
+    missing = [k for k in req.extra_models if k not in ai_tagger.DETECTOR_KEYS or not ai_tagger.model_is_ready(k)]
+    if missing:
+        raise HTTPException(400, f"Download these models first: {', '.join(missing)}")
 
     if req.scope == "folder":
         if not req.folder_path:
@@ -373,6 +382,7 @@ def start_ai_tag(req: TaggerStartRequest):
         job = ai_tagger.create_tag_job(
             db, req.scope, req.folder_path, req.threshold,
             req.retag, req.model_override, req.creator_id, req.image_id,
+            media=req.media, extra_models=req.extra_models,
         )
         job_id = job.id
         queued_state = ai_tagger.tag_job_state(job)

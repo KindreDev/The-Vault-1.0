@@ -44,13 +44,35 @@ export async function rateImage(imageId, rating) {
     toast(value > 0 ? `${STARS.repeat(Math.min(value, 10))} ${value}` : tr('Rating cleared'), {
       id: 'rating-toast',   // one toast, replaced — not ten stacked up
     })
-    for (const key of ['images-list', 'gallery-images', 'image']) {
-      queryClient.invalidateQueries({ queryKey: [key] })
-    }
+    patchCachedRating(queryClient, imageId, value)
     return data
   } catch (err) {
     console.error('Rate failed:', err)
     toast.error(tr('Could not save that rating'))
     return null
+  }
+}
+
+/**
+ * Put a saved rating into every cached copy of that file instead of
+ * refetching. Refetching a gallery's list rebuilds every row with its tags on
+ * the backend, and rating ten files in a row queued ten of those. That work
+ * runs in the same process as the SR1's output thread and made the device
+ * stutter. The lists are still marked stale, so a list sorted or filtered by
+ * rating catches up the next time it is opened, without a reload now.
+ */
+export function patchCachedRating(client, imageId, rating) {
+  const patch = img => (img?.id === imageId ? { ...img, rating } : img)
+  for (const key of ['images-list', 'gallery-images']) {
+    client.setQueriesData({ queryKey: [key] }, old => {
+      if (!old) return old
+      if (Array.isArray(old)) return old.map(patch)
+      if (Array.isArray(old.items)) return { ...old, items: old.items.map(patch) }
+      return old
+    })
+  }
+  client.setQueriesData({ queryKey: ['image'] }, old => patch(old))
+  for (const key of ['images-list', 'gallery-images', 'image']) {
+    client.invalidateQueries({ queryKey: [key], refetchType: 'none' })
   }
 }

@@ -14,7 +14,7 @@ export async function checkoutCart(lines, api, onCompleted, onProgress, opened) 
         const product = { ...line.product, ...data.product, wrapper_src: line.product.wrapper_src || PACK_WRAPPERS[line.product.product_kind], collage_images: line.product.preview_art_urls_by_release?.[String(line.releaseId)] || line.product.preview_art_urls || [] }
         const cards = data.cards || []
         const size = data.product?.card_count || cards.length || 1
-        for (let offset = 0; offset < cards.length; offset += size) opened.push({ product, cards: cards.slice(offset, offset + size) })
+        for (let offset = 0; offset < cards.length; offset += size) opened.push({ product, cards: cards.slice(offset, offset + size), ...(offset === 0 ? { reaction: data.reaction, bounties: data.bounties } : {}) })
       }
       completed++
       onCompleted(line.key)

@@ -5,6 +5,7 @@ import { getServerBase, setServerBase } from '../lib/server.js'
 import { refreshApiBase } from '../lib/api.js'
 import { useVaultStore, PALETTES } from '../store/vault.js'
 import { PageHeader } from '../components/ui.jsx'
+import { APP_VERSION, APP_BUILD } from '../components/UpdateBanner.jsx'
 
 function Section({ title, children }) {
   return (
@@ -145,7 +146,7 @@ export default function Settings() {
       </Section>
 
       <div className="text-center text-[14px] mt-8 mb-4" style={{ color: 'rgba(255,255,255,0.3)' }}>
-        The Vault Mobile{version ? ` · v${version}` : ''}
+        The Vault Mobile {APP_VERSION} (build {APP_BUILD}){version ? ` · PC ${version}` : ''}
       </div>
       <div className="h-4" />
     </div>

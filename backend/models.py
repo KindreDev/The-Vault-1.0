@@ -382,6 +382,9 @@ class Tag(Base):
     source     = Column(Enum(TagSource), default=TagSource.manual)
     use_count  = Column(Integer, default=0)
     is_favorite = Column(Boolean, default=False, nullable=False)
+    # Overrides the automatic tag role (content, looks, baseline, framing...);
+    # NULL = decided from category and how common the tag is. See tag_insights.
+    role_override = Column(String, nullable=True)
 
     images     = relationship("Image",   secondary=image_tags,   back_populates="tags")
     galleries  = relationship("Gallery", secondary=gallery_tags, back_populates="tags")
@@ -438,7 +441,7 @@ class Playlist(Base):
     cover_thumb = Column(String, nullable=True)
     created_at  = Column(DateTime, default=func.now())
 
-    images      = relationship("Image", secondary=playlist_images)
+    images      = relationship("Image", secondary=playlist_images, order_by=playlist_images.c.sort_order)
 
 
 # ── First-class funscripts ────────────────────────────────────────────────────
@@ -651,6 +654,7 @@ class Quest(Base):
     completed_at = Column(DateTime, nullable=True)
     icon         = Column(String, default="ti-target")
     credit_reward = Column(Integer, default=0)
+    params       = Column(Text, nullable=True)   # JSON: what a weekly card bounty is looking for
 
 
 class Achievement(Base):
@@ -733,6 +737,7 @@ class Card(Base):
     # palette and extraction decision are frozen when a card is prepared so a
     # later metadata edit or masking-model update cannot silently reprint it.
     visual_recipe     = Column(Text, nullable=True)
+    face_traits       = Column(Text, nullable=True)   # cached JSON, see services.card_traits
     mint_audit_json   = Column(Text, nullable=True)
 
     # Published TCG V2 printing identity.  Legacy cards leave these null.  A
@@ -1308,6 +1313,17 @@ class TCGCardFavorite(Base):
     id         = Column(Integer, primary_key=True, index=True)
     card_id    = Column(Integer, ForeignKey("cards.id"), nullable=False, unique=True, index=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class TCGCollectionAward(Base):
+    """One reward per collection milestone: "trait:<tag>:<target>" or "ladder:<creator>"."""
+    __tablename__ = "tcg_collection_awards"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    key        = Column(String, nullable=False, unique=True, index=True)
+    xp         = Column(Integer, default=0, nullable=False)
+    credits    = Column(Integer, default=0, nullable=False)
+    awarded_at = Column(DateTime, default=func.now(), nullable=False)
 
 
 class TCGSetCompletionAward(Base):
@@ -1895,6 +1911,8 @@ class AITagJob(Base):
     threshold      = Column(Float, default=0.35)
     retag          = Column(Boolean, default=False)
     model_override = Column(String, nullable=True)
+    media          = Column(String, default="all")        # all|photos|videos
+    extra_models   = Column(String, nullable=True)        # comma list of detector keys, e.g. "nudenet"
     total          = Column(Integer, default=0)
     progress       = Column(Integer, default=0)
     tagged         = Column(Integer, default=0)

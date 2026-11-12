@@ -74,7 +74,9 @@ def activity_tracking(db: Session = Depends(get_db)):
     """
     from services import activity
     since = activity.tracking_since(db)
-    return {"since": since.isoformat() if since else None}
+    history = activity.history_since(db)
+    return {"since": since.isoformat() if since else None,
+            "history_since": history.isoformat() if history else None}
 
 
 @router.get("/personal-mode")
@@ -537,17 +539,65 @@ def _find_lan_ip():
     return candidates[0] if candidates else "127.0.0.1"
 
 
+def _find_tailscale_host():
+    """This PC's Tailscale name (or address), if Tailscale is running.
+
+    A Tailscale address never changes and works away from home, so it is the
+    better address to give a phone. Asks the Tailscale CLI first (for the
+    MagicDNS name), then falls back to any 100.64.0.0/10 address on this PC.
+    """
+    import ipaddress
+    import json
+    import shutil
+    import socket
+    import subprocess
+
+    exe = shutil.which("tailscale") or next((p for p in (
+        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Tailscale", "tailscale.exe"),
+    ) if os.path.isfile(p)), None)
+    if exe:
+        try:
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            out = subprocess.run([exe, "status", "--json"], capture_output=True, timeout=4,
+                                 creationflags=flags).stdout
+            me = (json.loads(out or b"{}").get("Self") or {})
+            if me.get("Online") is not False:
+                name = (me.get("DNSName") or "").rstrip(".")
+                ips = [ip for ip in (me.get("TailscaleIPs") or []) if ":" not in ip]
+                if name or ips:
+                    return name or ips[0]
+        except Exception:
+            pass
+    cgnat = ipaddress.ip_network("100.64.0.0/10")
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ipaddress.ip_address(ip) in cgnat:
+                return ip
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/mobile-link")
 def get_mobile_link():
-    """Returns the address a phone on the same Wi-Fi uses to open the app."""
+    """Addresses a phone can use to reach this PC: home Wi-Fi, and Tailscale
+    (works from anywhere) when it's running."""
     ip = _find_lan_ip()
     port = int(os.environ.get("VAULT_PORT", "8000"))
     found = not ip.startswith("127.")
+    addresses = []
+    if found:
+        addresses.append({"kind": "lan", "host": ip, "base": f"http://{ip}:{port}"})
+    ts_host = _find_tailscale_host()
+    if ts_host:
+        addresses.append({"kind": "tailscale", "host": ts_host, "base": f"http://{ts_host}:{port}"})
     return {
         "ip": ip,
         "port": port,
         "url": f"http://{ip}:{port}/m",
         "found": found,
+        "addresses": addresses,
     }
 
 

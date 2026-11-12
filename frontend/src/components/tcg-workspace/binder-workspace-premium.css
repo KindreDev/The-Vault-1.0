@@ -426,3 +426,10 @@
   .tcgws-binder-modal .tcgws-selected-cover > div { height: 240px; }
   .tcgws-binder-modal .tcgws-cover-editor label { grid-template-columns: 1fr; gap: 4px; }
 }
+
+.tcgws-binder-play {
+  display: inline-flex !important; align-items: center; gap: 7px; width: auto !important; padding: 0 14px !important; margin-left: 10px;
+  border-radius: 999px !important; font-size: 16px; font-weight: 600;
+  background: color-mix(in srgb, var(--c-accent) 22%, transparent) !important; color: var(--c-accent-text) !important;
+  border: 1px solid color-mix(in srgb, var(--c-accent) 45%, transparent) !important;
+}

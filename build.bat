@@ -122,6 +122,22 @@ if not exist "dist\vault\vault.exe" (
     pause & exit /b 1
 )
 echo     EXE built: dist\vault\vault.exe
+
+REM VLC plugin cache. Without plugins.dat, VLC scans all ~365 plugin DLLs the
+REM first time a video opens in each app session. VLC validates the cache by
+REM file timestamps, so it is generated here on the copied files, never in
+REM tools\vlc. The path must be absolute: a relative one writes an empty cache.
+set "VLC_PLUGINS=%~dp0dist\vault\_internal\vlc\plugins"
+"%~dp0dist\vault\_internal\vlc\vlc-cache-gen.exe" "%VLC_PLUGINS%"
+if not exist "%VLC_PLUGINS%\plugins.dat" (
+    echo [ERROR] VLC plugin cache was not created.
+    pause & exit /b 1
+)
+for %%F in ("%VLC_PLUGINS%\plugins.dat") do if %%~zF LSS 1024 (
+    echo [ERROR] VLC plugin cache is empty.
+    pause & exit /b 1
+)
+echo     VLC plugin cache created.
 echo.
 
 REM Step 5 - Inno Setup installer (optional)

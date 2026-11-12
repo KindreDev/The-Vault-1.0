@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import sys
 import threading
 import time
 
@@ -24,6 +25,37 @@ SYNC_JUMP = .25
 # VLC's clock can sit on one value for a few hundred ms. Past this, treat the
 # media as stalled and hold output instead of extrapolating into the future.
 STALL_SECONDS = 1.
+# The output thread shares the interpreter lock with the backend's request
+# threads. While a CPU-heavy request runs (rebuilding a large gallery list, for
+# one), the thread waits for the lock after every sleep. On Windows that wait
+# is rounded up to the system timer tick, about 15.6 ms by default, so one busy
+# request made the device stutter, and a few at once could stall it for
+# seconds. While a serial device is connected the timer runs at 1 ms and the
+# lock is handed over after 1 ms instead of CPython's default 5 ms.
+OUTPUT_SWITCH_INTERVAL = .001
+
+
+def _set_fine_timer(enabled):
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        winmm = ctypes.windll.winmm
+        (winmm.timeBeginPeriod if enabled else winmm.timeEndPeriod)(1)
+    except Exception:
+        pass
+
+
+def _raise_thread_priority():
+    """Keep the output thread ahead of other busy work on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetThreadPriority(kernel32.GetCurrentThread(), 2)  # THREAD_PRIORITY_HIGHEST
+    except Exception:
+        pass
 
 
 def finite(value, default=0.):
@@ -203,6 +235,7 @@ class SerialPlayback:
         self._writes = 0
         self._max_gap_ms = 0.
         self._generation = 0
+        self._previous_switch_interval = None
 
     def ports(self):
         from serial.tools import list_ports
@@ -231,6 +264,10 @@ class SerialPlayback:
             self._sent.clear()
             self._sync = self._home = None
             self._closing.clear()
+            if self._previous_switch_interval is None:
+                self._previous_switch_interval = sys.getswitchinterval()
+                sys.setswitchinterval(min(self._previous_switch_interval, OUTPUT_SWITCH_INTERVAL))
+                _set_fine_timer(True)
             self._thread = threading.Thread(target=self._run, name="vault-tcode-output", daemon=True)
             self._thread.start()
         return {"device": device}
@@ -371,6 +408,10 @@ class SerialPlayback:
             self._last_values.clear()
             self._sent.clear()
             self._sync = self._home = None
+            if self._previous_switch_interval is not None:
+                sys.setswitchinterval(self._previous_switch_interval)
+                self._previous_switch_interval = None
+                _set_fine_timer(False)
 
     def _require_port(self):
         if self._error:
@@ -518,6 +559,7 @@ class SerialPlayback:
         return values
 
     def _run(self):
+        _raise_thread_priority()
         last = time.perf_counter() - INTERVAL
         deadline = last + INTERVAL
         while not self._closing.is_set():

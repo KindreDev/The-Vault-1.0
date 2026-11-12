@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Flame, Images, Users, Film, Droplet, ListMusic, ChevronRight, Plus, Shuffle, Play } from 'lucide-react'
-import { galleriesApi, imagesApi, creatorsApi, playlistsApi, gamiApi } from '../lib/api.js'
+import { Flame, Images, Users, Film, Droplet, ListMusic, ChevronRight, Plus, Shuffle, Play, Sparkles, Crosshair, Trophy, CalendarDays } from 'lucide-react'
+import { galleriesApi, imagesApi, creatorsApi, playlistsApi, gamiApi, curationApi } from '../lib/api.js'
 import { useVaultStore } from '../store/vault.js'
 import { coverUrl, imageThumbUrl, creatorAvatarUrl } from '../lib/media.js'
 import { Spinner } from '../components/ui.jsx'
+import UpdateBanner from '../components/UpdateBanner.jsx'
+import { usePersistentState } from '../lib/nav.js'
 
 // Tabbed random discovery — mirrors the desktop dashboard's "Discover" section.
 const DISCOVER_TABS = [
@@ -15,9 +16,14 @@ const DISCOVER_TABS = [
   { key: 'creators',  label: 'Creators',  color: 'var(--c-amber)' },
 ]
 
+const DISC_KEYS = { galleries: 'disc-galleries', photos: 'disc-photos', videos: 'disc-videos', creators: 'disc-creators' }
+
 function Discover({ galleries, photos, videos, creators }) {
   const nav = useNavigate()
-  const [tab, setTab] = useState('galleries')
+  const qc = useQueryClient()
+  const [tab, setTab] = usePersistentState('vault.m.discoverTab', 'galleries', { session: true })
+  // Picks stay put while you hop in and out of them; the shuffle icon rerolls.
+  const reshuffle = () => qc.invalidateQueries({ queryKey: [DISC_KEYS[tab]] })
   const data = { galleries, photos, videos, creators }
   const items = data[tab] ?? []
   const browse = { galleries: '/galleries', photos: '/galleries', videos: '/galleries', creators: '/creators' }
@@ -25,8 +31,10 @@ function Discover({ galleries, photos, videos, creators }) {
   return (
     <div className="mt-6">
       <div className="flex items-center gap-2 px-4 mb-2.5">
-        <Shuffle size={18} style={{ color: 'var(--accent)' }} />
         <h2 className="text-lg font-bold">Discover</h2>
+        <button onClick={reshuffle} className="p-1.5 -ml-0.5 rounded-full active:bg-white/10" aria-label="Shuffle">
+          <Shuffle size={18} style={{ color: 'var(--accent)' }} />
+        </button>
         <button onClick={() => nav(browse[tab])} className="ml-auto flex items-center gap-1 text-[15px]" style={{ color: 'var(--accent)' }}>
           See all <ChevronRight size={16} />
         </button>
@@ -121,12 +129,14 @@ export default function Dashboard() {
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: () => galleriesApi.stats().then(r => r.data) })
   const { data: recent, isLoading } = useQuery({ queryKey: ['recent'], queryFn: () => galleriesApi.recent(12).then(r => r.data) })
   const { data: playlists } = useQuery({ queryKey: ['playlists'], queryFn: () => playlistsApi.list().then(r => r.data) })
+  const { data: curateDebt }  = useQuery({ queryKey: ['curate-debt'],  queryFn: () => curationApi.debt().then(r => r.data) })
+  const { data: curateState } = useQuery({ queryKey: ['curate-state'], queryFn: () => curationApi.state().then(r => r.data) })
 
   // Discover — random galleries / photos / videos / creators (matches desktop)
-  const { data: discGalleries } = useQuery({ queryKey: ['disc-galleries'], queryFn: () => galleriesApi.randomPicks(9).then(r => r.data) })
-  const { data: discPhotos }    = useQuery({ queryKey: ['disc-photos'],    queryFn: () => imagesApi.randomPicks(9).then(r => r.data) })
-  const { data: discVideos }    = useQuery({ queryKey: ['disc-videos'],    queryFn: () => imagesApi.randomVideos(9).then(r => r.data) })
-  const { data: discCreators }  = useQuery({ queryKey: ['disc-creators'],  queryFn: () => creatorsApi.randomPicks(9).then(r => r.data) })
+  const { data: discGalleries } = useQuery({ queryKey: ['disc-galleries'], queryFn: () => galleriesApi.randomPicks(9).then(r => r.data), staleTime: Infinity, gcTime: Infinity })
+  const { data: discPhotos }    = useQuery({ queryKey: ['disc-photos'],    queryFn: () => imagesApi.randomPicks(9).then(r => r.data), staleTime: Infinity, gcTime: Infinity })
+  const { data: discVideos }    = useQuery({ queryKey: ['disc-videos'],    queryFn: () => imagesApi.randomVideos(9).then(r => r.data), staleTime: Infinity, gcTime: Infinity })
+  const { data: discCreators }  = useQuery({ queryKey: ['disc-creators'],  queryFn: () => creatorsApi.randomPicks(9).then(r => r.data), staleTime: Infinity, gcTime: Infinity })
 
   const pct = profile?.xp_to_next
     ? Math.min(100, Math.round(((profile.total_xp || 0) / ((profile.total_xp || 0) + profile.xp_to_next)) * 100))
@@ -163,6 +173,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <UpdateBanner />
+
       {/* Stat grid */}
       <div className="grid grid-cols-3 gap-2.5 px-4">
         <StatTile icon={<Images size={20} />} label="Galleries" value={stats?.total_galleries} color="var(--accent)" />
@@ -171,6 +183,40 @@ export default function Dashboard() {
         <StatTile icon={<Images size={20} />} label="Images"    value={stats?.total_images}    color="var(--accent)" />
         <StatTile icon={<Droplet size={20} />} label="Cum count" value={stats?.total_cum_count} color="var(--c-pink)" />
         <StatTile icon={<Flame size={20} />}   label="Sessions"  value={stats?.total_sessions}  color="var(--c-amber)" />
+      </div>
+
+      {/* Curate — opens the swipe run */}
+      <button onClick={() => nav('/curate')}
+              className="mx-4 mt-4 w-[calc(100%-2rem)] rounded-vault p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
+              style={{ background: 'color-mix(in srgb, var(--accent) 14%, var(--c-card))', border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)' }}>
+        <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{ background: 'color-mix(in srgb, var(--accent) 25%, transparent)' }}>
+          <Sparkles size={22} style={{ color: 'var(--accent)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[17px] font-bold">Curate</div>
+          <div className="text-[13px] truncate" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            {curateDebt?.pending != null ? `${curateDebt.pending.toLocaleString()} files to go` : 'Rate and sort, one swipe at a time'}
+            {curateState?.streak_days > 0 ? ` · ${curateState.streak_days} day streak` : ''}
+          </div>
+          {curateState?.focus && (
+            <div className="flex items-center gap-1 mt-1 text-[12px]" style={{ color: '#F0A3BD' }}>
+              <Crosshair size={12} /> {curateState.focus.name}
+            </div>
+          )}
+        </div>
+        <ChevronRight size={20} style={{ color: 'rgba(255,255,255,0.4)' }} />
+      </button>
+
+      {/* Hall of Fame + Recap */}
+      <div className="grid grid-cols-2 gap-2.5 px-4 mt-2.5">
+        <button onClick={() => nav('/stats?tab=hof')} className="rounded-vault p-3.5 flex items-center gap-2.5 text-left active:scale-[0.98] transition-transform" style={{ background: 'var(--c-card)' }}>
+          <Trophy size={20} style={{ color: 'var(--c-amber)' }} />
+          <span className="text-[15px] font-semibold">Hall of Fame</span>
+        </button>
+        <button onClick={() => nav('/stats?tab=recap')} className="rounded-vault p-3.5 flex items-center gap-2.5 text-left active:scale-[0.98] transition-transform" style={{ background: 'var(--c-card)' }}>
+          <CalendarDays size={20} style={{ color: 'var(--accent)' }} />
+          <span className="text-[15px] font-semibold">Recap</span>
+        </button>
       </div>
 
       {/* Recent */}

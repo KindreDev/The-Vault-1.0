@@ -222,6 +222,7 @@ from routers.system import router as system_router
 from routers.companion import router as companion_router
 from routers.showcase import router as showcase_router
 from routers.recap import router as recap_router
+from routers.insights import router as insights_router
 from routers.relocate import router as relocate_router
 from routers.curation import router as curation_router
 from routers.masks import router as masks_router
@@ -476,6 +477,15 @@ def _migrate_add_columns():
         "ALTER TABLE images ADD COLUMN curate_snooze_until DATETIME",
         "ALTER TABLE user_profile ADD COLUMN total_images_curated INTEGER DEFAULT 0",
         "ALTER TABLE ai_tag_jobs ADD COLUMN image_id INTEGER",
+        # AI tagging: photos-only / videos-only runs and optional detector models.
+        "ALTER TABLE ai_tag_jobs ADD COLUMN media VARCHAR DEFAULT 'all'",
+        "ALTER TABLE ai_tag_jobs ADD COLUMN extra_models VARCHAR",
+        # Tag roles: manual override of the automatic role (baseline etc.).
+        "ALTER TABLE tags ADD COLUMN role_override VARCHAR",
+        # Card traits printed on content card faces (cached, rebuilt after tags change).
+        "ALTER TABLE cards ADD COLUMN face_traits TEXT",
+        # Weekly card bounties: what each one is looking for.
+        "ALTER TABLE quests ADD COLUMN params TEXT",
         # The queue filters on these constantly — index or every pull scans 21k rows.
         "CREATE INDEX IF NOT EXISTS ix_galleries_curated_at ON galleries(curated_at)",
         "CREATE INDEX IF NOT EXISTS ix_galleries_curate_snooze ON galleries(curate_snooze_until)",
@@ -967,10 +977,36 @@ app.add_middleware(
         r"|https?://(192\.168|10|172\.(1[6-9]|2\d|3[01]))\.[0-9.]+(:\d+)?)$"
     ),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
     expose_headers=["X-Total-Count"],
 )
+
+
+class _VaryOriginForMasks:
+    """Card masks are drawn by the mobile app as cross-origin images. Mark the
+    response as varying by Origin so a copy cached without CORS headers is
+    never reused for a cross-origin load (which would blank the card art)."""
+
+    def __init__(self, app):
+        self.inner = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/masks/"):
+            return await self.inner(scope, receive, send)
+
+        async def send_with_vary(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(k.lower() == b"vary" for k, _ in headers):
+                    headers.append((b"vary", b"Origin"))
+                message["headers"] = headers
+            await send(message)
+
+        await self.inner(scope, receive, send_with_vary)
+
+
+app.add_middleware(_VaryOriginForMasks)
 
 
 # Cache thumbnails aggressively — they're content-addressed by md5 hash
@@ -1149,6 +1185,16 @@ async def _on_startup():
             try:
                 vault_stats(db)
                 trending_tags(limit=8, days=60, db=db)
+                # Tag insights: the pair statistics take ~10 s on a large
+                # library, so compute them before anyone opens the widget.
+                from services import tag_insights
+                tag_insights.taste_profile(db)
+                tag_insights.surprising_pairs(db)
+                # Collections board, then the traits printed on card faces.
+                from services import tcg_collections
+                tcg_collections._boards(db)
+                from services.card_traits import warm_face_traits
+                warm_face_traits(db)
             finally:
                 db.close()
 
@@ -1209,6 +1255,7 @@ app.include_router(creators.router,      prefix="/api/creators",      tags=["cre
 app.include_router(images.router,        prefix="/api/images",        tags=["images"])
 app.include_router(tags.router,          prefix="/api/tags",          tags=["tags"])
 app.include_router(tag_vocab.router,     prefix="/api/tag-vocab",     tags=["tag-vocab"])
+app.include_router(insights_router,      prefix="/api/insights",      tags=["insights"])
 app.include_router(sessions.router,      prefix="/api/sessions",      tags=["sessions"])
 app.include_router(gamification.router,  prefix="/api/gamification",  tags=["gamification"])
 app.include_router(scanner.router,       prefix="/api/scanner",       tags=["scanner"])

@@ -17,7 +17,12 @@ from models import Creator, Gallery, Image, Tag, gallery_tags, image_tags
 
 
 RARITY_ORDER = {"C": 0, "R": 1, "SR": 2, "UR": 3}
-POLICY_VERSION = "personal-value-v1"
+POLICY_VERSION = "personal-value-v2"
+# Tags you engage with this much more than the library average count as
+# "your type" (from the taste profile) and raise a printing's value.
+TYPE_MIN_LIFT = 1.8
+TYPE_POINTS_EACH = 4.0
+TYPE_POINTS_MAX = 12.0
 
 
 def _chunks(values, size: int = 700):
@@ -49,12 +54,22 @@ class PersonalValueContext:
     image_tags: dict[int, list[dict]] = field(default_factory=dict)
     gallery_tags: dict[int, list[dict]] = field(default_factory=dict)
     gallery_view_seconds: dict[int, int] = field(default_factory=dict)
+    type_lifts: dict[int, float] = field(default_factory=dict)
+
+
+def load_type_lifts(db: Session) -> dict[int, float]:
+    """{tag_id: lift} for the tags that are clearly your type."""
+    from services import tag_insights
+    try:
+        return {row["id"]: row["lift"] for row in tag_insights.taste_profile(db) if row["lift"] >= TYPE_MIN_LIFT}
+    except Exception:
+        return {}
 
 
 def build_personal_value_context(
     db: Session, *, image_ids=(), gallery_ids=(), creator_ids=(), ai_confidence_threshold: float = 0.72,
 ) -> PersonalValueContext:
-    context = PersonalValueContext()
+    context = PersonalValueContext(type_lifts=load_type_lifts(db))
     image_ids = set(image_ids)
     gallery_ids = set(gallery_ids)
     creator_ids = set(creator_ids)
@@ -127,23 +142,21 @@ def build_personal_value_context(
     return context
 
 
-def _tag_floor(source_key: str, favorite_tags: list[dict]) -> tuple[str | None, float]:
-    if not favorite_tags:
-        return None, 1.0
+def _tag_floor(source_key: str, favorite_tags: list[dict]) -> tuple[str, float]:
+    """A starred tag always means at least Rare. Two or more starred tags, or
+    a lucky deterministic draw, mean Super Rare."""
     ids = ",".join(str(item["id"]) for item in sorted(favorite_tags, key=lambda item: item["id"]))
     digest = hashlib.blake2b(f"favorite-tag-floor|{source_key}|{ids}".encode("utf-8"), digest_size=8).digest()
     roll = int.from_bytes(digest, "big") / float(2**64)
-    if roll < 0.25:
+    if len({item["id"] for item in favorite_tags}) >= 2 or roll < 0.30:
         return "SR", roll
-    if roll < 0.50:
-        return "R", roll
-    return None, roll
+    return "R", roll
 
 
 def evaluate_personal_value(
     *, source_key: str, card_type: str, image: Image | None = None,
     gallery: Gallery | None = None, creator: Creator | None = None,
-    tags: list[dict] | None = None, gallery_view_seconds: int = 0,
+    tags: list[dict] | None = None, gallery_view_seconds: int = 0, type_lifts: dict[int, float] | None = None,
 ) -> dict:
     """Return a deterministic score, rarity floor, and frozen audit factors."""
     tags = tags or []
@@ -242,8 +255,18 @@ def evaluate_personal_value(
             f"Favorite-tag coverage is {coverage:.0%}; manual tags and confident AI tags qualify.",
         )
         tag_floor, roll = _tag_floor(source_key, favorite_tags)
-        if tag_floor:
-            raise_floor(tag_floor, f"Deterministic favorite-tag draw ({roll:.1%})")
+        names = ", ".join(dict.fromkeys(tag.get("name") for tag in favorite_tags))
+        raise_floor(tag_floor, f"Has your starred tag{'s' if ',' in names else ''}: {names}")
+
+    favorite_ids = {tag["id"] for tag in favorite_tags}
+    type_tags = [tag for tag in tags if tag["id"] not in favorite_ids and (type_lifts or {}).get(tag["id"])]
+    type_tags = list({tag["id"]: tag for tag in type_tags}.values())
+    if type_tags:
+        add("your_type", "Your type", [tag.get("name") for tag in type_tags],
+            min(TYPE_POINTS_MAX, TYPE_POINTS_EACH * len(type_tags)),
+            "Tags you engage with far more than the rest of your library.")
+        if len(type_tags) >= 3:
+            raise_floor("R", "Three or more of your type's tags")
 
     if score >= 72:
         raise_floor("UR", "Combined personal-value score reached the UR threshold")

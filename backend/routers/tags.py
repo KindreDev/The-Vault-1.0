@@ -12,10 +12,17 @@ router = APIRouter()
 
 @router.get("/", response_model=List[TagOut])
 def list_tags(db: Session = Depends(get_db), category: str = None):
+    from services import tag_insights
     q = db.query(Tag)
     if category:
         q = q.filter(Tag.category == category)
-    return q.order_by(Tag.use_count.desc()).all()
+    roles = tag_insights.tag_roles(db)
+    out = []
+    for tag in q.order_by(Tag.use_count.desc()).all():
+        row = TagOut.model_validate(tag)
+        row.role = roles.get(tag.id, {}).get("role")
+        out.append(row)
+    return out
 
 
 @router.post("/", response_model=TagOut, status_code=201)
@@ -172,6 +179,8 @@ def update_tag(tag_id: int, data: TagUpdate, db: Session = Depends(get_db)):
         tag.category = data.category
     if data.is_favorite is not None:
         tag.is_favorite = data.is_favorite
+        from services.card_traits import clear_face_traits
+        clear_face_traits(db)
     db.commit()
     db.refresh(tag)
     return tag

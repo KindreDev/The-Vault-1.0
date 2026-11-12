@@ -135,6 +135,23 @@ export const cardsApi = {
   rarityDistribution: ()       => api.get('/cards/rarity-distribution'),
 }
 
+// ── Hall of Fame + Recap (read-only) ────────────────────────────────────────
+export const statsApi = {
+  creatorHof:  (n, period) => api.get('/creators/hall-of-fame', { params: { limit: n, offset: 0, period } }),
+  mediaHof:    (n, period) => api.get('/galleries/hall-of-fame', { params: { limit: n, offset: 0, period } }),
+  galleryHof:  (n, period) => api.get('/galleries/gallery-hof', { params: { limit: n, offset: 0, period } }),
+  recap:       (period)    => api.get('/recap', { params: { period } }),
+  recapAvailability: ()    => api.get('/recap/availability'),
+  creatorStats: (id)       => api.get(`/creators/${id}/stats`),
+}
+
+// ── TCG v2 collection (same endpoints as the desktop collection) ────────────
+export const tcgApi = {
+  summary:     ()          => api.get('/tcg-v2/summary'),
+  catalog:     (params)    => api.get('/tcg-v2/catalog', { params }),
+  setFavorite: (id, value) => api.put(`/tcg-v2/cards/${id}/favorite`, { favorite: value }),
+}
+
 // ── Scanner (trigger scan from Settings) ────────────────────────────────────
 export const scannerApi = {
   roots:  ()   => api.get('/scanner/roots'),
@@ -169,6 +186,20 @@ export const feedApi = {
   exploreInteract: (imageId, strength = 1) => api.post('/feed/explore/interact', { image_id: imageId, strength }),
   search:     (q, seed, skip = 0, limit = 30) => api.get('/feed/search', { params: { q, seed: seed || undefined, skip, limit } }),
   searchSave: (imageId, tag) => api.post('/feed/search/save', { image_id: imageId, tag }),
+}
+
+// ── Curation (file swipe run) ───────────────────────────────────────────────
+// Same endpoints the desktop file run uses; focus is one shared server setting.
+export const curationApi = {
+  state:      ()             => api.get('/curation/state'),
+  debt:       ()             => api.get('/curation/debt', { params: { mode: 'file' } }),
+  nextFile:   (exclude = []) => api.get('/curation/next-file', { params: { exclude: exclude.join(',') } }),
+  file:       (id)           => api.get(`/curation/file/${id}`),
+  saveFile:   (body)         => api.post('/curation/save-file', body),
+  snoozeFile: (id)           => api.post('/curation/snooze-file', { image_id: id }),
+  focus:      (creatorId)    => api.post('/curation/focus', { creator_id: creatorId }),
+  deleteFile: (id)           => api.delete(`/images/${id}`, { params: { keep_file: false } }),
+  aiTag:      (id)           => api.post('/scanner/ai-tag', { scope: 'image', image_id: id }),
 }
 
 // ── Companion chat (floating bubble) ────────────────────────────────────────

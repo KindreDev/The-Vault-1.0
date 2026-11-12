@@ -1134,3 +1134,31 @@
     animation: none;
   }
 }
+
+/* Printed traits (content cards). The frame covers the card so the pills can
+   size themselves to the card's width; tiny grid thumbnails skip them. */
+.tcg-v2-traits-frame {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  container-type: inline-size; transform: translateZ(1px);
+}
+.tcg-v2-traits {
+  position: absolute; left: 4.5%; top: 16.5%; display: flex; flex-direction: column; align-items: flex-start; gap: 1.2cqw;
+}
+.tcg-v2-traits span {
+  font: 800 3.1cqw/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff;
+  padding: 1.1cqw 2.2cqw; border-radius: 99px; white-space: nowrap;
+  background: rgba(10, 12, 18, .72); border: .35cqw solid rgba(255, 255, 255, .45);
+  box-shadow: 0 .6cqw 1.6cqw rgba(0, 0, 0, .45); backdrop-filter: blur(2px);
+}
+.tcg-v2-traits span[data-kind="favorite"] {
+  color: #2a1a00; border-color: #fff1b8;
+  background: linear-gradient(135deg, #ffe48a, #f5b93a 55%, #ffe9a8);
+}
+.tcg-v2-traits span[data-kind="type"] {
+  border-color: #ffb3dd; background: linear-gradient(135deg, rgba(255, 92, 176, .92), rgba(176, 72, 255, .9));
+}
+.tcg-v2-traits span[data-kind="rare"] {
+  color: #06202a; border-color: #e6fbff;
+  background: linear-gradient(115deg, #9ff3ff, #d9b8ff 40%, #ffd6f0 60%, #a8ffd9);
+}
+@container (max-width: 210px) { .tcg-v2-traits { display: none; } }

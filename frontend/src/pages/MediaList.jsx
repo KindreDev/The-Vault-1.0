@@ -41,6 +41,7 @@ import { useSession } from '../hooks/useSession'
 import { useViewerDataSync } from '../hooks/useViewerDataSync'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
+import { patchCachedRating } from '../lib/rating'
 import { readFilmstripVisibility, saveFilmstripVisibility } from '../lib/viewerPreferences'
 import { normalizeTagTokens, tagTokensFromParams, tagTokensToParams, tagTokenKey } from '../lib/tagFilters'
 import { CREATOR_TYPE_TEXT } from '../lib/entityColors'
@@ -314,7 +315,7 @@ export function ImageViewer({ images, startIdx, onClose }) {
   })
   const rateMutation = useMutation({
     mutationFn: (r) => imagesApi.update(image.id, { rating: r }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['images-list'] })
+    onSuccess: (_response, r) => patchCachedRating(qc, image.id, r)
   })
   const notesMutation = useMutation({
     mutationFn: ({ imageId, value }) => imagesApi.update(imageId, { notes: value }),
@@ -1572,7 +1573,7 @@ export default function MediaList({ onlyVideos = false }) {
           onAddExclude={token => setExcludedTags(prev => prev.includes(token) ? prev : [...prev, token])}
           onRemoveExclude={token => setExcludedTags(prev => prev.filter(t => t !== token))}
           onClearExclude={() => setExcludedTags([])}
-          rounded="full"
+          onTagsChange={(include, exclude) => { setActiveTags(include); setExcludedTags(exclude) }}
         />
 
         {toggleBtn(favOnly, () => setFavOnly(f => !f), t('★ Favorites'))}

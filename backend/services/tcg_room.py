@@ -1394,7 +1394,13 @@ def open_parcel(db: Session, parcel_id: int) -> dict:
         db.commit()
         if results:
             from services.gamification import notify_action
+            from services.pull_events import after_pull
+            from services import tcg_collections
             notify_action(db, "pack_opened", count=len(results), override_amount=75 * len(results))
+            for result in results:
+                result.update(after_pull(db, result["cards"], seed=str(result["opening_id"])))
+            db.commit()
+            tcg_collections.invalidate()
         payload = parcel_status(db, parcel.id)
         # Keep the database record compact, but return the already-resolved
         # card payload to the caller. The inventory UI can reveal immediately

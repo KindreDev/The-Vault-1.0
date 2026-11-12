@@ -1,4 +1,5 @@
 import os
+import io
 import csv
 import threading
 import logging
@@ -77,6 +78,22 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "nipples":              ("nipples", "body_part"),
     "pussy":                ("pussy", "body_part"),
     "penis":                ("penis", "body_part"),
+    # Explicit exposure. Any of these makes the file explicit, whatever else
+    # she is wearing (see EXPLICIT_BODY_TAGS).
+    "nipple_slip":          ("nipple slip", "body_part"),
+    "areola_slip":          ("areola slip", "body_part"),
+    "pussy_peek":           ("pussy peek", "body_part"),
+    "spread_pussy":         ("spread pussy", "body_part"),
+    "pussy_juice":          ("pussy juice", "body_part"),
+    "clitoris":             ("clitoris", "body_part"),
+    "pubic_hair":           ("pubic hair", "body_part"),
+    "female_pubic_hair":    ("pubic hair", "body_part"),
+    "male_pubic_hair":      ("pubic hair", "body_part"),
+    "anus":                 ("anus", "body_part"),
+    "anus_peek":            ("anus peek", "body_part"),
+    "spread_anus":          ("spread anus", "body_part"),
+    "erection":             ("erection", "body_part"),
+    "testicles":            ("testicles", "body_part"),
     "abs":                  ("abs", "body_part"),
     "thighs":               ("thighs", "body_part"),
     "thick_thighs":         ("thick thighs", "body_part"),
@@ -88,6 +105,7 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     # Nudity level
     "nude":                 ("nude", "nudity_level"),
     "naked":                ("nude", "nudity_level"),
+    "completely_nude":      ("nude", "nudity_level"),
     "topless":              ("topless", "nudity_level"),
     "bottomless":           ("bottomless", "nudity_level"),
     "clothed":              ("clothed", "nudity_level"),
@@ -97,6 +115,7 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "see_through":          ("see-through", "nudity_level"),
     "wet":                  ("wet", "nudity_level"),
     "covered_nipples":      ("covered nipples", "nudity_level"),
+    "covering_breasts":     ("covering breasts", "nudity_level"),
     "pasties":              ("pasties", "nudity_level"),
     "nipple_covers":        ("pasties", "nudity_level"),
     "implied_nude":         ("implied nudity", "nudity_level"),
@@ -119,6 +138,26 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "bra":                  ("bra", "clothing"),
     "panties":              ("panties", "clothing"),
     "thong":                ("thong", "clothing"),
+    # Clothing pulled aside. Suggestive alone, explicit once something shows.
+    "clothing_aside":       ("clothing aside", "clothing"),
+    "panties_aside":        ("panties aside", "clothing"),
+    "thong_aside":          ("panties aside", "clothing"),
+    "swimsuit_aside":       ("swimsuit aside", "clothing"),
+    "bikini_aside":         ("swimsuit aside", "clothing"),
+    "leotard_aside":        ("leotard aside", "clothing"),
+    "skirt_lift":           ("skirt lift", "clothing"),
+    "garter_straps":        ("garter straps", "clothing"),
+    "garter_belt":          ("garter belt", "clothing"),
+    "highleg":              ("highleg", "clothing"),
+    "highleg_leotard":      ("highleg leotard", "clothing"),
+    "shirt_lift":           ("shirt lift", "clothing"),
+    # Skintight / latex. Latex is suggestive on its own (nobody wears a shiny
+    # second skin except to show off); skin tight only counts when it's shiny.
+    "latex":                ("latex", "clothing"),
+    "latex_bodysuit":       ("latex", "clothing"),
+    "shiny_clothes":        ("shiny clothes", "clothing"),
+    "skin_tight":           ("skin tight", "clothing"),
+    "bodysuit":             ("bodysuit", "clothing"),
     "school_uniform":       ("school uniform", "clothing"),
     "maid":                 ("maid outfit", "clothing"),
     "leotard":              ("leotard", "clothing"),
@@ -160,6 +199,16 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "arms_up":              ("arms up", "pose"),
     "on_back":              ("on back", "pose"),
     "on_stomach":           ("on stomach", "pose"),
+    "all_fours":            ("on all fours", "pose"),   # WD14's real name; on_all_fours never matched
+    "arched_back":          ("arched back", "pose"),
+    "presenting":           ("presenting", "pose"),
+    "top-down_bottom-up":   ("top-down bottom-up", "pose"),
+    "jack-o'_challenge":    ("jack-o' pose", "pose"),
+    "ass_focus":            ("ass focus", "pose"),
+    "breast_focus":         ("breast focus", "pose"),
+    "pantyshot":            ("pantyshot", "pose"),
+    "upskirt":              ("upskirt", "pose"),
+    "downblouse":           ("downblouse", "pose"),
     # Style
     "realistic":            ("photorealistic", "style"),
     "3d":                   ("3d render", "style"),
@@ -264,6 +313,8 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "cum_in_ass":           ("anal creampie", "sex_act"),
     "cum_on_body":          ("cum on body", "sex_act"),
     "multiple_creampie":    ("multiple creampie", "sex_act"),
+    "cum_in_pussy":         ("creampie", "sex_act"),
+    "cum_on_breasts":       ("cum on body", "sex_act"),
     # Sex acts — state / aftermath
     "gaping":               ("gaping", "sex_act"),
     "ahegao":               ("ahegao", "sex_act"),
@@ -276,6 +327,9 @@ WD14_TAG_MAP: dict[str, tuple[str, str]] = {
     "vibrator":             ("vibrator", "sex_act"),
     "dildo":                ("dildo", "sex_act"),
     "strap-on":             ("strap-on", "sex_act"),
+    "object_insertion":     ("object insertion", "sex_act"),
+    "vaginal_object_insertion": ("object insertion", "sex_act"),
+    "anal_object_insertion": ("object insertion", "sex_act"),
     # Sex acts — hentai-specific
     "tentacles":            ("tentacle sex", "sex_act"),
     "tentacle_sex":         ("tentacle sex", "sex_act"),
@@ -514,18 +568,6 @@ WD14_SKIP_TAGS: set[str] = {
     "multiple_views", "reference_sheet", "character_sheet", "official_art",
 }
 
-# person_count integer extracted from subject tags
-WD14_PERSON_COUNT: dict[str, int] = {
-    "solo": 1, "1girl": 1, "1boy": 1, "1other": 1,
-    "2girls": 2, "2boys": 2, "1boy1girl": 2, "1girl1boy": 2, "2others": 2,
-    "3girls": 3, "3boys": 3,
-    "4girls": 4, "4boys": 4,
-    "5girls": 5, "5boys": 5,
-    "6+girls": 6, "6+boys": 6,
-    "multiple_girls": 3, "multiple_boys": 3, "multiple_others": 3,
-    "group": 4,
-}
-
 JOYTAG_PERSON_COUNT: dict[str, int] = {
     "solo": 1, "1 person": 1,
     "2 people": 2, "duo": 2,
@@ -534,6 +576,37 @@ JOYTAG_PERSON_COUNT: dict[str, int] = {
     "5+ people": 5,
     "group": 4, "multiple people": 4,
 }
+
+# A person-count guess below this is ignored.
+PERSON_COUNT_MIN = 0.20
+
+# WD counts each gender on its own: one girl with two men is "1girl" +
+# "2boys", not one person. These groups are added together for the head count;
+# a second group only counts when the model is fairly sure of it.
+WD14_COUNT_GROUPS: dict[str, dict[str, int]] = {
+    "girls": {"1girl": 1, "2girls": 2, "3girls": 3, "4girls": 4, "5girls": 5, "6+girls": 6, "multiple_girls": 3},
+    "boys": {"1boy": 1, "2boys": 2, "3boys": 3, "4boys": 4, "5boys": 5, "6+boys": 6, "multiple_boys": 3},
+    "others": {"1other": 1, "2others": 2, "multiple_others": 3},
+}
+WD14_COUNT_TAGS = {raw: (group, n) for group, tags in WD14_COUNT_GROUPS.items() for raw, n in tags.items()}
+PERSON_GROUP_MIN = 0.35
+# Head count tags. Exactly one is stored per file.
+PEOPLE_TAGS = ("solo", "duo", "group")
+
+
+def people_tag(count: int) -> str:
+    return "solo" if count <= 1 else "duo" if count == 2 else "group"
+
+
+def _sum_head_count(best_count: dict[str, tuple[int, float]]) -> tuple[Optional[int], float]:
+    """Add up the gender groups: the likeliest group always counts, the
+    others only when fairly sure. Returns (count, confidence of the weakest
+    group used)."""
+    if not best_count:
+        return None, 0.0
+    ranked = sorted(best_count.values(), key=lambda item: item[1], reverse=True)
+    used = [ranked[0]] + [item for item in ranked[1:] if item[1] >= PERSON_GROUP_MIN]
+    return sum(n for n, _ in used), min(conf for _, conf in used)
 
 # Creator types → tagger model routing
 JOYTAG_CREATOR_TYPES = {"cosplayer", "ethot", "actress", "custom"}
@@ -549,6 +622,11 @@ TAG_THRESHOLD_OVERRIDES: dict[str, float] = {
     "sideboob":  0.05,
     "backboob":  0.05,
     "cleavage":  0.15,
+    # Camera angle, focus and cut are a blind spot on real photos.
+    "from behind": 0.15,
+    "ass focus": 0.10,
+    "highleg": 0.30,
+    "highleg leotard": 0.30,
 }
 
 # Color tags need a higher default floor because the models often emit several
@@ -651,29 +729,78 @@ def _models_dir() -> str:
     os.makedirs(d, exist_ok=True)
     return d
 
-def _wd14_dir() -> str:
-    d = os.path.join(_models_dir(), "wd14")
+
+# Every local model the tagger can use. "tagger" models write tags on their
+# own and one is picked per file; "detector" models are optional extras that
+# run alongside the tagger and add their findings to the same file.
+TAGGER_MODELS: dict[str, dict] = {
+    "wd14": {
+        "label": "WD14 SwinV2", "kind": "tagger", "model_name": "wd14-swinv2-v3",
+        "desc": "Anime, art and characters. Fast.", "approx_mb": 446,
+        "repo": "SmilingWolf/wd-swinv2-tagger-v3", "folder": "wd14",
+        "files": ("model.onnx", "selected_tags.csv"),
+    },
+    "wd14-eva02": {
+        "label": "WD EVA02 Large", "kind": "tagger", "model_name": "wd14-eva02-v3",
+        "desc": "Same tags as WD14, more accurate. About 3× the GPU work.", "approx_mb": 1260,
+        "repo": "SmilingWolf/wd-eva02-large-tagger-v3", "folder": "wd14-eva02",
+        "files": ("model.onnx", "selected_tags.csv"),
+    },
+    "joytag": {
+        "label": "JoyTag", "kind": "tagger", "model_name": "joytag",
+        "desc": "Cosplay and real photos.", "approx_mb": 349,
+        "repo": "fancyfeast/joytag", "folder": "joytag",
+        "files": ("model.onnx", "top_tags.txt"),
+    },
+    "nudenet": {
+        "label": "NudeNet", "kind": "detector", "model_name": "nudenet-640m",
+        "desc": "Finds exposed body parts in real photos. Sharpens explicit ratings.",
+        "approx_mb": 100, "folder": "nudenet", "files": ("640m.onnx",),
+        # GitHub's API asset URL works without a login (the plain release
+        # link now redirects to sign-in); the checksum pins the v3.4 file.
+        "url": "https://api.github.com/repos/notAI-tech/NudeNet/releases/assets/176832019",
+        "sha256": "04fe3d77980780c1f8297dc6d7f942fd5b3abe6942a188f742a85241e4f634eb",
+    },
+}
+TAGGER_MODELS["vibe"] = {
+    "label": "Spice vibe check", "kind": "detector", "model_name": "spice-vibe-siglip2",
+    "desc": "Moves real photos that are sexy but fully covered from Safe to Suggestive.",
+    "approx_mb": 343, "folder": "vibe", "files": ("model.onnx", "labels.json"),
+    # ONNX export of prithivMLmods/siglip2-x256-explicit-content (Apache-2.0,
+    # PyTorch only upstream), published by the Vault's author. Checksum pins it.
+    "urls": {
+        "model.onnx": ("https://huggingface.co/kindredsp/siglip2-explicit-content-onnx/resolve/main/model.onnx",
+                       "aa2cb667ddefd74888efe410170d22a27fdfdc2d45dcb4ab65469ebc4f7d931f"),
+        "labels.json": ("https://huggingface.co/kindredsp/siglip2-explicit-content-onnx/resolve/main/labels.json", None),
+    },
+}
+TAGGER_KEYS = tuple(k for k, m in TAGGER_MODELS.items() if m["kind"] == "tagger")
+DETECTOR_KEYS = tuple(k for k, m in TAGGER_MODELS.items() if m["kind"] == "detector")
+
+
+def model_dir(key: str) -> str:
+    d = os.path.join(_models_dir(), TAGGER_MODELS[key]["folder"])
     os.makedirs(d, exist_ok=True)
     return d
+
+def model_is_ready(key: str) -> bool:
+    d = model_dir(key)
+    return all(os.path.exists(os.path.join(d, f)) for f in TAGGER_MODELS[key]["files"])
+
+def any_tagger_ready() -> bool:
+    return any(model_is_ready(k) for k in TAGGER_KEYS)
+
+def _wd14_dir() -> str:
+    return model_dir("wd14")
 
 def _joytag_dir() -> str:
-    d = os.path.join(_models_dir(), "joytag")
-    os.makedirs(d, exist_ok=True)
-    return d
+    return model_dir("joytag")
 
 def wd14_is_ready() -> bool:
-    d = _wd14_dir()
-    return (
-        os.path.exists(os.path.join(d, "model.onnx")) and
-        os.path.exists(os.path.join(d, "selected_tags.csv"))
-    )
+    return model_is_ready("wd14")
 
 def joytag_is_ready() -> bool:
-    d = _joytag_dir()
-    return (
-        os.path.exists(os.path.join(d, "model.onnx")) and
-        os.path.exists(os.path.join(d, "top_tags.txt"))
-    )
+    return model_is_ready("joytag")
 
 def _dir_size_mb(path: str) -> Optional[float]:
     total = 0
@@ -685,25 +812,68 @@ def _dir_size_mb(path: str) -> Optional[float]:
                 pass
     return round(total / 1_048_576, 1) if total else None
 
+def model_statuses() -> list[dict]:
+    out = []
+    for key, meta in TAGGER_MODELS.items():
+        ready = model_is_ready(key)
+        out.append({
+            "key": key, "label": meta["label"], "kind": meta["kind"], "desc": meta["desc"],
+            "approx_mb": meta["approx_mb"], "ready": ready,
+            "size_mb": _dir_size_mb(model_dir(key)) if ready else None,
+            "downloadable": any(k in meta for k in ("url", "urls", "repo")),
+        })
+    return out
+
 
 # ── Model download ────────────────────────────────────────────────────────────
+def _download_url(url: str, dest: str, sha256: Optional[str] = None):
+    """Stream a file to dest via a .part file, so a broken or tampered
+    download never looks like a finished model."""
+    import hashlib
+    import urllib.request
+    part = dest + ".part"
+    digest = hashlib.sha256()
+    request = urllib.request.Request(url, headers={"Accept": "application/octet-stream",
+                                                   "User-Agent": "TheVault"})
+    with urllib.request.urlopen(request, timeout=60) as resp, open(part, "wb") as out:
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        while True:
+            block = resp.read(1 << 20)
+            if not block:
+                break
+            out.write(block)
+            digest.update(block)
+            done += len(block)
+            if total:
+                _set(message=f"Downloading… {done * 100 // total}%")
+    if sha256 and digest.hexdigest() != sha256:
+        os.remove(part)
+        raise RuntimeError("Downloaded model failed its checksum; nothing was installed.")
+    os.replace(part, dest)
+
+def download_model(key: str):
+    meta = TAGGER_MODELS[key]
+    if not any(k in meta for k in ("url", "urls", "repo")):
+        raise RuntimeError(f"{meta['label']} can't be downloaded; it is installed by hand.")
+    d = model_dir(key)
+    _set(message=f"Downloading {meta['label']} (~{meta['approx_mb']} MB)…")
+    if "urls" in meta:
+        for name, (url, sha256) in meta["urls"].items():
+            _download_url(url, os.path.join(d, name), sha256)
+    elif "url" in meta:
+        _download_url(meta["url"], os.path.join(d, meta["files"][0]), meta.get("sha256"))
+    else:
+        from huggingface_hub import hf_hub_download
+        for name in meta["files"]:
+            hf_hub_download(meta["repo"], name, local_dir=d)
+    _set(message=f"{meta['label']} download complete.")
+
 def download_wd14():
-    from huggingface_hub import hf_hub_download
-    d = _wd14_dir()
-    _set(message="Downloading WD14 model (model.onnx ~200 MB)…")
-    hf_hub_download("SmilingWolf/wd-swinv2-tagger-v3", "model.onnx",        local_dir=d)
-    _set(message="Downloading WD14 tag list…")
-    hf_hub_download("SmilingWolf/wd-swinv2-tagger-v3", "selected_tags.csv", local_dir=d)
-    _set(message="WD14 download complete.")
+    download_model("wd14")
 
 def download_joytag():
-    from huggingface_hub import hf_hub_download
-    d = _joytag_dir()
-    _set(message="Downloading JoyTag model (model.onnx ~366 MB)…")
-    hf_hub_download("fancyfeast/joytag", "model.onnx",  local_dir=d)
-    _set(message="Downloading JoyTag tag list…")
-    hf_hub_download("fancyfeast/joytag", "top_tags.txt", local_dir=d)
-    _set(message="JoyTag download complete.")
+    download_model("joytag")
 
 
 # ── Tag vocabulary allowlist (DB-backed, user-editable) ────────────────────────
@@ -940,29 +1110,72 @@ def _make_session(model_path: str):
 TARGET_SIZE = 448
 AI_BATCH_SIZE = 8
 PREPROCESS_WORKERS = 4
+VIDEO_WORKERS = 2
 _preprocess_pool = ThreadPoolExecutor(max_workers=PREPROCESS_WORKERS, thread_name_prefix="vault-tag-decode")
+_video_pool = ThreadPoolExecutor(max_workers=VIDEO_WORKERS, thread_name_prefix="vault-tag-video")
+# One file read at a time. A spinning drive reads files back to back far
+# faster than when several threads make its head jump between them; the
+# decoding itself still runs in parallel once the bytes are in memory.
+_disk_lock = threading.Lock()
 
-def _to_rgb_square(img: PILImage.Image) -> PILImage.Image:
-    """Convert any image to a white-backgrounded RGB 448×448 square."""
-    # Handle transparency — composite on white before converting
+
+def _flatten_rgb(img: PILImage.Image) -> PILImage.Image:
+    """RGB copy of any image, with transparency composited on white."""
     if img.mode in ("RGBA", "LA", "P"):
         canvas = PILImage.new("RGBA", img.size, (255, 255, 255, 255))
         canvas.alpha_composite(img.convert("RGBA"))
-        img = canvas.convert("RGB")
-    else:
-        img = img.convert("RGB")
-    # Pad to square on the longest edge, then resize
+        return canvas.convert("RGB")
+    return img.convert("RGB")
+
+
+def _load_for_tagging(image_path: str, max_side: int = TARGET_SIZE,
+                      lock_disk: bool = True) -> Optional[PILImage.Image]:
+    """Read and decode one file, shrunk so its longest side is max_side.
+
+    Shrinking before any padding keeps huge PNGs cheap (padding a 4000px
+    image first costs more than decoding it). JPEG draft mode goes further and
+    downsamples inside the decoder. Always the original file, never the
+    Vault's small thumbnail.
+    """
+    try:
+        if lock_disk:
+            with _disk_lock:
+                with open(image_path, "rb") as f:
+                    data = f.read()
+        else:
+            with open(image_path, "rb") as f:
+                data = f.read()
+        with PILImage.open(io.BytesIO(data)) as img:
+            if (img.format or "").upper() in {"JPEG", "MPO"}:
+                img.draft("RGB", (max_side, max_side))
+            out = _flatten_rgb(img)
+        out.thumbnail((max_side, max_side), PILImage.BICUBIC, reducing_gap=2.0)
+        return out
+    except Exception as exc:
+        logger.debug("AI preprocess failed for %s: %s", image_path, exc)
+        return None
+
+
+def _to_rgb_square(img: PILImage.Image) -> PILImage.Image:
+    """White-padded RGB TARGET_SIZE square, the input every tagger expects."""
+    img = _flatten_rgb(img)
     w, h = img.size
     max_side = max(w, h)
     padded = PILImage.new("RGB", (max_side, max_side), (255, 255, 255))
     padded.paste(img, ((max_side - w) // 2, (max_side - h) // 2))
+    if max_side == TARGET_SIZE:
+        return padded
     return padded.resize((TARGET_SIZE, TARGET_SIZE), PILImage.BICUBIC)
 
 def _preprocess_wd14(img: PILImage.Image) -> np.ndarray:
-    """WD14 SwinV2 v3: RGB, 0-255 float32, NHWC — NO channel reversal."""
+    """WD v3 (SwinV2 / EVA02): BGR, 0-255 float32, NHWC.
+
+    SmilingWolf's reference code flips PIL's RGB to BGR. Feeding RGB swaps red
+    and blue, which visibly hurt hair/eye colour and clothing colour tags.
+    """
     img = _to_rgb_square(img)
-    arr = np.asarray(img, dtype=np.float32)   # shape (448, 448, 3) — RGB
-    return arr[np.newaxis, :]                  # (1, 448, 448, 3)
+    arr = np.asarray(img, dtype=np.float32)[:, :, ::-1]   # RGB → BGR
+    return np.ascontiguousarray(arr)[np.newaxis, :]        # (1, 448, 448, 3)
 
 def _preprocess_joytag(img: PILImage.Image) -> np.ndarray:
     """JoyTag: RGB, ImageNet-normalised, NCHW."""
@@ -976,28 +1189,50 @@ def _preprocess_joytag(img: PILImage.Image) -> np.ndarray:
 
 
 def _preprocess_path(image_path: str, preprocess_fn) -> Optional[np.ndarray]:
-    """Decode one source efficiently while preserving the model's 448px input.
+    img = _load_for_tagging(image_path)
+    return None if img is None else preprocess_fn(img)
 
-    JPEG draft mode asks libjpeg to downsample during decode instead of first
-    expanding a huge source into RAM.  It never substitutes the Vault's 320px
-    thumbnail, so tagging quality keeps using the original file.
-    """
-    try:
-        with PILImage.open(image_path) as img:
-            if (img.format or "").upper() in {"JPEG", "MPO"}:
-                img.draft("RGB", (TARGET_SIZE, TARGET_SIZE))
-            return preprocess_fn(img)
-    except Exception as exc:
-        logger.debug("AI preprocess failed for %s: %s", image_path, exc)
-        return None
+
+class _OnnxTagger:
+    """Shared batching for the multi-label taggers. Subclasses set
+    MODEL_NAME, _preprocess and _parse_probs."""
+
+    def preprocess(self, img: PILImage.Image) -> np.ndarray:
+        return self._preprocess(img)
+
+    def infer(self, arrays: list[np.ndarray], threshold: float):
+        """Run already-preprocessed images; returns one answer per array."""
+        if not arrays:
+            return []
+        probs_batch = self._session.run(
+            [self._output_name], {self._input_name: np.concatenate(arrays, axis=0)}
+        )[0]
+        return [self._parse_probs(probs, threshold) for probs in probs_batch]
+
+    def tag_batch(self, image_paths: list[str], threshold: float):
+        decoded = list(_preprocess_pool.map(
+            lambda path: _preprocess_path(path, self._preprocess), image_paths
+        ))
+        valid = [(idx, arr) for idx, arr in enumerate(decoded) if arr is not None]
+        answers = [([], None) for _ in image_paths]
+        for (idx, _), answer in zip(valid, self.infer([arr for _, arr in valid], threshold)):
+            answers[idx] = answer
+        return answers
+
+    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
+        """Returns list of (normalized_name, category, confidence) and person_count."""
+        return self.tag_batch([image_path], threshold)[0]
 
 
 # ── WD14 runner ───────────────────────────────────────────────────────────────
-class WD14Tagger:
-    MODEL_NAME = "wd14-swinv2-v3"
+class WD14Tagger(_OnnxTagger):
+    """WD v3 tagger. SwinV2 and EVA02 share one tag CSV, so both read the
+    "wd14" vocabulary and threshold rows."""
+    _preprocess = staticmethod(_preprocess_wd14)
 
-    def __init__(self):
-        d = _wd14_dir()
+    def __init__(self, key: str = "wd14"):
+        self.MODEL_NAME = TAGGER_MODELS[key]["model_name"]
+        d = model_dir(key)
         self._session     = _make_session(os.path.join(d, "model.onnx"))
         self._input_name  = self._session.get_inputs()[0].name
         self._output_name = self._session.get_outputs()[0].name
@@ -1014,7 +1249,8 @@ class WD14Tagger:
         vocab = _get_tag_vocab("wd14")   # user-editable allowlist, DB-backed & cached
         thresholds = _get_tag_thresholds("wd14")
         results: list[tuple[str, str, float]] = []
-        person_count: Optional[int] = None
+        # Most likely count per gender group: {group: (count, conf)}.
+        best_count: dict[str, tuple[int, float]] = {}
 
         for i, (raw_name, wd14_cat) in enumerate(self._tags):
             conf = float(probs[i])
@@ -1025,17 +1261,25 @@ class WD14Tagger:
             mapped_norm = vocab.get(raw_lower, (None,))[0]
             effective_threshold = _effective_tag_threshold(mapped_norm, threshold, thresholds.get(raw_lower))
 
-            # Detect collabs before the confidence filter. Person-count tags
-            # are routing metadata for color normalization, not user-facing
-            # tags, and should still guide the post-processing pass when their
-            # own score is below the global threshold.
-            if raw_lower in WD14_PERSON_COUNT:
-                pc = WD14_PERSON_COUNT[raw_lower]
-                if person_count is None or pc > person_count:
-                    person_count = pc
+            # Head count is read before the confidence filter (it guides the
+            # colour and photo rules even below the tag threshold). Each gender
+            # keeps its most likely count, not the largest one listed: taking
+            # the largest gave every file "6+ people" off near-zero guesses.
+            if raw_lower in WD14_COUNT_TAGS:
+                group, n = WD14_COUNT_TAGS[raw_lower]
+                if conf >= PERSON_COUNT_MIN and conf > best_count.get(group, (0, 0.0))[1]:
+                    best_count[group] = (n, conf)
+                continue   # the one head-count tag is added after the loop
+            if mapped_norm in PEOPLE_TAGS:
+                continue   # "solo" etc. as raw tags: the gender counts decide
 
-            # Always evaluate rating tags; others need to clear threshold
-            if conf < effective_threshold and wd14_cat != 9:
+            # The model's own rating scores are kept raw (general / sensitive /
+            # questionable / explicit) for _apply_rating_heuristic, which
+            # replaces them with one derived rating before anything is stored.
+            if wd14_cat == 9:
+                results.append((MODEL_RATING_PREFIX + raw_lower.removeprefix("rating:"), "rating", conf))
+                continue
+            if conf < effective_threshold:
                 continue
 
             if raw_lower in WD14_SKIP_TAGS:
@@ -1043,35 +1287,24 @@ class WD14Tagger:
             elif raw_lower in vocab:
                 norm_name, norm_cat = vocab[raw_lower]
                 results.append((norm_name, norm_cat, conf))
-            elif wd14_cat == 4:
-                # True character name — pass through with underscores replaced
-                results.append((raw_name.replace("_", " "), "character", conf))
-            # General / copyright / artist tags not enabled in the allowlist are dropped
+            # Anything not enabled in the allowlist is dropped, character names
+            # included: WD guesses characters from colours and hairstyles, which
+            # on real cosplay photos was wrong almost every time (22k files
+            # tagged Widowmaker). Characters come from the Vault's own
+            # Character records instead.
 
+        person_count, count_conf = _sum_head_count(best_count)
+        if person_count:
+            name = people_tag(person_count)
+            if count_conf >= _effective_tag_threshold(name, threshold, None):
+                results.append((name, "subject", count_conf))
         return results, person_count
-
-    def tag_batch(self, image_paths: list[str], threshold: float):
-        decoded = list(_preprocess_pool.map(
-            lambda path: _preprocess_path(path, _preprocess_wd14), image_paths
-        ))
-        valid = [(idx, arr) for idx, arr in enumerate(decoded) if arr is not None]
-        answers = [([], None) for _ in image_paths]
-        if not valid:
-            return answers
-        inp = np.concatenate([arr for _, arr in valid], axis=0)
-        probs_batch = self._session.run([self._output_name], {self._input_name: inp})[0]
-        for (idx, _), probs in zip(valid, probs_batch):
-            answers[idx] = self._parse_probs(probs, threshold)
-        return answers
-
-    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
-        """Returns list of (normalized_name, category, confidence) and person_count."""
-        return self.tag_batch([image_path], threshold)[0]
 
 
 # ── JoyTag runner ─────────────────────────────────────────────────────────────
-class JoyTagTagger:
+class JoyTagTagger(_OnnxTagger):
     MODEL_NAME = "joytag"
+    _preprocess = staticmethod(_preprocess_joytag)
 
     def __init__(self):
         d = _joytag_dir()
@@ -1090,6 +1323,7 @@ class JoyTagTagger:
         wd_thresholds = _get_tag_thresholds("wd14")
         results: list[tuple[str, str, float]] = []
         person_count: Optional[int] = None
+        pc_conf = 0.0
 
         for i, raw_name in enumerate(self._tags):
             if i >= len(probs):
@@ -1105,16 +1339,11 @@ class JoyTagTagger:
             raw_override = jt_thresholds.get(raw_lower_pre) if _jt_norm is not None else wd_thresholds.get(raw_under_pre)
             effective_threshold = _effective_tag_threshold(_norm_key, threshold, raw_override)
 
-            # As with WD14, person-count tags are metadata for the collab
-            # color pass and must be read before the confidence filter.
-            if raw_lower_pre in JOYTAG_PERSON_COUNT:
-                pc = JOYTAG_PERSON_COUNT[raw_lower_pre]
-                if person_count is None or pc > person_count:
-                    person_count = pc
-            elif raw_under_pre in JOYTAG_PERSON_COUNT:
-                pc = JOYTAG_PERSON_COUNT[raw_under_pre]
-                if person_count is None or pc > person_count:
-                    person_count = pc
+            # As with WD14: the most likely person count, read before the
+            # confidence filter.
+            pc_key = raw_lower_pre if raw_lower_pre in JOYTAG_PERSON_COUNT else raw_under_pre
+            if pc_key in JOYTAG_PERSON_COUNT and conf >= PERSON_COUNT_MIN and conf > pc_conf:
+                person_count, pc_conf = JOYTAG_PERSON_COUNT[pc_key], conf
 
             if conf < effective_threshold:
                 continue
@@ -1139,46 +1368,47 @@ class JoyTagTagger:
 
         return results, person_count
 
-    def tag_batch(self, image_paths: list[str], threshold: float):
-        decoded = list(_preprocess_pool.map(
-            lambda path: _preprocess_path(path, _preprocess_joytag), image_paths
-        ))
-        valid = [(idx, arr) for idx, arr in enumerate(decoded) if arr is not None]
-        answers = [([], None) for _ in image_paths]
-        if not valid:
-            return answers
-        inp = np.concatenate([arr for _, arr in valid], axis=0)
-        probs_batch = self._session.run([self._output_name], {self._input_name: inp})[0]
-        for (idx, _), probs in zip(valid, probs_batch):
-            answers[idx] = self._parse_probs(probs, threshold)
-        return answers
-
-    def tag(self, image_path: str, threshold: float) -> tuple[list[tuple[str, str, float]], Optional[int]]:
-        """Returns list of (normalized_name, category, confidence) and person_count."""
-        return self.tag_batch([image_path], threshold)[0]
-
 
 # ── Lazy-loaded singletons ────────────────────────────────────────────────────
-_wd14:   Optional["WD14Tagger"]    = None
-_joytag: Optional["JoyTagTagger"]  = None
+_taggers: dict[str, object] = {}
+_taggers_lock = threading.Lock()
+
+def _get_tagger(key: str):
+    """Loaded tagger for a TAGGER_MODELS key, or None if it isn't downloaded."""
+    with _taggers_lock:
+        tagger = _taggers.get(key)
+        if tagger is None and model_is_ready(key):
+            tagger = JoyTagTagger() if key == "joytag" else WD14Tagger(key)
+            _taggers[key] = tagger
+        return tagger
 
 def _get_wd14() -> Optional["WD14Tagger"]:
-    global _wd14
-    if _wd14 is None and wd14_is_ready():
-        _wd14 = WD14Tagger()
-    return _wd14
+    return _get_tagger("wd14")
 
 def _get_joytag() -> Optional["JoyTagTagger"]:
-    global _joytag
-    if _joytag is None and joytag_is_ready():
-        _joytag = JoyTagTagger()
-    return _joytag
+    return _get_tagger("joytag")
+
+def _get_nudenet():
+    from services import nudenet
+    return nudenet.get_detector(model_dir("nudenet")) if model_is_ready("nudenet") else None
+
+def _get_vibe():
+    from services import vibe
+    return vibe.get_classifier(model_dir("vibe")) if model_is_ready("vibe") else None
+
+def _get_detectors(extra_models: Optional[str]) -> list:
+    """Loaded detector add-ons a job asked for (comma list of keys)."""
+    wanted = [k for k in (extra_models or "").split(",") if k in DETECTOR_KEYS]
+    loaders = {"nudenet": _get_nudenet, "vibe": _get_vibe}
+    return [d for d in (loaders[k]() for k in wanted) if d is not None]
 
 def _reset_singletons():
     """Call after downloading models so they're reloaded on next use."""
-    global _wd14, _joytag
-    _wd14 = None
-    _joytag = None
+    from services import nudenet, vibe
+    with _taggers_lock:
+        _taggers.clear()
+    nudenet.reset()
+    vibe.reset()
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -1219,6 +1449,8 @@ def _tagger_for_image(img, model_override: Optional[str] = None) -> Optional[obj
       artist/character only                                  → WD14
       no creator assigned                                    → JoyTag (safe default)
     """
+    if model_override == "wd14-eva02":
+        return _get_tagger("wd14-eva02") or _get_wd14()
     if model_override == "wd14":
         return _get_wd14()
     if model_override == "joytag":
@@ -1275,16 +1507,23 @@ def _video_duration(video_path: str) -> Optional[float]:
         return None
 
 
-def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tuple[list[str], str]:
+def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT,
+                          duration: Optional[float] = None) -> tuple[list[str], str]:
     """Extract `count` evenly-spaced frames from a video to temp PNG files.
-    Returns (frame_paths, tmpdir). Caller must shutil.rmtree(tmpdir)."""
+    Returns (frame_paths, tmpdir). Caller must shutil.rmtree(tmpdir).
+
+    Pass the duration the scanner already stored to skip an ffprobe launch.
+    Frames are the nearest keyframes: decoding only keyframes is several
+    times cheaper than decoding up to the exact timestamp, and a frame a
+    second or two off makes no difference to the tags."""
     import subprocess, sys, tempfile
     ffmpeg = _get_ffmpeg_exe()
     no_win = 0x00000008 if sys.platform == "win32" else 0  # DETACHED_PROCESS — no conhost.exe
     tmpdir = tempfile.mkdtemp(prefix="vault_vtag_")
     frames: list[str] = []
 
-    duration = _video_duration(video_path)
+    if not duration or duration <= 0:
+        duration = _video_duration(video_path)
     if duration and duration > 0:
         timestamps = [duration * (i + 1) / (count + 1) for i in range(count)]
     else:
@@ -1297,14 +1536,14 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
     try:
         cmd = [ffmpeg, "-y"]
         for timestamp in timestamps:
-            cmd += ["-ss", str(timestamp), "-i", video_path]
+            cmd += ["-skip_frame", "nokey", "-noaccurate_seek", "-ss", f"{timestamp:.2f}", "-i", video_path]
         filters = ";".join(
             f"[{i}:v]scale=448:448:force_original_aspect_ratio=decrease[v{i}]"
             for i in range(len(timestamps))
         )
         cmd += ["-filter_complex", filters]
         for i, out in enumerate(outputs):
-            cmd += ["-map", f"[v{i}]", "-frames:v", "1", "-q:v", "2", out]
+            cmd += ["-map", f"[v{i}]", "-frames:v", "1", "-compression_level", "1", out]
         r = subprocess.run(
             cmd, stdin=subprocess.DEVNULL, capture_output=True,
             timeout=60, creationflags=no_win,
@@ -1330,6 +1569,19 @@ def _extract_video_frames(video_path: str, count: int = VIDEO_FRAME_COUNT) -> tu
             pass
 
     return frames, tmpdir
+
+
+def _load_video_frames(video_path: str, duration: Optional[float] = None,
+                       max_side: int = TARGET_SIZE) -> list[PILImage.Image]:
+    """Sampled frames of a video as decoded images (temp files cleaned up)."""
+    import shutil
+    frames, tmpdir = _extract_video_frames(video_path, duration=duration)
+    try:
+        # Frames sit on the system temp drive, not the library drive.
+        loaded = [_load_for_tagging(f, max_side, lock_disk=False) for f in frames]
+        return [img for img in loaded if img is not None]
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def _apply_color_heuristic(best: dict[str, tuple[str, float]],
@@ -1363,10 +1615,227 @@ def _apply_color_heuristic(best: dict[str, tuple[str, float]],
     return best
 
 
+# Ratings, lowest to highest. One per file, derived from its tags.
+#   safe        nothing is played up (a sexy costume is fine if the photo is about the costume)
+#   suggestive  built to be sexy, everything covered: outfit, pose or focus
+#   explicit    nipples / pussy / anus / penis visible
+#   hardcore    a sex act
+RATING_TAGS = ("safe", "suggestive", "explicit", "hardcore")
+# The tagger's raw rating scores travel under this prefix until the rating
+# heuristic consumes them. They are never stored as tags.
+MODEL_RATING_PREFIX = "_model_rating:"
+
+# Exposed parts that make a file explicit on their own, no matter what
+# clothing tags also fired (a bikini with the thong pulled aside and her pussy
+# showing is explicit). Normalised names.
+EXPLICIT_BODY_TAGS = frozenset({
+    "nipples", "nipple slip", "areola slip",
+    "pussy", "vagina", "pussy peek", "spread pussy", "pussy juice", "clitoris", "pubic hair",
+    "anus", "anus peek", "spread anus",
+    "penis", "erection", "testicles",
+})
+# sex_act / position tags are hardcore (partner acts always, solo acts below
+# only with exposure), except these, which can appear in a
+# clothed photo (a toy on the bed, an ahegao face) and only count as suggestive.
+SUGGESTIVE_SEX_ACTS = frozenset({
+    "sex toy", "vibrator", "dildo", "strap-on", "condom", "ahegao", "orgasm", "object insertion",
+})
+# Solo acts are hardcore only when something is exposed. Through clothes
+# they're a tease, and "cum" on a solo shoot is usually milk or lotion.
+TOY_TAGS = frozenset({"sex toy", "vibrator", "dildo", "strap-on", "object insertion"})
+SOLO_SEX_ACTS = frozenset({
+    "masturbation", "fingering", "cumshot", "cum on body", "facial", "squirting",
+})
+HARDCORE_CATEGORIES = frozenset({"sex_act", "position"})
+# Suggestive on their own: what she wears, or what the photo is built around.
+SUGGESTIVE_RATING_TAGS = frozenset({
+    # outfit
+    "implied nudity", "topless", "bottomless", "see-through", "covered nipples",
+    "pasties", "convenient censoring", "censored",
+    "bikini", "swimsuit", "one-piece swimsuit", "lingerie", "underwear", "bra",
+    "panties", "thong", "latex", "covering breasts", "leotard", "yuri",
+    "garter straps", "garter belt", "highleg", "highleg leotard",
+    "clothing aside", "panties aside", "swimsuit aside", "leotard aside",
+    "skirt lift", "shirt lift",
+    # body on show
+    "cleavage", "underboob", "sideboob", "backboob", "cameltoe",
+    # pose / focus
+    "ass focus", "breast focus", "presenting", "top-down bottom-up", "jack-o' pose",
+    "pantyshot", "upskirt", "downblouse",
+}) | SUGGESTIVE_SEX_ACTS | SOLO_SEX_ACTS
+# Suggestive only in combination: each entry is (any of these) + (any of those).
+# Squatting alone is safe; squatting with her legs spread at the camera isn't.
+SUGGESTIVE_COMBOS = (
+    ({"spread legs"}, {"squatting", "sitting", "lying down", "on back", "kneeling"}),
+    ({"bent over", "on all fours", "arched back"}, {"ass", "large ass", "huge ass", "from behind"}),
+    ({"skin tight"}, {"shiny clothes"}),   # shiny skintight = latex-like
+    # Body type matters: the same pose reads very differently on a big butt.
+    ({"huge ass", "large ass", "thick thighs"},
+     {"from behind", "ass focus", "bent over", "on all fours", "leotard", "highleg leotard"}),
+)
+# A tag the model is less than this sure of can still be shown, but it can't
+# raise a file's Spice (a 7% sideboob guess must not decide anything).
+SPICE_MIN_CONFIDENCE = 0.20
+# Tags with a low display bar need more to decide Spice: any neckline reads as
+# cleavage at 15%, which made most selfies in a top "suggestive".
+SPICE_TAG_MIN = {"cleavage": 0.60, "sideboob": 0.30, "underboob": 0.30, "backboob": 0.30}
+# A model score (vibe check or WD's own rating) can only lift Safe to
+# Suggestive when the file has at least one of these, at any confidence.
+MODEL_LIFT_HINTS = frozenset({
+    "thighs", "thick thighs", "ass", "large ass", "huge ass", "wide hips", "curvy",
+    "cleavage", "sideboob", "underboob", "backboob", "navel",
+    "thigh-highs", "stockings", "fishnets", "panties", "underwear", "bra", "thong",
+    "skin tight", "shiny clothes", "bodysuit", "leotard", "miniskirt", "shorts",
+    "spread legs", "from behind", "ass focus", "bent over", "on all fours", "squatting",
+    "lying down", "on back", "on stomach", "arched back", "kneeling",
+})
+# Spice vibe check (services/vibe.py): raises a real photo from Safe to
+# Suggestive when this sure it looks sexual. It never lowers or goes higher.
+VIBE_SCORE_KEY = "vibe_enticing"
+VIBE_SUGGESTIVE_MIN = 0.70
+# Model fallback for files no tag settles. "sensitive" is ignored: WD14 gives
+# it to any cute cosplay (thigh-highs, frilly skirt). Only a clear
+# questionable/explicit score can lift a file to suggestive, never higher.
+MODEL_SUGGESTIVE_MIN = 0.5
+
+
+def derive_rating(tags: dict[str, str], model_scores: Optional[dict[str, float]] = None,
+                  hint_tags: Optional[set] = None) -> tuple[str, bool]:
+    """Pick exactly one rating from the file's tags.
+
+    tags: {normalised_name: category}. model_scores: the tagger's raw rating
+    scores ({"general"|"sensitive"|"questionable"|"explicit": confidence}),
+    if it gave any. hint_tags: every tag on the file, however weak; a model
+    score may only lift a file to Suggestive when one of them hints at skin
+    or pose (a nail-art close-up never qualifies). Returns (rating, decided_by_tags).
+
+    Only tags can make a file explicit or hardcore. The model's whole-image
+    explicit score fires on covered nudity and lots of skin, so it can at
+    most lift an otherwise untagged file to suggestive.
+    """
+    names = set(tags)
+    exposed = "nude" in names or bool(names & EXPLICIT_BODY_TAGS)
+    for name, category in tags.items():
+        if (category in HARDCORE_CATEGORIES and name not in SUGGESTIVE_SEX_ACTS
+                and name not in SOLO_SEX_ACTS):
+            return "hardcore", True
+    if exposed and names & (TOY_TAGS | SOLO_SEX_ACTS):
+        return "hardcore", True
+    if exposed:
+        return "explicit", True
+    if names & SUGGESTIVE_RATING_TAGS:
+        return "suggestive", True
+    if any(names & first and names & second for first, second in SUGGESTIVE_COMBOS):
+        return "suggestive", True
+    hinted = bool((names if hint_tags is None else set(hint_tags)) & MODEL_LIFT_HINTS)
+    if not hinted:
+        return "safe", True
+    if (model_scores or {}).get(VIBE_SCORE_KEY, 0.0) >= VIBE_SUGGESTIVE_MIN:
+        return "suggestive", False
+    if model_scores:
+        racy = max(model_scores.get("questionable", 0.0), model_scores.get("explicit", 0.0))
+        if racy >= MODEL_SUGGESTIVE_MIN and racy > model_scores.get("general", 0.0):
+            return "suggestive", False
+    return "safe", True
+
+
+def _apply_rating_heuristic(best: dict[str, tuple[str, float]]) -> dict[str, tuple[str, float]]:
+    """Post-process: replace the model's rating scores with one derived rating.
+
+    Run after the nudity heuristic, so a covered 'nude' has already become
+    'implied nudity' and can't push the file to explicit. Any rating-category
+    entry is dropped here (raw model scores, or a vocab row mapped to a rating
+    name), so only the derived rating is ever stored.
+    """
+    model_scores: dict[str, float] = {}
+    for name in [n for n, (cat, _) in best.items() if cat == "rating" or n in RATING_TAGS]:
+        _, conf = best.pop(name)
+        if name.startswith(MODEL_RATING_PREFIX):
+            model_scores[name[len(MODEL_RATING_PREFIX):]] = conf
+    rating, by_tags = derive_rating(
+        {name: cat for name, (cat, conf) in best.items()
+         if conf >= max(SPICE_MIN_CONFIDENCE, SPICE_TAG_MIN.get(name, 0.0))},
+        model_scores, hint_tags=set(best))
+    if by_tags:
+        confidence = 1.0
+    else:
+        confidence = max(model_scores.get("questionable", 0.0), model_scores.get("explicit", 0.0),
+                         model_scores.get(VIBE_SCORE_KEY, 0.0))
+    best[rating] = ("rating", confidence)
+    return best
+
+
+# Real photos. WD was trained on anime and over-calls explicit details on
+# photos: skin-coloured panties read as pussy, a thong as anus, a hand bra as
+# nipples. Measured on a creator who never shows anything (1 real explicit in
+# ~1,900 photos, 67 flagged) against one who often does.
+PHOTO_MIN_CONFIDENCE = {
+    "nipples": 0.70,
+    "pussy": 0.75, "vagina": 0.75, "pussy peek": 0.75, "spread pussy": 0.75,
+    "nipple slip": 0.75, "areola slip": 0.75,
+    "penis": 0.75, "erection": 0.75, "testicles": 0.75,
+}
+# On a photo these only count next to another explicit sign: alone they were
+# wrong nearly every time (thongs, panties, tail plugs).
+PHOTO_NEEDS_SUPPORT = frozenset({"anus", "anus peek", "spread anus", "pussy juice", "clitoris", "pubic hair"})
+# Partner acts on a solo photo need this much confidence (a tail plug is not
+# anal sex) unless a second person or a penis is visible.
+PHOTO_SOLO_ACT_MIN = 0.75
+REAL_PERSON_TYPES = JOYTAG_CREATOR_TYPES
+
+
+def is_photo(img, wd_raw) -> bool:
+    """Real photo (strict explicit rules) or art (WD's home ground)?"""
+    creators = getattr(getattr(img, "gallery", None), "creators", None) or []
+    if creators:
+        return bool({str(c.creator_type).split(".")[-1].lower() for c in creators} & REAL_PERSON_TYPES)
+    return any(name == "photorealistic" for name, _, _ in wd_raw)
+
+
+def _apply_photo_rules(best: dict[str, tuple[str, float]], person_count: Optional[int]) -> dict:
+    explicit_support = [n for n in best if (n in EXPLICIT_BODY_TAGS or n == "nude") and n not in PHOTO_NEEDS_SUPPORT]
+    if not explicit_support:
+        for name in [n for n in best if n in PHOTO_NEEDS_SUPPORT]:
+            best.pop(name)
+    partner = (person_count or 1) >= 2 or "penis" in best
+    if not partner:
+        for name in [n for n, (cat, conf) in best.items()
+                     if cat in HARDCORE_CATEGORIES and n not in SUGGESTIVE_SEX_ACTS
+                     and n not in SOLO_SEX_ACTS and conf < PHOTO_SOLO_ACT_MIN]:
+            best.pop(name)
+    return best
+
+
+def finalize_tags(wd_raw: list, extra_raw: list, person_count: Optional[int], photo: bool) -> dict:
+    """Merge one file's model outputs into the tags that get stored, Spice
+    included. Shared by every tagging path (and the rule tests)."""
+    from services import nudenet
+    if photo:
+        wd_raw = [t for t in wd_raw if t[2] >= PHOTO_MIN_CONFIDENCE.get(t[0], 0.0)]
+    else:
+        # The vibe check was only validated on real photos.
+        extra_raw = [t for t in (extra_raw or []) if t[0] != MODEL_RATING_PREFIX + VIBE_SCORE_KEY]
+    best: dict[str, tuple[str, float]] = {}
+    for name, cat, conf in wd_raw:
+        if name not in best or conf > best[name][1]:
+            best[name] = (cat, conf)
+    for name, cat, conf in nudenet.drop_covered(extra_raw or [], set(best)):
+        if name not in best or conf > best[name][1]:
+            best[name] = (cat, conf)
+    # One head-count tag per file: the largest wins (JoyTag can list several).
+    people = [name for name in PEOPLE_TAGS if name in best]
+    for name in people[:-1]:
+        best.pop(name)
+    best = _apply_color_heuristic(best, person_count)
+    if photo:
+        best = _apply_photo_rules(best, person_count)
+    best = _apply_nudity_heuristic(best)
+    return _apply_rating_heuristic(best)
+
+
 def _apply_nudity_heuristic(best: dict[str, tuple[str, float]]) -> dict[str, tuple[str, float]]:
     """Post-process: if 'nude' fires but explicit body parts don't, downgrade to 'implied nudity'."""
-    EXPLICIT_BODY = {"nipples", "pussy", "penis", "vagina"}
-    if "nude" in best and not any(k in best for k in EXPLICIT_BODY):
+    if "nude" in best and not any(k in best for k in EXPLICIT_BODY_TAGS):
         cat, conf = best.pop("nude")
         # Only downgrade if implied nudity isn't already there with higher confidence
         existing = best.get("implied nudity")
@@ -1496,22 +1965,164 @@ def repair_existing_color_tags(db, min_confidence: float = COLOR_TAG_MIN_CONFIDE
     }
 
 
+# Tags whose built-in name changed after people already had links to them.
+RENAMED_BUILTIN_TAGS = {"panties_aside": ("panties aside", "clothing")}
+
+
+def _rename_builtin_tags(db) -> int:
+    """Move links from an old raw tag name to its new built-in name."""
+    from sqlalchemy import text
+    moved = 0
+    for old_name, (new_name, category) in RENAMED_BUILTIN_TAGS.items():
+        old = db.execute(text("SELECT id FROM tags WHERE name = :n"), {"n": old_name}).scalar()
+        if old is None:
+            continue
+        new = db.execute(text("SELECT id FROM tags WHERE name = :n"), {"n": new_name}).scalar()
+        if new is None:
+            db.execute(text("UPDATE tags SET name = :n, category = :c WHERE id = :id"),
+                       {"n": new_name, "c": category, "id": old})
+            moved += db.execute(text("SELECT COUNT(*) FROM image_tags WHERE tag_id = :id"), {"id": old}).scalar()
+            continue
+        # Both exist: keep the new tag, move links that aren't already there.
+        moved += db.execute(text("""
+            UPDATE image_tags SET tag_id = :new WHERE tag_id = :old
+              AND image_id NOT IN (SELECT image_id FROM image_tags WHERE tag_id = :new)
+        """), {"new": new, "old": old}).rowcount
+        db.execute(text("DELETE FROM image_tags WHERE tag_id = :old"), {"old": old})
+        db.execute(text("UPDATE tags SET use_count = (SELECT COUNT(*) FROM image_tags WHERE tag_id = :new) WHERE id = :new"),
+                   {"new": new})
+        db.execute(text("DELETE FROM tags WHERE id = :old"), {"old": old})
+    return moved
+
+
+def remove_ai_character_tags(db) -> dict:
+    """Delete character tags the AI guessed (manual links are kept), then
+    drop character tags nothing uses any more. One-time cleanup for the WD
+    character passthrough that no longer exists."""
+    from sqlalchemy import text
+    links = db.execute(text("""
+        DELETE FROM image_tags
+        WHERE tagger_model IS NOT NULL
+          AND tag_id IN (SELECT id FROM tags WHERE category = 'character')
+    """)).rowcount
+    db.execute(text("""
+        UPDATE tags SET use_count = (SELECT COUNT(*) FROM image_tags WHERE image_tags.tag_id = tags.id)
+        WHERE category = 'character'
+    """))
+    tags = db.execute(text("""
+        DELETE FROM tags
+        WHERE category = 'character'
+          AND NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.tag_id = tags.id)
+          AND NOT EXISTS (SELECT 1 FROM gallery_tags WHERE gallery_tags.tag_id = tags.id)
+    """)).rowcount
+    db.commit()
+    return {"links_removed": links, "tags_removed": tags}
+
+
+def repair_rating_tags(db, fill_missing: bool = False, dry_run: bool = False) -> dict:
+    """Give every AI-rated file exactly one rating, derived from its tags.
+
+    One-time data repair for files tagged while every rating was written at
+    once, safe to re-run after the rules change. Files with a manual rating
+    are left alone. With fill_missing, AI-tagged files that never got a rating
+    receive one too. Uses tags only: stored rating scores can't be trusted as
+    model scores (old runs merged sensitive and questionable into one).
+    """
+    from sqlalchemy import text
+
+    _rename_builtin_tags(db)
+    rating_ids = {
+        name: tag_id for name, tag_id in db.execute(
+            text(f"SELECT name, id FROM tags WHERE name IN ({', '.join(repr(n) for n in RATING_TAGS)})")
+        ).fetchall()
+    }
+    db.execute(text("DROP TABLE IF EXISTS temp._rating_targets"))
+    db.execute(text("CREATE TEMP TABLE _rating_targets (image_id INTEGER PRIMARY KEY)"))
+    if rating_ids:
+        db.execute(text(f"""
+            INSERT OR IGNORE INTO _rating_targets
+            SELECT DISTINCT image_id FROM image_tags
+            WHERE tag_id IN ({", ".join(str(i) for i in rating_ids.values())})
+        """))
+    if fill_missing:
+        db.execute(text("INSERT OR IGNORE INTO _rating_targets SELECT id FROM images WHERE ai_tagged = 1"))
+
+    rows = db.execute(text("""
+        SELECT it.image_id, t.name, t.category, it.confidence, it.tagger_model, i.ai_tag_model
+        FROM _rating_targets r
+        JOIN image_tags it ON it.image_id = r.image_id
+        JOIN tags t ON t.id = it.tag_id
+        JOIN images i ON i.id = r.image_id
+    """)).fetchall()
+
+    per_image: dict[int, dict] = {}
+    for image_id, name, category, confidence, tagger_model, ai_model in rows:
+        info = per_image.setdefault(image_id, {"tags": {}, "manual": False,
+                                               "model": tagger_model or ai_model})
+        lname = (name or "").lower()
+        if lname in RATING_TAGS:
+            if tagger_model is None:
+                info["manual"] = True
+            else:
+                info["model"] = tagger_model
+        else:
+            info["tags"][lname] = category or "general"
+
+    counts = {"examined": len(per_image), "manual_skipped": 0, **{name: 0 for name in RATING_TAGS}}
+    inserts: list[dict] = []
+    for image_id, info in per_image.items():
+        if info["manual"]:
+            counts["manual_skipped"] += 1
+            continue
+        rating, _ = derive_rating(info["tags"])
+        counts[rating] += 1
+        inserts.append({"image_id": image_id, "rating": rating, "confidence": 1.0,
+                        "tagger_model": info["model"] or "repair"})
+
+    if dry_run:
+        db.rollback()
+        return counts
+
+    for name in RATING_TAGS:
+        if name not in rating_ids:
+            rating_ids[name] = _get_or_create_tag(db, name, "rating").id
+    manual_ids = [i for i, info in per_image.items() if info["manual"]]
+    db.execute(text(f"""
+        DELETE FROM image_tags
+        WHERE tagger_model IS NOT NULL
+          AND tag_id IN ({", ".join(str(i) for i in rating_ids.values())})
+          AND image_id IN (SELECT image_id FROM _rating_targets)
+          {"AND image_id NOT IN (" + ", ".join(map(str, manual_ids)) + ")" if manual_ids else ""}
+    """))
+    if inserts:
+        db.execute(text("""
+            INSERT INTO image_tags (image_id, tag_id, confidence, tagger_model)
+            VALUES (:image_id, :tag_id, :confidence, :tagger_model)
+        """), [{"image_id": row["image_id"], "tag_id": rating_ids[row["rating"]],
+                "confidence": row["confidence"], "tagger_model": row["tagger_model"]}
+               for row in inserts])
+    db.execute(text(f"""
+        UPDATE tags SET use_count = (SELECT COUNT(*) FROM image_tags WHERE image_tags.tag_id = tags.id)
+        WHERE id IN ({", ".join(str(i) for i in rating_ids.values())})
+    """))
+    db.execute(text("DROP TABLE IF EXISTS temp._rating_targets"))
+    db.commit()
+    return counts
+
+
 def _apply_tag_results(img, db, raw_results, person_count, model_name: str,
-                       clear_existing: bool = False, tag_cache: Optional[dict] = None) -> bool:
-    """Apply already-inferred results to one image without another model call."""
+                       clear_existing: bool = False, tag_cache: Optional[dict] = None,
+                       extra_raw: Optional[list] = None) -> bool:
+    """Apply already-inferred results to one image without another model call.
+    raw_results come from the tagger, extra_raw from detector add-ons."""
     if clear_existing:
         _clear_ai_tags(db, img.id)
-    if not raw_results:
+    if not raw_results and not extra_raw:
         img.ai_tagged = True
         img.ai_tag_model = model_name
         return False
 
-    best: dict[str, tuple[str, float]] = {}
-    for name, cat, conf in raw_results:
-        if name not in best or conf > best[name][1]:
-            best[name] = (cat, conf)
-    best = _apply_color_heuristic(best, person_count)
-    best = _apply_nudity_heuristic(best)
+    best = finalize_tags(raw_results, extra_raw or [], person_count, is_photo(img, raw_results))
     for name, (cat, conf) in best.items():
         tag = _get_or_create_tag(db, name, cat, tag_cache)
         _upsert_image_tag(db, img.id, tag.id, conf, model_name)
@@ -1548,15 +2159,7 @@ def tag_single_image(
     if not raw_results:
         return False   # model ran but produced nothing above threshold
 
-    # Deduplicate by name (keep highest confidence per name)
-    best: dict[str, tuple[str, float]] = {}
-    for name, cat, conf in raw_results:
-        if name not in best or conf > best[name][1]:
-            best[name] = (cat, conf)
-
-    # Post-processing heuristics
-    best = _apply_color_heuristic(best, person_count)
-    best = _apply_nudity_heuristic(best)
+    best = finalize_tags(raw_results, [], person_count, is_photo(img, raw_results))
 
     for name, (cat, conf) in best.items():
         tag = _get_or_create_tag(db, name, cat)
@@ -1588,7 +2191,7 @@ def tag_single_video(
     if tagger is None:
         raise RuntimeError("No tagger model is loaded — download WD14 or JoyTag first")
 
-    frames, tmpdir = _extract_video_frames(img.file_path)
+    frames, tmpdir = _extract_video_frames(img.file_path, duration=img.duration)
     if not frames:
         logger.debug("No frames extracted from %s", img.file_path)
         return False
@@ -1613,8 +2216,8 @@ def tag_single_video(
         if not best:
             return False
 
-        best = _apply_color_heuristic(best, person_count)
-        best = _apply_nudity_heuristic(best)
+        merged = [(name, cat, conf) for name, (cat, conf) in best.items()]
+        best = finalize_tags(merged, [], person_count, is_photo(img, merged))
 
         for name, (cat, conf) in best.items():
             tag = _get_or_create_tag(db, name, cat)
@@ -1760,14 +2363,29 @@ def _publish_queued_job(job):
                           eta_seconds=None, items_per_second=None)
 
 
+MEDIA_KINDS = ("all", "photos", "videos")
+
+
+def _mark_card_classifications_stale(db):
+    """Cards cache their Spice and Exposure from the source file's tags. After
+    tags change, mark the cache stale; the TCG re-reads it on its next visit."""
+    from sqlalchemy import text
+    db.execute(text("UPDATE card_content_classifications SET policy_version = NULL"))
+    db.execute(text("UPDATE cards SET face_traits = NULL WHERE face_traits IS NOT NULL"))
+
+
 def create_tag_job(db, scope: str, folder_path: Optional[str], threshold: float,
                    retag: bool, model_override: Optional[str], creator_id: Optional[int],
-                   image_id: Optional[int] = None):
+                   image_id: Optional[int] = None, media: str = "all",
+                   extra_models: Optional[list[str]] = None):
     from models import AITagJob
+    extras = [k for k in (extra_models or []) if k in DETECTOR_KEYS]
     job = AITagJob(
         status="queued", scope=scope, folder_path=folder_path,
         creator_id=creator_id, image_id=image_id, threshold=threshold, retag=retag,
         model_override=model_override, message="Waiting in queue…",
+        media=media if media in MEDIA_KINDS else "all",
+        extra_models=",".join(extras) or None,
     )
     db.add(job)
     db.commit()
@@ -1809,14 +2427,19 @@ def cancel_persisted_job(db, job_id: Optional[int] = None) -> bool:
     return True
 
 
-def _job_query(db, job, after_id: Optional[int] = None):
+def _job_query(db, job, after_id: Optional[int] = None, light: bool = False):
+    """Files a job still has to tag. light=True returns plain rows with only
+    what the read-ahead needs, which never go stale across commits."""
     from models import Image, Gallery
     from sqlalchemy.orm import selectinload
-    q = db.query(Image).options(
-        selectinload(Image.gallery).selectinload(Gallery.creators)
-    )
+    if light:
+        q = db.query(Image.id, Image.file_path, Image.is_video, Image.duration)
+    else:
+        q = db.query(Image).options(
+            selectinload(Image.gallery).selectinload(Gallery.creators)
+        )
     if job.scope == "folder" and job.folder_path:
-        q = q.join(Gallery).filter(Gallery.folder_path.like(f"{job.folder_path}%"))
+        q = q.join(Gallery, Image.gallery_id == Gallery.id).filter(Gallery.folder_path.like(f"{job.folder_path}%"))
     elif job.scope == "creator" and job.creator_id:
         from models import gallery_creators
         q = (q.join(Gallery, Image.gallery_id == Gallery.id)
@@ -1824,11 +2447,121 @@ def _job_query(db, job, after_id: Optional[int] = None):
                .filter(gallery_creators.c.creator_id == job.creator_id))
     elif job.scope == "image" and job.image_id:
         q = q.filter(Image.id == job.image_id)
+    if job.media == "photos":
+        q = q.filter(Image.is_video == False)  # noqa: E712
+    elif job.media == "videos":
+        q = q.filter(Image.is_video == True)  # noqa: E712
     if not job.retag:
         q = q.filter(Image.ai_tagged == False)  # noqa: E712
     if after_id is not None:
         q = q.filter(Image.id > after_id)
     return q
+
+
+# A chunk holds at most this many videos: each costs about as much as a
+# dozen photos, and Pause waits for the current chunk to finish.
+VIDEO_CHUNK = 8
+
+
+def job_model_label(job) -> str:
+    base = TAGGER_MODELS[job.model_override]["label"] if job.model_override in TAGGER_MODELS else "Auto"
+    extras = [TAGGER_MODELS[k]["label"] for k in (job.extra_models or "").split(",") if k in TAGGER_MODELS]
+    return " + ".join([base, *extras])
+
+
+def _trim_chunk(chunk: list) -> list:
+    """Cut a chunk after its VIDEO_CHUNK-th video, keeping id order."""
+    videos = 0
+    for i, img in enumerate(chunk):
+        if img.is_video:
+            videos += 1
+            if videos >= VIDEO_CHUNK:
+                return chunk[:i + 1]
+    return chunk
+
+
+def _prefetch_media(prefetch: dict, images: list, max_side: int):
+    """Start reading/decoding files in the background, keyed by image id."""
+    for img in images:
+        if img.id in prefetch or not img.file_path:
+            continue
+        if img.is_video:
+            prefetch[img.id] = _video_pool.submit(_load_video_frames, img.file_path, img.duration, max_side)
+        else:
+            prefetch[img.id] = _preprocess_pool.submit(_load_for_tagging, img.file_path, max_side)
+
+
+def _run_model(model, items: list, threshold: float, answers: dict, failed: set):
+    """Run one model over (img, frame) pairs and merge its answers per image."""
+    arrays = [model.preprocess(frame) for _, frame in items]
+    for offset in range(0, len(items), AI_BATCH_SIZE):
+        batch = items[offset:offset + AI_BATCH_SIZE]
+        try:
+            outs = model.infer(arrays[offset:offset + AI_BATCH_SIZE], threshold)
+        except Exception as exc:
+            logger.warning("%s failed on a batch: %s", model.MODEL_NAME, exc)
+            failed.update(img.id for img, _ in batch)
+            continue
+        for (img, _), (raw, person_count) in zip(batch, outs):
+            entry = answers.setdefault(img.id, {"raw": [], "person_count": None})
+            entry["raw"].extend(raw)
+            if person_count is not None and (entry["person_count"] is None
+                                             or person_count > entry["person_count"]):
+                entry["person_count"] = person_count
+
+
+def _tag_chunk(db, job, chunk: list, prefetch: dict, detectors: list, tag_cache: dict):
+    """Tag one chunk from its prefetched pixels: every chosen model looks at
+    the same decoded frames, then the results are merged per file."""
+    frames_by_id: dict[int, list] = {}
+    tagger_by_id: dict[int, object] = {}
+    for img in chunk:
+        future = prefetch.pop(img.id, None)
+        if not img.file_path or not os.path.exists(img.file_path):
+            job.skipped += 1
+            continue
+        tagger = _tagger_for_image(img, job.model_override)
+        if tagger is None:
+            job.errors += 1
+            continue
+        result = future.result() if future is not None else None
+        frames_by_id[img.id] = (result or []) if img.is_video else ([result] if result is not None else [])
+        tagger_by_id[img.id] = tagger
+
+    by_id = {img.id: img for img in chunk}
+    answers: dict[int, dict] = {}
+    failed: set[int] = set()
+    groups: dict[object, list] = {}
+    for image_id, frames in frames_by_id.items():
+        groups.setdefault(tagger_by_id[image_id], []).extend((by_id[image_id], f) for f in frames)
+    for tagger, items in groups.items():
+        _run_model(tagger, items, job.threshold, answers, failed)
+    found: dict[int, dict] = {}
+    if detectors:
+        items = [(by_id[i], f) for i, frames in frames_by_id.items() for f in frames]
+        for detector in detectors:
+            _run_model(detector, items, job.threshold, found, failed)
+
+    for image_id, frames in frames_by_id.items():
+        img = by_id[image_id]
+        if image_id in failed:
+            job.errors += 1
+            continue
+        if not frames:
+            # Undecodable file or no video frames: don't retry it every run.
+            img.ai_tagged = True
+            img.ai_tag_model = tagger_by_id[image_id].MODEL_NAME
+            job.skipped += 1
+            continue
+        entry = answers.get(image_id, {"raw": [], "person_count": None})
+        ok = _apply_tag_results(img, db, entry["raw"], entry["person_count"],
+                                tagger_by_id[image_id].MODEL_NAME,
+                                clear_existing=job.retag, tag_cache=tag_cache,
+                                extra_raw=found.get(image_id, {}).get("raw", []))
+        if ok:
+            job.tagged += 1
+        else:
+            job.skipped += 1
 
 
 def run_tag_job(db, job_id: int):
@@ -1840,7 +2573,11 @@ def run_tag_job(db, job_id: int):
     if not job:
         db.close()
         return
-    model_label = "WD14" if job.model_override == "wd14" else "JoyTag" if job.model_override == "joytag" else "Auto"
+    model_label = job_model_label(job)
+    detectors = _get_detectors(job.extra_models)
+    # Decode big enough for the largest add-on input (NudeNet reads 640px).
+    max_side = 640 if any(getattr(d, "MODEL_NAME", "").startswith("nudenet") for d in detectors) else TARGET_SIZE
+    prefetch: dict[int, object] = {}
     with _lock:
         _control = "run"
     started_at = time.perf_counter()
@@ -1870,6 +2607,7 @@ def run_tag_job(db, job_id: int):
         while True:
             action = _control_action()
             if action in {"pause", "cancel"}:
+                _mark_card_classifications_stale(db)
                 job.status = action + "d" if action == "pause" else "cancelled"
                 job.message = ("Paused — progress safely saved." if action == "pause" else
                                f"Cancelled — {job.tagged} tagged, {job.skipped} skipped, {job.errors} errors.")
@@ -1882,6 +2620,7 @@ def run_tag_job(db, job_id: int):
             chunk = (_job_query(db, job, job.last_image_id or 0)
                      .order_by(Image.id).limit(64).all())
             if not chunk:
+                _mark_card_classifications_stale(db)
                 job.status = "done"
                 job.progress = job.total
                 job.message = f"Done — {job.tagged} tagged, {job.skipped} no-result, {job.errors} errors."
@@ -1892,64 +2631,15 @@ def run_tag_job(db, job_id: int):
                      current_path=None, eta_seconds=0)
                 return
 
-            # Keep checkpoints ordered while still batching contiguous images.
-            # Videos are isolated so Pause never waits through a 64-video chunk.
-            if chunk[0].is_video:
-                chunk = chunk[:1]
-            else:
-                first_video = next((i for i, item in enumerate(chunk) if item.is_video), None)
-                if first_video is not None:
-                    chunk = chunk[:first_video]
+            chunk = _trim_chunk(chunk)
+            _prefetch_media(prefetch, chunk, max_side)
+            # Read one chunk ahead, so the disk keeps working while the GPU
+            # and database handle this one.
+            ahead = (_job_query(db, job, chunk[-1].id, light=True)
+                     .order_by(Image.id).limit(64).all())
+            _prefetch_media(prefetch, _trim_chunk(ahead), max_side)
 
-            ready = [img for img in chunk if img.file_path and os.path.exists(img.file_path)]
-            job.skipped += len(chunk) - len(ready)
-            videos = [img for img in ready if img.is_video]
-            groups: dict[object, list] = {}
-            for img in ready:
-                if img.is_video:
-                    continue
-                tagger = _tagger_for_image(img, job.model_override)
-                if tagger is None:
-                    job.errors += 1
-                    continue
-                groups.setdefault(tagger, []).append(img)
-
-            for tagger, images in groups.items():
-                for offset in range(0, len(images), AI_BATCH_SIZE):
-                    batch = images[offset:offset + AI_BATCH_SIZE]
-                    try:
-                        answers = tagger.tag_batch([img.file_path for img in batch], job.threshold)
-                        for img, (raw, person_count) in zip(batch, answers):
-                            ok = _apply_tag_results(
-                                img, db, raw, person_count, tagger.MODEL_NAME,
-                                clear_existing=job.retag, tag_cache=tag_cache,
-                            )
-                            if ok:
-                                job.tagged += 1
-                            else:
-                                job.skipped += 1
-                    except Exception as exc:
-                        logger.warning("Batch tagging failed (%s); retrying files individually", exc)
-                        for img in batch:
-                            try:
-                                if tag_single_image(img, db, job.threshold, job.model_override, job.retag):
-                                    job.tagged += 1
-                                else:
-                                    job.skipped += 1
-                            except Exception as item_exc:
-                                logger.warning("Error tagging %s: %s", img.file_path, item_exc)
-                                job.errors += 1
-
-            for img in videos:
-                try:
-                    if tag_single_video(img, db, job.threshold, job.model_override, job.retag):
-                        job.tagged += 1
-                    else:
-                        img.ai_tagged = True
-                        job.skipped += 1
-                except Exception as exc:
-                    logger.warning("Error tagging video %s: %s", img.file_path, exc)
-                    job.errors += 1
+            _tag_chunk(db, job, chunk, prefetch, detectors, tag_cache)
 
             job.last_image_id = max(img.id for img in chunk)
             job.progress = min(job.total, job.progress + len(chunk))
@@ -1978,14 +2668,13 @@ def run_tag_job(db, job_id: int):
         db.close()
 
 
-def download_models_task(download_wd14_flag: bool, download_joytag_flag: bool):
+def download_models_task(keys: list[str]):
     _set(running=True, status="running", paused=False, job_id=None,
          message="Starting model download…", cancelled=False)
     try:
-        if download_wd14_flag and not wd14_is_ready():
-            download_wd14()
-        if download_joytag_flag and not joytag_is_ready():
-            download_joytag()
+        for key in keys:
+            if not model_is_ready(key):
+                download_model(key)
         _reset_singletons()
 
         from database import SessionLocal

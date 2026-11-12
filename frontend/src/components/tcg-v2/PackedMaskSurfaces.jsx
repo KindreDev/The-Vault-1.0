@@ -1,13 +1,18 @@
 function MaskImage({ href, geometry }) {
   return (
     <image href={href} x={geometry.x} y={geometry.y} width={geometry.width}
-           height={geometry.height} preserveAspectRatio="none" />
+           height={geometry.height} preserveAspectRatio="none"
+           crossOrigin={/^https?:/.test(href || '') ? 'anonymous' : undefined} />
   )
 }
 
 export function packedMaskChannelUrl(packedMaskUrl, channel) {
-  const match = String(packedMaskUrl || '').match(/\/masks\/(\d+)\.png(?:\?|$)/)
-  return match ? `/api/masks/channels/${match[1]}/${channel}` : null
+  const source = String(packedMaskUrl || '')
+  const match = source.match(/\/masks\/(\d+)\.png(?:\?|$)/)
+  // Keep the mask's own origin: the mobile app loads cards from the PC by
+  // absolute URL, while desktop URLs are relative and stay relative.
+  const origin = source.match(/^https?:\/\/[^/]+/)?.[0] || ''
+  return match ? `${origin}/api/masks/channels/${match[1]}/${channel}` : null
 }
 
 export function packedMaskIds(prefix) {

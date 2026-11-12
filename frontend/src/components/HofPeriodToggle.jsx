@@ -1,5 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 // Labelled by the window rather than the cadence ("Today", not "Daily") because
 // these boards reset — the label should say which slice of time you are looking
@@ -55,6 +56,44 @@ export default function HofPeriodToggle({ value, onChange }) {
           </button>
         )
       })}
+    </div>
+  )
+}
+
+// ‹ previous · next › for stepping back through finished days, weeks and
+// months. Sits beside the period toggle and wears the same glass pill, so the
+// two read as one control: which kind of window, then which one of them.
+export function HofPeriodStepper({ label, canBack, canForward, onBack, onForward, onNow, backTitle, forwardTitle, nowLabel }) {
+  const arrow = (enabled) => ({
+    color: enabled ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.15)',
+    cursor: enabled ? 'pointer' : 'default',
+  })
+  return (
+    <div className="inline-flex items-center gap-1 p-1 rounded-[14px]"
+         style={{ background: 'rgba(255,255,255,0.04)',
+                  border: '0.5px solid rgba(255,255,255,0.08)',
+                  backdropFilter: 'blur(12px)' }}>
+      <button onClick={canBack ? onBack : undefined} disabled={!canBack} title={backTitle} aria-label={backTitle}
+              className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-colors enabled:hover:bg-white/[0.07]"
+              style={arrow(canBack)}>
+        <ChevronLeft size={18} />
+      </button>
+      <span className="px-2 text-center whitespace-nowrap"
+            style={{ minWidth: 150, fontSize: 16, fontWeight: 700, color: 'var(--c-amber-text)' }}>
+        {label}
+      </span>
+      <button onClick={canForward ? onForward : undefined} disabled={!canForward} title={forwardTitle} aria-label={forwardTitle}
+              className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-colors enabled:hover:bg-white/[0.07]"
+              style={arrow(canForward)}>
+        <ChevronRight size={18} />
+      </button>
+      {canForward && (
+        <button onClick={onNow}
+                className="px-3 py-2 rounded-[10px] transition-colors hover:bg-white/[0.07]"
+                style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.55)' }}>
+          {nowLabel}
+        </button>
+      )}
     </div>
   )
 }

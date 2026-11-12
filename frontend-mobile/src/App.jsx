@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
-import { hasServerBase } from './lib/server.js'
-import { gamiApi, systemApi, tasksApi } from './lib/api.js'
+import { hasServerBase, setServerBase } from './lib/server.js'
+import { gamiApi, systemApi, tasksApi, refreshApiBase } from './lib/api.js'
 import queryClient from './lib/queryClient.js'
 import { createTaskRefreshTracker } from '../../shared/queryRefresh.mjs'
 import { useVaultStore } from './store/vault.js'
+import { useScrollMemory, closeTopOverlay, canGoBack, launchTabs, isFullscreenPath, TAB_ROOTS } from './lib/nav.js'
 
 import ServerSetup from './components/ServerSetup.jsx'
 import MobileLayout from './components/MobileLayout.jsx'
@@ -27,6 +28,8 @@ import PlaylistView from './pages/PlaylistView.jsx'
 import Profile from './pages/Profile.jsx'
 import Feed from './pages/Feed.jsx'
 import Explore from './pages/Explore.jsx'
+import Curate from './pages/Curate.jsx'
+import Stats from './pages/Stats.jsx'
 
 export default function App() {
   // 'verifying' → checking the saved address is reachable; 'setup' → ask for it;
@@ -70,7 +73,54 @@ export default function App() {
     gamiApi.login().catch(() => {})
   }, [phase, setProfile])
 
-  // Android hardware back button → browser history back.
+  // Pairing QR from the desktop app (Settings → System) opens
+  // thevault://connect?server=http://… — save that address and reconnect.
+  useEffect(() => {
+    let remove
+    const pair = (raw) => {
+      try {
+        const server = new URL(raw).searchParams.get('server')
+        if (!server || !/^https?:\/\//i.test(server)) return
+        setServerBase(server)
+        refreshApiBase()
+        queryClient.clear()
+        setPhase('verifying')
+      } catch (_) {}
+    }
+    ;(async () => {
+      try {
+        const { Capacitor } = await import('@capacitor/core')
+        if (!Capacitor.isNativePlatform()) return
+        const { App: CapApp } = await import('@capacitor/app')
+        const launch = await CapApp.getLaunchUrl()
+        if (launch?.url) pair(launch.url)
+        const h = await CapApp.addListener('appUrlOpen', ({ url }) => pair(url))
+        remove = () => h.remove()
+      } catch (_) {}
+    })()
+    return () => remove?.()
+  }, [])
+
+  // Reopening the app lands where you left off: the tab you were in, and the
+  // page you had open inside it (with the tab's root underneath, so back works).
+  const nav = useNavigate()
+  const location = useLocation()
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (phase !== 'ready' || resumed.current) return
+    resumed.current = true
+    if (location.pathname !== '/' || location.search) return
+    const { current, last } = launchTabs
+    const root = TAB_ROOTS.includes(current) ? current : '/'
+    const page = last?.[root]
+    if (root !== '/') nav(root, { replace: true })
+    if (page && page !== root && !isFullscreenPath(page.split('?')[0])) nav(page, { state: { tab: root } })
+  }, [phase])
+
+  // Android hardware back button: close the open sheet/viewer first, then go
+  // back inside the app, then fall back to Home, and only exit from Home.
+  const pathRef = useRef(location.pathname)
+  pathRef.current = location.pathname
   useEffect(() => {
     let remove
     ;(async () => {
@@ -78,8 +128,10 @@ export default function App() {
         const { Capacitor } = await import('@capacitor/core')
         if (!Capacitor.isNativePlatform()) return
         const { App: CapApp } = await import('@capacitor/app')
-        const h = await CapApp.addListener('backButton', ({ canGoBack }) => {
-          if (canGoBack || window.history.length > 1) window.history.back()
+        const h = await CapApp.addListener('backButton', () => {
+          if (closeTopOverlay()) return
+          if (canGoBack()) window.history.back()
+          else if (pathRef.current !== '/') nav('/', { replace: true })
           else CapApp.exitApp()
         })
         remove = () => h.remove()
@@ -113,11 +165,9 @@ export default function App() {
 // Fullscreen overlay routes are exempt from the page crossfade — they manage
 // their own entrance and a transform-based transition would break their
 // `position: fixed` layering. Everything else gets a quick opacity crossfade.
-const FULLSCREEN = ['/view/', '/video/', '/photo/']
-const isFullscreen = (p) => FULLSCREEN.some(f => p.startsWith(f)) || p.endsWith('/view')
-
 function AnimatedRoutes() {
   const location = useLocation()
+  useScrollMemory()
   const routes = (
     <Routes location={location}>
       <Route path="/"                       element={<Dashboard />} />
@@ -135,15 +185,18 @@ function AnimatedRoutes() {
       <Route path="/profile"                element={<Profile />} />
       <Route path="/feed"                   element={<Feed />} />
       <Route path="/explore"                element={<Explore />} />
+      <Route path="/curate"                 element={<Curate />} />
+      <Route path="/stats"                  element={<Stats />} />
     </Routes>
   )
 
-  if (isFullscreen(location.pathname)) return routes
+  if (isFullscreenPath(location.pathname)) return routes
 
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={location.pathname}
+        data-route={location.pathname}
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}

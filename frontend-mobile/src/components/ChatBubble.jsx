@@ -9,6 +9,7 @@ import { Sparkles, X, Send, ChevronDown, Check } from 'lucide-react'
 import { companionApi, creatorsApi, galleriesApi } from '../lib/api.js'
 import { abs } from '../lib/server.js'
 import { useVaultStore } from '../store/vault.js'
+import { useBackClose } from '../lib/nav.js'
 
 export default function ChatBubble() {
   const loc = useLocation()
@@ -25,6 +26,8 @@ export default function ChatBubble() {
   const [personaSearch, setPersonaSearch] = useState('')
   const [linkLabels, setLinkLabels] = useState({})   // 'creator:39'|'gallery:32' → name
   const scrollRef = useRef(null)
+  useBackClose(chatOpen, () => setChatOpen(false))
+  useBackClose(chatOpen && pickerOpen, () => setPickerOpen(false))
 
   const { data: config } = useQuery({
     queryKey: ['companion-config', chatConfigBust],
@@ -187,7 +190,7 @@ export default function ChatBubble() {
     }
   }
 
-  const hidden = loc.pathname.startsWith('/view/') || loc.pathname.startsWith('/video/') || loc.pathname.startsWith('/photo/')
+  const hidden = loc.pathname.startsWith('/view/') || loc.pathname.startsWith('/video/') || loc.pathname.startsWith('/photo/') || loc.pathname === '/curate'
   if (hidden) return null
   if (config && config.enabled === false && !chatOpen) return null
 

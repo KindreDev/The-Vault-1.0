@@ -1323,6 +1323,10 @@ export class DeviceService {
   // Update the funscript sync offset and re-arm the sampler immediately so the
   // change takes effect without a seek.
   setFunscriptOffset(ms) {
+    // Re-sending the same offset must not count as a seek: on The Handy every
+    // seek flushes and restarts the stream.
+    if ((Number(ms) || 0) === (store().funscriptOffsetMs || 0)) return
+    if (store().provider === 'handy') this._handyLog('offset', { ms })
     useDeviceStore.getState().setFunscriptOffset(ms)
     // Native serial picks the new offset up through its store subscription.
     if (this._nativeSerialPlaying && this._funscriptOwner === 'video') return

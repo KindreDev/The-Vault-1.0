@@ -12,6 +12,18 @@ import { resolveTCGV2CardFace } from './cardFaceResolver'
 import { SignatureOverrideContext } from './SignatureLayer'
 import './TCGV2CardFace.css'
 
+// Content cards print up to three traits from the source file's tags: your
+// favorite tags (gold), your type (pink), rare in your library (foil).
+const TRAIT_FACES = new Set(['scene', 'cosplay', 'gallery', 'collab'])
+
+function TraitStrip({ traits }) {
+  return <div className="tcg-v2-traits-frame" aria-hidden="true">
+    <div className="tcg-v2-traits">
+      {traits.map(trait => <span key={trait.id} data-kind={trait.kind}>{trait.name}</span>)}
+    </div>
+  </div>
+}
+
 const RENDERERS = Object.freeze({
   scene: SceneCard,
   character: CharacterCard,
@@ -215,6 +227,7 @@ const TCGV2CardFace = forwardRef(function TCGV2CardFace({
             />
           </SignatureOverrideContext.Provider>
         </CardFaceBoundary>
+        {TRAIT_FACES.has(face.type) && card?.traits?.length > 0 && <TraitStrip traits={card.traits} />}
         {!isLayeredFace && (
           <>
             <span className="tcg-v2-card-finish tcg-v2-card-shine" aria-hidden="true" />

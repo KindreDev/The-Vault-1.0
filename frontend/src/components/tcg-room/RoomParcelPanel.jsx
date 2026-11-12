@@ -71,6 +71,8 @@ export default function RoomParcelPanel({ parcels, onCollected }) {
           const products = new Map((response.data.contents || []).map(line => [line.product_id, line.product]))
           const packs = await Promise.all((response.data.results || []).map(async result => ({
             product: products.get(result.product_id) || {},
+            reaction: result.reaction,
+            bounties: result.bounties,
             // The room endpoint now returns the fully serialized card payload
             // from the authoritative V2 opener. Older responses may still
             // contain ids, so keep the fallback hydration for those only.

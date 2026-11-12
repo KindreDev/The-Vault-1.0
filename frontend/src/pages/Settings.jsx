@@ -1,11 +1,10 @@
 import { createUpdatePoll } from '../lib/updatePolling'
 import React from 'react'
-import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Droplets, Waves, Pause, Play, Gauge } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Check, X, ScrollText, AlertCircle, Cpu, Download, RefreshCw, ShieldCheck, HardDrive, Globe, Clock, Sparkles, Type, FolderOpen, ScanLine, Archive, SlidersHorizontal, Smartphone, Copy, Keyboard, Droplets, Waves, Play, Gauge } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { scannerApi, systemApi, creatorsApi, taggerApi, tasksApi, companionApi, themePacksApi } from '../lib/api'
+import { scannerApi, systemApi, creatorsApi, companionApi, themePacksApi } from '../lib/api'
 import { useVaultStore, PALETTES, FONTS, themePackFontOption } from '../store/vault'
 import { useT, LANGUAGES } from '../i18n'
 import HotkeySettings from '../components/settings/HotkeySettings'
@@ -14,220 +13,9 @@ import FolderPicker from '../components/FolderPicker'
 import toast from 'react-hot-toast'
 
 import ModalLayer from '../components/ModalLayer'
-function GpuStatusPanel() {
-  const qc = useQueryClient()
-  const t = useT()
-  const { data: gpu, isLoading } = useQuery({
-    queryKey: ['gpu-status'],
-    queryFn: () => scannerApi.gpuStatus().then(r => r.data),
-    // Only keep polling during an active DLL download; otherwise fetch once.
-    refetchInterval: (q) => {
-      const d = q.state.data
-      if (!d) return 2000
-      if (d.phase === 'downloading' || d.phase === 'extracting') return 1500
-      return false
-    },
-  })
-
-  const downloadMutation = useMutation({
-    mutationFn: () => scannerApi.gpuDownload(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['gpu-status'] }),
-    onError: (e) => toast.error(e?.response?.data?.detail || t('Download failed')),
-  })
-
-  if (isLoading || !gpu) return null
-
-  // GPU ready
-  if (gpu.cuda_available) {
-    return (
-      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium w-fit"
-            style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 35%, transparent)' }}>
-        {t('⚡ GPU ready (CUDA)')}
-      </span>
-    )
-  }
-
-  // Download in progress
-  if (gpu.running) {
-    const pct = gpu.bytes_total > 0 ? Math.round((gpu.bytes_done / gpu.bytes_total) * 100) : null
-    const doneMB = Math.round(gpu.bytes_done / (1024 * 1024))
-    const totalMB = Math.round(gpu.bytes_total / (1024 * 1024))
-    return (
-      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-medium" style={{ color: 'var(--c-accent-text)' }}>
-            {t('Downloading GPU support')} ({gpu.package_index}/{gpu.package_total}) — {gpu.package}
-          </span>
-          <span className="text-[16px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            {pct !== null ? `${pct}%` : '…'} · {doneMB} / {totalMB} MB
-          </span>
-        </div>
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-          {pct !== null
-            ? <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--c-accent)' }} />
-            : <div className="h-full rounded-full animate-pulse" style={{ width: '100%', background: 'color-mix(in srgb, var(--c-accent) 50%, transparent)' }} />
-          }
-        </div>
-        {gpu.phase === 'extracting' && (
-          <div className="text-[16px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{t('Extracting DLLs…')}</div>
-        )}
-      </div>
-    )
-  }
-
-  // Download finished — needs restart to take effect
-  if (gpu.phase === 'done' && gpu.dlls_present && !gpu.cuda_available) {
-    return (
-      <div className="rounded-[10px] p-3 flex items-center justify-between"
-           style={{ background: 'color-mix(in srgb, var(--c-green) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
-        <span className="text-[11px]" style={{ color: 'var(--c-green-text)' }}>
-          {t('✓ GPU DLLs downloaded — restart the backend to activate GPU')}
-        </span>
-      </div>
-    )
-  }
-
-  // Download error
-  if (gpu.phase === 'error') {
-    return (
-      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-pink) 10%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
-        <div className="text-[11px] mb-2" style={{ color: '#F4C0D1' }}>{t('GPU download failed:')} {gpu.error}</div>
-        <button onClick={() => downloadMutation.mutate()}
-                className="text-[11px] px-3 py-1 rounded-full cursor-pointer"
-                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-          {t('Retry')}
-        </button>
-      </div>
-    )
-  }
-
-  // NVIDIA GPU detected but DLLs not present — offer download
-  if (gpu.has_nvidia_gpu && !gpu.dlls_present) {
-    return (
-      <div className="rounded-[10px] p-3" style={{ background: 'color-mix(in srgb, var(--c-accent) 8%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[12px] font-medium mb-0.5" style={{ color: 'var(--c-accent-text)' }}>{t('⚡ NVIDIA GPU detected')}</div>
-            <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              {t('Download GPU acceleration (~1.6 GB, one-time). Tagging will be dramatically faster.')}
-            </div>
-          </div>
-          <button
-            onClick={() => downloadMutation.mutate()}
-            disabled={downloadMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium cursor-pointer flex-shrink-0"
-            style={{ background: 'color-mix(in srgb, var(--c-accent) 30%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 50%, transparent)' }}>
-            <Download size={11} /> {t('Download GPU support')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // No NVIDIA GPU — CPU only
-  return (
-    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] w-fit"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
-      {t('🖥 CPU only — no NVIDIA GPU detected')}
-    </span>
-  )
-}
-
-
-// ── Custom root picker ────────────────────────────────────────────────────────
-// Portals the list to document.body so backdrop-filter stacking contexts on
-// glass/cyberpunk themes can't clip or z-bury the dropdown.
-// A capture-phase scroll listener re-measures on every scroll event so the
-// list stays anchored to the button even when <main> or any parent scrolls.
-function RootDropdown({ roots, value, onChange }) {
-  const t = useT()
-  const [open, setOpen] = React.useState(false)
-  const [pos, setPos]   = React.useState(null) // plain { top, left, width }
-  const btnRef  = React.useRef(null)
-  const listRef = React.useRef(null)
-
-  const measure = React.useCallback(() => {
-    if (!btnRef.current) return
-    const r = btnRef.current.getBoundingClientRect()
-    setPos({ top: r.bottom + 4, left: r.left, width: r.width })
-  }, [])
-
-  React.useEffect(() => {
-    if (!open) return
-    measure()
-    window.addEventListener('scroll', measure, true) // capture catches all scroll containers
-    window.addEventListener('resize', measure)
-    const close = e => {
-      if (btnRef.current?.contains(e.target)) return
-      if (listRef.current?.contains(e.target)) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => {
-      window.removeEventListener('scroll', measure, true)
-      window.removeEventListener('resize', measure)
-      document.removeEventListener('mousedown', close)
-    }
-  }, [open, measure])
-
-  const selected = roots.find(r => String(r.id) === String(value))
-  const label = selected
-    ? (selected.label ? `${selected.label} — ${selected.path}` : selected.path)
-    : t('— Select a library root —')
-
-  const list = open && pos && ReactDOM.createPortal(
-    <div
-      ref={listRef}
-      style={{
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        width: pos.width,
-        zIndex: 9999,
-        background: 'var(--c-card, #1e1e1e)',
-        border: '0.5px solid rgba(255,255,255,0.14)',
-        borderRadius: 8,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-        maxHeight: 220,
-        overflowY: 'auto',
-      }}>
-      <button
-        type="button"
-        onClick={() => { onChange(''); setOpen(false) }}
-        className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-        style={{ color: 'rgba(255,255,255,0.35)' }}>
-        {t('— Select a library root —')}
-      </button>
-      {roots.map(r => (
-        <button
-          key={r.id}
-          type="button"
-          onClick={() => { onChange(String(r.id)); setOpen(false) }}
-          className="w-full text-left px-3 py-2 text-[11px] cursor-pointer hover:bg-[rgba(255,255,255,0.07)]"
-          style={{ color: String(r.id) === String(value) ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.75)', background: String(r.id) === String(value) ? 'color-mix(in srgb, var(--c-accent) 12%, transparent)' : 'transparent' }}>
-          {r.label ? <><span style={{ color: 'var(--c-accent-text)' }}>{r.label}</span> <span style={{ color: 'rgba(255,255,255,0.35)' }}>— {r.path}</span></> : r.path}
-        </button>
-      ))}
-    </div>,
-    document.body
-  )
-
-  return (
-    <div className="relative">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => { if (open) { setOpen(false) } else { measure(); setOpen(true) } }}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-[12px] text-left cursor-pointer"
-        style={{ background: 'rgba(255,255,255,0.06)', color: selected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-        <span className="truncate">{label}</span>
-        <ChevronDown size={12} style={{ flexShrink: 0, color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-      </button>
-      {list}
-    </div>
-  )
-}
-
+import RootDropdown from '../components/settings/RootDropdown'
+import AITaggingPanel from '../components/ai-tagging/AITaggingPanel'
+import TagRolesPanel from '../components/ai-tagging/TagRolesPanel'
 // ── SettingsSection (accordion — mirrors Help.jsx Section) ───────────────────
 function ChangelogBody({ text }) {
   if (!text) return null
@@ -389,17 +177,6 @@ export function Settings() {
   const [updateProgress, setUpdateProgress] = React.useState(0)
   const [updateError, setUpdateError]       = React.useState('')
   const updatePollRef = React.useRef(null)
-  // AI Tagging
-  const [tagScope, setTagScope]             = React.useState('library')  // 'library' | 'folder' | 'creator'
-  const [tagRootId, setTagRootId]           = React.useState('')
-  const [tagCreatorId, setTagCreatorId]     = React.useState('')
-  const [tagCreatorSearch, setTagCreatorSearch] = React.useState('')
-  const [tagThreshold, setTagThreshold]     = React.useState(0.35)
-  const [tagRetag, setTagRetag]             = React.useState(false)
-  const [tagStarting, setTagStarting]       = React.useState(false)
-  const [tagModelOverride, setTagModelOverride] = React.useState('auto') // 'auto'|'wd14'|'joytag'
-  const tagRunStartRef = React.useRef(null)   // { ts, progress } — for ETA calculation
-  const tagEtaRef      = React.useRef(null)   // cached ETA string
   const [restoreFile, setRestoreFile]       = React.useState(null)   // File | null
   const [restoreState, setRestoreState]     = React.useState('idle') // idle | confirming | uploading | restarting | done
   const [showResetModal, setShowResetModal] = React.useState(false)
@@ -494,11 +271,21 @@ export function Settings() {
     queryFn:  () => systemApi.mobileLink().then(r => r.data),
     enabled:  settingsTab === 'system',
   })
+  // Which address the phone gets (home Wi-Fi or Tailscale) and what the QR
+  // opens: the browser version, or the Android app's pairing link.
+  const [linkKind, setLinkKind] = React.useState(null)
+  const [linkTarget, setLinkTarget] = React.useState('browser')
+  const linkAddresses = mobileLink?.addresses ?? []
+  const activeAddress = linkAddresses.find(a => a.kind === linkKind) ?? linkAddresses[0] ?? null
+  const phoneLink = activeAddress
+    ? (linkTarget === 'app'
+        ? `thevault://connect?server=${encodeURIComponent(activeAddress.base)}`
+        : `${activeAddress.base}/m`)
+    : mobileLink?.url
+  const phoneAddress = activeAddress
+    ? (linkTarget === 'app' ? activeAddress.base : `${activeAddress.base}/m`)
+    : mobileLink?.url
 
-  const gpuMutation = useMutation({
-    mutationFn: (use_gpu) => systemApi.setGpuMode(use_gpu).then(r => r.data),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['system-config'] }),
-  })
 
   const { data: startupData } = useQuery({
     queryKey: ['system-startup'],
@@ -806,89 +593,6 @@ export function Settings() {
     refetchInterval: (query) => query.state.data?.running ? 1000 : false,
     staleTime: 0,
   })
-
-  const { data: taskQueueState } = useQuery({
-    queryKey: ['task-queue'],
-    queryFn: () => tasksApi.queue().then(r => r.data),
-    refetchInterval: q => {
-      const d = q.state.data
-      return (d?.current || d?.queued?.length > 0) ? 800 : 8000
-    },
-  })
-  const aiTaskQueued = taskQueueState?.queued?.some(t => t.type === 'ai_tag' || t.type === 'model_download')
-  const aiTaskRunning = taskQueueState?.current?.type === 'ai_tag' || taskQueueState?.current?.type === 'model_download'
-
-  const { data: tagStatus } = useQuery({
-    queryKey: ['ai-tag-status'],
-    queryFn: () => taggerApi.status().then(r => r.data),
-    refetchInterval: (query) => (query.state.data?.running || aiTaskQueued || aiTaskRunning) ? 1500 : 8000,
-  })
-
-  const { data: tagModels, refetch: refetchTagModels } = useQuery({
-    queryKey: ['ai-tag-models'],
-    queryFn: () => taggerApi.modelStatus().then(r => r.data),
-    refetchInterval: tagStatus?.running ? 3000 : false,
-  })
-
-  // Reset ETA tracking when a tagging run finishes
-  React.useEffect(() => {
-    if (!tagStatus?.running) {
-      tagRunStartRef.current = null
-      tagEtaRef.current      = null
-    }
-  }, [tagStatus?.running])
-
-  const { data: allCreators } = useQuery({
-    queryKey: ['creators-list-tagger'],
-    queryFn: () => creatorsApi.list({ limit: 1000, sort_by: 'name' }).then(r => r.data),
-    staleTime: 60000,
-  })
-
-  const filteredTagCreators = React.useMemo(() => {
-    if (!allCreators) return []
-    const q = tagCreatorSearch.toLowerCase().trim()
-    if (!q) return allCreators.slice(0, 50)
-    return allCreators.filter(c => c.name.toLowerCase().includes(q)).slice(0, 50)
-  }, [allCreators, tagCreatorSearch])
-
-  const startTagging = async () => {
-    const tagFolderPath = (roots ?? []).find(r => String(r.id) === String(tagRootId))?.path ?? null
-    if (tagScope === 'folder' && !tagFolderPath) {
-      toast.error(t('Select a library folder to tag'))
-      return
-    }
-    if (tagScope === 'creator' && !tagCreatorId) {
-      toast.error(t('Select a creator to tag'))
-      return
-    }
-    setTagStarting(true)
-    try {
-      await taggerApi.start({
-        scope: tagScope,
-        folder_path: tagScope === 'folder' ? tagFolderPath : null,
-        creator_id: tagScope === 'creator' ? parseInt(tagCreatorId, 10) : null,
-        threshold: tagThreshold,
-        retag: tagRetag,
-        model_override: tagModelOverride === 'auto' ? null : tagModelOverride,
-      })
-      qc.invalidateQueries({ queryKey: ['ai-tag-status'] })
-      qc.invalidateQueries({ queryKey: ['task-queue'] })
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || t('Failed to start tagging'))
-    } finally {
-      setTagStarting(false)
-    }
-  }
-
-  const downloadModel = async (model) => {
-    try {
-      await taggerApi.downloadModels({ [model]: true })
-      toast.success(t('Downloading {model}…', { model: model === 'wd14' ? 'WD14' : 'JoyTag' }))
-      refetchTagModels()
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || t('Download failed'))
-    }
-  }
 
   const addRoot = async () => {
     if (!newPath.trim()) return
@@ -1384,258 +1088,8 @@ export function Settings() {
             {/* ── AI Tagging tab ───────────────────────── */}
             {settingsTab === 'tagging' && (
               <div className="space-y-3">
-                <SettingsSection title={t('AI models')} icon={Download} accentColor="var(--c-accent)">
-                  <p className="text-[16px] text-white/45 mb-4">
-                    {t('WD14 for anime/art, JoyTag for cosplay and real photos. Both are local ONNX models — nothing sent to the cloud.')}
-                  </p>
-                  <div className="mb-4"><GpuStatusPanel /></div>
-                  <div className="flex flex-col gap-2">
-                    {[
-                      { key: 'wd14',   label: 'WD14 v3', desc: 'Anime / art / characters (~200 MB)',       ready: tagModels?.wd14_downloaded,   size: tagModels?.wd14_size_mb },
-                      { key: 'joytag', label: 'JoyTag',  desc: 'Cosplay / real photos / ethots (~366 MB)', ready: tagModels?.joytag_downloaded, size: tagModels?.joytag_size_mb },
-                    ].map(({ key, label, desc, ready, size }) => (
-                      <div key={key} className="flex items-center justify-between py-3 px-4 rounded-[8px]"
-                           style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full flex-shrink-0"
-                               style={{ background: ready ? 'var(--c-green)' : 'rgba(255,255,255,0.2)' }} />
-                          <div>
-                            <div className="text-[16px] font-medium text-white/80">{t(label)}</div>
-                            <div className="text-[14px] text-white/35">{ready ? `${t('Downloaded')} · ${size ?? '?'} MB` : t(desc)}</div>
-                          </div>
-                        </div>
-                        {!ready && (
-                          <button disabled={tagStatus?.running} onClick={() => downloadModel(key)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[14px] cursor-pointer disabled:opacity-40"
-                                  style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-                            <Download size={12} /> {t('Download')}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </SettingsSection>
-
-                <SettingsSection title={t('Run tagging')} icon={Cpu} accentColor="var(--c-accent)">
-                  {(tagStatus?.running || tagStatus?.paused) ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                          {tagStatus.active_model && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: tagStatus.active_model === 'WD14' ? 'rgba(55,138,221,0.2)' : 'color-mix(in srgb, var(--c-pink) 20%, transparent)',
-                                           color:      tagStatus.active_model === 'WD14' ? '#7AB8F5' : '#F4C0D1' }}>
-                              <Cpu size={9} /> {tagStatus.active_model}
-                            </span>
-                          )}
-                          {tagStatus.device && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: tagStatus.device === 'gpu' ? 'color-mix(in srgb, var(--c-green) 20%, transparent)' : 'rgba(255,255,255,0.07)',
-                                           color:      tagStatus.device === 'gpu' ? 'var(--c-green-text)' : 'rgba(255,255,255,0.4)' }}>
-                              {tagStatus.device === 'gpu' ? t('⚡ GPU') : t('🖥 CPU')}
-                            </span>
-                          )}
-                          {tagStatus.total === 0 ? (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[13px] font-medium flex-shrink-0"
-                                  style={{ background: 'color-mix(in srgb, var(--c-amber) 18%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)' }}>
-                              {t('⬇ Downloading model')}
-                            </span>
-                          ) : (
-                            <span className="text-[14px] text-white/55 flex-shrink-0">{tagStatus.progress} / {tagStatus.total}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                          {tagStatus.paused ? (
-                            <button onClick={async () => { await taggerApi.resume(tagStatus.job_id); qc.invalidateQueries({ queryKey: ['ai-tag-status'] }); qc.invalidateQueries({ queryKey: ['task-queue'] }) }}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
-                                    style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
-                              <Play size={14} /> {t('Resume')}
-                            </button>
-                          ) : (
-                            <button onClick={async () => { await taggerApi.pause(); qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
-                                    style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)' }}>
-                              <Pause size={14} /> {t('Pause')}
-                            </button>
-                          )}
-                          <button onClick={async () => { await taggerApi.cancel(); tagRunStartRef.current = null; qc.invalidateQueries({ queryKey: ['ai-tag-status'] }) }}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-base cursor-pointer"
-                                  style={{ background: 'color-mix(in srgb, var(--c-pink) 15%, transparent)', color: '#F4C0D1', border: '0.5px solid color-mix(in srgb, var(--c-pink) 30%, transparent)' }}>
-                            <X size={14} /> {t('Cancel')}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.07)] overflow-hidden">
-                        {tagStatus.total > 0 ? (() => {
-                          if (!tagRunStartRef.current && tagStatus.progress > 0)
-                            tagRunStartRef.current = { ts: Date.now(), progress: tagStatus.progress }
-                          return <div className="h-full rounded-full transition-all" style={{ width: `${(tagStatus.progress / tagStatus.total) * 100}%`, background: 'var(--c-accent)' }} />
-                        })() : (
-                          <div className="h-full rounded-full"
-                               style={{ width: '100%', background: 'linear-gradient(90deg,color-mix(in srgb, var(--c-amber) 25%, transparent) 0%,color-mix(in srgb, var(--c-amber) 60%, transparent) 50%,color-mix(in srgb, var(--c-amber) 25%, transparent) 100%)', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                        )}
-                      </div>
-                      {tagStatus.total > 0 ? (() => {
-                        let etaStr = ''
-                        if (tagStatus.paused) {
-                          etaStr = t('Paused — progress saved')
-                        } else if (Number.isFinite(tagStatus.eta_seconds)) {
-                          const remaining = tagStatus.eta_seconds
-                          etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)} ${t('hours left')}` : remaining >= 60 ? `~${Math.round(remaining/60)} ${t('minutes left')}` : `~${Math.round(remaining)} ${t('seconds left')}`
-                        } else if (tagRunStartRef.current && tagStatus.progress > tagRunStartRef.current.progress) {
-                          const elapsed = (Date.now() - tagRunStartRef.current.ts) / 1000
-                          const done = tagStatus.progress - tagRunStartRef.current.progress
-                          const remaining = (tagStatus.total - tagStatus.progress) / (done / elapsed)
-                          if (remaining > 0) {
-                            etaStr = remaining >= 3600 ? `~${Math.round(remaining/3600)} ${t('hours left')}` : remaining >= 60 ? `~${Math.round(remaining/60)} ${t('minutes left')}` : `~${Math.round(remaining)} ${t('seconds left')}`
-                            tagEtaRef.current = etaStr
-                          } else { etaStr = tagEtaRef.current || '' }
-                        } else { etaStr = tagEtaRef.current || '' }
-                        return (
-                          <div className="mt-1 flex flex-col gap-0.5">
-                            <div className="flex items-center justify-between">
-                              <div className="text-[13px] text-white/30">
-                                {tagStatus.tagged} {t('tagged')} · {tagStatus.skipped} {t('skipped')}
-                                {tagStatus.errors > 0 && <span style={{ color: '#F4C0D1' }}> · {tagStatus.errors} {t('errors')}</span>}
-                              </div>
-                              {etaStr && <div className="text-[13px]" style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{etaStr}</div>}
-                            </div>
-                            {tagStatus.current_path && (
-                              <div className="text-[13px] truncate text-white/20" title={tagStatus.current_path}>
-                                {tagStatus.current_path.replace(/.*[\\/]/, '')}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })() : (
-                        <div className="text-[13px] text-white/35 mt-1">{tagStatus.message}</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-5">
-                      {tagStatus?.message && tagStatus.message !== 'Idle' && (
-                        <div className="text-[16px] text-white/45">{tagStatus.message}</div>
-                      )}
-                      <div>
-                        <div className="text-[15px] font-semibold text-white/55 mb-2">{t('Scope')}</div>
-                        <div className="flex gap-2 flex-wrap">
-                          {[{ key: 'library', label: 'Entire library' }, { key: 'folder', label: 'Specific folder' }, { key: 'creator', label: 'By creator' }].map(({ key, label }) => (
-                            <button key={key} onClick={() => setTagScope(key)}
-                                    className="px-3 py-1.5 rounded-[6px] text-[15px] cursor-pointer"
-                                    style={{ background: tagScope === key ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)', color: tagScope === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagScope === key ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}` }}>
-                              {t(label)}
-                            </button>
-                          ))}
-                        </div>
-                        {tagScope === 'folder' && <div className="mt-2"><RootDropdown roots={roots ?? []} value={tagRootId} onChange={setTagRootId} /></div>}
-                        {tagScope === 'creator' && (
-                          <div className="mt-2 flex flex-col gap-1.5">
-                            <input placeholder={t('Search creators…')} value={tagCreatorSearch}
-                                   onChange={e => { setTagCreatorSearch(e.target.value); setTagCreatorId('') }}
-                                   className="w-full px-3 py-2 rounded-[8px] text-[15px] outline-none"
-                                   style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }} />
-                            {tagCreatorId && (() => {
-                              const sel = filteredTagCreators.find(c => String(c.id) === String(tagCreatorId)) || (allCreators ?? []).find(c => String(c.id) === String(tagCreatorId))
-                              return sel ? (
-                                <div className="flex items-center justify-between px-3 py-2 rounded-[8px]"
-                                     style={{ background: 'color-mix(in srgb, var(--c-accent) 15%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
-                                  <span style={{ fontSize: 15, color: 'var(--c-accent-text)', fontWeight: 600 }}>{sel.name}</span>
-                                  <button onClick={() => setTagCreatorId('')} className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}><X size={12} /></button>
-                                </div>
-                              ) : null
-                            })()}
-                            {!tagCreatorId && filteredTagCreators.length > 0 && (
-                              <div className="rounded-[8px] overflow-hidden overflow-y-auto"
-                                   style={{ background: '#161620', border: '0.5px solid rgba(255,255,255,0.1)', maxHeight: 160 }}>
-                                {filteredTagCreators.map(c => (
-                                  <button key={c.id} onClick={() => { setTagCreatorId(String(c.id)); setTagCreatorSearch('') }}
-                                          className="w-full text-left px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
-                                          style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}
-                                          onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 12%, transparent)'}
-                                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: {cosplayer:'#1D9E75',ethot:'#D4537E',artist:'#7F77DD',character:'#BA7517',actress:'#378ADD',custom:'#888780'}[c.creator_type] || '#888780', flexShrink: 0, display: 'inline-block' }} />
-                                    {c.name}
-                                    <span style={{ marginLeft: 'auto', fontSize: 13, color: 'rgba(255,255,255,0.25)', textTransform: 'capitalize' }}>{c.creator_type}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            {!tagCreatorId && filteredTagCreators.length === 0 && tagCreatorSearch && (
-                              <div className="px-3 py-2 rounded-[8px] text-[15px]" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)' }}>{t('No creators found')}</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[15px] font-semibold text-white/55 mb-2">{t('Model')}</div>
-                        <div className="flex gap-2">
-                          {[{ key: 'auto', label: 'Auto', desc: 'Routes by creator type' }, { key: 'wd14', label: 'WD14', desc: 'Anime / art / characters', disabled: !tagModels?.wd14_downloaded }, { key: 'joytag', label: 'JoyTag', desc: 'Cosplay / real photos', disabled: !tagModels?.joytag_downloaded }].map(({ key, label, desc, disabled }) => (
-                            <button key={key} disabled={disabled} onClick={() => !disabled && setTagModelOverride(key)}
-                                    className="flex-1 px-2 py-1.5 rounded-[6px] text-[15px] cursor-pointer text-center disabled:opacity-30"
-                                    style={{ background: tagModelOverride === key ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'rgba(255,255,255,0.05)', color: tagModelOverride === key ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.5)', border: `0.5px solid ${tagModelOverride === key ? 'color-mix(in srgb, var(--c-accent) 40%, transparent)' : 'rgba(255,255,255,0.07)'}` }}
-                                    title={disabled ? t('Model not downloaded') : t(desc)}>
-                              {t(label)}
-                            </button>
-                          ))}
-                        </div>
-                        {tagModelOverride === 'auto' && (
-                          <div className="text-[14px] text-white/25 mt-1">{t("Galleries with an assigned creator use that creator's type. Unassigned → JoyTag (or WD14 fallback).")}</div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="text-[15px] font-semibold text-white/55">{t('Confidence threshold')}</div>
-                          <div className="text-[15px] font-mono" style={{ color: 'var(--c-accent-text)' }}>{Math.round(tagThreshold * 100)}%</div>
-                        </div>
-                        <input type="range" min="10" max="90" step="5" value={Math.round(tagThreshold * 100)}
-                               onChange={e => setTagThreshold(Number(e.target.value) / 100)}
-                               className="w-full accent-[var(--c-accent)] cursor-pointer" />
-                        <div className="flex justify-between text-[13px] text-white/25 mt-0.5">
-                          <span>{t('More tags (10%)')}</span><span>{t('Fewer, precise (90%)')}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[16px] text-white/75">{t('GPU acceleration (NVIDIA CUDA)')}</div>
-                          <div className="text-[14px] text-white/30 mt-0.5">{configData?.use_gpu !== false ? t('ON — using CUDA if available, CPU fallback otherwise') : t('OFF — running on CPU only')}</div>
-                          {configData?.use_gpu === false && <div className="text-[14px] mt-1" style={{ color: 'var(--c-amber)' }}>{t('⚠ No NVIDIA GPU mode — AI tagging will be slower')}</div>}
-                        </div>
-                        <button onClick={() => gpuMutation.mutate(configData?.use_gpu === false ? true : false)}
-                                disabled={gpuMutation.isPending}
-                                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors disabled:opacity-50"
-                                style={{ background: configData?.use_gpu !== false ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
-                          <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
-                               style={{ left: configData?.use_gpu !== false ? 'calc(100% - 17px)' : '3px' }} />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[16px] text-white/75">{t('Re-tag already tagged images')}</div>
-                          <div className="text-[14px] text-white/30 mt-0.5">{t('Off = skip images that already have AI tags')}</div>
-                        </div>
-                        <button onClick={() => setTagRetag(!tagRetag)}
-                                className="w-10 h-5 rounded-full relative cursor-pointer flex-shrink-0 transition-colors"
-                                style={{ background: tagRetag ? 'color-mix(in srgb, var(--c-accent) 60%, transparent)' : 'rgba(255,255,255,0.1)' }}>
-                          <div className="w-3.5 h-3.5 rounded-full absolute top-[3px] transition-all bg-white"
-                               style={{ left: tagRetag ? 'calc(100% - 17px)' : '3px' }} />
-                        </button>
-                      </div>
-                      {aiTaskQueued ? (
-                        <div className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[15px] w-fit"
-                             style={{ background: 'color-mix(in srgb, var(--c-accent) 10%, transparent)', color: 'rgba(255,255,255,0.45)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent)' }}>
-                          <Clock size={12} style={{ color: 'var(--c-accent)' }} /> {t('Queued in task queue…')}
-                        </div>
-                      ) : (
-                        <button disabled={tagStarting || (!tagModels?.wd14_downloaded && !tagModels?.joytag_downloaded)}
-                                onClick={startTagging}
-                                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-[16px] cursor-pointer w-fit disabled:opacity-40"
-                                style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
-                          <Cpu size={13} /> {tagStarting ? t('Starting…') : t('Start AI Tagging')}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </SettingsSection>
+                <AITaggingPanel Section={SettingsSection} />
+                <TagRolesPanel Section={SettingsSection} />
               </div>
             )}
 
@@ -2037,36 +1491,65 @@ export function Settings() {
               <div className="space-y-3">
                 <SettingsSection title={t('Connect mobile device')} icon={Smartphone} accentColor="var(--c-accent)">
                   <div className="text-[16px] text-white/45 mb-4 leading-relaxed">
-                    {t('Open The Vault on your phone. Put the phone on the')} <strong className="text-white/70">{t('same Wi-Fi')}</strong> {t("as this PC, then scan the code below or type the address into the phone's browser. Tap")} <strong className="text-white/70">{t('Add to Home Screen')}</strong> {t('to get a full-screen app with no browser bars.')}
+                    {t('Scan the code with your phone camera.')} <strong className="text-white/70">{t('Home Wi-Fi')}</strong> {t('works when the phone is on the same network as this PC.')} <strong className="text-white/70">{t('Tailscale')}</strong> {t('works from anywhere, as long as Tailscale is on for both devices, and its address never changes.')}
                   </div>
-                  {mobileLink?.found === false && (
+                  {mobileLink?.found === false && !linkAddresses.length && (
                     <div className="flex items-center gap-2 text-[16px] mb-4 p-3 rounded-[8px]"
                          style={{ background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 30%, transparent)', color: 'var(--c-amber-text)' }}>
                       <AlertCircle size={16} /> {t("Could not find this PC's network address. Make sure you're connected to Wi-Fi or a network.")}
                     </div>
                   )}
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    {linkAddresses.length > 1 && (
+                      <div className="flex gap-1 p-1 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        {linkAddresses.map(a => (
+                          <button key={a.kind} onClick={() => setLinkKind(a.kind)}
+                                  className="px-3.5 py-1.5 rounded-full text-[15px] cursor-pointer"
+                                  style={activeAddress?.kind === a.kind
+                                    ? { background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)' }
+                                    : { color: 'rgba(255,255,255,0.5)' }}>
+                            {a.kind === 'tailscale' ? t('Tailscale (anywhere)') : t('Home Wi-Fi')}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-1 p-1 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                      {[['browser', t('Phone browser')], ['app', t('Android app')]].map(([id, label]) => (
+                        <button key={id} onClick={() => setLinkTarget(id)}
+                                className="px-3.5 py-1.5 rounded-full text-[15px] cursor-pointer"
+                                style={linkTarget === id
+                                  ? { background: 'color-mix(in srgb, var(--c-accent) 25%, transparent)', color: 'var(--c-accent-text)' }
+                                  : { color: 'rgba(255,255,255,0.5)' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-6 flex-wrap">
-                    {mobileLink?.url && (
+                    {phoneLink && (
                       <div className="p-3 rounded-[12px] bg-white flex-shrink-0">
-                        <QRCodeCanvas value={mobileLink.url} size={168} level="M" includeMargin={false} />
+                        <QRCodeCanvas value={phoneLink} size={168} level="M" includeMargin={false} />
                       </div>
                     )}
                     <div className="flex-1 min-w-[220px]">
-                      <div className="text-[15px] text-white/35 mb-1">{t('Address for your phone')}</div>
+                      <div className="text-[15px] text-white/35 mb-1">{linkTarget === 'app' ? t('Server address for the app') : t('Address for your phone')}</div>
                       <div className="flex items-center gap-2">
                         <code className="text-[18px] font-mono px-3 py-2 rounded-[8px] flex-1 break-all"
                               style={{ background: 'rgba(255,255,255,0.05)', color: '#D0CEFD', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                          {mobileLink?.url ?? '…'}
+                          {phoneAddress ?? '…'}
                         </code>
-                        <button onClick={() => { if (mobileLink?.url) { navigator.clipboard?.writeText(mobileLink.url); toast.success(t('Address copied')) } }}
-                                disabled={!mobileLink?.url}
+                        <button onClick={() => { if (phoneAddress) { navigator.clipboard?.writeText(phoneAddress); toast.success(t('Address copied')) } }}
+                                disabled={!phoneAddress}
                                 className="flex items-center gap-2 px-3 py-2.5 rounded-[8px] text-[16px] font-medium cursor-pointer flex-shrink-0 disabled:opacity-40"
                                 style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#B8B4F0', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
                           <Copy size={15} /> {t('Copy')}
                         </button>
                       </div>
                       <div className="text-[15px] text-white/30 mt-3 leading-relaxed">
-                        {t('Keep The Vault running on this PC — your phone reads the library straight from here, so nothing is copied to the phone.')}
+                        {linkTarget === 'app'
+                          ? t('Scanning opens The Vault app and connects it to this PC. You can also type the address into the app.')
+                          : t('Tap Add to Home Screen in the phone browser to get a full-screen app with no browser bars.')}
+                        {' '}{t('Keep The Vault running on this PC — your phone reads the library straight from here, so nothing is copied to the phone.')}
                       </div>
                     </div>
                   </div>

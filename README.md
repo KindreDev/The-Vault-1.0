@@ -115,7 +115,9 @@ containers and codecs. If WebView2 cannot decode a selected file, the viewer tri
 a compatible playback copy and then falls back to libVLC. VLC scales its shared
 frame output to the visible video size to reduce 4K frame-copy work.
 `get_vlc.ps1` prepares the verified official Windows runtime for packaging; the
-desktop build requires it. For native desktop development, start the normal
+desktop build requires it. `build.bat` generates VLC's `plugins.dat` cache on the
+packaged copy, and the installer regenerates it on the installed files, because
+VLC validates the cache by file timestamps. For native desktop development, start the normal
 backend and Vite servers, then run
 `backend\venv\Scripts\python.exe scripts\run_desktop.py`. Development can use an
 installed VLC runtime if `tools/vlc` has not been prepared.
@@ -186,6 +188,10 @@ Verify fresh installation, upgrade with copied data, and the update/relaunch flo
 ## Project conventions
 
 Read [AGENTS.md](AGENTS.md) for architecture, visual rules, TCG contracts, asset tooling, and collaboration conventions. [CLAUDE.md](CLAUDE.md) points to the same shared instructions. Record user-facing changes in [CHANGELOG.md](CHANGELOG.md), and preserve [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and asset licenses.
+
+### Android app updates
+
+The installed APK learns about updates from `mobile.json` next to the installer (`https://downloads.vault-app.site/mobile.json`: `version`, `build`, `url`, `notes`). For every new APK, raise `versionCode` in `frontend-mobile/android/app/build.gradle` (the app compares this build number), upload `TheVault.apk` and verify its public checksum, then upload `mobile.json` last with `Cache-Control: no-cache, max-age=0, must-revalidate` and `Content-Type: application/json`.
 
 ### Release survey link
 

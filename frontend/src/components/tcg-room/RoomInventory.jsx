@@ -187,6 +187,8 @@ async function hydratePacks(results, contents = [], catalogProducts = []) {
   const products = new Map(contents.map(line => [line.product_id, { product: line.product || {}, selected_release_id: line.selected_release_id }]))
   const previews = new Map(catalogProducts.map(product => [product.id, product]))
   return Promise.all((results || []).map(async result => ({
+    reaction: result.reaction,
+    bounties: result.bounties,
     product: (() => {
       const line = products.get(result.product_id)
       const product = line?.product || result.product || {}
@@ -322,9 +324,9 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
         : catalog?.preview_art_urls
       if (catalog) Object.assign(product, catalog, previewArt ? { preview_art_urls: previewArt, collage_images: previewArt } : {})
       if (cards.length && typeof cards[0] !== 'object') {
-        return hydratePacks([{ product_id: token.product_id, product, cards }])
+        return hydratePacks([{ product_id: token.product_id, product, cards, reaction: data.reaction, bounties: data.bounties }])
       }
-      return [{ product, cards }]
+      return [{ product, cards, reaction: data.reaction, bounties: data.bounties }]
     },
     onSuccess: packs => {
       setOpeningLabel('')
@@ -509,7 +511,7 @@ export default function RoomInventory({ onClose, onPlaceFurniture, initialTab = 
             ['Published', readableDate(published)],
             ['User rating', detail.user_rating != null ? (detail.user_rating || 'Unrated') : null],
             ['Exposure', classification.exposure && classification.exposure !== 'Unknown' ? classification.exposure : null],
-            ['Sexual intensity', classification.intensity && classification.intensity !== 'Unknown' ? classification.intensity : null],
+            ['Spice', classification.intensity && classification.intensity !== 'Unknown' ? classification.intensity : null],
           ].filter(([, value]) => value !== null && value !== undefined && value !== '')
           return <>
             <dl className="vault-inv__card-detail-grid">

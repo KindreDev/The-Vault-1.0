@@ -3,7 +3,7 @@
 ; Output:   dist\VaultSetup.exe
 
 #define AppName      "The Vault"
-#define AppVersion   "2.0.4"
+#define AppVersion   "2.0.7"
 #define AppPublisher "The Vault"
 #define AppURL       "https://vault-app.site"
 #define AppExeName   "vault.exe"
@@ -65,6 +65,13 @@ Name: "{userdesktop}\{#AppName}";     Filename: "{app}\{#AppExeName}"; Tasks: de
 Root: HKCU; Subkey: "Software\TheVault"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
+; Rebuild VLC's plugin cache against the installed files. Setup rounds file
+; timestamps to 2 seconds, which invalidates entries in the cache built by
+; build.bat; VLC would then rescan those plugins on the first video. Runs
+; before either launch entry, in interactive and silent installs.
+Filename: "{app}\_internal\vlc\vlc-cache-gen.exe"; \
+  Parameters: """{app}\_internal\vlc\plugins"""; \
+  Flags: runhidden waituntilterminated
 ; Offer to launch the app when the installer finishes (interactive installs)
 Filename: "{app}\{#AppExeName}"; \
   Description: "Launch {#AppName} now"; \

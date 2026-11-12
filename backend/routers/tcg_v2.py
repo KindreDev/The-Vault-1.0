@@ -241,6 +241,21 @@ def open_pack(product_id: int, request: OpenPackRequest, db: Session = Depends(g
     return result
 
 
+@router.post("/binders/{binder_id}/session")
+def binder_session(binder_id: int, db: Session = Depends(get_db)):
+    from services.tcg_deck_session import binder_session as build
+    try:
+        return build(db, binder_id)
+    except ValueError as error:
+        raise HTTPException(400, str(error))
+
+
+@router.get("/collections")
+def collections(db: Session = Depends(get_db)):
+    from services import tcg_collections
+    return tcg_collections.collections(db)
+
+
 @router.get("/binders")
 def binders(db: Session = Depends(get_db)):
     return tcg_v2.list_binders(db)

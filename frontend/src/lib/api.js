@@ -168,8 +168,8 @@ export const galleriesApi = {
   },
   recent:        (n = 8)           => api.get('/galleries/recent', { params: { limit: n } }),
   random:        ()                => api.get('/galleries/random'),
-  hof:           (n = 10, offset = 0, period = 'all') => api.get('/galleries/hall-of-fame', { params: { limit: n, offset, period } }),
-  galleryHof:    (n = 5, offset = 0, period = 'all')  => api.get('/galleries/gallery-hof', { params: { limit: n, offset, period } }),
+  hof:           (n = 10, offset = 0, period = 'all', ago = 0) => api.get('/galleries/hall-of-fame', { params: { limit: n, offset, period, ago } }),
+  galleryHof:    (n = 5, offset = 0, period = 'all', ago = 0)  => api.get('/galleries/gallery-hof', { params: { limit: n, offset, period, ago } }),
   stats:         ()                => api.get('/galleries/stats'),
   periods:       (params)          => api.get('/galleries/periods', { params }),
   images:        (id, params)      => api.get(`/galleries/${id}/images`, { params }),
@@ -241,7 +241,7 @@ export const creatorsApi = {
   countries:         ()       => api.get('/creators/countries'),
   bulkUpdate:        (ids, patch) => api.post('/creators/bulk-update', { ids, ...patch }),
   bulkDelete:        (ids)    => api.post('/creators/bulk-delete', { ids }),
-  hof:             (n = 5, offset = 0, period = 'all') => api.get('/creators/hall-of-fame', { params: { limit: n, offset, period } }),
+  hof:             (n = 5, offset = 0, period = 'all', ago = 0) => api.get('/creators/hall-of-fame', { params: { limit: n, offset, period, ago } }),
   distribution:      ()      => api.get('/creators/distribution'),
   // Full ranked list behind each Stats chart (metric: time_spent|sessions|edges|cum|views)
   leaderboard:       (metric, limit = 30, offset = 0) =>
@@ -528,6 +528,21 @@ export const taggerApi = {
   resume:         (jobId) => api.post('/scanner/ai-tag-resume', jobId ? { job_id: jobId } : {}),
 }
 
+// ── Tag insights: roles, taste profile, rankings, picks, Tag Hall of Fame ─────
+export const insightsApi = {
+  roles:      ()                     => api.get('/insights/roles'),
+  setRole:    (tagId, role)          => api.patch(`/insights/roles/${tagId}`, { role }),
+  taste:      (limit = 20)           => api.get('/insights/taste', { params: { limit } }),
+  top:        (limit = 8)            => api.get('/insights/top', { params: { limit } }),
+  trending:   (limit = 8, days = 7)  => api.get('/insights/trending', { params: { limit, days } }),
+  together:   (limit = 8)            => api.get('/insights/together', { params: { limit }, timeout: 150000 }),
+  forYou:     (limit = 24, seed = 0, media = 'all') => api.get('/insights/for-you', { params: { limit, seed, media } }),
+  hiddenGems: (limit = 12)           => api.get('/insights/hidden-gems', { params: { limit } }),
+  similar:    (imageId, limit = 24)  => api.get(`/insights/similar/${imageId}`, { params: { limit } }),
+  tagHof:     (tagId, period = 'all', limit = 15, ago = 0) => api.get(`/insights/tag-hof/${tagId}`, { params: { period, limit, ago } }),
+  spiceOrder: (imageIds)             => api.post('/insights/spice-order', { image_ids: imageIds }),
+}
+
 // ── TCG: Cards ────────────────────────────────────────────────────────────────
 export const cardsApi = {
   inventory:           (params)   => api.get('/cards/inventory', { params }),
@@ -585,6 +600,8 @@ export const tcgV2Api = {
   openPack:             (id, data = {}) => openRecoverablePack(
     (productId, request) => api.post(`/tcg-v2/packs/${productId}/open`, request, { timeout: 300000 }), id, data,
   ),
+  collections:          ()              => api.get('/tcg-v2/collections'),
+  binderSession:        (id)            => api.post(`/tcg-v2/binders/${id}/session`),
   binders:              ()              => api.get('/tcg-v2/binders'),
   createBinder:         (data)          => api.post('/tcg-v2/binders', data),
   binder:               (id)            => api.get(`/tcg-v2/binders/${id}`),
@@ -624,6 +641,7 @@ export const tcgRoomApi = {
   rotateFurniture: (id, data)          => api.post(`/tcg-room/furniture/${id}/rotate`, data),
   returnFurniture: (id, expected_revision) => api.post(`/tcg-room/furniture/${id}/return`, { expected_revision }),
   assignDisplay:   (data)              => api.put('/tcg-room/display-items/assignment', data),
+  arrangeDisplay:  (id, data)          => api.post(`/tcg-room/display-items/${id}/arrange`, data),
   order:           (lines, delivery_delay_seconds = 5) => api.post('/tcg-room/orders', { lines, delivery_delay_seconds }),
   parcel:          (id)                => api.get(`/tcg-room/parcels/${id}`),
   collectParcel:   (id)                => api.post(`/tcg-room/parcels/${id}/collect`),

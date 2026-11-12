@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { X, Camera, Film, Play, Pause, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react'
+import { X, Camera, Film, Play, Pause, ChevronLeft, ChevronRight, SkipBack, SkipForward, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { creatorsApi } from '../lib/api'
 import { useVaultStore } from '../store/vault'
 import { useT } from '../i18n'
 
 import ModalLayer from './ModalLayer'
+import VaultVideo from './VaultVideo'
 const CLIP_SECONDS = 3
 const FRAME = 1 / 30
 
@@ -39,6 +40,8 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
   const [playing, setPlaying] = useState(false)
   const [dur, setDur]         = useState(0)
   const [cur, setCur]         = useState(0)
+  const [loadError, setLoadError] = useState(false)
+  const ready = dur > 0
   const bumpAvatarBust = useVaultStore(s => s.bumpAvatarBust)
 
   const isBanner = mode === 'banner'
@@ -151,7 +154,10 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
 
         {/* Video */}
         <div className="relative" style={{ background: '#000' }}>
-          <video
+          {/* VaultVideo plays the original file through VLC in the desktop app,
+              so no browser conversion is needed before the first frame. It needs
+              a fixed height because the VLC surface is a plain box. */}
+          <VaultVideo
             ref={videoRef}
             src={`/api/images/${image.id}/file`}
             muted
@@ -163,10 +169,19 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
             onSeeked={e => setCur(e.currentTarget.currentTime)}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            style={{ width: '100%', maxHeight: '52vh', display: 'block', cursor: 'pointer' }}
+            onError={() => setLoadError(true)}
+            style={{ width: '100%', height: '52vh', objectFit: 'contain', display: 'block', cursor: 'pointer' }}
           />
+          {!ready && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none"
+                 style={{ color: 'rgba(255,255,255,0.5)' }}>
+              {loadError
+                ? <span className="text-[13px]">{t('This video could not be opened')}</span>
+                : <><Loader2 size={26} className="animate-spin" /><span className="text-[13px]">{t('Loading video…')}</span></>}
+            </div>
+          )}
           {/* Center play overlay when paused */}
-          {!playing && !busy && (
+          {ready && !playing && !busy && (
             <div onClick={togglePlay}
                  className="absolute inset-0 flex items-center justify-center cursor-pointer">
               <div className="flex items-center justify-center rounded-full"
@@ -235,12 +250,12 @@ export default function AvatarFramePicker({ creatorId, image, mode = 'avatar', o
 
           {/* Capture buttons */}
           <div className="flex items-center justify-center gap-3 mt-1">
-            <button onClick={() => capture(false)} disabled={!!busy}
+            <button onClick={() => capture(false)} disabled={!!busy || !ready}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-full text-[13px] font-semibold cursor-pointer disabled:opacity-40 transition-transform active:scale-[0.97]"
                     style={{ background: `color-mix(in srgb, ${accent} 28%, transparent)`, color: '#fff', border: `0.5px solid color-mix(in srgb, ${accent} 55%, transparent)` }}>
               <Camera size={14} /> {busy === 'frame' ? t('Capturing…') : t('Use this frame')}
             </button>
-            <button onClick={() => capture(true)} disabled={!!busy}
+            <button onClick={() => capture(true)} disabled={!!busy || !ready}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-full text-[13px] font-semibold cursor-pointer disabled:opacity-40 transition-transform active:scale-[0.97]"
                     style={{ background: 'color-mix(in srgb, var(--c-pink) 20%, transparent)', color: 'var(--c-pink-text)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 45%, transparent)' }}>
               <Film size={14} /> {busy === 'clip' ? t('Rendering clip…') : t('Use 3s animated clip')}

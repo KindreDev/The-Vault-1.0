@@ -12,6 +12,7 @@ import AdvancedSettings from '../components/tcg-workspace/AdvancedSettings'
 import BinderWorkspace from '../components/tcg-workspace/BinderWorkspace'
 import CardInspector from '../components/tcg-workspace/CardInspector'
 import CollectionBrowser from '../components/tcg-workspace/CollectionBrowser'
+import CollectionsBoard from '../components/tcg-workspace/CollectionsBoard'
 
 import ReleaseBrowser from '../components/tcg-workspace/ReleaseBrowser'
 import TCGNavigation, { TCG_VIEWS } from '../components/tcg-workspace/TCGNavigation'
@@ -187,6 +188,7 @@ function TCGWorkspace() {
       <div className="tcgws-content">
         {(view === 'releases' || view === 'sets') && <ReleaseBrowser releases={releases} sets={sets} releaseId={releaseId} setId={setId} onRelease={setRelease} onSet={setSelectedSet} onOpenCard={openCard} setsOnly={view === 'sets'} advanced={summary.settings.advanced_mode} generationMode={summary.settings.release_generation_mode} />}
         {COLLECTION_VIEWS.has(view) && <CollectionBrowser entries={catalog?.items || []} view={view} hasLegacyCards={summary.has_legacy_cards} classifications={classifications} values={summary.classification_values} releases={releases} sets={sets} filterOptions={catalogFilterOptions} total={catalog?.total || 0} page={catalogPage} pageSize={catalogPageSize} onPage={setCatalogPage} onFilters={updateCatalogFilters} onOpen={card => openCard(card)} serverFiltered loading={catalogLoading} />}
+        {view === 'collections' && <CollectionsBoard />}
         {view === 'binders' && <BinderWorkspace onOpenCard={openCard} />}
         {view === 'workshop' && <Workshop packs={packs} releases={releases} onOpenedPacks={setOpenedPacks} onBusyChange={setShopBusy} onProgress={setShopProgress} />}
       </div>

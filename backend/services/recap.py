@@ -373,6 +373,18 @@ def _delta(now_v, prev_v):
     return round((now_v - prev_v) / prev_v * 100)
 
 
+def _taste(db, since, until, limit=5) -> list:
+    """The tags most over-represented in what you engaged with in the window:
+    your type for that week/month/year."""
+    from services import tag_insights
+    weights = (tag_insights.weights_window(db, since, until) if since
+               else tag_insights.weights_all_time(db))
+    if len(weights) < 5:
+        return []
+    rows = tag_insights.lift_profile(db, weights, min_files=3)
+    return [{"name": r["name"], "lift": r["lift"]} for r in rows if r["lift"] >= 1.2][:limit]
+
+
 def build_deck(db: Session, period: str) -> dict:
     since, until, prev_since = window(period)
     counts = _counts(db, since, until)
@@ -438,6 +450,10 @@ def build_deck(db: Session, period: str) -> dict:
             "roster": len(order),
             "names": [scores and top[i]["name"] for i in range(min(3, len(top)))],
         })
+
+    taste = _taste(db, since, until)
+    if len(taste) >= 3:
+        cards.append({"type": "taste", "tags": taste})
 
     if first_seen:
         cards.append({"type": "newcomer", "creator": first_seen})

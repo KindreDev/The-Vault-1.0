@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { LocalizedText, useT } from '../i18n'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { readPacing, useSpicePacing } from '../components/viewer/SpiceControls'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Images, Play, X, ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
 import { playlistsApi } from '../lib/api'
@@ -22,6 +23,8 @@ function Lightbox({ images, startIdx, onClose }) {
   const loopVideo = useVideoLoop()
   const [idx, setIdx] = useState(startIdx)
   const img = images[idx]
+  // Decks are ordered Safe to Hardcore; a connected device follows along.
+  useSpicePacing(readPacing(), img?.spice ? [{ category: 'rating', name: img.spice }] : [])
   const registerVisible   = useVaultStore(s => s.registerVisible)
   const unregisterVisible = useVaultStore(s => s.unregisterVisible)
   const { seekStep, seekStepBig } = useVaultStore(s => s.hotkeySettings)
@@ -180,11 +183,19 @@ export default function PlaylistView() {
   const qc = useQueryClient()
   const [lightboxIdx, setLightboxIdx] = useState(null)
   const [thumbSize, setThumbSize] = useState(160)
+  const [params, setParams] = useSearchParams()
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['playlist-detail', id],
     queryFn: () => playlistsApi.detail(id).then(r => r.data),
   })
+
+  // A deck opened with ?play=1 starts playing from its first (Safe) file.
+  useEffect(() => {
+    if (params.get('play') !== '1' || !data?.images?.length) return
+    setLightboxIdx(0)
+    setParams({}, { replace: true })
+  }, [data, params, setParams])
 
   const deleteMut = useMutation({
     mutationFn: () => playlistsApi.delete(id),

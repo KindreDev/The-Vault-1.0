@@ -2,6 +2,7 @@ import HoverVideoPreview from '../components/HoverVideoPreview'
 import CardCreatorNames from '../components/CardCreatorNames'
 import './gallery-list-cards.css'
 import useSelectedItems from '../hooks/useSelectedItems'
+import { useMainScrollRestore } from '../hooks/useMainScrollRestore'
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { LocalizedText } from '../i18n'
 import { createPortal } from 'react-dom'
@@ -1553,10 +1554,16 @@ export default function GalleryList() {
 
   // Scroll the page back to the top whenever the page number changes, so
   // browsing always resumes from the first card instead of wherever the
-  // previous page happened to be scrolled to.
+  // previous page happened to be scrolled to. Skipped on mount, so coming back
+  // from a gallery keeps your place (see useMainScrollRestore).
+  const lastPageRef = useRef(page)
   useEffect(() => {
+    if (lastPageRef.current === page) return
+    lastPageRef.current = page
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'auto' })
   }, [page])
+
+  useMainScrollRestore(!!galleries)
 
   // Keep galleriesRef fresh so toggleSelect can read the current list without
   // being recreated on every fetch (which would bust GalleryCard memo)
@@ -1781,7 +1788,11 @@ export default function GalleryList() {
           onAddExclude={token => setExcludedTags(prev => prev.includes(token) ? prev : [...prev, token])}
           onRemoveExclude={token => setExcludedTags(prev => prev.filter(tg => tg !== token))}
           onClearExclude={() => setExcludedTags([])}
-          rounded="full"
+          onTagsChange={(include, exclude) => {
+            const inc = tagTokensToParams(include)
+            const exc = tagTokensToParams(exclude)
+            setParams({ tags: inc.names, tag_ids: inc.ids, tag: null, exclude_tags: exc.names, exclude_tag_ids: exc.ids, page: null })
+          }}
         />
 
         <button type="button" onMouseDown={() => setFavOnly(!favOnly)}

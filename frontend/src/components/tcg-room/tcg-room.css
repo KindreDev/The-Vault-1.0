@@ -1258,3 +1258,14 @@
 .tcg-room-flip-bin__whole { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 8px; padding: 10px 12px; border: 1px solid rgba(156,140,255,.5); border-radius: 10px; background: rgba(127,119,221,.12); font-weight: 800; text-align: left; }
 .tcg-room-flip-bin__whole small { grid-column: 2; color: rgba(255,255,255,.6); font-weight: 600; }
 .tcg-room-flip-bin__note { margin: 0; color: rgba(255,255,255,.6); text-align: center; }
+
+/* Self-arranging stands */
+.tcg-room-arrange { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); }
+.tcg-room-arrange > span { font-size: 16px; color: rgba(255,255,255,.6); }
+.tcg-room-arrange__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tcg-room-arrange__chips button { padding: 4px 11px; border-radius: 999px; font-size: 16px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.04); color: rgba(255,255,255,.8); text-transform: capitalize; cursor: pointer; }
+.tcg-room-arrange__chips button.selected { border-color: #9c8cff; background: rgba(127,119,221,.22); color: #fff; }
+.tcg-room-arrange__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tcg-room-arrange__actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 9px; font-size: 16px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; }
+.tcg-room-arrange__actions button:first-child { border-color: #9c8cff; background: rgba(127,119,221,.25); }
+.tcg-room-arrange__actions button:disabled { opacity: .5; cursor: default; }

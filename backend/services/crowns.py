@@ -15,6 +15,7 @@ Tiers ladder by how long the window was held, not by rank:
 """
 from datetime import date, datetime, timedelta
 import json
+import random
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -261,8 +262,56 @@ def _category_scores(db: Session, category: str, since=None, until=None):
     return ranking.score_all_galleries(db)
 
 
+def _gallery_cover_image(db: Session, gallery: Gallery):
+    if gallery.cover_path:
+        image = db.query(Image).filter(Image.gallery_id == gallery.id,
+                                       Image.file_path == gallery.cover_path).first()
+        if image:
+            return image
+    return (db.query(Image).filter(Image.gallery_id == gallery.id)
+            .order_by(Image.sort_order.asc(), Image.id.asc()).first())
+
+
+def _gallery_top_image_ids(db: Session, gallery_id: int, since=None, until=None, limit: int = 3) -> list[int]:
+    """The gallery's most-gooned files in the period (all-time when no period), by file HOF weights."""
+    gallery_images = select(Image.id).where(Image.gallery_id == gallery_id)
+    if since is None:
+        score = ranking.image_score_expr()
+        return [iid for (iid,) in db.query(Image.id).filter(Image.gallery_id == gallery_id, score > 0)
+                .order_by(score.desc(), Image.id.asc()).limit(limit).all()]
+    weights = {"cum": ranking.IMAGE_CUM_WEIGHT, "edge": ranking.IMAGE_EDGE_WEIGHT,
+               "view": ranking.IMAGE_VIEW_WEIGHT_, "seconds": ranking.IMAGE_SECOND_WEIGHT}
+    totals = {}
+    query = (db.query(ActivityEvent.image_id, ActivityEvent.kind, func.sum(ActivityEvent.amount))
+             .filter(ActivityEvent.image_id.in_(gallery_images), ActivityEvent.logged_at >= since,
+                     ActivityEvent.kind.in_(tuple(weights))))
+    if until is not None:
+        query = query.filter(ActivityEvent.logged_at < until)
+    for iid, kind, amount in query.group_by(ActivityEvent.image_id, ActivityEvent.kind).all():
+        totals[int(iid)] = totals.get(int(iid), 0) + int(amount or 0) * weights[kind]
+    ranked = sorted((iid for iid, value in totals.items() if value > 0), key=lambda iid: (-totals[iid], iid))
+    return ranked[:limit]
+
+
+def gallery_award_image(db: Session, gallery: Gallery, period_type: str, period_key: str,
+                        since=None, until=None):
+    """Card art for a gallery win: the cover or one of the period's top 3 files, at equal odds.
+
+    Seeded by the award so the same win always gets the same art.
+    """
+    cover = _gallery_cover_image(db, gallery)
+    options = [cover.id] if cover else []
+    for image_id in _gallery_top_image_ids(db, gallery.id, since, until):
+        if image_id not in options:
+            options.append(image_id)
+    if not options:
+        return None
+    return random.Random(f"gallery-hof:{gallery.id}:{period_type}:{period_key}").choice(options)
+
+
 def _create_category_award(db: Session, category: str, period_type: str, period_key: str,
-                           winner_id: int, score: int, field_size: int, won_at: datetime):
+                           winner_id: int, score: int, field_size: int, won_at: datetime,
+                           since=None, until=None):
     existing = db.query(HofCategoryAward).filter_by(
         category_type=category, period_type=period_type, period_key=period_key,
     ).first()
@@ -281,9 +330,7 @@ def _create_category_award(db: Session, category: str, period_type: str, period_
             return None
         gallery_id = winner.id
         creator_id = _linked_creator_for_gallery(db, winner)
-        image = (db.query(Image).filter(Image.gallery_id == winner.id)
-                 .order_by(Image.sort_order.asc(), Image.id.asc()).first())
-        image_id = image.id if image else None
+        image_id = gallery_award_image(db, winner, period_type, period_key, since, until)
 
     award = HofCategoryAward(
         category_type=category, period_type=period_type, period_key=period_key,
@@ -320,7 +367,7 @@ def award_category_period(db: Session, category: str, period_type: str, key: str
     winner_id = order[0]
     return _create_category_award(
         db, category, period_type, key, winner_id, scores[winner_id]["score"],
-        len(order), until - timedelta(seconds=1),
+        len(order), until - timedelta(seconds=1), since=db_since, until=db_until,
     )
 
 

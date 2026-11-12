@@ -32,6 +32,7 @@ class TagOut(TagBase):
     id: int
     source: str
     use_count: int
+    role: Optional[str] = None           # content | looks | baseline | framing | people | medium | spice | system
     class Config:
         from_attributes = True
 
@@ -477,13 +478,26 @@ class TaggerStartRequest(BaseModel):
     image_id: Optional[int] = None
     threshold: float = 0.35
     retag: bool = False                  # re-tag already-tagged images
-    model_override: Optional[str] = None # "wd14" | "joytag" | None (auto)
+    model_override: Optional[str] = None # "wd14" | "wd14-eva02" | "joytag" | None (auto)
+    media: str = "all"                   # "all" | "photos" | "videos"
+    extra_models: list[str] = []         # optional detectors run alongside, e.g. ["nudenet"]
+
+class TaggerModelInfo(BaseModel):
+    key: str
+    label: str
+    kind: str                            # "tagger" | "detector"
+    desc: str
+    approx_mb: int
+    ready: bool
+    size_mb: Optional[float] = None
+    downloadable: bool = True
 
 class ModelStatus(BaseModel):
     wd14_downloaded: bool
     joytag_downloaded: bool
     wd14_size_mb: Optional[float] = None
     joytag_size_mb: Optional[float] = None
+    models: list[TaggerModelInfo] = []
 
 
 # ── Companion ─────────────────────────────────────────────────────────────────

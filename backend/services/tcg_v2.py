@@ -33,16 +33,17 @@ from models import (
     UserProfile, gallery_creators, gallery_tags, image_creators, image_tags,
 )
 from services.cards import _card_to_dict, prepare_card_face_for_reveal
-from services.personal_value import apply_rarity_floor, evaluate_personal_value
+from services.personal_value import apply_rarity_floor, evaluate_personal_value, load_type_lifts
 from services.tcg_rarity import earned_card_pack_rarity
+from services.tcg_card_profile import card_story, collection_progress, link_label, source_profile
 
 
 EXPOSURE_VALUES = (
     "Clothed", "Partial", "Implied nude", "Topless", "Bottomless",
     "Nude", "Mixed", "Unknown",
 )
-INTENSITY_VALUES = ("Safe", "Suggestive", "Explicit", "Unknown")
-POLICY_VERSION = "classification-v2"
+INTENSITY_VALUES = ("Safe", "Suggestive", "Explicit", "Hardcore", "Unknown")
+POLICY_VERSION = "classification-v4"
 V2_SHARD_YIELD = {"C": 2, "R": 5, "SR": 15, "UR": 40, "SPR": 80}
 PACK_RARITIES = ("C", "R", "SR", "UR", "SPR")
 GENERIC_RELEASE_TEMPLATE_CODES = {"RELEASE-STANDARD", "RELEASE-PREMIUM"}
@@ -140,21 +141,22 @@ def _release_price_metadata(release: TCGRelease | None, product_kind: str) -> di
 # deliberately explicit: sexual intensity is not inferred from exposure alone.
 EXPOSURE_TAGS = {
     "Nude": {"nude", "naked", "completely nude", "full nude", "fully nude"},
-    "Bottomless": {"bottomless", "no panties", "panties removed"},
+    "Bottomless": {"bottomless", "no panties", "panties removed", "pussy", "spread pussy", "anus", "spread anus"},
     "Topless": {"topless", "bare breasts", "exposed breasts", "nipples", "no bra"},
     "Implied nude": {"implied nude", "implied nudity", "covered nude", "strategic covering"},
     "Partial": {
         "lingerie", "underwear", "bikini", "swimsuit", "bra", "panties",
         "thong", "see through", "transparent clothing", "open clothes",
+        "leotard", "highleg leotard", "microbikini", "micro bikini", "pasties",
     },
     "Clothed": {
         "clothed", "fully clothed", "dress", "shirt", "white shirt",
-        "collared shirt", "t shirt", "tshirt", "polo shirt", "uniform", "cosplay",
+        "collared shirt", "t shirt", "tshirt", "polo shirt", "uniform", "cosplay", "bodysuit",
     },
 }
 
 EXPLICIT_TAGS = {
-    "explicit", "sex", "sexual intercourse", "penetration", "vaginal", "vaginal sex",
+    "explicit", "hardcore", "sex", "sexual intercourse", "penetration", "vaginal", "vaginal sex",
     "anal", "anal sex", "blowjob", "fellatio", "cunnilingus", "oral sex",
     "masturbation", "fingering", "handjob", "cum", "cumshot", "creampie",
     "double penetration", "threesome", "gangbang", "sex toy", "dildo",
@@ -271,24 +273,47 @@ def _tag_evidence(db: Session, image_id: int) -> list[dict]:
     return evidence
 
 
-def _best_tag_match(tags: Iterable[dict], mapping: dict[str, set[str]], threshold: float):
-    priorities = list(mapping.keys())
-    matches = []
+def _exposure_match(tags: Iterable[dict], threshold: float):
+    """The most exposed level the tags support, not the single most confident
+    tag: "nipples 95%" must not hide "nude 88%". Bare top plus bare bottom is
+    Nude. Manual tags always qualify."""
+    found: dict[str, tuple[float, dict]] = {}
     for tag in tags:
         if tag["source"] != "manual" and (tag["confidence"] or 0) < threshold:
             continue
-        for value, terms in mapping.items():
-            if tag["normalized"] in terms:
-                matches.append((tag["source"] == "manual", tag["confidence"] or 1.0, -priorities.index(value), value, tag))
-    if not matches:
-        return "Unknown", None, None
-    matches.sort(reverse=True, key=lambda item: item[:3])
-    _, confidence, _, value, tag = matches[0]
-    return value, confidence, tag
+        confidence = 1.0 if tag["source"] == "manual" else float(tag["confidence"] or 0)
+        for value, terms in EXPOSURE_TAGS.items():
+            if tag["normalized"] in terms and confidence > found.get(value, (-1.0, None))[0]:
+                found[value] = (confidence, tag)
+    if "Nude" not in found and "Topless" in found and "Bottomless" in found:
+        top, bottom = found["Topless"], found["Bottomless"]
+        found["Nude"] = min(top, bottom, key=lambda item: item[0])
+    for value in EXPOSURE_TAGS:   # ordered from most to least exposed
+        if value in found:
+            confidence, tag = found[value]
+            return value, confidence, tag
+    return "Unknown", None, None
+
+
+# A file's Spice (one per file, derived from its tags by the AI tagger) is the
+# authoritative intensity. The older term matching below is only a fallback
+# for files that have no Spice yet.
+SPICE_INTENSITY = {"safe": "Safe", "suggestive": "Suggestive", "explicit": "Explicit", "hardcore": "Hardcore"}
 
 
 def infer_classification(tags: list[dict], threshold: float) -> dict:
-    exposure, exposure_confidence, exposure_tag = _best_tag_match(tags, EXPOSURE_TAGS, threshold)
+    exposure, exposure_confidence, exposure_tag = _exposure_match(tags, threshold)
+
+    spice = next((tag for tag in tags if tag["normalized"] in SPICE_INTENSITY), None)
+    if spice is not None:
+        return {
+            "exposure": exposure,
+            "intensity": SPICE_INTENSITY[spice["normalized"]],
+            "exposure_confidence": exposure_confidence,
+            "intensity_confidence": max(float(spice["confidence"] or 1.0), threshold),
+            "exposure_evidence": exposure_tag,
+            "intensity_evidence": spice,
+        }
 
     intensity = "Unknown"
     intensity_confidence = None
@@ -466,6 +491,17 @@ def backfill_v2_records(db: Session) -> dict:
             continue
         resolve_card_classification(db, inv.card)
         classifications += 1
+    # Cached values from an older policy or from before a retag (the tagger
+    # marks them stale) are re-read from the current tags.
+    stale = (db.query(CardContentClassification)
+             .filter(or_(CardContentClassification.policy_version.is_(None),
+                         CardContentClassification.policy_version != POLICY_VERSION))
+             .limit(2000).all())
+    for row in stale:
+        card = db.get(Card, row.card_id)
+        if card is not None:
+            resolve_card_classification(db, card)
+            classifications += 1
     seed_foundation_release(db)
     seed_pack_products(db)
     seed_workshop(db)
@@ -1240,6 +1276,7 @@ def _release_candidate_cache(db: Session, cards: list[Card], threshold: float) -
         "galleries": galleries,
         "gallery_view_seconds": gallery_view_seconds,
         "favorite_tags_by_gallery": favorite_tags_by_gallery,
+        "type_lifts": load_type_lifts(db),
     }
 
 
@@ -1289,6 +1326,7 @@ def _candidate_metadata_cached(card: Card, threshold: float, cache: dict, prior_
         creator=creator,
         tags=(cache["favorite_tags_by_gallery"].get(gallery_id, []) if card_type == "gallery" else tags),
         gallery_view_seconds=cache["gallery_view_seconds"].get(gallery_id, 0),
+        type_lifts=cache.get("type_lifts"),
     )
     base_rarity = "UR" if (card.print_rarity or card.rarity_class) == "SPR" else (card.print_rarity or card.rarity_class or "C")
     published_rarity = apply_rarity_floor(base_rarity, personal_value["rarity_floor"])
@@ -1446,7 +1484,7 @@ def _theme_name(source: str, key: str, sample: dict) -> str | None:
     if source == "exposure":
         return {"Partial": "A Little Less Fabric", "Implied nude": "Almost Nothing", "Topless": "Nothing Above", "Bottomless": "Nothing Below", "Nude": "No Dress Code", "Mixed": "Every State of Undress"}.get(key, key)
     if source == "intensity":
-        return {"Safe": "Soft Focus", "Suggestive": "The Tease", "Explicit": "No Holding Back"}.get(key, key)
+        return {"Safe": "Soft Focus", "Suggestive": "The Tease", "Explicit": "Nothing Hidden", "Hardcore": "No Holding Back"}.get(key, key)
     return key.replace("_", " ").title()
 
 
@@ -1461,7 +1499,8 @@ _EXPOSURE_DESCRIPTIONS = {
 _INTENSITY_DESCRIPTIONS = {
     "Safe": "A collection of softer, safe-for-work cards.",
     "Suggestive": "A collection of suggestive, teasing cards.",
-    "Explicit": "A collection of explicit sex cards.",
+    "Explicit": "A collection of explicit cards, nothing left covered.",
+    "Hardcore": "A collection of hardcore sex cards.",
 }
 _TAG_DESCRIPTIONS = {
     "nipples": "A collection focused on visible nipples.",
@@ -2098,28 +2137,34 @@ def _enforce_release_creator_cap(allocated: list[dict], candidates: list[dict], 
             -float(result[index].get("engagement", 0) or 0),
             result[index]["source_key"],
         ))
-        donor_index = donor_indexes[-1]
-        donor = result[donor_index]
-        pool = [
-            candidate for candidate in candidates
-            if candidate["source_key"] not in used
-            and candidate.get("published_rarity") == donor.get("published_rarity")
-            and candidate.get("release_type") == donor.get("release_type")
-            and candidate.get("creator_id") != dominant[0]
-            and (
-                not candidate.get("creator_id")
-                or creator_counts.get(candidate.get("creator_id"), 0) < limit
-            )
-        ]
-        pool.sort(key=lambda candidate: (
-            candidate.get("prior_printings", 0),
-            -float(candidate.get("confidence", 0) or 0),
-            -float(candidate.get("engagement", 0) or 0),
-            candidate["source_key"],
-        ))
-        replacement = pool[0] if pool else None
+        # Try the dominant creator's cards from best donor down. One card with
+        # no same-rarity, same-type stand-in must not stop the whole pass.
+        donor_index = replacement = None
+        for index in reversed(donor_indexes):
+            donor = result[index]
+            pool = [
+                candidate for candidate in candidates
+                if candidate["source_key"] not in used
+                and candidate.get("published_rarity") == donor.get("published_rarity")
+                and candidate.get("release_type") == donor.get("release_type")
+                and candidate.get("creator_id") != dominant[0]
+                and (
+                    not candidate.get("creator_id")
+                    or creator_counts.get(candidate.get("creator_id"), 0) < limit
+                )
+            ]
+            if pool:
+                donor_index = index
+                replacement = min(pool, key=lambda candidate: (
+                    candidate.get("prior_printings", 0),
+                    -float(candidate.get("confidence", 0) or 0),
+                    -float(candidate.get("engagement", 0) or 0),
+                    candidate["source_key"],
+                ))
+                break
         if replacement is None:
             break
+        donor = result[donor_index]
         result[donor_index] = {
             **replacement,
             "theme_index": donor.get("theme_index"),
@@ -2801,7 +2846,9 @@ def process_due_releases(db: Session, *, through: datetime | None = None, max_re
     processed = []
     settings = get_settings(db)
     for year, month, existing in due[:max_releases]:
-        if settings.release_generation_mode == "manual_review" and existing:
+        # Manual review keeps a waiting draft as-is, but a postponed one is
+        # rebuilt so a fixed builder can recover it without a click.
+        if settings.release_generation_mode == "manual_review" and existing and existing.status != "postponed":
             result = release_detail(db, existing.id)
         else:
             result = draft_release(
@@ -3343,6 +3390,115 @@ def catalog(db: Session, *, ownership: str = "owned", rarity: str | None = None,
     return {"total": total, "items": items}
 
 
+def _person_media(db: Session, person_id: int) -> tuple[set[int], set[int]]:
+    """A creator's (or character's) galleries, and her file-level images in other galleries."""
+    gallery_ids = {gid for (gid,) in db.query(gallery_creators.c.gallery_id)
+                   .filter(gallery_creators.c.creator_id == person_id).all()}
+    gallery_ids |= {gid for (gid,) in db.query(Gallery.id).filter(Gallery.creator_id == person_id).all()}
+    image_ids = {iid for iid, gid in db.query(Image.id, Image.gallery_id)
+                 .join(image_creators, image_creators.c.image_id == Image.id)
+                 .filter(image_creators.c.creator_id == person_id).all()
+                 if gid not in gallery_ids}
+    return gallery_ids, image_ids
+
+
+def _engagement_totals(db: Session, gallery_ids: set[int], image_ids: set[int] = frozenset()) -> dict:
+    """Lifetime totals over whole galleries plus loose files, each counted once.
+
+    Gallery counters already include every cum and edge logged on their files, so
+    whole galleries use them; loose files add their own counters.
+    """
+    views = seconds = cums = edges = 0
+    gallery_ids = list(gallery_ids)
+    for start in range(0, len(gallery_ids), 500):
+        chunk = gallery_ids[start:start + 500]
+        gviews, gcums, gedges = db.query(
+            func.coalesce(func.sum(Gallery.view_count), 0), func.coalesce(func.sum(Gallery.cum_count), 0),
+            func.coalesce(func.sum(Gallery.edge_count), 0),
+        ).filter(Gallery.id.in_(chunk)).one()
+        iviews, isecs = db.query(
+            func.coalesce(func.sum(Image.view_count), 0), func.coalesce(func.sum(Image.view_seconds), 0),
+        ).filter(Image.gallery_id.in_(chunk)).one()
+        views += int(gviews) + int(iviews)
+        seconds += int(isecs)
+        cums += int(gcums)
+        edges += int(gedges)
+    image_ids = list(image_ids)
+    for start in range(0, len(image_ids), 500):
+        iviews, isecs, icums, iedges = db.query(
+            func.coalesce(func.sum(Image.view_count), 0), func.coalesce(func.sum(Image.view_seconds), 0),
+            func.coalesce(func.sum(Image.cum_count), 0), func.coalesce(func.sum(Image.edge_count), 0),
+        ).filter(Image.id.in_(image_ids[start:start + 500])).one()
+        views += int(iviews)
+        seconds += int(isecs)
+        cums += int(icums)
+        edges += int(iedges)
+    return {"views": views, "view_seconds": seconds, "cum_count": cums, "edge_count": edges}
+
+
+def _image_engagement(image: Image | None) -> dict:
+    return {
+        "views": int(image.view_count or 0) if image else 0,
+        "view_seconds": int(image.view_seconds or 0) if image else 0,
+        "cum_count": int(image.cum_count or 0) if image else 0,
+        "edge_count": int(image.edge_count or 0) if image else 0,
+        "rating": float(image.rating or 0) if image else 0,
+        "favorite": bool(image.is_favorite) if image else False,
+    }
+
+
+def _card_engagement(db: Session, card: Card, source: Image | None, gallery: Gallery | None,
+                     hof_category_award=None, crown=None) -> dict:
+    """Your lifetime stats for whatever the card is about: a file, a gallery or a person."""
+    card_type = _enum(card.card_type)
+    subject = "image"
+    if card_type == CardType.hof.value:
+        category = "creator" if crown else getattr(hof_category_award, "category_type", None)
+        subject = {"creator": "creator", "gallery": "gallery"}.get(category, "image")
+        if subject == "gallery" and hof_category_award and hof_category_award.gallery_id:
+            gallery = db.get(Gallery, hof_category_award.gallery_id) or gallery
+    elif card_type == CardType.gallery.value:
+        subject = "gallery"
+        if card.source_gallery_id:
+            gallery = db.get(Gallery, card.source_gallery_id) or gallery
+    elif card_type == CardType.creator.value:
+        subject = "creator"
+
+    person = db.get(Creator, card.source_creator_id) if card.source_creator_id else None
+    if subject == "creator" and person:
+        stats = _engagement_totals(db, *_person_media(db, person.id))
+        stats.update(rating=float(person.rating or 0), favorite=bool(person.is_favorite))
+        result = {"subject": "creator", "subject_label": person.name, **stats}
+    elif subject == "gallery" and gallery:
+        stats = _engagement_totals(db, {gallery.id})
+        stats.update(rating=float(gallery.rating or 0), favorite=bool(gallery.is_favorite))
+        result = {"subject": "gallery", "subject_label": "This gallery", **stats}
+    else:
+        label = "This video" if source and source.is_video else "This photo"
+        result = {"subject": "image", "subject_label": label, **_image_engagement(source)}
+
+    # Cosplay: also her totals as that character.
+    if card_type == CardType.variant.value and person and card.linked_character_id:
+        character = db.get(Creator, card.linked_character_id)
+        if character:
+            her_galleries, her_files = _person_media(db, person.id)
+            char_galleries, char_files = _person_media(db, character.id)
+            shared = her_galleries & char_galleries
+
+            def files_outside_shared(galleries, files):
+                rest = list(galleries - shared)
+                ids = set(files)
+                if rest:
+                    ids |= {iid for (iid,) in db.query(Image.id).filter(Image.gallery_id.in_(rest)).all()}
+                return ids
+
+            loose = files_outside_shared(her_galleries, her_files) & files_outside_shared(char_galleries, char_files)
+            stats = _engagement_totals(db, shared, loose)
+            result["secondary"] = {"subject": "pairing",
+                                   "subject_label": f"{person.name} as {character.name}", **stats}
+    return result
+
+
 def card_detail(db: Session, card_id: int) -> dict:
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
@@ -3441,30 +3597,38 @@ def card_detail(db: Session, card_id: int) -> dict:
         links.append({"label": "Source gallery", "url": f"/galleries/{gallery.id}"})
     if creator:
         links.append({"label": "Creator profile", "url": f"/creators/{creator.id}"})
-        for label, url in _json(creator.platform_links, {}).items() if isinstance(_json(creator.platform_links, {}), dict) else []:
-            links.append({"label": label, "url": url})
+        platform_links = _json(creator.platform_links, {})
+        for key, url in platform_links.items() if isinstance(platform_links, dict) else []:
+            if url:
+                links.append({"label": link_label(key, url), "url": url})
         if creator.wiki_url:
             links.append({"label": creator.wiki_source or "Wiki", "url": creator.wiki_url})
+    engagement = _card_engagement(db, card, source, gallery, hof_category_award, crown)
+    profile = source_profile(db, resolved_tags)
+    progress = collection_progress(db, card, entries)
+    person_galleries = None
+    if engagement["subject"] == "creator" and card.source_creator_id:
+        person_galleries = _person_media(db, card.source_creator_id)[0]
+    elif engagement["subject"] == "creator" and creator:
+        person_galleries = _person_media(db, creator.id)[0]
+    story_gallery = gallery
+    if engagement["subject"] == "gallery" and hof_category_award and hof_category_award.gallery_id:
+        story_gallery = db.get(Gallery, hof_category_award.gallery_id) or gallery
+    story = card_story(db, engagement["subject"], source, story_gallery, person_galleries)
     db.commit()
     return {
         "card": _card_to_dict(db, card, include_scene_mask_editor=True),
         "acquisition_policy": _acquisition_policy(card.card_type),
         "classification": classification_dict(classification),
         "medium": "video" if source and source.is_video else (source.mime_type or "image" if source else "unknown"),
-        "user_rating": source.rating if source else (gallery.rating if gallery else 0),
+        "user_rating": engagement["rating"],
         "quantity_owned": inventory.quantity if inventory else 0,
         "acquisitions": [{
             "id": item.id, "quantity": item.quantity,
             "acquired_at": item.acquired_at.isoformat() if item.acquired_at else None,
             "source_type": item.source_type, "source_id": item.source_id, "notes": item.notes,
         } for item in acquisitions],
-        "engagement": {
-            "views": source.view_count if source else (gallery.view_count if gallery else 0),
-            "view_seconds": source.view_seconds if source else 0,
-            "cum_count": source.cum_count if source else (gallery.cum_count if gallery else 0),
-            "edge_count": source.edge_count if source else (gallery.edge_count if gallery else 0),
-            "favorite": bool(source.is_favorite if source else (gallery.is_favorite if gallery else False)),
-        },
+        "engagement": engagement,
         "dates": {
             "published": source.file_modified_at.isoformat() if source and source.file_modified_at else None,
             "acquired": min(known_acquisition_dates).isoformat() if known_acquisition_dates else None,
@@ -3490,6 +3654,9 @@ def card_detail(db: Session, card_id: int) -> dict:
             "crossed_at": item.crossed_at.isoformat() if item.crossed_at else None,
         } for item in milestones],
         "tags": resolved_tags,
+        "profile": profile,
+        "progress": progress,
+        "story": story,
         "source_links": links,
         "mint_audit": {
             "visible": bool(get_settings(db).advanced_mode),
@@ -4048,18 +4215,22 @@ def purchase_pack_product(db: Session, product_id: int, *, request_id: str,
                 db, product_id, selected_release_id=selected_release_id,
                 use_token=use_token, target_card_type=target_card_type, commit=False,
             )
+            # Legacy gameplay helpers commit internally. Savepoints keep all
+            # their commits inside this purchase's already-written transaction.
+            from services.gamification import notify_action
+            from services.pull_events import after_pull
+            db.flush()
+            with Session(bind=db.connection(), join_transaction_mode="create_savepoint") as gameplay:
+                notify_action(gameplay, "pack_opened", count=1, override_amount=75)
+                result.update(after_pull(gameplay, result["cards"], seed=str(result["opening_id"])))
+                gameplay.commit()
             db.add(TCGPackPurchase(
                 request_id=request_id, opening_id=result["opening_id"],
                 request_json=request_json, response_json=json.dumps(result),
             ))
-            db.flush()
-            # Legacy gameplay helpers commit internally. Savepoints keep all
-            # their commits inside this purchase's already-written transaction.
-            from services.gamification import notify_action
-            with Session(bind=db.connection(), join_transaction_mode="create_savepoint") as gameplay:
-                notify_action(gameplay, "pack_opened", count=1, override_amount=75)
-                gameplay.commit()
             db.commit()
+            from services import tcg_collections
+            tcg_collections.invalidate()
             return result
         except Exception:
             db.rollback()

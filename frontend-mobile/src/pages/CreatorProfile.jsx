@@ -7,6 +7,7 @@ import { creatorsApi, galleriesApi } from '../lib/api.js'
 import { creatorAvatarUrl, creatorBannerUrl, coverUrl, imageThumbUrl, imageFileUrl } from '../lib/media.js'
 import { useVaultStore } from '../store/vault.js'
 import { Spinner } from '../components/ui.jsx'
+import { useBackClose, goBack } from '../lib/nav.js'
 
 function Stat({ label, value }) {
   return (
@@ -23,6 +24,7 @@ export default function CreatorProfile() {
   const qc = useQueryClient()
   const addToast = useVaultStore(s => s.addToast)
   const [avatarOpen, setAvatarOpen] = useState(false)
+  useBackClose(avatarOpen, () => setAvatarOpen(false))
 
   const { data: c, isLoading } = useQuery({ queryKey: ['creator', id], queryFn: () => creatorsApi.get(id).then(r => r.data) })
   const { data: galleries } = useQuery({
@@ -52,11 +54,11 @@ export default function CreatorProfile() {
   const bannerH = Math.round((typeof window !== 'undefined' ? window.innerHeight : 720) * 0.4)
 
   return (
-    <div>
+    <div style={{ paddingTop: 'calc(var(--sat) + 12px)' }}>
       {/* Banner — tall hero that reuses the desktop scale + objectPosition framing
           so a portrait isn't sliced to a thin band, and fades fully into the page
           background at the bottom (no blunt cut-off edge). */}
-      <div className="relative overflow-hidden" style={{ height: bannerH, background: 'var(--c-card)' }}>
+      <div className="relative overflow-hidden mx-3 rounded-2xl" style={{ height: bannerH, background: 'var(--c-card)' }}>
         {bannerSrc && (
           <img src={bannerSrc} alt="" className="absolute inset-0 w-full h-full object-cover"
                style={{
@@ -67,8 +69,8 @@ export default function CreatorProfile() {
         )}
         <div className="absolute inset-0 pointer-events-none"
              style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.15) 45%, rgba(14,14,14,0.75) 80%, #0e0e0e 100%)' }} />
-        <button onClick={() => nav(-1)} className="absolute left-2 p-2 rounded-full bg-black/40"
-                style={{ top: 'calc(var(--sat) + 8px)' }}>
+        <button onClick={() => goBack(nav, '/creators')} className="absolute left-2 p-2 rounded-full bg-black/40"
+                style={{ top: 8 }}>
           <ChevronLeft size={24} color="#fff" />
         </button>
       </div>

@@ -17,6 +17,8 @@ import { patchCachedCreators } from '../lib/creatorCache'
 import { logEdgeNow } from '../lib/edges'
 import SlideshowEndScreen from '../components/viewer/SlideshowEndScreen'
 import SlideshowControls, { isTimedMedia } from '../components/viewer/SlideshowControls'
+import SpiceControls from '../components/viewer/SpiceControls'
+import MoreLikeThis from '../components/viewer/MoreLikeThis'
 import SubgalleriesPanel from '../components/SubgalleriesPanel'
 import GalleryMetadataPanel from '../components/GalleryMetadataPanel'
 import { useT } from '../i18n'
@@ -30,6 +32,7 @@ import { isGif, armSlideTimer, armVideoWatchdog } from '../lib/gif'
 import GalleryTransferModal from '../components/GalleryTransferModal'
 import { useViewerHotkeys } from '../hooks/useViewerHotkeys'
 import { ratingHandlers, videoHandlers } from '../lib/viewerActions'
+import { patchCachedRating } from '../lib/rating'
 import { readFilmstripVisibility, saveFilmstripVisibility } from '../lib/viewerPreferences'
 
 const THUMB_SIZES = [80, 120, 160, 220, 300, 420]
@@ -793,7 +796,7 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
   const rateMutation = useMutation({
     mutationFn: (r) => imagesApi.update(image.id, { rating: r }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['gallery-images', String(galleryId)] })
+    onSuccess: (_response, r) => patchCachedRating(qc, image.id, r)
   })
 
   const notesMutation = useMutation({
@@ -903,6 +906,8 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
               title={t('Open continuation choices (K)')}>
               <Sparkles size={15} /> {t('Keep going')}
             </button>
+            <SpiceControls images={images} currentTags={localTags}
+                           onRamp={ordered => playQueue(ordered, t('Spice ramp'), activeGalleryId)} />
             {isZoomed && (
               <span className="text-[16px] px-2 py-0.5 rounded-full"
                     style={{ background: 'color-mix(in srgb, var(--c-accent) 20%, transparent)', color: '#AFA9EC', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
@@ -1299,6 +1304,14 @@ function ImageViewer({ images: propImages, startIdx, galleryId, galleryName, gal
 
         {/* Device controls — only shown when a device is connected */}
         <DeviceControls className="mx-2 mb-3" />
+
+        <MoreLikeThis imageId={image.id}
+                      onPlay={(items, start) => {
+                        // Load the run without starting a slideshow: you clicked one to look at it.
+                        setQueue({ images: [...items.slice(start), ...items.slice(0, start)], label: t('More like this'), galleryId: null, creators: [] })
+                        setIdx(0)
+                        setShowEndScreen(false)
+                      }} />
       </div>}
     </div></ModalLayer>
   ), document.body)
@@ -1819,6 +1832,32 @@ export default function GalleryView() {
   // Transfer modal — single image (from ctx menu) or bulk
   const [transferCtx, setTransferCtx] = useState(null) // { images: [...] }
   const [relocatingImages, setRelocatingImages] = useState(null)
+
+  const exitBulkMode = useCallback(() => {
+    setBulkMode(false)
+    setSelectedIds(new Set())
+    setBulkAssignOpen(false)
+    setBulkTagOpen(false)
+    setBulkPendingTags([])
+    lastSelectIdxRef.current = null
+  }, [])
+
+  // Esc leaves select mode — but only when nothing else is open that Esc
+  // should close first (viewer, menus, modals, a focused text field).
+  const anyOverlayOpen = viewerIdx !== null || !!imgCtx || !!transferCtx || !!relocatingImages
+    || showExtract || showMergeModal || !!avatarFramePicker || isRenaming
+  useEffect(() => {
+    if (!bulkMode || anyOverlayOpen) return
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (bulkAssignOpen || bulkTagOpen) { setBulkAssignOpen(false); setBulkTagOpen(false); return }
+      exitBulkMode()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [bulkMode, anyOverlayOpen, bulkAssignOpen, bulkTagOpen, exitBulkMode])
   const addToMultiViewer = useVaultStore(s => s.addToMultiViewer)
   const multiViewerQueue = useVaultStore(s => s.multiViewerQueue)
   const MULTIVIEWER_MAX  = useVaultStore(s => s.MULTIVIEWER_MAX)
@@ -2288,7 +2327,7 @@ export default function GalleryView() {
             <GitMerge size={15} />
             {t('Merge')}
           </button>
-          <button onClick={() => { setBulkMode(b => !b); setSelectedIds(new Set()); lastSelectIdxRef.current = null }}
+          <button onClick={() => { if (bulkMode) exitBulkMode(); else { setBulkMode(true); setSelectedIds(new Set()); lastSelectIdxRef.current = null } }}
                   title={t('Select images to extract or delete')}
                   className="flex items-center gap-1.5 text-[16px] px-3 py-1.5 rounded-full cursor-pointer transition-all"
                   style={{
@@ -2324,9 +2363,11 @@ export default function GalleryView() {
       </div>
 
       {/* Bulk action bar */}
-      {bulkMode && selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] mb-3 animate-slide-up relative z-10"
-             style={{ background: 'color-mix(in srgb, var(--c-accent) 12%, transparent)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)' }}>
+      {/* Sticky so the X / Esc hint stays reachable deep in a long gallery.
+          Opaque base under the tint — the grid scrolls behind it. */}
+      {bulkMode && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] mb-3 animate-slide-up"
+             style={{ position: 'sticky', top: 8, zIndex: 30, background: 'linear-gradient(color-mix(in srgb, var(--c-accent) 12%, transparent), color-mix(in srgb, var(--c-accent) 12%, transparent)), rgba(18,18,22,0.96)', backdropFilter: 'blur(8px)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 30%, transparent)', boxShadow: '0 6px 20px rgba(0,0,0,0.35)' }}>
           <span className="text-[13px] font-medium" style={{ color: 'var(--c-accent-text)' }}>{selectedIds.size} {t('selected')}</span>
           <button type="button"
                   onMouseDown={() => setSelectedIds(() => displayedImages.length > 0 && displayedImages.every(i => selectedIdKeys.has(String(i.id)))
@@ -2336,6 +2377,10 @@ export default function GalleryView() {
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
             {displayedImages.length > 0 && displayedImages.every(i => selectedIdKeys.has(String(i.id))) ? t('Deselect all') : t('Select all')}
           </button>
+          {selectedIds.size === 0 && (
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t('Click images to select them')}</span>
+          )}
+          {selectedIds.size > 0 && <>
           <button type="button" onMouseDown={() => { setExtractImages(null); setShowExtract(true) }}
                   className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-full cursor-pointer"
                   style={{ background: 'color-mix(in srgb, var(--c-green) 15%, transparent)', color: 'var(--c-green-text)', border: '0.5px solid color-mix(in srgb, var(--c-green) 30%, transparent)' }}>
@@ -2365,9 +2410,13 @@ export default function GalleryView() {
                   style={{ background: bulkTagOpen ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)' : 'color-mix(in srgb, var(--c-accent) 12%, transparent)', color: 'var(--c-accent-text)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 40%, transparent)' }}>
             <Tag size={12} /> {t('Add tags')}
           </button>
-          <button type="button" onMouseDown={() => { setBulkMode(false); setSelectedIds(new Set()); setBulkAssignOpen(false); setBulkTagOpen(false); setBulkPendingTags([]); lastSelectIdxRef.current = null }}
-                  className="ml-auto text-[rgba(255,255,255,0.35)] hover:text-white cursor-pointer">
-            <X size={14} />
+          </>}
+          <button type="button" onMouseDown={exitBulkMode}
+                  title={t('Exit selection (Esc)')}
+                  className="ml-auto flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-full text-[rgba(255,255,255,0.45)] hover:text-white cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)' }}>
+            <X size={13} /> {t('Done')}
+            <kbd className="text-[10px] px-1 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)' }}>Esc</kbd>
           </button>
         </div>
       )}

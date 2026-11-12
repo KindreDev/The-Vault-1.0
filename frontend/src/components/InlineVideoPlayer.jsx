@@ -362,7 +362,9 @@ const InlineVideoPlayer = forwardRef(function InlineVideoPlayer({
     } catch {}
     setFunscriptOffsetMs(stored)
     deviceService.setFunscriptOffset(stored)
-  }, [imageId, t])
+    // Only the video changes the stored offset. Re-running on every render
+    // (as a `t` dependency did) re-sent it ~4×/s and restarted the Handy stream.
+  }, [imageId])
 
   const handleOffsetChange = useCallback((ms) => {
     setFunscriptOffsetMs(ms)

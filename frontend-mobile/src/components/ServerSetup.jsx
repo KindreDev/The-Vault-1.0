@@ -35,7 +35,8 @@ export default function ServerSetup({ onConnected }) {
         </div>
         <h1 className="text-2xl font-bold">Connect to The Vault</h1>
         <p className="text-[15px] text-center mt-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Enter your PC's address. Your phone must be on the same WiFi.
+          On your PC, open The Vault → Settings → System and scan the code with your phone camera
+          (choose Android app). Or type the address below.
         </p>
       </div>
 
@@ -75,8 +76,8 @@ export default function ServerSetup({ onConnected }) {
       </button>
 
       <p className="text-[13px] text-center mt-6" style={{ color: 'rgba(255,255,255,0.35)' }}>
-        Find your PC's IP with <span className="font-mono">ipconfig</span> (Windows) — look for the
-        IPv4 address, then add <span className="font-mono">:8000</span>.
+        With Tailscale on both devices, use the PC's Tailscale name (like
+        <span className="font-mono"> my-pc.tailnet.ts.net:8000</span>). It works anywhere and never changes.
       </p>
     </div>
   )

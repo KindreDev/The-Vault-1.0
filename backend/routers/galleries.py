@@ -530,7 +530,10 @@ def _compute_vault_stats(db: Session) -> dict:
     most_gooned_img = db.query(Image).filter(Image.is_video == False).order_by(Image.cum_count.desc()).first()
     most_gooned_vid = db.query(Image).filter(Image.is_video == True).order_by(Image.cum_count.desc()).first()
 
-    most_common_tag = db.query(Tag.name).order_by(Tag.use_count.desc()).first()
+    # Ranked roles only: "breasts" or "solo" would win forever and say nothing.
+    from services import tag_insights
+    _top = tag_insights.top_tags(db, 1)
+    most_common_tag = (_top[0]["name"],) if _top else None
     
     # Rating & size
 
@@ -623,7 +626,7 @@ def track_gallery_view(gallery_id: int, db: Session = Depends(get_db)):
 
 @router.get("/hall-of-fame")
 def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0,
-                 period: str = "all"):
+                 period: str = "all", ago: int = 0):
     """Images ranked by composite engagement score.
        cum_count is the strongest signal (deliberate action), then edges, then
        view_count (intentional re-opens), then view_seconds lightly weighted to
@@ -632,13 +635,17 @@ def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0
 
        period is day | week | month | all; anything but all is scored from the
        activity_events log so it covers only what happened in the window.
+       ago steps back through finished periods for the history view.
     """
-    since = activity.period_start(period)
+    since, until = activity.period_bounds(period, ago)
 
     if since is not None:
-        scores = ranking.score_all_images_in_period(db, since)
+        scores = ranking.score_all_images_in_period(db, since, until)
         ordered_ids = ranking.ranked_ids(scores)
-        deltas = ranking.apply_rank_movement(db, f"image:{period}", ordered_ids)
+        # Finished periods are final tables: no movement, and no overwriting the
+        # live board's stored ranks.
+        deltas = (ranking.apply_rank_movement(db, f"image:{period}", ordered_ids)
+                  if until is None else {})
         page = ordered_ids[offset:offset + limit]
         by_id = {i.id: i for i in db.query(Image).filter(Image.id.in_(page)).all()}
         # Counters shown are the window's, not lifetime — a file that tops today
@@ -688,25 +695,27 @@ def hall_of_fame(db: Session = Depends(get_db), limit: int = 10, offset: int = 0
 
 @router.get("/gallery-hof")
 def gallery_hof(db: Session = Depends(get_db), limit: int = 5, offset: int = 0,
-                period: str = "all"):
+                period: str = "all", ago: int = 0):
     """Galleries ranked by composite engagement score — see services/ranking.py.
 
     Scoring lives there so this list and a gallery's own stats modal can never
-    disagree about its rank. period is day | week | month | all.
+    disagree about its rank. period is day | week | month | all; ago steps
+    back through finished periods for the history view.
     """
-    since = activity.period_start(period)
+    since, until = activity.period_bounds(period, ago)
     if since is None:
         scores = ranking.score_all_galleries(db)
         order  = ranking.ranked_gallery_ids(scores)
     else:
-        scores = ranking.score_all_galleries_in_period(db, since)
+        scores = ranking.score_all_galleries_in_period(db, since, until)
         order  = ranking.ranked_ids(scores)
     if not order:
         return []
 
     # Movement over the full ranking, so a drop is true globally, not just
     # within the slice being returned.
-    deltas = ranking.apply_rank_movement(db, "gallery" if since is None else f"gallery:{period}", order)
+    deltas = (ranking.apply_rank_movement(db, "gallery" if since is None else f"gallery:{period}", order)
+              if until is None else {})
 
     page = order[offset:offset + limit]
     rows = (

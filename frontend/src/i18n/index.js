@@ -8,7 +8,7 @@
 // the way a blind find-and-replace would. Adding a new language = drop in one
 // more JSON file below and register it in LANGUAGES + DICTS. Nothing else.
 
-import { createElement, Fragment } from 'react'
+import { createElement, Fragment, useCallback } from 'react'
 import { create } from 'zustand'
 import { useVaultStore } from '../store/vault'
 import en from './en.json'
@@ -62,8 +62,12 @@ export function translate(locale, key, params = {}) {
 // language, with no page reload needed.
 export function useT() {
   const locale = useVaultStore(s => s.locale)
-  useDictionaryRevision(s => s.revision)
-  return (key, params) => translate(locale, key, params)
+  const revision = useDictionaryRevision(s => s.revision)
+  // Stable between renders so effects and callbacks that list `t` as a
+  // dependency don't re-run on every render; it still changes with the
+  // language or dictionary.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useCallback((key, params) => translate(locale, key, params), [locale, revision])
 }
 
 // Render one dictionary-backed phrase and subscribe to locale changes. The fragment adds no DOM wrapper.

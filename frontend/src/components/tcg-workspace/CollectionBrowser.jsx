@@ -213,7 +213,7 @@ export default function CollectionBrowser({ entries, inventory, view, hasLegacyC
         {!legacyScope && <Select label={t("Rarity")} value={rarity} onChange={setRarity} options={optionList(RARITIES, { All: t('All') })} />}
         {!legacyScope && <Select label={t("Type")} value={type} onChange={setType} options={optionList(TYPES, { All: t('All'), ...Object.fromEntries(Object.entries(TYPE_LABELS).map(([key, label]) => [key, t(label)])) })} />}
         {!legacyScope && <Select label={t("Exposure")} value={exposure} onChange={setExposure} options={optionList(['All', ...(values?.exposure || [])], { All: t('All') })} />}
-        {!legacyScope && <Select label={t("Sexual intensity")} value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])], { All: t('All') })} />}
+        {!legacyScope && <Select label={t("Spice")} value={intensity} onChange={setIntensity} options={optionList(['All', ...(values?.intensity || [])], { All: t('All') })} />}
         {!legacyScope && <Select label={t("Creator")} value={creator} onChange={setCreator} options={creatorOptions} searchable />}
         {!legacyScope && <Select label={t("Character")} value={character} onChange={setCharacter} options={characterOptions} searchable />}
         <Select label={t("Binder")} value={binder} onChange={setBinder} options={binderOptions} searchable />

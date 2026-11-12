@@ -86,6 +86,51 @@ def period_start(period: str) -> datetime | None:
     return local_to_utc_naive(local_start)
 
 
+def period_bounds(period: str, ago: int = 0):
+    """(since, until) as naive UTC for the period `ago` steps before the current
+    one, or (None, None) for all-time.
+
+    ago=0 is the live, still-running period (until=None, so it keeps filling);
+    ago=1 is yesterday / last week / last month, and so on. Same local-calendar
+    boundaries as period_start(), so a finished day is scored over exactly the
+    window it was crowned on.
+    """
+    if period in (None, "", "all"):
+        return None, None
+    ago = max(0, int(ago or 0))
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "day":
+        start = today - timedelta(days=ago)
+        end = start + timedelta(days=1)
+    elif period == "week":
+        start = today - timedelta(days=today.weekday()) - timedelta(weeks=ago)
+        end = start + timedelta(weeks=1)
+    elif period == "month":
+        y, m = today.year, today.month - ago
+        while m < 1:
+            m += 12
+            y -= 1
+        start = today.replace(year=y, month=m, day=1)
+        end = (start + timedelta(days=32)).replace(day=1)
+    else:
+        return None, None
+    return local_to_utc_naive(start), (None if ago == 0 else local_to_utc_naive(end))
+
+
+def history_since(db: Session) -> datetime | None:
+    """Earliest moment any period board can see anything: the first engagement
+    event or the first logged session, whichever came first. Stepping back past
+    this would only ever show empty boards."""
+    from models import SessionLog
+    first_event = tracking_since(db)
+    row = db.query(SessionLog.logged_at).order_by(SessionLog.logged_at.asc()).first()
+    first_session = row[0] if row else None
+    found = [d for d in (first_event, first_session) if d is not None]
+    return min(found) if found else None
+
+
 def tracking_since(db: Session) -> datetime | None:
     """Timestamp of the earliest recorded event, so the UI can be honest about
     a window that started before logging did."""

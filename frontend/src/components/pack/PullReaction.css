@@ -1,0 +1,18 @@
+.pull-reaction { display: grid; gap: 10px; margin-top: 14px; }
+.pull-reaction__erika { display: flex; gap: 12px; align-items: flex-start; max-width: 620px; animation: pull-reaction-in .35s ease-out both; }
+.pull-reaction__avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; border: 2px solid color-mix(in srgb, var(--c-accent) 60%, transparent); }
+.pull-reaction__avatar.is-fallback { display: grid; place-items: center; background: color-mix(in srgb, var(--c-accent) 30%, #111); color: #fff; font-weight: 700; font-size: 18px; }
+.pull-reaction__erika p {
+  margin: 0; padding: 10px 14px; border-radius: 4px 16px 16px 16px; font-size: 16px; line-height: 1.45; color: #fff;
+  background: color-mix(in srgb, var(--c-accent) 22%, rgba(20, 20, 26, .9)); border: 1px solid color-mix(in srgb, var(--c-accent) 40%, transparent);
+}
+.pull-reaction__erika strong { display: block; font-size: 16px; color: var(--c-accent-text); margin-bottom: 2px; }
+.pull-reaction__bounties { display: flex; flex-wrap: wrap; gap: 8px; }
+.pull-reaction__bounties span {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; font-size: 16px; color: rgba(255, 255, 255, .85);
+  border: 1px solid rgba(255, 207, 92, .4); background: rgba(255, 207, 92, .08);
+}
+.pull-reaction__bounties span svg { color: #ffd76e; }
+.pull-reaction__bounties span b { font-weight: 700; color: #ffd76e; }
+.pull-reaction__bounties span.is-done { background: rgba(255, 207, 92, .2); border-color: rgba(255, 207, 92, .7); }
+@keyframes pull-reaction-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, AlertTriangle, ArrowRight, Check, Clock, Flame, FolderInput, Loader2, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowRight, Check, Clock, Crosshair, Flame, FolderInput, Loader2, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { curationApi, imagesApi, taggerApi, apiErrorMessage } from '../../lib/api'
 import { useVaultStore } from '../../store/vault'
@@ -96,6 +96,17 @@ export default function FileCurationRun({ onClose }) {
   }, [onClose])
 
   const patch = useCallback(next => setDraft(current => ({ ...current, ...next })), [])
+
+  // Focus is one server-side setting shared with gallery mode — the file queue
+  // already honours it, so this only needs a way to set and clear it here.
+  const setFocus = useCallback((creatorId) => {
+    curationApi.focus(creatorId)
+      .then(() => {
+        refreshDebt()
+        if (creatorId) toast.success(t('Next files will focus on this creator'))
+      })
+      .catch(() => toast.error(t('Could not change focus')))
+  }, [refreshDebt, t])
 
   const saveAndNext = async () => {
     if (!file || !draft || saving) return
@@ -224,6 +235,30 @@ export default function FileCurationRun({ onClose }) {
             </div>
           )}
         </div>
+
+        {/* Focus the run on one of this file's creators. Gallery mode only
+            offers its beloved creator; here any credited creator works. */}
+        {creators.length > 0 && (
+          <div className="flex flex-col items-end gap-1 flex-shrink-0" style={{ maxWidth: 320 }}>
+            {creators.map(c => {
+              const active = state?.focus?.id === c.id
+              return (
+                <button key={c.id} type="button"
+                        onClick={() => setFocus(active ? null : c.id)}
+                        title={active ? t('Stop focusing on this creator') : t('Focus the run on this creator')}
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full cursor-pointer truncate"
+                        style={{
+                          fontSize: 16, maxWidth: '100%',
+                          background: active ? 'color-mix(in srgb, var(--c-pink) 18%, transparent)' : 'rgba(255,255,255,0.04)',
+                          color: active ? 'var(--c-pink-text)' : 'rgba(255,255,255,0.55)',
+                        }}>
+                  <span className="truncate">{c.name}</span>
+                  <Crosshair size={12} style={{ opacity: active ? 1 : 0.6, flexShrink: 0 }} />
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -268,6 +303,14 @@ export default function FileCurationRun({ onClose }) {
         )}
         <div className="flex-1" />
         {done > 0 && <span className="px-3 py-1 rounded-full" style={{ fontSize: 16, background: 'var(--c-green-fill)', color: 'var(--c-green-text)' }}>{done} {t('curated this sitting')}</span>}
+        {state?.focus && (
+          <button type="button" onClick={() => setFocus(null)}
+                  title={t('Stop focusing on this creator')}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer"
+                  style={{ fontSize: 16, background: 'color-mix(in srgb, var(--c-pink) 18%, transparent)', color: 'var(--c-pink-text)' }}>
+            <Crosshair size={14} /> {state.focus.name} <X size={13} />
+          </button>
+        )}
         <button type="button" onClick={onClose} className="cursor-pointer p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
           <X size={17} style={{ color: 'rgba(255,255,255,0.5)' }} />
         </button>

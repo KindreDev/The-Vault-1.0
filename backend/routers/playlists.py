@@ -108,9 +108,12 @@ def get_playlist_detail(playlist_id: int, db: Session = Depends(get_db)):
     pl = db.query(Playlist).filter(Playlist.id == playlist_id).first()
     if not pl:
         raise HTTPException(404, "Playlist not found")
+    from services import tag_insights
+    spice = {row["id"]: row["spice"] for row in tag_insights.spice_order(db, [img.id for img in pl.images])}
     images = []
     for img in pl.images:
         images.append({
+            "spice": spice.get(img.id),
             "id": img.id,
             "file_path": img.file_path,
             "thumb_path": img.thumb_path,

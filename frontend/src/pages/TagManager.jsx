@@ -539,7 +539,7 @@ function TagChip({ tag, maxCount, onView, onEdit, onToggleFavorite }) {
       {tag.source === 'ai' && <Sparkles size={11} className="opacity-0 group-hover:opacity-60 transition-opacity" style={{ color }} />}
       <button onClick={event => { event.stopPropagation(); onToggleFavorite(tag) }}
         className="transition-opacity"
-        title={t(tag.is_favorite ? 'Remove from favorite tags' : 'Favorite this tag for future mint rarity')}>
+        title={t(tag.is_favorite ? 'Unfavorite' : 'Favorite')}>
         <Star size={14} fill={tag.is_favorite ? 'currentColor' : 'none'} style={{ color: tag.is_favorite ? '#f5c451' : 'rgba(255,255,255,0.3)' }} />
       </button>
       <button onClick={e => { e.stopPropagation(); onEdit(tag) }}

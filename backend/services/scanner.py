@@ -21,7 +21,7 @@ def _natural_sort_key(s: str):
     """Windows-style natural sort: F1, F2 ... F9, F10, F11."""
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s or '')]
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv"}
 
 _HOUSEKEEPING_DIRS = {"@eadir", "$recycle.bin", "system volume information"}
@@ -569,10 +569,39 @@ def _path_is_within(path: str, root_path: str) -> bool:
         return False
 
 
+def gallery_folder_present(path: str, ignore_hidden: Optional[bool] = None) -> bool:
+    """True when a gallery folder exists AND still holds media the scanner indexes.
+
+    A folder emptied by a merge or move often survives because Windows leaves a
+    hidden Thumbs.db behind. The scanner skips media-less folders, so without
+    this check such a gallery would stay visible forever with dead files.
+    Unreadable folders count as present so a permissions hiccup never hides one.
+    """
+    if not path or not os.path.isdir(path):
+        return False
+    if ignore_hidden is None:
+        ignore_hidden = ignore_hidden_media_enabled()
+    media_exts = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if os.path.splitext(entry.name)[1].lower() not in media_exts:
+                    continue
+                if not entry.is_file():
+                    continue
+                if ignore_hidden and should_ignore_scan_path(entry.path):
+                    continue
+                return True
+    except OSError:
+        return True
+    return False
+
+
 def audit_gallery_availability(db: Session, roots=None) -> dict:
     """Repair root ownership and mark missing galleries without unsafe deletion."""
     roots = roots or db.query(LibraryRoot).filter(LibraryRoot.enabled == True).all()  # noqa: E712
     online = [r for r in roots if r.path and os.path.isdir(r.path)]
+    ignore_hidden = ignore_hidden_media_enabled()
     repaired = missing = restored = 0
 
     # Older folder-only imports can be rootless. Attach them to the deepest
@@ -592,7 +621,7 @@ def audit_gallery_availability(db: Session, roots=None) -> dict:
         for gallery in db.query(Gallery).filter(Gallery.library_root_id == root.id).all():
             if gallery.is_mix or not gallery.folder_path:
                 continue
-            exists = os.path.isdir(gallery.folder_path)
+            exists = gallery_folder_present(gallery.folder_path, ignore_hidden)
             if not exists and not gallery.is_missing:
                 gallery.is_missing = True
                 gallery.missing_since = datetime.utcnow()
@@ -714,13 +743,15 @@ def _gone_gallery_index(db: Session, move_ctx: Optional[dict]) -> dict:
     # there so a disconnected network drive cannot stall the scan.
     root_online = {root_id: bool(path and os.path.isdir(path))
                    for root_id, path in db.query(LibraryRoot.id, LibraryRoot.path).all()}
+    # Galleries the availability audit already flagged (folder gone or emptied)
+    # are trusted as-is, so this needs no second pass over every folder.
     gone = [
-        gallery_id for gallery_id, folder, root_id in
-        db.query(Gallery.id, Gallery.folder_path, Gallery.library_root_id)
+        gallery_id for gallery_id, folder, root_id, is_missing in
+        db.query(Gallery.id, Gallery.folder_path, Gallery.library_root_id, Gallery.is_missing)
         .filter(Gallery.is_mix == False, Gallery.folder_path.isnot(None))  # noqa: E712
         .all()
         if folder and not folder.startswith("__")
-        and (root_online.get(root_id) is False or not os.path.isdir(folder))
+        and (is_missing or root_online.get(root_id) is False or not os.path.isdir(folder))
     ]
     keys: dict = {}
     sizes: dict = {}
@@ -1048,6 +1079,7 @@ def _prune_missing_galleries(db: Session, roots) -> int:
     counter and is never recomputed from galleries, so it is unaffected by this.
     """
     removed = 0
+    ignore_hidden = ignore_hidden_media_enabled()
     for root in roots:
         if not root or not root.path or not os.path.exists(root.path):
             continue  # offline / missing root — never prune anything under it
@@ -1055,7 +1087,7 @@ def _prune_missing_galleries(db: Session, roots) -> int:
         for g in galleries:
             if g.is_mix:
                 continue  # mix galleries aren't backed by a single real folder
-            if g.folder_path and not os.path.exists(g.folder_path):
+            if g.folder_path and not gallery_folder_present(g.folder_path, ignore_hidden):
                 # Clean up orphaned thumbnail files first (db.delete cascades the rows).
                 for img in db.query(Image).filter(Image.gallery_id == g.id).all():
                     if img.thumb_path:

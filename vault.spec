@@ -180,6 +180,8 @@ a = Analysis(
         'serial.tools.list_ports_windows',
         'services.release_survey',
         'services.gallery_cover_repair',
+        'services.nudenet',              # loaded lazily when the NudeNet add-on runs
+        'services.vibe',                 # loaded lazily when the Spice vibe check add-on runs
         'webview.platforms',
         'webview.platforms.winforms',
         'clr',

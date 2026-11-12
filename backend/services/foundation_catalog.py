@@ -311,6 +311,7 @@ def _source_card_personal_value(card: Card, context) -> dict:
         source_key=f"foundation:{card.id}", card_type=card_type,
         image=image, gallery=gallery, creator=creator, tags=tags,
         gallery_view_seconds=context.gallery_view_seconds.get(gallery_id, 0),
+        type_lifts=context.type_lifts,
     )
     value["source_card_id"] = card.id
     # Image printings inherit creator context through their gallery. Keep that
@@ -1022,6 +1023,7 @@ def build_foundation_catalog(db: Session, *, refresh_job: TCGFoundationRefreshJo
             tags=(personal_context.gallery_tags.get(gallery_id, []) if family == "gallery"
                   else personal_context.image_tags.get(image_id, [])),
             gallery_view_seconds=personal_context.gallery_view_seconds.get(gallery_id, 0),
+            type_lifts=personal_context.type_lifts,
         )
         rarity = apply_rarity_floor(base_rarity, personal_value["rarity_floor"])
         mint_audit = {

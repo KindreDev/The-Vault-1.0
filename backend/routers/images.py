@@ -808,11 +808,14 @@ def delete_image(image_id: int, keep_file: bool = False, db: Session = Depends(g
 # Mirrors services/scanner.py — file extensions we ever index, and therefore the
 # only ones the file endpoint will ever serve. Defense-in-depth.
 _SERVE_EXTS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif",
+    ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif",
     ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv",
 }
 
 _VIDEO_EXTS  = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv"}
+# .jfif is a JPEG. Register it so the browser gets image/jpeg even on machines
+# whose registry doesn't know the extension.
+mimetypes.add_type("image/jpeg", ".jfif")
 _CHUNK_SIZE  = 256 * 1024   # 256 KB per read
 
 

@@ -5,6 +5,7 @@ import { FastForward, Layers3, PackageOpen, Sparkles } from 'lucide-react'
 import TCGV2CardFace from './tcg-v2/TCGV2CardFace'
 import { boosterArtCandidates, sampleBoosterArt } from './tcg-workspace/boosterArt'
 import { useScrollLock } from '../hooks/useScrollLock'
+import PullReaction from './pack/PullReaction'
 import './PackOpening.css'
 
 const RARITY_ORDER = Object.freeze({ C: 0, R: 1, SR: 2, UR: 3, SPR: 4 })
@@ -78,7 +79,7 @@ function orderPack(pack) {
 
 function normalizePackEntry(entry) {
   if (Array.isArray(entry)) return { product: {}, cards: entry }
-  return { product: entry?.product || entry || {}, cards: Array.isArray(entry?.cards) ? entry.cards : [] }
+  return { product: entry?.product || entry || {}, cards: Array.isArray(entry?.cards) ? entry.cards : [], reaction: entry?.reaction || null, bounties: entry?.bounties || [] }
 }
 
 function cardImage(card) {
@@ -428,7 +429,7 @@ export default function PackOpening({ packs, onCollect, onSkip }) {
           <RevealStack cards={currentPack} currentIndex={currentIndex} onAdvance={advanceReveal} holding={holding} />
         </div>
       </section>}
-      {packComplete && <section className="pack-opening__complete" aria-label={t("Pack cards")}><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></span><h1><LocalizedText text={"Cards from this pack"} /></h1><PackSummary cards={currentPack} /></div><span>{currentPack.length}<LocalizedText text={"cards"} before={" "} /></span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} best={index === bestIndex && RARITY_ORDER[printedRarity(card)] >= RARITY_ORDER.SR} />)}</div></section>}
+      {packComplete && <section className="pack-opening__complete" aria-label={t("Pack cards")}><div className="pack-opening__complete-heading"><div><span className="pack-opening__eyebrow"><Sparkles size={18} /><LocalizedText text={"Pack complete"} before={" "} /></span><h1><LocalizedText text={"Cards from this pack"} /></h1><PackSummary cards={currentPack} /><PullReaction key={packIdx} reaction={entry.reaction} bounties={entry.bounties} /></div><span>{currentPack.length}<LocalizedText text={"cards"} before={" "} /></span></div><div className="pack-opening__grid">{currentPack.map((card, index) => <GridCard key={`${packIdx}-grid-${index}`} card={card} best={index === bestIndex && RARITY_ORDER[printedRarity(card)] >= RARITY_ORDER.SR} />)}</div></section>}
     </main>
     <footer className="pack-opening__footer">
       {packComplete && packsLeft > 0 && <button type="button" className="pack-opening__primary" onClick={advanceToNext}><PackageOpen size={19} /><LocalizedText text={"Open next pack"} before={" "} after={" "} /><span>{t('({count} remaining)', { count: packsLeft })}</span></button>}

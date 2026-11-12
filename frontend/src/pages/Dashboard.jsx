@@ -8,13 +8,17 @@ import {
   Star, Droplets, Clock, Shuffle, Dice6, Target, Plus, Images, Eye,
   User, HardDrive, Video, Trophy, Flame, X, Play, BarChart2, Calendar,
   Tag as TagIcon, Hash, Zap, PlayCircle, StarHalf, LayoutTemplate, FolderSearch, Check, Inbox,
-  Sparkles, ArrowRight,
+  Sparkles, ArrowRight, Cpu,
 } from 'lucide-react'
-import { galleriesApi, creatorsApi, gamiApi, imagesApi, economyApi, tagsApi, cardsApi, scannerApi, curationApi, intakeApi } from '../lib/api'
+import { galleriesApi, creatorsApi, gamiApi, imagesApi, economyApi, cardsApi, scannerApi, curationApi, intakeApi, insightsApi } from '../lib/api'
 import { useSession } from '../hooks/useSession'
 import { useVaultStore } from '../store/vault'
 import RandomMixModal from '../components/RandomMixModal'
 import IntakeModal from '../components/IntakeModal'
+import AITaggingModal from '../components/ai-tagging/AITaggingModal'
+import AITaggingToolBadge from '../components/ai-tagging/AITaggingToolBadge'
+import RailTabsCard from '../components/dashboard/RailTabsCard'
+import TagsCard from '../components/dashboard/TagsCard'
 import CurationRun from '../components/curation/CurationRun'
 import FileCurationRun from '../components/curation/FileCurationRun'
 import HoverVideoPreview from '../components/HoverVideoPreview'
@@ -404,57 +408,6 @@ function MoreStatsModal({ stats, onClose }) {
 
 
 
-const CAT_COLORS = {
-  body_part:       '#D4537E',
-  subject:         '#7F77DD',
-  clothing:        '#378ADD',
-  physical_feature:'#BA7517',
-  sex_act:         '#E24B4A',
-  nudity_level:    '#D4537E',
-  position:        '#7F77DD',
-  pose:            '#1D9E75',
-  rating:          '#888780',
-  character:       '#FAC775',
-  style:           '#9FE1CB',
-  general:         '#888780',
-}
-const catColor = (cat) => CAT_COLORS[cat] || 'var(--c-accent)'
-
-// ── Trending Tags sidebar widget ──────────────────────────────────────────────
-// Rail card with a title and a small segmented switch between related lists.
-// The switch reuses the Curation mode toggle style so Dashboard controls match.
-function RailTabsCard({ icon: Icon, iconColor, title, tabs, action }) {
-  const [active, setActive] = useState(tabs[0]?.id)
-  const current = tabs.find(tab => tab.id === active) || tabs[0]
-  if (!current) return null
-  return (
-    <div className="rounded-[12px] p-4"
-         style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-1.5 font-medium uppercase tracking-wider"
-             style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>
-          <Icon size={14} style={{ color: iconColor }} /> {title}
-        </div>
-        {action}
-      </div>
-      {tabs.length > 1 && (
-        <div className="flex items-center gap-0.5 p-0.5 rounded-full mb-3 w-fit" role="tablist"
-             style={{ background: 'rgba(0,0,0,0.2)', border: '0.5px solid color-mix(in srgb, var(--c-accent) 25%, transparent)' }}>
-          {tabs.map(tab => (
-            <button key={tab.id} type="button" role="tab" onClick={() => setActive(tab.id)}
-                    aria-selected={current.id === tab.id}
-                    className="px-2 py-1 rounded-full cursor-pointer"
-                    style={{ fontSize: 16, background: current.id === tab.id ? 'color-mix(in srgb, var(--c-accent) 28%, transparent)' : 'transparent', color: current.id === tab.id ? 'var(--c-accent-text)' : 'rgba(255,255,255,0.45)' }}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {current.content}
-    </div>
-  )
-}
-
 function QuestProgressList({ quests, color }) {
   const t = useT()
   return (
@@ -495,102 +448,6 @@ function QuestsCard({ quests, onSeeAll }) {
     <RailTabsCard icon={Target} iconColor="var(--c-amber)" title={t('Quests')} tabs={tabs}
                   action={<button onClick={onSeeAll} style={{ fontSize: 14, color: 'var(--c-accent)', cursor: 'pointer' }}>{t('all →')}</button>} />
   )
-}
-
-// Trending, top and often-together tags in one card.
-function TagsCard({ onTagClick, onPairClick, onPairTagClick }) {
-  const t = useT()
-  const { data: trending } = useQuery({
-    queryKey: ['trending-tags'],
-    queryFn: () => tagsApi.trending(8, 60).then(r => r.data),
-    staleTime: 120000,
-  })
-  const { data: allTags } = useQuery({
-    queryKey: ['top-tags'],
-    queryFn: () => tagsApi.list().then(r => r.data?.slice(0, 8) ?? []),
-    staleTime: 120000,
-  })
-  const { data: pairs } = useQuery({
-    queryKey: ['co-occurring-tags'],
-    queryFn: () => tagsApi.coOccurring(8).then(r => r.data),
-    staleTime: 300000,
-    retry: false,
-    refetchOnWindowFocus: false,
-  })
-  const maxUse = Math.max(1, ...(allTags ?? []).map(tag => tag.use_count ?? 0))
-  const tabs = []
-  if (trending?.length) tabs.push({ id: 'trending', label: t('Trending'), content: (
-  <div className="flex flex-col gap-1.5">
-    {trending.map(t => (
-      <button key={t.id} onClick={() => onTagClick(t.name)}
-              className="flex items-center justify-between px-2.5 py-1.5 rounded-[7px] w-full text-left cursor-pointer transition-all"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(t.category) }} />
-          <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {t.name}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-          <span style={{ fontSize: 14, color: 'var(--c-green)', fontWeight: 600 }}>+{t.recent_count}</span>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)' }}>{t.use_count}</span>
-        </div>
-      </button>
-    ))}
-  </div>
-  ) })
-  if (allTags?.length) tabs.push({ id: 'top', label: t('Top'), content: (
-  <div className="flex flex-col gap-1.5">
-    {allTags.map(t => (
-      <button key={t.id} onClick={() => onTagClick(t.name)}
-              className="flex items-center gap-2 w-full text-left cursor-pointer group/tt"
-              style={{}}>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-0.5">
-            <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-            <span style={{ fontSize: 13, color: 'var(--c-amber)', fontWeight: 700, marginLeft: 6, flexShrink: 0 }}>{(t.use_count ?? 0).toLocaleString()}</span>
-          </div>
-          <div style={{ height: 3, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${((t.use_count ?? 0) / maxUse) * 100}%`, background: catColor(t.category), borderRadius: 99, transition: 'width 0.3s ease' }} />
-          </div>
-        </div>
-      </button>
-    ))}
-  </div>
-  ) })
-  if (pairs?.length) tabs.push({ id: 'together', label: t('Together'), content: (
-  <div className="flex flex-col gap-1.5">
-    {pairs.map((p, i) => (
-      <div key={i} className="flex items-center gap-1 px-2 py-1.5 rounded-[7px] group/pair cursor-pointer"
-           style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.05)' }}
-           onClick={() => onPairClick ? onPairClick(p.tag1.name, p.tag2.name) : onPairTagClick(p.tag1.name)}
-           onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in srgb, var(--c-accent) 7%, transparent)'}
-           onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
-        <button onClick={e => { e.stopPropagation(); onPairTagClick(p.tag1.name) }}
-                className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
-                style={{ fontSize: 14, color: catColor(p.tag1.category), background: `${catColor(p.tag1.category)}18` }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-          {p.tag1.name}
-        </button>
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>+</span>
-        <button onClick={e => { e.stopPropagation(); onPairTagClick(p.tag2.name) }}
-                className="px-1.5 py-0.5 rounded text-left cursor-pointer transition-colors"
-                style={{ fontSize: 14, color: catColor(p.tag2.category), background: `${catColor(p.tag2.category)}18` }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-          {p.tag2.name}
-        </button>
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginLeft: 'auto', flexShrink: 0 }}>{p.co_count}</span>
-        <span className="opacity-0 group-hover/pair:opacity-100 ml-1 text-[16px] transition-opacity"
-              style={{ color: 'color-mix(in srgb, var(--c-accent) 70%, transparent)' }}>{t('view →')}</span>
-      </div>
-    ))}
-  </div>
-  ) })
-  return <RailTabsCard icon={Hash} iconColor="var(--c-accent)" title={t('Tags')} tabs={tabs} />
 }
 
 // ── Daily greeting (shown once per app launch, not per route visit) ──────────
@@ -859,6 +716,8 @@ function DashboardContextMenu({ item, itemType, position, onClose }) {
 
 // ── Tabbed random discovery section ──────────────────────────────────────────
 const RAND_TABS = [
+  { key: 'foryou',    label: 'For you',   color: 'var(--c-pink)' },
+  { key: 'gems',      label: 'Hidden gems', color: 'var(--c-amber)' },
   { key: 'galleries', label: 'Galleries', color: 'var(--c-accent)' },
   { key: 'photos',    label: 'Photos',    color: 'var(--c-pink)' },
   { key: 'videos',    label: 'Videos',    color: 'var(--c-accent)' },
@@ -868,13 +727,25 @@ const RAND_TABS = [
 function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, cardLimit = 8 }) {
   const t = useT()
   const [tab, setTab] = useState('galleries')
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6))
   const navigate = useNavigate()
   const active = RAND_TABS.find(rt => rt.key === tab)
+  // Taste picks load only when their tab is opened.
+  const { data: forYou = [] } = useQuery({
+    queryKey: ['insights', 'for-you', seed],
+    queryFn: () => insightsApi.forYou(24, seed).then(r => r.data),
+    enabled: tab === 'foryou', staleTime: 600000,
+  })
+  const { data: gems = [] } = useQuery({
+    queryKey: ['insights', 'hidden-gems'],
+    queryFn: () => insightsApi.hiddenGems(16).then(r => r.data),
+    enabled: tab === 'gems', staleTime: 600000,
+  })
 
-  const allData = { galleries, photos: images, videos, creators }
+  const allData = { foryou: forYou, gems, galleries, photos: images, videos, creators }
   const items = allData[tab] ?? []
 
-  const browseLinks = { galleries: '/galleries', photos: '/images', videos: '/videos', creators: '/creators' }
+  const browseLinks = { foryou: '/images', gems: '/galleries', galleries: '/galleries', photos: '/images', videos: '/videos', creators: '/creators' }
 
   return (
     <div>
@@ -896,14 +767,39 @@ function RandomDiscovery({ galleries, images, videos, creators, onContextMenu, c
             </button>
           ))}
         </div>
-        <button onClick={() => navigate(browseLinks[tab])} className="ml-auto text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>
-          {t('browse all')}
-        </button>
+        {tab === 'foryou' ? (
+          <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} className="ml-auto flex items-center gap-1 text-[16px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>
+            <Shuffle size={14} /> {t('More picks')}
+          </button>
+        ) : (
+          <button onClick={() => navigate(browseLinks[tab])} className="ml-auto text-[15px] cursor-pointer" style={{ color: 'var(--c-accent)' }}>
+            {t('browse all')}
+          </button>
+        )}
       </div>
 
       {/* Card grid */}
+      {(tab === 'foryou' || tab === 'gems') && !items.length && (
+        <div className="text-[16px] py-6" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          {tab === 'foryou'
+            ? t('Picks appear once your taste profile has a few cums, edges or ratings to learn from.')
+            : t('No unopened galleries match your taste yet.')}
+        </div>
+      )}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
         {items.slice(0, cardLimit).map(item => {
+          if (tab === 'foryou') {
+            return <PortraitCard key={item.id} imgSrc={`/api/images/${item.id}/thumb`} title={item.filename}
+                      sub={item.gallery_name} videoId={item.is_video ? item.id : undefined}
+                      onClick={() => navigate(`/galleries/${item.gallery_id}?openImage=${item.id}`)}
+                      onContextMenu={(e) => onContextMenu?.(e, item, item.is_video ? 'video' : 'image')} />
+          }
+          if (tab === 'gems') {
+            return <PortraitCard key={item.id} imgSrc={item.cover_thumb} title={item.name}
+                      sub={t('{n} picks for you · {files} files', { n: item.matches, files: item.files })}
+                      onClick={() => navigate(`/galleries/${item.id}`)}
+                      onContextMenu={(e) => onContextMenu?.(e, item, 'gallery')} />
+          }
           if (tab === 'galleries') {
             return <PortraitCard key={item.id} imgSrc={item.cover_thumb} title={item.name}
                       sub={`${t('{count} photos', { count: item.image_count })}${item.creator_name ? ' · ' + item.creator_name : ''}`}
@@ -966,6 +862,7 @@ export default function Dashboard() {
   const [showMoreStats, setShowMoreStats] = useState(false)
   const [showScanModal, setShowScanModal] = useState(false)
   const [showIntake, setShowIntake] = useState(false)
+  const [showTagging, setShowTagging] = useState(false)
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [showSpinModal, setShowSpinModal] = useState(false)
   const [showMixModal, setShowMixModal] = useState(false)
@@ -1461,6 +1358,12 @@ export default function Dashboard() {
                       style={{ background: 'color-mix(in srgb, var(--c-amber) 12%, transparent)', color: 'var(--c-amber-text)', border: '0.5px solid color-mix(in srgb, var(--c-amber) 25%, transparent)', fontSize: 15, fontWeight: 500 }}>
                 <Sparkles size={15} /> {t('Curate')}
               </button>
+              <button onClick={() => setShowTagging(true)}
+                      className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[8px] cursor-pointer transition-all"
+                      style={{ background: 'color-mix(in srgb, var(--c-pink) 12%, transparent)', color: 'var(--c-pink-text, #F4C0D1)', border: '0.5px solid color-mix(in srgb, var(--c-pink) 25%, transparent)', fontSize: 16, fontWeight: 500 }}>
+                <Cpu size={15} /> {t('AI Tagging')}
+                <AITaggingToolBadge />
+              </button>
             </div>
           </div>
 
@@ -1525,6 +1428,7 @@ export default function Dashboard() {
       {showMoreStats && <MoreStatsModal stats={stats} onClose={() => setShowMoreStats(false)} />}
       {showScanModal && <ScanModal onClose={() => setShowScanModal(false)} />}
       {showIntake && <IntakeModal onClose={() => setShowIntake(false)} />}
+      {showTagging && <AITaggingModal onClose={() => setShowTagging(false)} />}
       {showSpinModal && <SpinModal onClose={() => setShowSpinModal(false)} onSpent={() => setDailySpinAvailable(false)} />}
       {showMixModal && <RandomMixModal onClose={() => setShowMixModal(false)} />}
       {ctxMenu && (

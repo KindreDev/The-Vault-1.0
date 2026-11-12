@@ -10,6 +10,7 @@ import { ACCENT_SWATCHES } from './roomLightingSettings'
 
 import { DEFAULT_SOURCE, asList, sourceReady, usePagedSource, useSentinel, vaultThumb } from './roomMedia'
 import RoomSourcePicker from './RoomSourcePicker'
+import RoomDisplayArrange from './RoomDisplayArrange'
 
 const PAGE = 48
 
@@ -196,6 +197,7 @@ export default function RoomDisplayManager({ context, bootstrap, instanceId = nu
         </label>
       </div>
     </div>}
+    {!posterMode && selectedInstance && slotCount > 1 && <RoomDisplayArrange instanceId={selectedInstance} onDone={refresh} />}
     {!posterMode && selectedInstance && slotCount > 1 && <div className="tcg-room-display-manager__slots">{slots.map(slot => {
       const filled = (bootstrap.assignments || []).some(item => item.display_instance_id === selectedInstance && (item.slot_key === slot || (slot === '0' && item.slot_key === 'primary')))
       return <button key={slot} className={selectedSlot === slot ? 'selected' : ''} onClick={() => { setSelectedSlot(slot); setInspecting(null) }}>{Number(slot) + 1}{filled ? ' •' : ''}</button>

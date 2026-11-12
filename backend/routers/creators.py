@@ -543,21 +543,22 @@ def creator_distribution(db: Session = Depends(get_db)):
 
 @router.get("/hall-of-fame")
 def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: int = 0,
-                         period: str = "all"):
+                         period: str = "all", ago: int = 0):
     """Creators ranked by composite engagement score — see services/ranking.py
     for the formula. Scoring lives there so this endpoint and the per-creator
     stats endpoint can never disagree about a creator's rank again.
 
     period is day | week | month | all. Anything but all is scored from the
     activity_events log rather than the lifetime counters, so it reflects only
-    what happened inside the window.
+    what happened inside the window. ago steps back through finished periods
+    (1 = yesterday / last week / last month) for the history view.
     """
-    since = activity.period_start(period)
+    since, until = activity.period_bounds(period, ago)
     if since is None:
         scores = ranking.score_all_creators(db)
         order  = ranking.ranked_creator_ids(scores)
     else:
-        scores = ranking.score_all_creators_in_period(db, since)
+        scores = ranking.score_all_creators_in_period(db, since, until)
         order  = ranking.ranked_ids(scores)
     if not order:
         return []
@@ -567,8 +568,10 @@ def creator_hall_of_fame(db: Session = Depends(get_db), limit: int = 5, offset: 
     # own movement table so today's climb isn't overwritten by the all-time
     # ordering; all-time keeps the original unsuffixed key so the arrows that
     # were already on screen survive this change.
+    # A finished period is a final table, not a live one: it has no movement,
+    # and scoring it must not overwrite the live board's stored ranks.
     entity_key = "creator" if since is None else f"creator:{period}"
-    deltas = ranking.apply_rank_movement(db, entity_key, order)
+    deltas = ranking.apply_rank_movement(db, entity_key, order) if until is None else {}
 
     page_ids = order[offset:offset + limit]
     creators_by_id = {

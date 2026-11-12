@@ -66,3 +66,21 @@ Referenced effect families: Cosmos Holo, Trainer Gallery Holo, VMAX, and V Full 
 SPR generated signatures use Mr De Haviland by Sudtipos, distributed through
 [Google Fonts](https://fonts.google.com/specimen/Mr+De+Haviland) under the SIL Open Font License 1.1.
 The complete license is bundled beside the font file.
+
+## AI tagging models
+
+The installer bundles no AI models. Each model is downloaded only when you
+choose it in AI Tagging, from its publisher, into `DATA_DIR/models`:
+
+- WD SwinV2 Tagger v3 and WD EVA02-Large Tagger v3 by SmilingWolf, Apache-2.0:
+  https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3,
+  https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3
+- JoyTag by fancyfeast, Apache-2.0: https://huggingface.co/fancyfeast/joytag
+- NudeNet v3.4 detector (640m) by notAI-tech, MIT:
+  https://github.com/notAI-tech/NudeNet. The detector was trained with
+  Ultralytics YOLOv8, which is licensed AGPL-3.0.
+- Spice vibe check: SigLIP 2 classifier siglip2-x256-explicit-content by
+  prithivMLmods, Apache-2.0
+  (https://huggingface.co/prithivMLmods/siglip2-x256-explicit-content),
+  converted to ONNX and published with its license and credit at
+  https://huggingface.co/kindredsp/siglip2-explicit-content-onnx.

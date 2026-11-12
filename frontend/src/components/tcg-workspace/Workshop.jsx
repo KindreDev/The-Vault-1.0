@@ -163,7 +163,7 @@ export default function Workshop({ packs = [], releases = [], onOpenedPacks, onB
       const product = { ...data.product, wrapper_src: PACK_WRAPPERS[data.product.product_kind] }
       // A recovered cart unit must not be purchased again on the next checkout.
       changeQuantity(`pack-${unfinished.productId}-${unfinished.data.selected_release_id || ''}-${unfinished.data.target_card_type || ''}`, -1)
-      onOpenedPacks?.([{ product, cards: data.cards || [] }])
+      onOpenedPacks?.([{ product, cards: data.cards || [], reaction: data.reaction, bounties: data.bounties }])
       toast.success(t('Purchase recovered'))
     } catch (error) {
       toast.error(error.response?.data?.detail || error.message || t('Could not open booster'))

@@ -1,9 +1,10 @@
 import { useT } from '../../i18n'
-import { Archive, BookOpen, Cuboid, Layers3, Settings2, Sparkles, ShoppingCart } from 'lucide-react'
+import { Archive, BookOpen, Cuboid, Layers3, Settings2, Sparkles, ShoppingCart, Trophy } from 'lucide-react'
 
 export const TCG_VIEWS = [
   { id: 'releases', label: 'Releases', icon: Sparkles },
   { id: 'sets', label: 'Sets', icon: Layers3 },
+  { id: 'collections', label: 'Collections', icon: Trophy },
   { id: 'cards', label: 'All Cards', icon: Archive },
   { id: 'binders', label: 'Binders', icon: BookOpen },
   { id: 'workshop', label: 'Shop', icon: ShoppingCart },

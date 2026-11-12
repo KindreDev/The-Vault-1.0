@@ -332,6 +332,35 @@ function Devotion({ card }) {
   )
 }
 
+function Taste({ card }) {
+  const top = Math.max(...card.tags.map(tag => tag.lift), 1)
+  return (
+    <div className="flex flex-col justify-center h-full gap-6">
+      <Line i={0}><Label><LocalizedText text={"Your type"} /></Label></Line>
+      <Line i={1}>
+        <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.7)', lineHeight: 1.45 }}>
+          <LocalizedText text={"What you went for, compared with the rest of your collection."} />
+        </div>
+      </Line>
+      <div className="flex flex-col gap-4">
+        {card.tags.map((tag, i) => (
+          <Line key={tag.name} i={i + 2}>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{tag.name}</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: ACCENT }}>{tag.lift.toFixed(1)}×</span>
+            </div>
+            <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <motion.div initial={{ width: 0 }} animate={{ width: `${(tag.lift / top) * 100}%` }}
+                          transition={{ delay: 0.3 + i * 0.12, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                          style={{ height: '100%', borderRadius: 99, background: ACCENT }} />
+            </div>
+          </Line>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Newcomer({ card }) {
   const c = card.creator
   return (
@@ -465,6 +494,7 @@ const RENDERERS = {
   rhythm:    Rhythm,
   countdown: CountdownEntry,
   devotion:  Devotion,
+  taste:     Taste,
   newcomer:  Newcomer,
   relic:     Relic,
   growth:    Growth,

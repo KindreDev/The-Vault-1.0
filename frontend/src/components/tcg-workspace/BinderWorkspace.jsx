@@ -2,7 +2,8 @@ import { LocalizedText, useT } from '../../i18n'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Image, Library, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Image, Library, Pencil, Play, Plus, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { tcgV2Api } from '../../lib/api'
 import TCGV2CardFace from '../tcg-v2/TCGV2CardFace'
@@ -220,6 +221,20 @@ export default function BinderWorkspace({ onOpenCard, initialBinderId = null, in
     setIsTurning(true)
     turnTimer.current = window.setTimeout(() => { setSpread(nextSpread); setIsTurning(false); turnTimer.current = null }, 430)
   }
+  const navigate = useNavigate()
+  const [playing, setPlaying] = useState(false)
+  const playDeck = async () => {
+    if (!selected || playing) return
+    setPlaying(true)
+    try {
+      const { data } = await tcgV2Api.binderSession(selected)
+      navigate(`/playlists/${data.playlist_id}?play=1`)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('Could not build the session'))
+    } finally {
+      setPlaying(false)
+    }
+  }
   const closeBinder = () => {
     if (turnTimer.current) window.clearTimeout(turnTimer.current)
     turnTimer.current = null
@@ -245,7 +260,7 @@ export default function BinderWorkspace({ onOpenCard, initialBinderId = null, in
         {!binders.length && <div className="tcgws-empty-shelf"><Library size={28} /><strong><LocalizedText text={"Your shelf is empty"} /></strong><span><LocalizedText text={"Visit Shop to claim your first binder."} /></span><a href="?view=workshop"><LocalizedText text={"Open Shop"} /></a></div>}
       </motion.div>}
       {selected && <motion.div key="open" className={`tcgws-open-binder${isClosing ? ' is-closing' : ''}`} initial={{ opacity: 0, scale: .9 }} animate={isClosing ? { opacity: 0, scale: .93 } : { opacity: 1, scale: 1 }} onAnimationComplete={() => { if (isClosing) { setSelected(null); setIsClosing(false) } }}>
-        <header><button onClick={closeBinder}><ArrowLeft size={19} /><LocalizedText text={"Close binder"} before={" "} /></button><div><span>{binder?.cover_style || 'Loading cover'}</span><h1>{binder?.name || 'Opening...'}</h1></div><div><button onClick={() => turn(-1)} disabled={spread === 0 || isTurning} title={t("Previous spread")}><ChevronLeft size={22} /></button><strong>{pages[0]}-{pages[1]}</strong><button onClick={() => turn(1)} disabled={isTurning} title={t("Next spread")}><ChevronRight size={22} /></button></div></header>
+        <header><button onClick={closeBinder}><ArrowLeft size={19} /><LocalizedText text={"Close binder"} before={" "} /></button><div><span>{binder?.cover_style || 'Loading cover'}</span><h1>{binder?.name || 'Opening...'}</h1></div><div><button onClick={() => turn(-1)} disabled={spread === 0 || isTurning} title={t("Previous spread")}><ChevronLeft size={22} /></button><strong>{pages[0]}-{pages[1]}</strong><button onClick={() => turn(1)} disabled={isTurning} title={t("Next spread")}><ChevronRight size={22} /></button><button type="button" className="tcgws-binder-play" onClick={playDeck} disabled={!selected || playing} title={t('Play this binder as a session, Safe to Hardcore')}><Play size={18} />{t(playing ? 'Building...' : 'Play as session')}</button></div></header>
         <div className="tcgws-binder-desk" style={{ '--binder-material': `url(${materialUrl(binder?.cover_style)})` }}>
           <div className="tcgws-binder-spread">
             <BinderPage pageNumber={pages[0]} slots={binder?.slots || []} side="left" className={isTurning && direction < 0 ? 'is-under-turn' : ''} onPlace={(page, slot) => setTarget({ page, slot })} onOpen={onOpenCard} />

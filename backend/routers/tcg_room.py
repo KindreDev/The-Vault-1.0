@@ -235,6 +235,18 @@ def assign_display_item(req: DisplayAssignment, db: Session = Depends(get_db)):
     return _call(tcg_room.assign_display_copy, db, req.instance_id, req.copy_id, req.slot_key)
 
 
+class ArrangeRequest(BaseModel):
+    sort: Literal["spice", "rarity", "none"] = "spice"
+    fill: Literal["best", "spice", "trait"] | None = None
+    value: str | int | None = None
+
+
+@router.post("/display-items/{instance_id}/arrange")
+def arrange_display_item(instance_id: int, req: ArrangeRequest, db: Session = Depends(get_db)):
+    from services.tcg_room_arrange import arrange_display
+    return _call(arrange_display, db, instance_id, sort=req.sort, fill=req.fill, value=req.value)
+
+
 @router.post("/orders")
 def create_order(req: OrderRequest, db: Session = Depends(get_db)):
     return _call(tcg_room.place_order, db, [line.model_dump() for line in req.lines],

@@ -2557,8 +2557,10 @@ def _card_to_dict(db: Session, card: Card, *, include_scene_mask_editor: bool = 
                 "recipe": frozen_visual,
             }
 
+    from services.card_traits import face_traits
     return {
         "id": card.id,
+        "traits": face_traits(db, card),
         "is_legacy": bool(card.is_legacy),
         "catalog_code": card.catalog_code,
         "collector_number": card.collector_number,

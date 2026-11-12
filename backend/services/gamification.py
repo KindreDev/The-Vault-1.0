@@ -315,6 +315,7 @@ def handle_login(db: Session) -> dict:
 
     already_today = profile.last_login is not None and profile.last_login.date() == now.date()
     if already_today:
+        _reset_weekly_quests(db)   # cheap when this week's quests exist; adds missing card bounties
         return {
             "streak_days": profile.streak_days,
             "xp": None,
@@ -428,6 +429,7 @@ def _reset_weekly_quests(db: Session):
         Quest.status == QuestStatus.active
     ).all()
     if active:
+        _ensure_weekly_bounties(db, active[0].expires_at)
         return  # Already have this week's quests
 
     # Clear any stale claimable flag — a new week means a fresh set of quests
@@ -435,8 +437,8 @@ def _reset_weekly_quests(db: Session):
     if profile and profile.weekly_bonus_claimable:
         profile.weekly_bonus_claimable = False
 
-    # Randomly pick WEEKLY_POOL_SIZE from the pool
-    chosen = random.sample(ALL_WEEKLY_QUESTS, WEEKLY_POOL_SIZE)
+    # Randomly pick from the pool, leaving room for the card bounties
+    chosen = random.sample(ALL_WEEKLY_QUESTS, WEEKLY_POOL_SIZE - 1)
     expires_at = _next_monday_midnight(now)
     for qd in chosen:
         db.add(Quest(
@@ -446,6 +448,26 @@ def _reset_weekly_quests(db: Session):
             progress=0,
             **_quest_definition(qd)
         ))
+    db.flush()
+    _ensure_weekly_bounties(db, expires_at)
+    db.commit()
+
+
+def _ensure_weekly_bounties(db: Session, expires_at):
+    """Card bounties for this week (pull cards with a trait, Spice, creator...).
+    Added once per week, also to a week that started before bounties existed."""
+    has_bounty = db.query(Quest).filter(Quest.quest_type == QuestType.weekly,
+                                        Quest.key.like("bounty_%")).first()
+    if has_bounty:
+        return
+    try:
+        from services.pull_events import weekly_bounties
+        bounties = weekly_bounties(db)
+    except Exception:
+        return
+    for qd in bounties:
+        db.add(Quest(quest_type=QuestType.weekly, expires_at=expires_at, status=QuestStatus.active,
+                     progress=0, **_quest_definition(qd)))
     db.commit()
 
 
@@ -956,7 +978,7 @@ def _seed_quests(db: Session):
     next_monday = _next_monday_midnight(now)
 
     chosen_daily  = random.sample(ALL_DAILY_QUESTS, DAILY_POOL_SIZE)
-    chosen_weekly = random.sample(ALL_WEEKLY_QUESTS, WEEKLY_POOL_SIZE)
+    chosen_weekly = random.sample(ALL_WEEKLY_QUESTS, WEEKLY_POOL_SIZE - 1)
 
     for qd in chosen_daily:
         db.add(Quest(quest_type=QuestType.daily,  expires_at=tomorrow,    status=QuestStatus.active, progress=0, **_quest_definition(qd)))

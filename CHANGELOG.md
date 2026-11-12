@@ -14,6 +14,86 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 
 ## [Unreleased]
 
+### Changed
+- Mobile app remembers where you were: each tab returns to the page you last had open in it, pages keep their scroll position when you go back or switch tabs, and reopening the app lands where you left off.
+- Mobile gallery sort and filters, creator type, and card type/rarity filters are remembered (searches last until the app closes). Random gallery order holds still while you browse; re-tap Random to reshuffle.
+- Mobile Feed keeps its posts and position when you open a photo or switch tabs; tap the Feed tab at the top to reshuffle. Home's Discover picks stay put until you tap the shuffle icon.
+- Closing a mobile photo viewer scrolls the gallery or playlist to the photo you were on.
+- Tapping the mobile tab you're in returns to its root; tapping again scrolls to the top.
+
+### Fixed
+- Android back button now closes open sheets, pickers, the card viewer, stories, the chat and select mode before leaving the page, and steps back out of Explore's stream and search. From any tab with no history it goes Home instead of doing nothing.
+
+## [2.0.7] - 2026-11-12
+
+### Added
+- Traits on card faces: photo, cosplay, gallery and collab cards print three traits from their photo. Tags you starred show in gold, your type in pink, and traits rare in your library in foil.
+- Starred tags and your type now raise a new card's rarity: a starred tag means at least Rare, two starred tags mean Super Rare, and three or more of your type's tags mean at least Rare.
+- Collections tab: trait collections for your starred tags and your type (own 5, 15, 40 and 100 cards with that trait across every release, for Credits and XP), and Spice ladders (own one of a creator's cards at every Spice level she has).
+- Card back: flip a card in the card window to see its story with you: when it landed in your vault, first and last seen, how many days you came back, first finish and your biggest day, plus its traits.
+- Play a binder as a session: its cards become a playlist of their files (a gallery card brings its best shots, a creator card her top files), ordered Safe to Hardcore, and a connected device follows each file's Spice.
+- Weekly card bounties join the weekly quests: pull cards with a trait you love, a Spice level, a favourite creator's cards, a Super Rare, or a trait under 1% of your library.
+- Erika reacts to every pack you open with a line about the best thing in it (a big pull, your starred tag, a favourite creator, a hardcore card), and the reveal shows your bounty progress.
+- Card stands with several slots arrange themselves: fill the empty slots from your pile with your best cards, a Spice level or a trait, and order them Safe to Hardcore or rarest first.
+- Hall of Fame history: ‹ › arrows beside the period tabs step back through past days, weeks and months, so you can see who won yesterday, last week or any earlier month, with the full final standings (podium, runners-up and every section). One click returns to the live board.
+- Spice vibe check: an optional AI Tagging add-on that looks at the whole photo and moves sexy-but-covered real photos (poses, tight outfits, angles) from Safe to Suggestive. It never lowers a file or marks it explicit, and downloads from AI Tagging like the other models. It only acts when the photo also shows something with a sexy angle (legs, cleavage, a tight outfit, a pose), so plain selfies and close-ups of hands or nails stay Safe. Light cleavage alone no longer makes a photo Suggestive.
+- Your taste profile: the Vault learns which tags show up most in the files you finish to, edge to and rate highly. It powers a For you tab in the Dashboard Tags card, For you picks and Hidden gems (unopened galleries full of your kind of thing) in Discover, and a Your type card in Recaps.
+- Tag Hall of Fame on the Hall of Fame page: the best photos, videos, galleries and creators for any tag, following the selected period. Your favourite tags are one click away.
+- More like this in the viewer sidebar: files from other galleries that share this one's most distinctive tags and Spice.
+- Spice ramp in the viewer replays the current set from Safe up to Hardcore as a slideshow. With a device connected, Spice pacing makes freestyle follow each file's Spice, from a tease to full strokes.
+- Settings → AI Tagging → Tag roles shows which tags are too common to rank and lets you change any tag's role.
+- AI Tagging has its own button in the Dashboard Tools panel, with progress shown on the button while a run is going.
+- AI tagging runs can be limited to photos only or videos only, and remember your last choices.
+- Two new optional AI models: WD EVA02 Large, a more accurate WD tagger, and NudeNet, an add-on that finds exposed body parts in real photos so explicit ratings are caught more often.
+- Content ratings now have four levels: safe, suggestive, explicit and hardcore. Each file gets exactly one, worked out from its tags: latex and sexy poses count as suggestive, exposed nipples or genitals as explicit, and sex acts as hardcore.
+- Mobile app: tapping a creator in Hall of Fame opens her stats (rank, points, crowns, cum, edges, time, sessions, her most-used photo and top gallery) with a button to her profile.
+- Mobile curating has a Focus button that searches any creator, and focusing on someone not in the current file jumps straight to one of hers.
+- Mobile app remembers where you were: each tab reopens the page you last had open in it, scroll positions and filters are kept when you come back, the app reopens where you left off, and Android's back button closes sheets and viewers before leaving the page.
+- The Android app checks the download server for new app builds, so app-only updates show the update banner too, not just new desktop releases.
+
+### Changed
+- The card window is rebuilt: the card's name up top, its Spice, exposure, people and medium at a glance, your history without empty zero boxes, why it stands out (tags that match your type, traits that are rare in your library), set, creator and level progress, and why it got its rarity. A Content tab groups what's in the picture into looks, content and framing (click any to see those files), a Collection tab has copies, printings and how you got it, and Advanced Mode's overrides and card editor share one Edit tab.
+- Spice is much stricter about real photos: skin-coloured panties, thongs, leggings and hands over breasts no longer count as explicit, solo photos can't be hardcore from a misread pose, and fishnets alone no longer make a photo suggestive. Garter straps, highleg cuts, shots from behind and curvy bodies in sexy poses now count as suggestive.
+- Safe / Suggestive / Explicit / Hardcore is now called Spice, including on TCG cards, which take it straight from the source file. Hardcore is a new TCG level with its own set name.
+- The Dashboard Tags card ranks only meaningful tags: tags on most files (breasts, long hair), people count, framing and Spice no longer win every list. Trending now follows what you watched and finished to this week, and Together shows pairs that go together far more than chance.
+- The Tags filter on Galleries, Photos and Videos was redesigned to match the rest of the Vault. It has one-click rating chips (Safe, Suggestive, Explicit, Hardcore: click to show only, again to hide), lets you browse tags by category without typing, and shows how often each tag is used.
+- AI tagging is much faster on large libraries: files are read ahead while the GPU works, big PNGs are shrunk before processing, and video frames come from keyframes.
+- The AI tagger now recognises more explicit details (anus, pubic hair, pussy peek, clothing pulled aside and more) and poses such as on all fours, which it previously never tagged.
+- Mobile creator profiles start a little below the status bar instead of underneath it.
+- The first video after starting the app opens faster: the installer now includes VLC's plugin cache, so VLC no longer scans all its plugins on the first video.
+
+### Fixed
+- The GPU download for AI tagging failed on Windows with "No Windows wheel found" whenever NVIDIA's newest package had no Windows build. It now uses the newest version that has one.
+- Going back from a gallery returns you to the same spot in the gallery list instead of the top.
+- AI tags no longer mark a file solo, duo and group at once. The tagger counted girls and guys separately, so one girl with two men read as a solo shot; heads are now added up and each file gets one people tag. Existing tags were repaired.
+- Cards showed Topless on fully nude photos: Exposure now uses the most exposed level the tags support, and bare top plus bare bottom counts as Nude.
+- Cards' Spice and Exposure refresh after an AI tagging run instead of keeping values from the old tags.
+- Creator links in the card window show the site name (Patreon, Instagram) instead of link_0 and link_1, and Cosplay cards no longer say "variant".
+- Set avatar or banner from video could take minutes to open .mov and other non-MP4 videos, 4K especially, because the whole file was converted first, and the scrub and frame buttons did nothing until then. The picker now plays the original through VLC like the rest of the app, and shows a loading state.
+- The AI tagger recorded every recently tagged file as showing 6+ people, which also let up to five hair and eye colours stick to a single photo. It now uses the most likely count.
+- Files no longer get safe, suggestive and explicit rating tags all at once; existing files were cleaned up to a single rating.
+- WD14 tagging saw photos with red and blue swapped, which hurt hair, eye and clothing colour tags. Files tagged from now on get noticeably better colour tags.
+- Mobile card viewer: the card grid no longer scrolls underneath an open card, so dragging tilts the card instead.
+- The version at the bottom of mobile Profile and Settings showed the PC's version. It now shows the app's own version and build, plus the PC's.
+
+### Removed
+- AI tagging no longer guesses characters. Its guesses were wrong on most real photos (22,000 files were tagged Widowmaker), so all AI character tags were removed. Characters you link yourself are unaffected.
+
+## [2.0.6] - 2026-11-03
+
+### Added
+- Mobile app: swipe curating from a new Curate card on the Dashboard. Rate files with 10 stars, swipe right to save and go next, swipe left for Not now, and double tap to favorite. Creators show on the first screen with a focus button on each and a "Same as last" shortcut, and tags, notes, Open gallery, AI tag and Delete sit below. Undo brings back the last file.
+- File curating can focus the run on any creator of the current file, and shows the focus chip in its top bar like gallery curating.
+- Mobile app: the Cards tab shows your collection with the same card faces as desktop, including Hall of Fame cards, with type and rarity filters. Tap a card for a full-screen view with its set number, level and a favorite star.
+- Mobile app: Hall of Fame (top creators, photos and videos, and galleries for today, this week, this month or all time) and Recap (this week, month or year), both opened from Home.
+- Mobile app: the Android app shows a banner when the PC runs a newer version, with a link to the new APK, or when the PC is the one that needs updating.
+- Settings → System can give your phone the PC's Tailscale address, which works away from home and never changes, as well as the home Wi-Fi address. The QR code can open the phone browser version or pair the Android app directly.
+
+### Changed
+- Gallery select mode: Esc leaves it, and the selection bar stays pinned at the top while you scroll, with a Done button. The bar shows as soon as select mode is on.
+
+## [2.0.5] - 2026-11-02
+
 ### Added
 - Device Control → The Handy has a Debug log: copy or save a record of what The Vault sent the device and how it replied, to send in when scripts misbehave. Connection keys are never included.
 - The gallery creator filter has an Any / All switch when two or more people are picked. All shows only galleries with every picked person, such as one cosplayer as one character.
@@ -26,6 +106,7 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - The Dashboard Loading Bay button shows how many files and folders are waiting, and Loading Bay settings can send sorted funscripts to the funscript library folder.
 
 ### Changed
+- Gallery Hall of Fame cards show either the gallery cover or one of the three files you used most that period, picked at random, instead of always the cover.
 - Collection Room furniture placement works like The Sims: click an item to pick it up and click again to place it. Items snap to a floor grid (Alt for free placement, G to toggle), rotate in 45° steps, glide after the cursor with their real look, and show why a spot is blocked. Esc cancels and Delete returns the item to inventory.
 - Collection Room walking eases in and out, has Shift to sprint, and you can no longer walk through placed furniture. C now toggles crouch instead of needing to be held, and right-click while walking zooms in 2×, then 4×, then back. Sunlight through the windows now casts shadows on Medium quality too, and High quality uses antialiasing.
 - The Collection Room runs faster: window and cabinet glass no longer make the room render twice per frame, the tall glass cabinet draws in a handful of calls instead of 164, and furniture is no longer rebuilt when unrelated room data refreshes.
@@ -37,6 +118,8 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - Loading Bay deletes go to the Recycle Bin instead of being permanent. Sorting a few files no longer re-scans the whole creator folder, scans compare duplicates much faster, and reopening the window during an import shows its progress again.
 
 ### Fixed
+- Monthly card releases no longer get stuck as "Postponed" with zero cards when one creator makes up a large share of the library. Missed months are rebuilt when the app starts, and Regenerate proposal rebuilds the release you are viewing instead of always the current month.
+- The card window's stats now belong to what the card is about. Gallery cards show the whole gallery, creator and character cards show the person's totals across their media, and Hall of Fame cards show the winner. Before, most of these showed one photo's numbers, or zeros on profile-picture cards. Cosplay cards add a second row with the creator's totals as that character.
 - Hall of Fame video cards play in the open card window on the desktop app. The video was playing behind a black box.
 - Refreshing the Foundation catalogue no longer skips its last two steps. The new Foundation had no SPR cards and far too few Ultra Rares, so Foundation packs pulled worse than their listed odds. Refresh the Foundation again to fix a catalogue that was refreshed before this fix.
 - Videos in the viewer start about 2 seconds sooner. With a custom Glass theme wallpaper, the page froze each time a video opened.
@@ -45,7 +128,6 @@ Categories: **Added** (new features) · **Changed** (behaviour/UI changes) · **
 - The Collection Room could slow almost to a stop while cards loaded or when walking up to displays. Cards now bake from resized photos instead of the full original files, prepare in the gaps between frames, and add their foil detail without redoing the whole card.
 - Cards on stands and in cabinets looked darker than their real artwork when viewed up close in the Collection Room.
 - The gallery list counted a gallery twice when it matched more than one picked creator, so totals and pages could be off.
-- Collection Room posters could show as blank white sheets when the photo finished loading after the room appeared.
 - Cards on Collection Room stands never showed their foil effect, even up close.
 - Collection Room interaction prompts no longer appear for items on the other side of a wall, and thin white seams where inner walls meet the ceiling are gone.
 - The trader room got stuck on "Meeting today's trader…" with a very large card catalogue. Pricing a card no longer breaks on sets with more than about 32,000 cards, and setting up each day's trader takes a few seconds instead of about 30.

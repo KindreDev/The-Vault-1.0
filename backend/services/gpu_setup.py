@@ -121,23 +121,46 @@ def has_nvidia_gpu() -> bool:
 
 # ── PyPI wheel fetcher ─────────────────────────────────────────────────────────
 
+def _version_key(v: str) -> Optional[tuple]:
+    """Numeric sort key for plain release versions like '12.9.1.4'.
+    Returns None for pre-releases or anything non-numeric, so they get skipped."""
+    try:
+        return tuple(int(p) for p in v.split("."))
+    except ValueError:
+        return None
+
+
+def _pick_win_wheel(files: list) -> Optional[dict]:
+    """Return the Windows AMD64 wheel from a release's file list, if it has one."""
+    wheels = [f for f in files
+              if f["filename"].endswith(".whl") and not f.get("yanked")]
+    for tag in ["win_amd64", "none-any"]:
+        for f in wheels:
+            if tag in f["filename"]:
+                return f
+    return None
+
+
 def _get_win_wheel_info(package: str) -> tuple[str, str, int]:
-    """Return (download_url, version, size_bytes) for the latest Windows AMD64 wheel."""
+    """Return (download_url, version, size_bytes) for the newest release that
+    ships a Windows AMD64 wheel. NVIDIA sometimes publishes a release without a
+    Windows build (e.g. nvidia-cublas-cu12 12.9.3.13), so we fall back to older
+    releases instead of failing."""
     api_url = f"https://pypi.org/pypi/{package}/json"
     req = urllib.request.Request(api_url, headers={"User-Agent": "TheVault/1.0"})
     with urllib.request.urlopen(req, timeout=15) as r:
         data = json.loads(r.read())
 
-    version = data["info"]["version"]
-    files = data["releases"].get(version, [])
+    versions = [(k, v) for v in data.get("releases", {})
+                if (k := _version_key(v)) is not None]
+    versions.sort(reverse=True)
 
-    # Prefer win_amd64; nvidia packages are also published as none-win_amd64
-    for tag in ["win_amd64", "none-win_amd64", "none-any"]:
-        for f in files:
-            if tag in f["filename"] and f["filename"].endswith(".whl"):
-                return f["url"], version, f.get("size", 0)
+    for _, version in versions:
+        f = _pick_win_wheel(data["releases"].get(version, []))
+        if f:
+            return f["url"], version, f.get("size", 0)
 
-    raise RuntimeError(f"No Windows wheel found for {package} {version}")
+    raise RuntimeError(f"No Windows wheel found for {package} in any release")
 
 
 def _stream_download(url: str, dest_path: str, progress_cb: Optional[Callable] = None):

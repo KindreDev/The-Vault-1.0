@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy, Droplets, Images, Eye, Crown, Play, Film, Clock, TrendingUp, ArrowUp, ArrowDown, ChevronDown, X } from 'lucide-react'
 import { galleriesApi, creatorsApi, systemApi } from '../lib/api'
-import HofPeriodToggle, { HOF_PERIODS, loadHofPeriod, saveHofPeriod } from '../components/HofPeriodToggle'
+import HofPeriodToggle, { HofPeriodStepper, HOF_PERIODS, loadHofPeriod, saveHofPeriod } from '../components/HofPeriodToggle'
 import CreatorCollageBackground from '../components/CreatorCollageBackground'
 import CreatorStatsModal from '../components/CreatorStatsModal'
 import HofFullListModal from '../components/HofFullListModal'
@@ -15,6 +15,7 @@ import MediaStatsModal from '../components/stats/MediaStatsModal'
 import { creatorTypeColors, RARITY_COLORS } from '../lib/entityColors'
 
 import ModalLayer from '../components/ModalLayer'
+import TagHallOfFame from '../components/hof/TagHallOfFame'
 // ── Color maps ────────────────────────────────────────────────────────────────
 const TYPE_COLORS = creatorTypeColors(25)
 
@@ -40,29 +41,71 @@ function creatorAvatarUrl(creator, size = 480) {
   return `/api/creators/${creator.id}/avatar-thumb?size=${size}&v=${bust}`
 }
 
-// Local-calendar start of a period — mirrors activity.period_start() on the
-// backend so the "partial window" warning agrees with what was actually scored.
-function periodStartLocal(period) {
+// Local-calendar [start, end) of the period `ago` steps back (0 = the live one)
+// — mirrors activity.period_bounds() on the backend so the labels, the partial
+// warning and the history limit agree with what was actually scored.
+function periodWindowLocal(period, ago = 0) {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
-  if (period === 'day')   return d
-  if (period === 'week')  { const back = (d.getDay() + 6) % 7; d.setDate(d.getDate() - back); return d }  // Monday
-  if (period === 'month') { d.setDate(1); return d }
-  return null
+  if (period === 'day') {
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ago)
+    return [s, new Date(s.getFullYear(), s.getMonth(), s.getDate() + 1)]
+  }
+  if (period === 'week') {                       // Monday
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7 - 7 * ago)
+    return [s, new Date(s.getFullYear(), s.getMonth(), s.getDate() + 7)]
+  }
+  if (period === 'month') {
+    return [new Date(d.getFullYear(), d.getMonth() - ago, 1), new Date(d.getFullYear(), d.getMonth() - ago + 1, 1)]
+  }
+  return [null, null]
+}
+
+// The backend sends naive UTC; make sure the browser reads it as UTC.
+function parseUtc(value) {
+  if (!value) return null
+  return new Date(/(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`)
 }
 
 // A window that opened before engagement logging existed can only ever show
 // part of itself. Say so, rather than passing four days off as a whole month.
-function partialWindowNote(period, trackingSince) {
-  const start = periodStartLocal(period)
+function partialWindowNote(period, trackingSince, ago, locale) {
+  const [start] = periodWindowLocal(period, ago)
   if (!start) return null
   // No events recorded yet means tracking effectively begins now — which is the
   // state where this warning matters most, so it must not be the silent case.
-  const since = trackingSince
-    ? new Date(/(?:Z|[+-]\d{2}:\d{2})$/.test(trackingSince) ? trackingSince : `${trackingSince}Z`)
-    : new Date()
+  const since = parseUtc(trackingSince) ?? new Date()
   if (since <= start) return null
-  return since.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return since.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+}
+
+// Names a finished period the way you'd say it: "Yesterday", "Last week",
+// "October 2026", "Tue, Oct 28". The exact dates go in the subtitle.
+function pastPeriodLabel(period, ago, t, locale) {
+  const [start] = periodWindowLocal(period, ago)
+  if (!start) return ''
+  const thisYear = start.getFullYear() === new Date().getFullYear()
+  if (period === 'day') {
+    if (ago === 1) return t('Yesterday')
+    return start.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric', ...(thisYear ? {} : { year: 'numeric' }) })
+  }
+  if (period === 'week') {
+    if (ago === 1) return t('Last week')
+    return t('Week of {date}', { date: start.toLocaleDateString(locale, { month: 'short', day: 'numeric', ...(thisYear ? {} : { year: 'numeric' }) }) })
+  }
+  return start.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
+}
+
+// "Oct 27 – Nov 2, 2026" for a week, the full date for a day, the month for a month.
+function pastPeriodRange(period, ago, locale) {
+  const [start, end] = periodWindowLocal(period, ago)
+  if (!start) return ''
+  if (period === 'day') return start.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  if (period === 'month') return start.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1)
+  const a = start.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+  const b = last.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${a} – ${b}`
 }
 
 const PERIOD_SUBTITLE = {
@@ -292,7 +335,7 @@ function CrownCount({ n }) {
   )
 }
 
-function CreatorHero({ creator, onClick }) {
+function CreatorHero({ creator, onClick, heroLabel }) {
   const [imgFailed, setImgFailed] = useState(false)
   const tc  = TYPE_COLORS[creator.creator_type] || TYPE_COLORS.custom
   const rc  = RARITY_COLORS[creator.card_rarity] || RARITY_COLORS.common
@@ -357,7 +400,7 @@ function CreatorHero({ creator, onClick }) {
           <div className="flex items-center gap-2">
             <Crown size={16} style={{ color: 'var(--c-amber-text)' }} />
             <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
-                           letterSpacing: '0.14em', color: 'var(--c-amber-text)' }}><LocalizedText text={"#1 · Most Visited Creator"} before={" "} after={" "} /></span>
+                           letterSpacing: '0.14em', color: 'var(--c-amber-text)' }}>{heroLabel ?? <LocalizedText text={"#1 · Most Visited Creator"} before={" "} after={" "} />}</span>
             <RankChange change={creator.rank_change} size={13} />
             <CrownCount n={creator.crown_count} />
           </div>
@@ -495,7 +538,7 @@ function CreatorGridCard({ creator, rank, onClick }) {
   )
 }
 
-function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
+function CreatorSection({ creators, onCreatorClick, onKnowMore, heroLabel }) {
   const t = useT()
   if (!creators || creators.length === 0) return null
   const top3 = creators.slice(0, 3)
@@ -514,7 +557,7 @@ function CreatorSection({ creators, onCreatorClick, onKnowMore }) {
         </div>
       </div>
 
-      <CreatorHero creator={top3[0]} onClick={() => onCreatorClick(top3[0].id)} />
+      <CreatorHero creator={top3[0]} heroLabel={heroLabel} onClick={() => onCreatorClick(top3[0].id)} />
 
       {top3.length > 1 && (
         <div className="grid gap-6 mt-4"
@@ -754,19 +797,26 @@ export default function HallOfFame() {
   const [galleryStatsId, setGalleryStatsId] = useState(null)
   const [mediaStatsId, setMediaStatsId]     = useState(null)
 
+  const locale = useVaultStore(s => s.locale)
+
   // Opens on whichever board was last looked at.
   const [period, setPeriod] = useState(loadHofPeriod)
-  const selectPeriod = useCallback((p) => { setPeriod(p); saveHofPeriod(p) }, [])
+  // How many periods back you're looking: 0 is the live board, 1 is yesterday /
+  // last week / last month. Switching the kind of window always lands on the
+  // live one, and the page always opens live — history is a visit, not a home.
+  const [ago, setAgo] = useState(0)
+  const selectPeriod = useCallback((p) => { setPeriod(p); setAgo(0); saveHofPeriod(p) }, [])
+  const isPast = period !== 'all' && ago > 0
 
   // Page fetchers for the "know more" list. Wrapped in useCallback so the modal
   // resets its rows when you switch sections rather than appending to them —
   // and so it re-fetches when the period changes underneath it.
   const fetchCreators = useCallback((limit, offset) =>
-    creatorsApi.hof(limit, offset, period).then(r => r.data), [period])
+    creatorsApi.hof(limit, offset, period, ago).then(r => r.data), [period, ago])
   const fetchMedia = useCallback((limit, offset) =>
-    galleriesApi.hof(limit, offset, period).then(r => r.data), [period])
+    galleriesApi.hof(limit, offset, period, ago).then(r => r.data), [period, ago])
   const fetchGalleries = useCallback((limit, offset) =>
-    galleriesApi.galleryHof(limit, offset, period).then(r => r.data), [period])
+    galleriesApi.galleryHof(limit, offset, period, ago).then(r => r.data), [period, ago])
 
   const LISTS = {
     creators:  { title: 'All creators',  subtitle: 'Ranked by engagement — tap any of them for her full stats', fetch: fetchCreators,
@@ -778,34 +828,47 @@ export default function HallOfFame() {
   }
   const activeList = fullList ? LISTS[fullList] : null
 
-  const refreshPeriod = period === 'all' ? false : 30_000
-  const { data: creatorHof, isPending: creatorHofPending, isFetching: creatorHofFetching, isError: creatorHofError, refetch: refetchCreatorHof } = useQuery({
-    queryKey: ['creator-hof', 30, period],
-    queryFn: () => creatorsApi.hof(30, 0, period).then(r => r.data),
-    staleTime: 15_000, refetchInterval: refreshPeriod,
+  // A finished period's table is final, so only the live boards poll.
+  const refreshPeriod = period === 'all' || isPast ? false : 30_000
+  const staleTime = isPast ? 5 * 60_000 : 15_000
+  const { data: creatorHof, isPending: creatorHofPending, isFetching: creatorHofFetching, isError: creatorHofError, isPlaceholderData: creatorHofStale, refetch: refetchCreatorHof } = useQuery({
+    queryKey: ['creator-hof', 30, period, ago],
+    queryFn: () => creatorsApi.hof(30, 0, period, ago).then(r => r.data),
+    staleTime, refetchInterval: refreshPeriod,
+    // Stepping through history keeps the last board on screen while the next
+    // one loads, instead of flashing the full-page loader on every click.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey?.[2] === period ? prev : undefined),
   })
   const { data: imageHof, isPending: imageHofPending, isError: imageHofError, refetch: refetchImageHof } = useQuery({
-    queryKey: ['hof', 30, period],
-    queryFn: () => galleriesApi.hof(30, 0, period).then(r => r.data),
-    staleTime: 15_000, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
+    queryKey: ['hof', 30, period, ago],
+    queryFn: () => galleriesApi.hof(30, 0, period, ago).then(r => r.data),
+    staleTime, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
   })
   const { data: galleryHof, isPending: galleryHofPending, isError: galleryHofError, refetch: refetchGalleryHof } = useQuery({
-    queryKey: ['gallery-hof', 30, period],
-    queryFn: () => galleriesApi.galleryHof(30, 0, period).then(r => r.data),
-    staleTime: 15_000, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
+    queryKey: ['gallery-hof', 30, period, ago],
+    queryFn: () => galleriesApi.galleryHof(30, 0, period, ago).then(r => r.data),
+    staleTime, refetchInterval: refreshPeriod, enabled: Array.isArray(creatorHof),
   })
 
   // When engagement logging started. A window that opened before this date is
   // genuinely partial, so the page says so rather than passing off four days as
   // a whole month.
-  const { data: trackingSince } = useQuery({
+  const { data: tracking } = useQuery({
     queryKey: ['activity-tracking'],
-    queryFn:  () => systemApi.activityTracking().then(r => r.data.since),
+    queryFn:  () => systemApi.activityTracking().then(r => r.data),
     staleTime: 60_000,
   })
+  const trackingSince = tracking?.since
 
-  const periodLabel = HOF_PERIODS.find(p => p.id === period)?.label ?? 'All time'
-  const partialSince = partialWindowNote(period, trackingSince)
+  // History reaches back as far as anything was logged (events or sessions);
+  // a step past that could only ever show an empty board.
+  const historySince = parseUtc(tracking?.history_since)
+  const canGoBack = period !== 'all' && !!historySince && periodWindowLocal(period, ago + 1)[1] > historySince
+
+  const periodLabel = isPast
+    ? pastPeriodLabel(period, ago, t, locale)
+    : t(HOF_PERIODS.find(p => p.id === period)?.label ?? 'All time')
+  const partialSince = partialWindowNote(period, trackingSince, ago, locale)
   const hasBoardData = [creatorHof, imageHof, galleryHof].some(items => (items ?? []).length > 0)
   const boardLoading = !hasBoardData && (imageHofPending || galleryHofPending || creatorHofPending)
   const boardFailed = !hasBoardData && (imageHofError || galleryHofError || creatorHofError)
@@ -869,7 +932,9 @@ export default function HallOfFame() {
                 )}
               </h1>
               <p className="text-[16px] text-[rgba(255,255,255,0.35)] mt-0.5">
-                {PERIOD_SUBTITLE[period]}
+                {isPast
+                  ? t('Final standings — {range}', { range: pastPeriodRange(period, ago, locale) })
+                  : PERIOD_SUBTITLE[period]}
               </p>
               {partialSince && (
                 <p className="text-[16px] mt-1" style={{ color: 'color-mix(in srgb, var(--c-amber) 75%, transparent)' }}><LocalizedText text={"Partial — engagement has only been tracked since"} before={" "} after={" "} />{partialSince}
@@ -878,10 +943,29 @@ export default function HallOfFame() {
             </div>
           </div>
 
-          <HofPeriodToggle value={period} onChange={selectPeriod} />
+          <div className="flex flex-wrap items-center gap-3">
+            {period !== 'all' && (
+              <HofPeriodStepper
+                label={periodLabel}
+                canBack={canGoBack}
+                canForward={ago > 0}
+                onBack={() => setAgo(a => a + 1)}
+                onForward={() => setAgo(a => Math.max(0, a - 1))}
+                onNow={() => setAgo(0)}
+                backTitle={t({ day: 'Previous day', week: 'Previous week', month: 'Previous month' }[period])}
+                forwardTitle={t({ day: 'Next day', week: 'Next week', month: 'Next month' }[period])}
+                nowLabel={t({ day: 'Today', week: 'This week', month: 'This month' }[period])}
+              />
+            )}
+            <HofPeriodToggle value={period} onChange={selectPeriod} />
+          </div>
         </div>
 
-        <div className="flex flex-col gap-20">
+        {/* While the next period loads, the previous board stays up but dims, so
+            it never reads as that period's result. */}
+        <div className="flex flex-col gap-20"
+             style={{ opacity: creatorHofStale ? 0.35 : 1, transition: 'opacity 200ms ease',
+                      pointerEvents: creatorHofStale ? 'none' : undefined }}>
 
           {/* CreatorSection renders nothing when empty, which on a freshly-reset
               board reads as a broken page rather than an empty one. */}
@@ -906,9 +990,16 @@ export default function HallOfFame() {
                  style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
               <Trophy size={32} style={{ color: 'color-mix(in srgb, var(--c-amber) 35%, transparent)', margin: '0 auto 16px' }} />
               <p className="text-[18px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {PERIOD_EMPTY[period]}
+                {isPast ? t('Nothing was logged in this period — no board, no champion.') : PERIOD_EMPTY[period]}
               </p>
-              {period !== 'all' && (
+              {isPast ? (
+                <button onClick={() => setAgo(0)}
+                        className="mt-5 px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
+                        style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
+                                 border: '0.5px solid color-mix(in srgb, var(--c-amber) 35%, transparent)', color: 'var(--c-amber-text)' }}>
+                  {t('Back to the live board')}
+                </button>
+              ) : period !== 'all' && (
                 <button onClick={() => selectPeriod('all')}
                         className="mt-5 px-4 py-2 rounded-[10px] text-[16px] font-semibold transition-colors"
                         style={{ background: 'color-mix(in srgb, var(--c-amber) 15%, transparent)',
@@ -918,6 +1009,7 @@ export default function HallOfFame() {
           ) : (
           <>
           <CreatorSection creators={creatorHof} onCreatorClick={setStatsId}
+                          heroLabel={isPast ? t('#1 · {period} champion', { period: periodLabel }) : undefined}
                           onKnowMore={() => setFullList('creators')} />
 
           <TieredSection
@@ -953,6 +1045,11 @@ export default function HallOfFame() {
           )}
           </>
           )}
+
+          <TagHallOfFame period={period} ago={isPast ? ago : 0}
+                         onMediaClick={setMediaStatsId}
+                         onGalleryClick={setGalleryStatsId}
+                         onCreatorClick={setStatsId} />
 
         </div>
       </div>
