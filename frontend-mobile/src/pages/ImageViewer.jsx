@@ -10,6 +10,7 @@ import { saveImage, setWallpaper, canSetWallpaper } from '../lib/wallpaper.js'
 import { useVaultStore } from '../store/vault.js'
 import { Spinner } from '../components/ui.jsx'
 import BottomSheet from '../components/BottomSheet.jsx'
+import { markViewed, goBack } from '../lib/nav.js'
 
 // Gap between photos so a fast swipe never reveals a sliver of the neighbour —
 // you see black between them instead, like a real gallery app.
@@ -70,6 +71,11 @@ export default function ImageViewer() {
   const idxRef = useRef(idx)
   const imagesRef = useRef(images)
   useEffect(() => { idxRef.current = idx }, [idx])
+  // Remember the photo you're on so the grid can scroll to it when you close.
+  useEffect(() => {
+    if (galleryId) markViewed(`gallery:${galleryId}`, idx)
+    else if (playlistId) markViewed(`playlist:${playlistId}`, idx)
+  }, [idx, galleryId, playlistId])
   useEffect(() => { imagesRef.current = images }, [images])
 
   // Real measured page width (the viewport), kept in a ref so touch handlers
@@ -302,8 +308,7 @@ export default function ImageViewer() {
   function goBack() { setClosing(true) }
   function finishClose() {
     if (!closing) return
-    if (window.history.length > 1) nav(-1)
-    else nav('/galleries')
+    goBack(nav, playlistId ? `/playlist/${playlistId}` : galleryId ? `/gallery/${galleryId}` : '/galleries')
   }
   async function rate(r) {
     if (!current) return

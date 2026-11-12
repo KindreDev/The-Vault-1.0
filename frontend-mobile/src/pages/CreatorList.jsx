@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Search, Users } from 'lucide-react'
 import { creatorsApi } from '../lib/api.js'
 import { creatorAvatarUrl } from '../lib/media.js'
 import { PageHeader, Spinner, Empty } from '../components/ui.jsx'
+import { usePersistentState } from '../lib/nav.js'
 
 const TYPES = [
   { id: '',          label: 'All' },
@@ -18,8 +18,8 @@ const TYPES = [
 
 export default function CreatorList() {
   const nav = useNavigate()
-  const [search, setSearch] = useState('')
-  const [type, setType] = useState('')
+  const [search, setSearch] = usePersistentState('vault.m.creators.search', '', { session: true })
+  const [type, setType] = usePersistentState('vault.m.creators.type', '')
 
   const { data, isLoading } = useQuery({
     queryKey: ['creators', search, type],
@@ -44,7 +44,7 @@ export default function CreatorList() {
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto px-4 pb-3">
+      <div data-hswipe className="flex gap-2 overflow-x-auto px-4 pb-3">
         {TYPES.map(t => (
           <button key={t.id} onClick={() => setType(t.id)}
                   className="shrink-0 px-3.5 py-1.5 rounded-full text-[14px] font-medium"

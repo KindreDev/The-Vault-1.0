@@ -6,6 +6,7 @@ import { imageThumbUrl } from '../lib/media.js'
 import { useVaultStore } from '../store/vault.js'
 import { Spinner, Empty } from '../components/ui.jsx'
 import LongPress from '../components/LongPress.jsx'
+import { useRevealViewed, goBack } from '../lib/nav.js'
 
 export default function PlaylistView() {
   const { id } = useParams()
@@ -28,12 +29,13 @@ export default function PlaylistView() {
   }
 
   const images = data?.images || []
+  useRevealViewed(`playlist:${id}`, images.length > 0)
 
   return (
     <div>
       <div className="sticky top-0 z-30 flex items-center gap-2 px-2 pb-2 backdrop-blur"
            style={{ paddingTop: 'calc(var(--sat) + 10px)', background: 'color-mix(in srgb, var(--c-bg) 88%, transparent)' }}>
-        <button onClick={() => nav(-1)} className="p-2"><ChevronLeft size={26} /></button>
+        <button onClick={() => goBack(nav, '/playlists')} className="p-2"><ChevronLeft size={26} /></button>
         <h1 className="text-xl font-bold truncate flex-1">{data?.name || ''}</h1>
         <span className="text-[14px] pr-2" style={{ color: 'rgba(255,255,255,0.45)' }}>{images.length}</span>
       </div>
@@ -43,7 +45,7 @@ export default function PlaylistView() {
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1 px-1">
           {images.map((img, idx) => (
-            <LongPress key={img.id} onClick={() => open(img, idx)} onLongPress={() => remove(img)}
+            <LongPress key={img.id} data-view-index={idx} onClick={() => open(img, idx)} onLongPress={() => remove(img)}
                        className="relative aspect-square overflow-hidden" style={{ background: 'var(--c-card)' }}>
               <img src={imageThumbUrl(img)} alt="" loading="lazy" className="w-full h-full object-cover" />
               {img.is_video && (

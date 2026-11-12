@@ -10,6 +10,19 @@ import FeedPost, { StoriesRow, StoryViewer, creatorAvatar } from '../components/
 
 const PAGE_SIZE = 6
 
+// Loaded posts survive leaving the page (opening a photo, a gallery, another
+// tab), so coming back shows the same feed at the same spot. One entry per
+// view: the main feed ('') and each creator profile. Cleared on app restart,
+// or by tapping the Feed tab again while already at the top.
+const FEED_CACHE = {}
+let generatedOnce = false
+const newSeed = () => Math.floor(Math.random() * 99991) + 1
+function feedEntry(creatorId) {
+  const k = creatorId || ''
+  if (!FEED_CACHE[k]) FEED_CACHE[k] = { posts: [], page: 0, hasMore: true, seed: newSeed() }
+  return FEED_CACHE[k]
+}
+
 function fmtCount(n) {
   if (n == null) return '0'
   if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
@@ -141,22 +154,50 @@ export default function Feed() {
   const [searchParams, setSearchParams] = useSearchParams()
   const creatorId = searchParams.get('creator_id')
 
-  const [posts, setPosts] = useState([])
-  const [page, setPage] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const [generated, setGenerated] = useState(false)
+  const entry = feedEntry(creatorId)
+  const [posts, setPosts] = useState(entry.posts)
+  const [page, setPage] = useState(entry.page)
+  const [hasMore, setHasMore] = useState(entry.hasMore)
+  const [generated, setGenerated] = useState(generatedOnce)
   const [storyGroup, setStoryGroup] = useState(null)
   const [seenIds, setSeenIds] = useState(() => new Set())
   const [dismissed, setDismissed] = useState(() => new Set())
   const ioRef = useRef(null)
   const stateRef = useRef({ hasMore: true, fetching: false })
-  const seedRef = useRef(Math.floor(Math.random() * 99991) + 1)
+  const seedRef = useRef(entry.seed)
 
-  useEffect(() => { feedApi.generate().catch(() => {}).finally(() => setGenerated(true)) }, [])
-  useEffect(() => { setPosts([]); setPage(0); setHasMore(true) }, [creatorId])
+  // Generate the day's posts once per app session, not on every visit.
+  useEffect(() => {
+    if (generatedOnce) return
+    feedApi.generate().catch(() => {}).finally(() => { generatedOnce = true; setGenerated(true) })
+  }, [])
+  // Switching between the main feed and a profile swaps in that view's cache.
+  const shownFor = useRef(creatorId)
+  useEffect(() => {
+    if (shownFor.current === creatorId) return
+    shownFor.current = creatorId
+    const e = feedEntry(creatorId)
+    seedRef.current = e.seed
+    setPosts(e.posts); setPage(e.page); setHasMore(e.hasMore)
+  }, [creatorId])
+  useEffect(() => {
+    if (shownFor.current !== creatorId) return
+    Object.assign(feedEntry(creatorId), { posts, page, hasMore })
+  }, [posts, page, hasMore, creatorId])
+  // Tapping the Feed tab while already at the top reshuffles the main feed.
+  useEffect(() => {
+    const onReselect = (e) => {
+      if (e.detail !== '/feed' || creatorId) return
+      FEED_CACHE[''] = { posts: [], page: 0, hasMore: true, seed: newSeed() }
+      seedRef.current = FEED_CACHE[''].seed
+      setPosts([]); setPage(0); setHasMore(true)
+    }
+    window.addEventListener('vault:tab-reselect', onReselect)
+    return () => window.removeEventListener('vault:tab-reselect', onReselect)
+  }, [creatorId])
 
   const { data, isFetching } = useQuery({
-    queryKey: ['feed-m', creatorId, page],
+    queryKey: ['feed-m', creatorId, page, creatorId ? 0 : seedRef.current],
     queryFn: () => feedApi.list({
       creator_id: creatorId || undefined,
       skip: page * PAGE_SIZE, limit: PAGE_SIZE,
@@ -166,7 +207,13 @@ export default function Feed() {
   })
   useEffect(() => {
     if (!data) return
-    setPosts(prev => page === 0 ? data : [...prev, ...data])
+    // Cached pages come back when returning to the feed — skip posts we
+    // already show instead of appending them twice.
+    setPosts(prev => {
+      if (page === 0) return data
+      const have = new Set(prev.map(p => p.id))
+      return [...prev, ...data.filter(p => !have.has(p.id))]
+    })
     setHasMore(data.length === PAGE_SIZE)
   }, [data])
 

@@ -8,6 +8,7 @@ import { useVaultStore } from '../store/vault.js'
 import { Spinner } from '../components/ui.jsx'
 import LongPress from '../components/LongPress.jsx'
 import BottomSheet from '../components/BottomSheet.jsx'
+import { useBackClose, useRevealViewed, goBack } from '../lib/nav.js'
 
 export default function GalleryView() {
   const { id } = useParams()
@@ -29,6 +30,7 @@ export default function GalleryView() {
   })
 
   useEffect(() => { galleriesApi.view(id).catch(() => {}) }, [id])
+  useRevealViewed(`gallery:${id}`, !!images?.length)
 
   async function logCum() {
     try { await galleriesApi.cum(id); addToast('Cum logged', 'xp'); qc.invalidateQueries({ queryKey: ['gallery', id] }) }
@@ -45,6 +47,7 @@ export default function GalleryView() {
   }
   function toggleSel(imgId) { setSelected(s => s.includes(imgId) ? s.filter(x => x !== imgId) : [...s, imgId]) }
   function exitSelect() { setSelectMode(false); setSelected([]) }
+  useBackClose(selectMode, exitSelect)
 
   async function doExtract() {
     const name = extractName.trim()
@@ -58,7 +61,7 @@ export default function GalleryView() {
     <div>
       <div className="sticky top-0 z-30 flex items-center gap-2 px-2 pb-2 backdrop-blur"
            style={{ paddingTop: 'calc(var(--sat) + 10px)', background: 'color-mix(in srgb, var(--c-bg) 88%, transparent)' }}>
-        <button onClick={() => selectMode ? exitSelect() : nav(-1)} className="p-2">
+        <button onClick={() => selectMode ? exitSelect() : goBack(nav, '/galleries')} className="p-2">
           {selectMode ? <X size={26} /> : <ChevronLeft size={26} />}
         </button>
         <h1 className="text-xl font-bold truncate flex-1">{selectMode ? `${selected.length} selected` : (g?.name || '')}</h1>
@@ -101,7 +104,7 @@ export default function GalleryView() {
           {images?.map((img, idx) => {
             const sel = selected.includes(img.id)
             return (
-              <LongPress key={img.id}
+              <LongPress key={img.id} data-view-index={idx}
                 onClick={() => selectMode ? toggleSel(img.id) : openImage(img, idx)}
                 onLongPress={() => { if (!selectMode) setSheet(img) }}
                 className="relative aspect-square overflow-hidden" style={{ background: 'var(--c-card)', outline: sel ? '3px solid var(--accent)' : 'none' }}>

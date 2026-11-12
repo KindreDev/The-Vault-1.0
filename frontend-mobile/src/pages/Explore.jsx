@@ -9,6 +9,7 @@ import { ArrowLeft, Compass, Sparkles, Heart, FolderOpen, Play, Search, X } from
 import { feedApi } from '../lib/api.js'
 import { abs } from '../lib/server.js'
 import { Spinner } from '../components/ui.jsx'
+import { useBackClose } from '../lib/nav.js'
 import { VideoSlide, creatorAvatar } from '../components/FeedBits.jsx'
 
 // Module-level cache: opening a photo navigates away and unmounts this page —
@@ -246,6 +247,10 @@ export default function Explore() {
   const inSearchImmersive = !!search && searchView === 'immersive'
   const inExploreImmersive = !search && mode === 'immersive'
   const showBar = !inSearchImmersive && !inExploreImmersive
+  // Android back steps out of the stream / search before leaving Explore.
+  useBackClose(inExploreImmersive, () => setMode('grid'))
+  useBackClose(!!search, clearSearch)
+  useBackClose(inSearchImmersive, () => setSearchView('results'))
 
   const GridTile = (item, onTap) => {
     const ar = item.width && item.height ? Math.min(2, Math.max(0.5, item.width / item.height)) : 1

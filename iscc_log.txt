@@ -1,0 +1,109 @@
+﻿Inno Setup 6 Command-Line Compiler
+Copyright (C) 1997-2026 Jordan Russell. All rights reserved.
+Portions Copyright (C) 2000-2026 Martijn Laan. All rights reserved.
+Portions Copyright (C) 2001-2004 Alex Yackimoff. All rights reserved.
+https://www.innosetup.com
+
+Compiler engine version: Inno Setup 6.7.2
+Non-commercial use only
+
+Preprocessing
+   Reading file: C:\Program Files (x86)\Inno Setup 6\ISPPBuiltins.iss
+Parsing [Setup] section, line 18
+Parsing [Setup] section, line 19
+Parsing [Setup] section, line 20
+Parsing [Setup] section, line 21
+Parsing [Setup] section, line 22
+Parsing [Setup] section, line 23
+Parsing [Setup] section, line 24
+Parsing [Setup] section, line 25
+Parsing [Setup] section, line 26
+Parsing [Setup] section, line 27
+Parsing [Setup] section, line 28
+Parsing [Setup] section, line 30
+Parsing [Setup] section, line 31
+Parsing [Setup] section, line 32
+Parsing [Setup] section, line 33
+Parsing [Setup] section, line 34
+Parsing [Setup] section, line 35
+Parsing [Setup] section, line 36
+Parsing [Setup] section, line 37
+Parsing [Setup] section, line 39
+Parsing [Setup] section, line 40
+Parsing [Setup] section, line 42
+Reading file (WizardImageFile)
+Reading file (WizardSmallImageFile)
+Preparing Setup program executable
+   Verification successful
+   Updating icons (Setup.e32)
+   Updating version info (Setup.e32)
+Determining language code pages
+Parsing [Languages] section, line 47
+   Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+   Messages in script file
+Reading default messages from Default.isl
+Parsing [Languages] section, line 47
+   Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+Parsing [LangOptions], [Messages], and [CustomMessages] sections
+   Messages in script file
+Reading [Code] section
+Parsing [Tasks] section, line 50
+Parsing [Icons] section, line 58
+Parsing [Icons] section, line 59
+Parsing [Icons] section, line 61
+Parsing [Registry] section, line 65
+Parsing [Run] section, line 72
+Parsing [Run] section, line 76
+Parsing [Run] section, line 81
+Parsing [Files] section, line 54
+Compiling [Code] section
+Deleting VaultSetup.exe from output directory
+Creating setup files
+   Verification successful
+   Updating icons (Setup.exe)
+   Compressing: F:\The Vault Git\The Vault\dist\vault\vault.exe
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-console-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-datetime-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-debug-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-errorhandling-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-fibers-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-file-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-file-l1-2-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-file-l2-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-handle-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-heap-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-interlocked-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-libraryloader-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-localization-l1-2-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-memory-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-namedpipe-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-processenvironment-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-processthreads-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-processthreads-l1-1-1.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-profile-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-rtlsupport-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-string-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-synch-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-synch-l1-2-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-sysinfo-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-timezone-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-core-util-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-conio-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-convert-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-environment-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-filesystem-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-heap-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-locale-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-math-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-multibyte-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-private-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-process-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-runtime-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-stdio-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-string-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-time-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\api-ms-win-crt-utility-l1-1-0.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\base_library.zip
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\CHANGELOG.md
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\cublas64_12.dll
+   Compressing: F:\The Vault Git\The Vault\dist\vault\_internal\cublasLt64_12.dll

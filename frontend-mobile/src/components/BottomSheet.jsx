@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useBackClose } from '../lib/nav.js'
 
 // A slide-up action sheet. `actions` is an array of:
 //   { label, icon, onClick, danger?, disabled? }
@@ -10,6 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 const EASE = [0.22, 1, 0.36, 1]
 
 export default function BottomSheet({ open, onClose, title, actions = [], children }) {
+  useBackClose(open, onClose)
   useEffect(() => {
     if (!open) return
     const onKey = (e) => e.key === 'Escape' && onClose()

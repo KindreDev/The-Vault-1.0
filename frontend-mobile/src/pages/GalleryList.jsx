@@ -9,6 +9,7 @@ import { PageHeader, Spinner, Empty, CountPill } from '../components/ui.jsx'
 import LongPress from '../components/LongPress.jsx'
 import BottomSheet from '../components/BottomSheet.jsx'
 import PickerSheet from '../components/PickerSheet.jsx'
+import { usePersistentState, useBackClose } from '../lib/nav.js'
 
 const SORTS = [
   { id: 'date_added',  label: 'Recently added' },
@@ -24,18 +25,22 @@ export default function GalleryList() {
   const qc = useQueryClient()
   const addToast = useVaultStore(s => s.addToast)
   const openPlaylistPicker = useVaultStore(s => s.openPlaylistPicker)
-  const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState('date_added')
-  const [sortDir, setSortDir] = useState('desc')   // toggled by re-tapping a sort
+  // Search lasts until the app closes; sort and filters are remembered for good.
+  const [search, setSearch] = usePersistentState('vault.m.galleries.search', '', { session: true })
+  const [sortBy, setSortBy] = usePersistentState('vault.m.galleries.sortBy', 'date_added')
+  const [sortDir, setSortDir] = usePersistentState('vault.m.galleries.sortDir', 'desc')   // toggled by re-tapping a sort
+  // Random order is seeded so it holds still while you browse and come back;
+  // re-tapping Random reshuffles.
+  const [seed, setSeed] = usePersistentState('vault.m.galleries.seed', () => Math.random())
   const [sortOpen, setSortOpen] = useState(false)
   const [sheet, setSheet] = useState(null)        // gallery action sheet
 
   // filters
   const [filterOpen, setFilterOpen] = useState(false)
   const [picker, setPicker] = useState(null)      // 'creator' | 'franchise' | 'tags'
-  const [creatorId, setCreatorId] = useState(null)
-  const [series, setSeries] = useState(null)
-  const [tagIds, setTagIds] = useState([])
+  const [creatorId, setCreatorId] = usePersistentState('vault.m.galleries.creator', null)
+  const [series, setSeries] = usePersistentState('vault.m.galleries.series', null)
+  const [tagIds, setTagIds] = usePersistentState('vault.m.galleries.tags', [])
 
   // multi-select
   const [selectMode, setSelectMode] = useState(false)
@@ -46,10 +51,11 @@ export default function GalleryList() {
 
   const tagsCsv = tagIds.length ? tagIds.join(',') : undefined
   const { data, isLoading } = useQuery({
-    queryKey: ['galleries', search, sortBy, sortDir, creatorId, series, tagsCsv],
+    queryKey: ['galleries', search, sortBy, sortDir, creatorId, series, tagsCsv, sortBy === 'random' ? seed : 0],
     queryFn: () => galleriesApi.list({
       search: search || undefined, sort_by: sortBy, limit: 300,
       sort_dir: sortBy === 'random' ? undefined : sortDir,
+      _seed: sortBy === 'random' ? seed : undefined,
       creator_id: creatorId || undefined, series: series || undefined, tags: tagsCsv,
     }).then(r => r.data),
   })
@@ -57,25 +63,29 @@ export default function GalleryList() {
   // Tapping a sort: a new sort picks its natural default direction; re-tapping the
   // current sort flips the direction (e.g. rating high→low becomes low→high).
   function pickSort(id) {
-    if (id === sortBy) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    if (id === 'random') { if (sortBy === 'random') setSeed(Math.random()); else setSortBy(id) }
+    else if (id === sortBy) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortBy(id); setSortDir(id === 'name' ? 'asc' : 'desc') }
   }
 
   // Progressive rendering: only mount a window of cards and grow it as the user
   // scrolls. Keeps the DOM small (and the GPU/CPU cool) even for big libraries.
+  // The window size is remembered per filter set so coming back can scroll to
+  // where you were; changing a filter starts again from the first batch.
   const BATCH = 30
-  const [visible, setVisible] = useState(BATCH)
+  const windowSig = JSON.stringify([search, sortBy, sortDir, creatorId, series, tagsCsv, sortBy === 'random' ? seed : 0])
+  const [win, setWin] = usePersistentState('vault.m.galleries.window', { sig: windowSig, n: BATCH }, { session: true })
+  const visible = win.sig === windowSig ? win.n : BATCH
   const sentinel = useRef(null)
-  useEffect(() => { setVisible(BATCH) }, [search, sortBy, sortDir, creatorId, series, tagsCsv])
   useEffect(() => {
     if (!sentinel.current) return
     const io = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) setVisible(v => v + BATCH) },
+      ([e]) => { if (e.isIntersecting) setWin(w => ({ sig: windowSig, n: (w.sig === windowSig ? w.n : BATCH) + BATCH })) },
       { rootMargin: '600px' }   // prefetch a screen ahead so scrolling stays smooth
     )
     io.observe(sentinel.current)
     return () => io.disconnect()
-  }, [data])
+  }, [data, windowSig])
   const shown = data?.slice(0, visible) || []
 
   const { data: creators } = useQuery({ queryKey: ['creators-all'], queryFn: () => creatorsApi.list({ limit: 1000 }).then(r => r.data), enabled: filterOpen || !!assignFor })
@@ -120,6 +130,7 @@ export default function GalleryList() {
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   }
   function exitSelect() { setSelectMode(false); setSelected([]) }
+  useBackClose(selectMode, exitSelect)
 
   return (
     <div>

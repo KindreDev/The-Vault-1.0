@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Search, Check } from 'lucide-react'
+import { useBackClose } from '../lib/nav.js'
 
 // A searchable single/multi-select sheet. `options` is [{ id, label }].
 // `selected` is an id (single) or array of ids (multi). Calls onSelect(id) for
@@ -12,6 +13,7 @@ export default function PickerSheet({
   open, onClose, title, options = [], selected, multi = false, onSelect, onToggle, footer,
 }) {
   const [q, setQ] = useState('')
+  useBackClose(open, onClose)
   useEffect(() => { if (open) setQ('') }, [open])
 
   const ql = q.trim().toLowerCase()

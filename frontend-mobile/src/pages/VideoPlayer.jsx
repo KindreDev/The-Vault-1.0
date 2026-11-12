@@ -7,6 +7,7 @@ import { imagesApi, galleriesApi } from '../lib/api.js'
 import { imageFileUrl, imageThumbUrl } from '../lib/media.js'
 import { useVaultStore } from '../store/vault.js'
 import { Spinner } from '../components/ui.jsx'
+import { goBack } from '../lib/nav.js'
 
 const SPEEDS = [1, 1.25, 1.5, 2, 0.5]
 
@@ -104,8 +105,7 @@ export default function VideoPlayer() {
     else nav(`/photo/${item.id}`, { replace: true })
   }
   function goBack() {
-    if (window.history.length > 1) nav(-1)
-    else nav('/galleries')
+    goBack(nav, '/galleries')
   }
   async function rate(r) {
     try { await imagesApi.rate(imageId, r); addToast('Rated', 'xp'); qc.invalidateQueries({ queryKey: ['image', imageId] }) }

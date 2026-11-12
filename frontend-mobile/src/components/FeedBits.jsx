@@ -9,6 +9,7 @@ import { Heart, FolderOpen, CalendarHeart, History, Flame, Sparkles, Camera, Vol
 import { useVaultStore } from '../store/vault.js'
 import { feedApi } from '../lib/api.js'
 import { abs } from '../lib/server.js'
+import { useBackClose } from '../lib/nav.js'
 
 export const TYPE_META = {
   on_this_day: { icon: CalendarHeart, label: 'On this day', color: '#ED93B1' },
@@ -331,6 +332,7 @@ export function StoryViewer({ groups, startGroup = 0, onClose, onSeen, onOpenPro
   const [muted, setMuted] = useState(true)
   const videoRef = useRef(null)
   const timerRef = useRef(null)
+  useBackClose(true, onClose)
 
   const group = groups[g]
   const story = group?.stories[s]
